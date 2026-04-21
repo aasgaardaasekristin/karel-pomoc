@@ -546,12 +546,14 @@ const DidDashboard = ({
 
         {/* ── BLOCK 1 — CRISIS COMMAND (renders only when active crisis exists) ── */}
         {snapshot?.command?.crises?.length > 0 && (
-          <ErrorBoundary fallbackTitle="Velitelská karta selhala">
-            <CommandCrisisCard
-              crises={snapshot.command.crises as CommandCrisis[]}
-              refreshTrigger={refreshTrigger}
-            />
-          </ErrorBoundary>
+          <div data-pracovna-anchor="crisis-command">
+            <ErrorBoundary fallbackTitle="Velitelská karta selhala">
+              <CommandCrisisCard
+                crises={snapshot.command.crises as CommandCrisis[]}
+                refreshTrigger={refreshTrigger}
+              />
+            </ErrorBoundary>
+          </div>
         )}
 
         {/* ── 2026-04-20 SURFACE SPLIT ──
@@ -568,7 +570,7 @@ const DidDashboard = ({
                     (vyřešeno v briefing.ask_hanka / briefing.ask_kata)
                   - skryté „Čekám na vaše odpovědi" (vyřešeno v briefing.waiting_for)
                 Ponecháno: CommandFourSections, vstupní pole pro vzkazy. ── */}
-        <div className="jung-hero-section rounded-2xl p-1">
+        <div className="jung-hero-section rounded-2xl p-1" data-pracovna-anchor="therapist-tasks">
           <ErrorBoundary fallbackTitle="Denní plán selhal">
             <KarelDailyPlan
               refreshTrigger={refreshTrigger}
@@ -579,7 +581,7 @@ const DidDashboard = ({
         </div>
 
         {/* ── BLOCK 2b — TEAM DELIBERATIONS (společná porada týmu, max 2+1) ── */}
-        <StudyCard className="space-y-3">
+        <StudyCard className="space-y-3" data-pracovna-anchor="team-deliberations">
           <ErrorBoundary fallbackTitle="Porada týmu selhala">
             <TeamDeliberationsPanel
               refreshTrigger={refreshTrigger}
@@ -588,7 +590,7 @@ const DidDashboard = ({
           </ErrorBoundary>
         </StudyCard>
 
-        <StudyCard className="space-y-4">
+        <StudyCard className="space-y-4" data-pracovna-anchor="today-session-plan">
           <SectionTitle icon={<Clock className="h-4 w-4 text-primary" />}>Dnes</SectionTitle>
 
           <div className="max-h-[22rem] overflow-auto pr-1">
