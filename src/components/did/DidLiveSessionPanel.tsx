@@ -1094,6 +1094,68 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ── Quick Note Dialog ── */}
+      <Dialog open={noteDialogOpen} onOpenChange={setNoteDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <StickyNote className="w-4 h-4 text-primary" />
+              Poznámka ze sezení
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Krátká poznámka, postřeh nebo citace — uloží se do toku sezení s časem.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={noteDraft}
+            onChange={e => setNoteDraft(e.target.value)}
+            placeholder="Co se stalo, co řekla část, neverbální signál…"
+            className="min-h-[6rem] text-sm"
+            autoFocus
+          />
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" size="sm" onClick={() => { setNoteDialogOpen(false); setNoteDraft(""); }}>
+              Zrušit
+            </Button>
+            <Button size="sm" onClick={handleAddNote} disabled={!noteDraft.trim()}>
+              Přidat poznámku
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Lehké ukončení sezení (handoff bez plné analýzy) ── */}
+      <Dialog open={handoffDialogOpen} onOpenChange={setHandoffDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <DoorClosed className="w-4 h-4 text-primary" />
+              Ukončit sezení
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Uloží surový přepis, audio segmenty i poznámky a sezení označí jako <strong>ukončené, připravené pro následnou analýzu</strong>. Plnou Karelovu analýzu spustíš v dalším kroku zvlášť.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-xs text-muted-foreground space-y-1.5 rounded-md border border-border/60 bg-muted/30 p-3">
+            <div>• Část: <span className="font-medium text-foreground">{partName}</span></div>
+            <div>• Vede: <span className="font-medium text-foreground">{therapistName}</span></div>
+            <div>• Záznamů v toku: <span className="font-medium text-foreground">{messages.length}</span></div>
+            {switchLog.length > 0 && (
+              <div>• Switche: <span className="font-medium text-foreground">{switchLog.length}×</span></div>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setHandoffDialogOpen(false)} disabled={isClosingLight}>
+              Zpět do sezení
+            </Button>
+            <Button size="sm" onClick={handleLightClose} disabled={isClosingLight} className="gap-1.5">
+              {isClosingLight ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DoorClosed className="w-3.5 h-3.5" />}
+              Ukončit a uložit přepis
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
