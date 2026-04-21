@@ -65,6 +65,16 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onB
   const [sessionCompleted, setSessionCompleted] = useState(false);
   const [completedReport, setCompletedReport] = useState("");
 
+  // ── Live Session Room v1 additions (session prep → live) ──
+  // Plán panel viditelný hned v živé místnosti, ne jen jako skrytý kontext.
+  const [planExpanded, setPlanExpanded] = useState(true);
+  // Quick-note dialog — sběr poznámek během sezení (zařadí se do toku jako 📝).
+  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  // Lehké ukončení bez plné post-session analýzy (pro tento pass — handoff stav).
+  const [handoffDialogOpen, setHandoffDialogOpen] = useState(false);
+  const [isClosingLight, setIsClosingLight] = useState(false);
+
   const EMOTION_OPTIONS = [
     "klidná", "nejistá", "frustrovaná", "dojatá",
     "vyčerpaná", "nadějná", "úzkostná", "překvapená",
