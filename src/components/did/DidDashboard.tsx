@@ -1,28 +1,27 @@
 import { useCallback, useEffect, useState } from "react";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
-import { Clock, MessageCircleQuestion, FileText, AlertTriangle, Calendar } from "lucide-react";
+import { Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { isNonDidEntity } from "@/lib/didPartNaming";
 import type { DidSubMode } from "./DidSubModeSelector";
-// Dashboard Reality Cleanup Pass (2026-04-21):
-//   - `KarelDailyPlan` odstraněn z této plochy. Renderoval jen
-//     `CommandFourSections` (DNES NOVĚ / DNES HORŠÍ / DNES VYŽADUJE ZÁSAH),
-//     což je významová duplicita s `DailyDecisionTasks` v `KarelOverviewPanel`
-//     (Nové dnes / Vyžaduje reissue / Blokující čekání). Single owner
-//     decision decku = `DailyDecisionTasks`.
-//   - `DidDailyBriefingPanel` (Karlův hlas) bydlí v `KarelOverviewPanel`.
+// Final Pracovna Cleanup Verdict (2026-04-21):
+//   - `CommandCrisisCard` ODPOJEN — `CrisisAlert` (sticky banner) je
+//     jediný owner krizové signalizace na Pracovna. Operativní obsah
+//     (missing/requires/CTA) je dostupný přes `CrisisDetailWorkspace`
+//     (klik z banneru). Komponenta `CommandCrisisCard` se v projektu
+//     nemaže — jen se nerenderuje na této obrazovce.
+//   - `OpsSnapshotBar` ODPOJEN — counter strip („99+ urgentní",
+//     „k archivaci", „live plány") je noise, ne decision layer.
+//     Může být přesunutý do Admin/inspect vrstvy v jiném passu.
+//   - `KarelDailyPlan` + `DailyDecisionTasks` + `KarelCrisisDeficits`
+//     odstraněny v dřívějších passech. Briefing je single decision owner.
 import DidDailySessionPlan from "./DidDailySessionPlan";
-// Slice 3A (2026-04-21): DidSprava launcher přesunut z headeru Pracovny
-// do AdminSurface (DidContentRouter → AdminSpravaLauncher). Pracovna je
-// teď čistá od admin tooling (spec sekce G).
-import CommandCrisisCard, { type CommandCrisis } from "./CommandCrisisCard";
 import TeamDeliberationsPanel from "./TeamDeliberationsPanel";
 import DeliberationRoom from "./DeliberationRoom";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import { useOperationalInboxCounts } from "@/hooks/useOperationalInboxCounts";
 
 interface PartActivity {
   name: string;
