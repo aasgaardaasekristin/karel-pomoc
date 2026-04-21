@@ -1275,6 +1275,17 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
                     <div className="flex-1">
                       <span className="font-medium text-foreground/80">{s.selected_part}</span>
                       <span className="text-foreground/50"> — {s.therapist || "terapeutka dle domluvy"}</span>
+                      {/* Pravdivý stav plánu (Slice: Session Finalization State) */}
+                      {s.status === "in_progress" && (
+                        <span className="ml-2 inline-flex items-center gap-1 text-[10.5px] font-medium px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/25">
+                          ● live
+                        </span>
+                      )}
+                      {s.status === "awaiting_analysis" && (
+                        <span className="ml-2 inline-flex items-center gap-1 text-[10.5px] font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 border border-amber-500/30">
+                          ⏳ čeká na analýzu
+                        </span>
+                      )}
                       <div className="mt-1">
                         <ActionLink label="Otevřít plán sezení" onClick={() => openSessionPlan(s.selected_part)} />
                       </div>
