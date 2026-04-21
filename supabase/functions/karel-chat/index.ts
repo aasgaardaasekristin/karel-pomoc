@@ -18,6 +18,11 @@ import {
   type EvidencePersistenceContext,
 } from "../_shared/evidencePersistence.ts";
 import type { ExtractedWriteOutput } from "../_shared/phase5Types.ts";
+import {
+  appendPantryB,
+  type PantryBEntryKind,
+  type PantryBDestination,
+} from "../_shared/pantryB.ts";
 import { normalizeKarelContext } from "../_shared/karelContextNormalizer.ts";
 import { buildKarelIdentityBlock } from "../_shared/karelIdentity.ts";
 import { getKarelTone } from "../_shared/karelTonalRouter.ts";
@@ -1438,6 +1443,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
 
                   let insertedCount = 0;
                   let evidenceCount = 0;
+                  let pantryBCount = 0;
                   for (const { intent, output: matchedOutput } of pairs) {
 
                     const governedContent = encodeGovernedWrite(
@@ -1488,10 +1494,75 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                     } else {
                       insertedCount++;
                     }
+
+                    // ═══ HOURGLASS: SPIŽÍRNA B WRITER (post-chat) ═══
+                    // Real producer: každý relevantní writeback output, který nese
+                    // implikaci/proposal/follow-up, se zapíše do karel_pantry_b_entries.
+                    // Surová pozorování (FACT bez implication) se NEzapisují — ta patří
+                    // do did_observations (už zařízeno persistEvidenceForIntent výše).
+                    // Flush logika: karel-did-daily-cycle phase_8b (před Drive flushem)
+                    // přečte tyto entries a routne je do canonical cílů.
+                    if (matchedOutput && !isHanaPersonal) {
+                      try {
+                        const hasImplication = !!(matchedOutput.implication && matchedOutput.implication.trim());
+                        const hasProposal = !!(matchedOutput.proposedAction && matchedOutput.proposedAction.trim());
+                        const isStateChange = matchedOutput.changeType === "update" || matchedOutput.changeType === "conflict";
+
+                        if (hasImplication || hasProposal || isStateChange) {
+                          // Map ExtractedWriteOutput → PantryBEntryKind
+                          let entryKind: PantryBEntryKind = "conclusion";
+                          if (matchedOutput.changeType === "conflict") entryKind = "hypothesis_change";
+                          else if (matchedOutput.kind === "PLAN_05A" || matchedOutput.kind === "PLAN_05B") entryKind = "plan_change";
+                          else if (matchedOutput.kind === "STRATEGIE") entryKind = "proposal";
+                          else if (hasProposal) entryKind = "proposal";
+                          else if (isStateChange) entryKind = "state_change";
+                          else if (hasImplication) entryKind = "conclusion";
+
+                          // Map → intended destinations
+                          const destinations: PantryBDestination[] = [];
+                          if (matchedOutput.kind === "PLAN_05A" || matchedOutput.kind === "PLAN_05B") {
+                            destinations.push("did_therapist_tasks");
+                          }
+                          if (hasImplication) destinations.push("did_implications");
+                          if (matchedOutput.needsVerification) destinations.push("did_pending_questions");
+                          destinations.push("briefing_input");
+
+                          const summary = matchedOutput.implication
+                            ?? matchedOutput.proposedAction
+                            ?? matchedOutput.changeSummary
+                            ?? matchedOutput.summary;
+
+                          await appendPantryB(sbMem, {
+                            user_id: user.id,
+                            entry_kind: entryKind,
+                            source_kind: "chat_postwriteback",
+                            source_ref: chatSourceId,
+                            summary,
+                            intended_destinations: Array.from(new Set(destinations)),
+                            related_part_name: matchedOutput.partName ?? undefined,
+                            related_therapist: matchedOutput.therapist ?? undefined,
+                            detail: {
+                              output_kind: matchedOutput.kind,
+                              evidence_kind: matchedOutput.evidenceKind,
+                              confidence: matchedOutput.confidence,
+                              freshness: matchedOutput.freshness,
+                              change_type: matchedOutput.changeType,
+                              section: matchedOutput.section ?? null,
+                              time_horizon: matchedOutput.timeHorizon ?? null,
+                              source_mode: modeLabel,
+                              observation_id: observationId,
+                            },
+                          });
+                          pantryBCount++;
+                        }
+                      } catch (pantryErr) {
+                        console.warn("[post-chat-writeback] Pantry B append failed (non-fatal):", pantryErr);
+                      }
+                    }
                   }
 
-                  if (insertedCount > 0 || evidenceCount > 0) {
-                    console.log(`[post-chat-writeback] ${insertedCount} drive writes + ${evidenceCount} DB evidence stops for ${modeLabel} (${pairs.length} pairs, ${rejected.length} rejected)`);
+                  if (insertedCount > 0 || evidenceCount > 0 || pantryBCount > 0) {
+                    console.log(`[post-chat-writeback] ${insertedCount} drive writes + ${evidenceCount} DB evidence + ${pantryBCount} pantry-B entries for ${modeLabel} (${pairs.length} pairs, ${rejected.length} rejected)`);
                   }
                 } else {
                   console.log(`[post-chat-writeback] No relevant outputs for ${modeLabel}`);
