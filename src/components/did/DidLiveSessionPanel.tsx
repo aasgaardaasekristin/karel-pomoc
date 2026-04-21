@@ -778,8 +778,15 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
               <span className="text-sm">🧩</span>
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-sm font-semibold text-foreground">Live DID sezení</h3>
+                <Badge className="text-[9px] gap-1 h-4 bg-destructive/15 text-destructive border border-destructive/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
+                  LIVE
+                </Badge>
+                <Badge variant="outline" className="text-[9px] h-4 border-primary/30 text-primary">
+                  připraveno · podepsáno týmem
+                </Badge>
                 {switchLog.length > 0 && (
                   <Badge variant="outline" className="text-[9px] gap-0.5 h-4 border-amber-500/40 text-amber-700 dark:text-amber-400">
                     <Shuffle className="w-2.5 h-2.5" />
@@ -788,24 +795,66 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
                 )}
               </div>
               <p className="text-xs text-muted-foreground truncate">
-                <span className={`font-medium ${switchFlash ? "text-amber-600 dark:text-amber-400" : ""}`}>{activePart}</span>
+                Část: <span className={`font-medium ${switchFlash ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>{activePart}</span>
                 {activePart !== partName && <span className="text-muted-foreground/60"> (start: {partName})</span>}
-                {" • "}{therapistName}
+                {" · vede "}<span className="font-medium text-foreground">{therapistName}</span>
               </p>
             </div>
           </div>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={handleEndSession}
-            disabled={isFinishing || messages.length < 2}
-            className="gap-1.5 text-xs h-9 shrink-0"
-          >
-            {isFinishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <StopCircle className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">Ukončit a analyzovat</span>
-            <span className="sm:hidden">Ukončit</span>
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setHandoffDialogOpen(true)}
+              disabled={isFinishing || isClosingLight || messages.length < 2}
+              className="gap-1.5 text-xs h-9"
+            >
+              <DoorClosed className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Ukončit sezení</span>
+              <span className="sm:hidden">Ukončit</span>
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleEndSession}
+              disabled={isFinishing || isClosingLight || messages.length < 2}
+              className="gap-1.5 text-xs h-9"
+            >
+              {isFinishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <StopCircle className="w-3.5 h-3.5" />}
+              <span className="hidden md:inline">Ukončit a analyzovat</span>
+              <span className="md:hidden">Analyzovat</span>
+            </Button>
+          </div>
         </div>
+
+        {/* ── Schválený plán (z přípravné porady) ── */}
+        {contextBrief && (
+          <div className="mt-3 rounded-md border border-primary/25 bg-primary/5">
+            <button
+              type="button"
+              onClick={() => setPlanExpanded(v => !v)}
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span className="text-xs font-medium text-foreground">Schválený plán sezení</span>
+                <Badge variant="outline" className="text-[9px] h-4 border-primary/30 text-primary">
+                  z přípravné porady
+                </Badge>
+              </div>
+              {planExpanded ? (
+                <ChevronUp className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              )}
+            </button>
+            {planExpanded && (
+              <div className="px-3 pb-3 pt-0 max-h-72 overflow-y-auto border-t border-primary/15">
+                <RichMarkdown compact>{contextBrief}</RichMarkdown>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Audio & Image tools strip */}
         <div className="mt-3 flex items-center gap-2 flex-wrap">
