@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, ChevronUp, PenLine, MessageSquare, Play, Square, Clock, Trash2, RefreshCw, Plus } from "lucide-react";
+import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, ChevronUp, PenLine, MessageSquare, Play, Square, Clock, Trash2, RefreshCw, Plus, Users, Lock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -10,6 +10,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import RichMarkdown from "@/components/ui/RichMarkdown";
+import { useSessionPrepRoom } from "@/hooks/useSessionPrepRoom";
+import { signoffProgress } from "@/types/teamDeliberation";
 
 interface SessionPlan {
   id: string;
@@ -48,6 +50,15 @@ interface Props {
    *  jejich průběhu (Zahájit / Splněno / Live / Ukončit).
    */
   compact?: boolean;
+  /**
+   * SESSION PREP ROOM PASS (2026-04-21):
+   *  Otevírá `DeliberationRoom` (modal) pro přípravnou poradu typu
+   *  `session_plan` navázanou na konkrétní dnešní plán. Pracovna ho
+   *  přepošle z hostitelského surface (PracovnaSurface drží
+   *  setOpenDeliberationId).
+   *  Když není dodán, prep CTA se nerendrují — chování zůstává původní.
+   */
+  onOpenPrepRoom?: (deliberationId: string) => void;
 }
 
 const urgencyLabels: Record<string, string> = {
@@ -74,7 +85,7 @@ const GENERATION_STEPS = [
 
 import DidLiveSessionPanel from "./DidLiveSessionPanel";
 
-const DidDailySessionPlan = ({ refreshTrigger, compact = false }: Props) => {
+const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }: Props) => {
   const [plans, setPlans] = useState<SessionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -565,6 +576,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false }: Props) => {
             onOpenLive={() => setLiveSessionActive(true)}
             prevSession={plan.id === firstPendingPlan?.id ? prevSession : null}
             compact={compact}
+            onOpenPrepRoom={onOpenPrepRoom}
           />
         ))}
 
@@ -588,6 +600,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false }: Props) => {
                 prevSession={null}
                 isArchived
                 compact={compact}
+                onOpenPrepRoom={onOpenPrepRoom}
               />
             ))}
           </div>
@@ -673,6 +686,8 @@ interface PlanCardProps {
   isArchived?: boolean;
   /** Pracovna SESSION-CONTROLS CLEANUP: skrývá Přegenerovat / Smazat. */
   compact?: boolean;
+  /** SESSION PREP ROOM PASS: otevírá `DeliberationRoom` modal. */
+  onOpenPrepRoom?: (deliberationId: string) => void;
 }
 
 const PlanCard = ({
@@ -689,6 +704,7 @@ const PlanCard = ({
   prevSession,
   isArchived,
   compact = false,
+  onOpenPrepRoom,
 }: PlanCardProps) => {
   const leadLabel = plan.session_format === "crisis_intervention" || plan.session_lead === "all"
     ? "Karel (vlákno) · Káťa (telefon) · Hanička (sezení)"
@@ -696,6 +712,26 @@ const PlanCard = ({
   const formatLabel = plan.session_format === "crisis_intervention"
     ? "krizová intervence"
     : plan.session_lead === "obe" ? "kombinované" : plan.session_format || (plan.session_lead === "kata" ? "chat" : "osobně");
+
+  // ── SESSION PREP ROOM PASS (2026-04-21) ──
+  // Najde poradu (session_plan deliberation) navázanou na tento dnešní plán.
+  // Když existuje:
+  //   - approved → plán je „připravený k zahájení", aktivuj „Zahájit sezení"
+  //   - active / awaiting_signoff → blokuj „Zahájit", nabídni „Otevřít přípravu"
+  // Když neexistuje (legacy / manuálně generovaný plán mimo deliberation flow):
+  //   - blokuj „Zahájit", nabídni „Připravit s týmem" (vytvoří poradu)
+  // Když není dodán `onOpenPrepRoom` (komponenta žije mimo Pracovnu — např.
+  // session prep wizard), prep gate se přeskakuje a UI je legacy chování.
+  const prepGateEnabled = !!onOpenPrepRoom;
+  const { deliberation: prepRoom, loading: prepLoading, createForExistingPlan } =
+    useSessionPrepRoom(prepGateEnabled ? plan.id : null);
+  const [creatingPrep, setCreatingPrep] = useState(false);
+  const prepApproved = prepRoom?.status === "approved";
+  const prepInProgress = prepRoom && (prepRoom.status === "active" || prepRoom.status === "awaiting_signoff");
+  const prepProgress = prepRoom ? signoffProgress(prepRoom) : null;
+  // „Zahájit" je v Pracovně dostupné JEN když je plán schválený přes prep room.
+  // Mimo Pracovnu (prepGateEnabled=false) zůstává staré chování.
+  const startBlockedByPrep = prepGateEnabled && !prepApproved;
 
   // Overdue calculation using Prague timezone
   const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
@@ -716,6 +752,33 @@ const PlanCard = ({
     : isOverdue
     ? "border-l-[3px] border-l-amber-500"
     : "";
+
+  const handleCreatePrep = async () => {
+    if (creatingPrep) return;
+    setCreatingPrep(true);
+    try {
+      const ledBy: "Hanička" | "Káťa" | "společně" =
+        plan.session_lead === "kata" ? "Káťa"
+          : plan.session_lead === "obe" ? "společně"
+          : "Hanička";
+      const created = await createForExistingPlan({
+        daily_plan_id: plan.id,
+        part_name: plan.selected_part,
+        plan_markdown: plan.plan_markdown,
+        led_by: ledBy,
+      });
+      if (created?.id) {
+        toast.success("Přípravná místnost otevřena.");
+        onOpenPrepRoom?.(created.id);
+      } else {
+        toast.error("Nepodařilo se založit přípravu.");
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Nepodařilo se založit přípravu.");
+    } finally {
+      setCreatingPrep(false);
+    }
+  };
 
   return (
     <div className={`rounded-md border p-2.5 mt-1.5 transition-all ${lifeCycleBorder} ${
@@ -782,6 +845,29 @@ const PlanCard = ({
           </Badge>
         )}
 
+        {/* SESSION PREP ROOM PASS — stav přípravné místnosti.
+            Renderuje se jen když je gate aktivní (Pracovna). */}
+        {prepGateEnabled && plan.status === "generated" && !isArchived && (
+          prepLoading ? (
+            <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-muted-foreground/30 text-muted-foreground">
+              <Loader2 className="mr-0.5 h-2.5 w-2.5 animate-spin" /> Příprava…
+            </Badge>
+          ) : prepApproved ? (
+            <Badge className="text-[10px] h-5 px-1.5 bg-primary/15 text-primary border border-primary/30">
+              <CheckCircle2 className="mr-0.5 h-2.5 w-2.5" /> Připraveno k zahájení
+            </Badge>
+          ) : prepInProgress ? (
+            <Badge className="text-[10px] h-5 px-1.5 bg-amber-500/15 text-amber-700 border border-amber-500/30">
+              <Users className="mr-0.5 h-2.5 w-2.5" />
+              Příprava ({prepProgress?.signed ?? 0}/3 podpisů)
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/40 text-amber-700">
+              <Lock className="mr-0.5 h-2.5 w-2.5" /> Bez přípravy
+            </Badge>
+          )
+        )}
+
         <div className="ml-auto flex items-center gap-1">
           <Button variant="ghost" size="sm" onClick={onToggleExpand} className="h-6 px-1.5 text-[0.625rem]">
             {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -793,7 +879,48 @@ const PlanCard = ({
       <div className="flex flex-wrap items-center gap-1 mb-1.5">
         {plan.status === "generated" && !isArchived && (
           <>
-            <Button variant="outline" size="sm" onClick={onStartSession} className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10">
+            {/* SESSION PREP ROOM PASS — primární akce v Pracovně:
+                 - Když existuje rozpracovaná porada → "Otevřít přípravu"
+                 - Když porada neexistuje → "Připravit s týmem" (vytvoří ji)
+                 - Když je porada schválená → fallthrough na "Zahájit" níže
+                 Mimo Pracovnu (prepGateEnabled=false) se nic z toho nerendrují. */}
+            {prepGateEnabled && prepInProgress && prepRoom && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => onOpenPrepRoom?.(prepRoom.id)}
+                className="h-6 px-2 text-[10px]"
+              >
+                <Users className="mr-0.5 h-2.5 w-2.5" /> Otevřít přípravu
+                {prepProgress && ` (${prepProgress.signed}/3)`}
+              </Button>
+            )}
+            {prepGateEnabled && !prepLoading && !prepRoom && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleCreatePrep}
+                disabled={creatingPrep}
+                className="h-6 px-2 text-[10px]"
+              >
+                {creatingPrep ? (
+                  <Loader2 className="mr-0.5 h-2.5 w-2.5 animate-spin" />
+                ) : (
+                  <Users className="mr-0.5 h-2.5 w-2.5" />
+                )}
+                Připravit s týmem
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onStartSession}
+              disabled={startBlockedByPrep}
+              title={startBlockedByPrep
+                ? "Nejdřív tým musí v přípravné místnosti podepsat plán."
+                : undefined}
+              className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-50"
+            >
               <Play className="mr-0.5 h-2.5 w-2.5" /> Zahájit
             </Button>
             <Button variant="outline" size="sm" onClick={onMarkDone} className="h-6 px-2 text-[10px] border-green-500/40 text-green-700 hover:bg-green-500/10">
