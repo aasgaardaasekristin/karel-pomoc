@@ -64,16 +64,13 @@ import {
 } from "@/hooks/useCrisisOperationalState";
 import { useCrisisDetail } from "@/contexts/CrisisDetailContext";
 
-import CrisisDailyManagement from "./CrisisDailyManagement";
-import CrisisSessionQA from "./CrisisSessionQA";
 import CrisisClosureWorkflow from "./CrisisClosureWorkflow";
 import CrisisHistoryTimeline, { type JournalEntry } from "./CrisisHistoryTimeline";
 
-type TabKey = "overview" | "management" | "closure" | "history";
+type TabKey = "overview" | "closure" | "history";
 
 const TABS: { key: TabKey; label: string; hint: string }[] = [
   { key: "overview", label: "Přehled", hint: "akční launchpad" },
-  { key: "management", label: "Řízení", hint: "denní workflow této krize" },
   { key: "closure", label: "Uzavření", hint: "closure readiness" },
   { key: "history", label: "Historie", hint: "deník zásahů" },
 ];
