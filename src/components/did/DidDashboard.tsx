@@ -425,4 +425,6 @@ const DidDashboard = ({
       />
     </div>
   );
+};
+
 export default DidDashboard;
