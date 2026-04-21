@@ -192,24 +192,13 @@ const KarelOverviewPanel = ({
         </ErrorBoundary>
       </div>
 
-      {/* ── BLOCK A2 — Dnešní rozhodovací práce (Slice 3B Decision Deck) ──
-            Derived view-model nad existujícími zdroji (tasks, pending questions,
-            briefing waiting items, crisis deficits, session proposals). Ukazuje
-            jen new_today / needs_reissue / escalate_to_meeting / blocking
-            waiting_response. Operativa dne, done, dropped a not_relevant_anymore
-            sem nepatří — Slice 2 RE-ANCHOR SPEC sekce D. */}
-      <ErrorBoundary fallbackTitle="Decision deck nelze načíst">
-        <DailyDecisionTasks refreshTrigger={refreshTrigger + internalRefresh} />
-      </ErrorBoundary>
-
-      {/* ── BLOCK A3 — Krizové deficity dne (Crisis Function Reallocation 2026-04-21) ──
-            Sem byly přesunuty deficitní signály, které dříve viseli v krizovém banneru:
-            chybí dnešní hodnocení / chybí feedback / dlouho bez kontaktu.
-            Banner zůstává čistá signalizační vrstva; tady jsou Karlovy
-            pracovní deficity s handoffem do detailu krize. */}
-      <ErrorBoundary fallbackTitle="Krizové deficity nelze načíst">
-        <KarelCrisisDeficits />
-      </ErrorBoundary>
+      {/* Emergency Simplification Pass (2026-04-21):
+            DailyDecisionTasks i KarelCrisisDeficits ODSTRANĚNY z Karlova přehledu.
+            Důvod: porušovaly základní logiku obrazovky — pod briefingem se objevila
+            druhá vývěska se stejnou krizovou/rozhodovací informací. Karlův přehled
+            je teď JEDEN souvislý decision layer (briefing) + read-only foundation.
+            Krizová signalizace = CrisisAlert (nahoře). Operativní krizové karty
+            = CommandCrisisCard (níže v DidDashboard). */}
 
       {/* ── BLOCK B — Therapist Intelligence Foundation (read-only) ── */}
       <div className="jung-card p-4 space-y-3">
