@@ -1,26 +1,22 @@
 import React, { useState } from "react";
-import { Shield, ChevronDown, ChevronUp, Bell, Users, Clock } from "lucide-react";
+import { Shield, ChevronDown, ChevronUp, Bell, Users, Clock, AlertCircle } from "lucide-react";
 import { useCrisisOperationalState, type CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
 import CrisisOperationalDetail from "./CrisisOperationalDetail";
 
 /**
- * CrisisAlert — SIGNALIZAČNÍ vrstva (Crisis Banner Repair Pass, 2026-04-21).
+ * CrisisAlert — SIGNALIZAČNÍ vrstva (Crisis Banner Polish Pass, 2026-04-21).
  *
  * ROLE:
  *   - Stručně signalizovat, že existuje aktivní krize.
- *   - Ukázat identitu části, severity, operační stav, den krize, čas bez kontaktu.
- *   - 1–2 status badges (display-only).
- *   - Jediný vstup: "Otevřít detail" → expanze do CrisisOperationalDetail.
+ *   - Ukázat identitu části, severity, operační stav, den krize.
+ *   - Deficitní statusy jako jemné textové náznaky, ne buttony.
+ *   - Jediný CTA: "Otevřít detail".
  *
- * NEDĚLÁ (přesunuto do detailu / porad / therapist rooms):
- *   - "Spustit hodnocení", "Získat feedback", "Otevřít poradu" (Řízení tab v detailu)
- *   - Přímé DB side-effects, edge function calls
- *   - Routing do Hanička/Káťa rooms (řeší KarelOverviewPanel a detail)
- *
- * VIZUÁL:
- *   - Tlumený warm tint (žádná tvrdá červená přes celý vršek)
- *   - Severity rozlišena pouze jemným akcentem na levém border + badge barvou
- *   - Kompaktní 1-řádkový layout (ikona + identita + badges + chevron)
+ * VIZUÁLNÍ PRINCIPY:
+ *   - Žádná křiklavá červená, žádné "row of pills"
+ *   - Severity jako jemný ambientní tón (border + ikona), ne dominantní badge
+ *   - Statusové deficity jako diskretní textové indikátory
+ *   - Informační hierarchie: kdo → jak vážné → co chybí → kam jít
  */
 
 const STATE_LABELS: Record<string, string> = {
@@ -35,24 +31,42 @@ const STATE_LABELS: Record<string, string> = {
   monitoring_post: "monitoring",
 };
 
-// ── Severity → kultivovaný HSL tint (žádná křiklavá červená) ──
-//   Zdroj: design system semantic tokens; inline RGBA jen jako fallback,
-//   protože banner je sticky nad Pracovnou a potřebuje vlastní subtle pozadí.
-const severityTint = (severity: string) => {
+// ── Severity → kultivovaný HSL ambient (jemný, ne křiklavý) ──
+const severityAmbient = (severity: string) => {
   switch (severity?.toLowerCase()) {
     case "critical":
-      // tlumený rose/wine — varuje, ale neřve
-      return { bg: "hsl(8 35% 96%)", border: "hsl(8 45% 78%)", accent: "hsl(8 55% 45%)" };
+      // Tlumený rose — varuje jemným akcentem, ne dominantní barvou
+      return {
+        bg: "hsl(8 30% 97%)",
+        border: "hsl(8 35% 85%)",
+        accent: "hsl(8 50% 42%)",
+        muted: "hsl(8 30% 55%)",
+      };
     case "high":
     case "elevated":
-      // teplý terracotta
-      return { bg: "hsl(20 40% 96%)", border: "hsl(20 50% 80%)", accent: "hsl(20 60% 42%)" };
+      // Teplý terracotta, utlumený
+      return {
+        bg: "hsl(20 30% 97%)",
+        border: "hsl(20 35% 85%)",
+        accent: "hsl(20 50% 40%)",
+        muted: "hsl(20 30% 50%)",
+      };
     case "moderate":
-      // sand / ochre
-      return { bg: "hsl(38 40% 96%)", border: "hsl(38 45% 80%)", accent: "hsl(38 55% 38%)" };
+      // Sand/ochre, velmi tlumený
+      return {
+        bg: "hsl(38 25% 97%)",
+        border: "hsl(38 30% 85%)",
+        accent: "hsl(38 45% 35%)",
+        muted: "hsl(38 25% 50%)",
+      };
     default:
-      // low / unknown — neutral stone
-      return { bg: "hsl(34 22% 95%)", border: "hsl(34 18% 82%)", accent: "hsl(34 25% 38%)" };
+      // Neutral stone, téměř neviditelný
+      return {
+        bg: "hsl(34 15% 97%)",
+        border: "hsl(34 20% 88%)",
+        accent: "hsl(34 30% 40%)",
+        muted: "hsl(34 20% 55%)",
+      };
   }
 };
 
@@ -69,9 +83,9 @@ const CrisisAlert: React.FC = () => {
         <div
           className="px-4 py-1 flex items-center justify-center gap-1.5 text-[11px]"
           style={{
-            backgroundColor: "hsl(8 25% 92%)",
-            color: "hsl(8 45% 30%)",
-            borderBottom: "1px solid hsl(8 25% 82%)",
+            backgroundColor: "hsl(8 20% 95%)",
+            color: "hsl(8 40% 35%)",
+            borderBottom: "1px solid hsl(8 20% 85%)",
           }}
         >
           <Bell className="w-3 h-3" />
@@ -85,119 +99,130 @@ const CrisisAlert: React.FC = () => {
         const stateLabel = card.operatingState
           ? STATE_LABELS[card.operatingState] || card.operatingState
           : "aktivní";
-        const tint = severityTint(card.severity);
+        const ambient = severityAmbient(card.severity);
+        const hasDeficits = card.missingTodayInterview || card.missingTherapistFeedback || card.isStale;
 
         return (
           <div key={id}>
-            {/* ── Banner row (signalizační, 1 řádek, kultivovaný tint) ── */}
+            {/* ── Banner row — kultivovaný, kompaktní, ne buttonový ── */}
             <div
-              className="px-4 py-2 transition-colors"
+              className="transition-colors"
               style={{
-                backgroundColor: tint.bg,
-                borderBottom: `1px solid ${tint.border}`,
-                borderLeft: `3px solid ${tint.accent}`,
+                backgroundColor: ambient.bg,
+                borderBottom: `1px solid ${ambient.border}`,
+                borderLeft: `2px solid ${ambient.accent}`,
               }}
             >
-              <div className="max-w-[900px] mx-auto flex items-center gap-2 text-[13px] flex-wrap">
-                <Shield className="w-4 h-4 shrink-0" style={{ color: tint.accent }} />
-                <span className="font-semibold" style={{ color: tint.accent }}>
-                  {card.displayName}
-                </span>
-
-                {/* severity (display-only) */}
-                <span
-                  className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                  style={{
-                    backgroundColor: tint.accent,
-                    color: "white",
-                    opacity: 0.85,
-                  }}
-                >
-                  {card.severity}
-                </span>
-
-                {/* operating state (display-only badge) */}
-                <span
-                  className="text-[10px] px-1.5 py-0.5 rounded"
-                  style={{
-                    backgroundColor: "hsl(0 0% 100% / 0.7)",
-                    color: tint.accent,
-                    border: `1px solid ${tint.border}`,
-                  }}
-                >
-                  {stateLabel}
-                </span>
-
-                {/* den krize (display-only) */}
-                {card.daysActive != null && (
-                  <span className="text-[11px]" style={{ color: tint.accent, opacity: 0.7 }}>
-                    den {card.daysActive}
+              <div className="max-w-[900px] mx-auto px-4 py-2.5">
+                {/* Hlavní řádek — kdo, jak vážné, stav */}
+                <div className="flex items-center gap-3 text-[13px]">
+                  {/* Ikona jako jemný akcent */}
+                  <Shield className="w-4 h-4 shrink-0" style={{ color: ambient.muted }} />
+                  
+                  {/* Identita části — hlavní fokus */}
+                  <span className="font-medium" style={{ color: ambient.accent }}>
+                    {card.displayName}
                   </span>
-                )}
 
-                {/* primary therapist (display-only) */}
-                {card.primaryTherapist && card.primaryTherapist !== "neurčeno" && (
+                  {/* Severity jako jemný textový tag, ne dominantní badge */}
                   <span
-                    className="text-[10px] flex items-center gap-1"
-                    style={{ color: tint.accent, opacity: 0.75 }}
-                  >
-                    <Users className="w-3 h-3" />
-                    {card.primaryTherapist}
-                  </span>
-                )}
-
-                {/* hours stale (display-only, jen když relevantní) */}
-                {card.isStale && (
-                  <span
-                    className="text-[10px] flex items-center gap-1"
-                    style={{ color: tint.accent, opacity: 0.75 }}
-                  >
-                    <Clock className="w-3 h-3" />
-                    {Math.round(card.hoursStale)}h bez kontaktu
-                  </span>
-                )}
-
-                {/* ── 1–2 statusové deficitní badges (display-only, ne CTA) ── */}
-                {card.missingTodayInterview && (
-                  <span
-                    className="text-[10px] px-1.5 py-0.5 rounded"
+                    className="text-[11px] px-1.5 py-0.5 rounded-sm font-normal"
                     style={{
-                      backgroundColor: "hsl(38 50% 90%)",
-                      color: "hsl(38 60% 30%)",
+                      backgroundColor: "transparent",
+                      color: ambient.accent,
+                      border: `1px solid ${ambient.border}`,
                     }}
                   >
-                    chybí: dnešní hodnocení
+                    {card.severity}
                   </span>
-                )}
-                {card.missingTherapistFeedback && (
-                  <span
-                    className="text-[10px] px-1.5 py-0.5 rounded"
-                    style={{
-                      backgroundColor: "hsl(38 50% 90%)",
-                      color: "hsl(38 60% 30%)",
-                    }}
-                  >
-                    chybí: feedback
-                  </span>
-                )}
 
-                {/* ── Jediný vstup: Otevřít detail ── */}
-                <button
-                  onClick={() => setExpandedId(isExpanded ? null : id)}
-                  className="ml-auto flex items-center gap-1 text-[11px] px-2 py-1 rounded transition-colors hover:bg-white/40"
-                  style={{ color: tint.accent }}
-                  aria-label={isExpanded ? "Zavřít detail krize" : "Otevřít detail krize"}
-                >
-                  {isExpanded ? (
-                    <>
-                      Zavřít <ChevronUp className="w-3.5 h-3.5" />
-                    </>
-                  ) : (
-                    <>
-                      Otevřít detail <ChevronDown className="w-3.5 h-3.5" />
-                    </>
+                  {/* Operační stav — jemný */}
+                  <span
+                    className="text-[11px]"
+                    style={{ color: ambient.muted }}
+                  >
+                    {stateLabel}
+                  </span>
+
+                  {/* Den krize — jen když relevantní */}
+                  {card.daysActive != null && (
+                    <span className="text-[11px]" style={{ color: ambient.muted, opacity: 0.8 }}>
+                      den {card.daysActive}
+                    </span>
                   )}
-                </button>
+
+                  {/* Primary therapist */}
+                  {card.primaryTherapist && card.primaryTherapist !== "neurčeno" && (
+                    <span
+                      className="text-[11px] flex items-center gap-1"
+                      style={{ color: ambient.muted, opacity: 0.7 }}
+                    >
+                      <Users className="w-3 h-3" />
+                      {card.primaryTherapist}
+                    </span>
+                  )}
+
+                  {/* Jediný CTA — vpravo */}
+                  <button
+                    onClick={() => setExpandedId(isExpanded ? null : id)}
+                    className="ml-auto flex items-center gap-1 text-[11px] px-2 py-1 rounded transition-colors"
+                    style={{ 
+                      color: ambient.accent,
+                      backgroundColor: "transparent",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = "hsl(0 0% 100% / 0.4)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "transparent";
+                    }}
+                    aria-label={isExpanded ? "Zavřít detail krize" : "Otevřít detail krize"}
+                  >
+                    {isExpanded ? (
+                      <>
+                        Zavřít <ChevronUp className="w-3.5 h-3.5" />
+                      </>
+                    ) : (
+                      <>
+                        Otevřít detail <ChevronDown className="w-3.5 h-3.5" />
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* ── Sekundární řádek — deficity jako jemné textové indikátory ── */}
+                {hasDeficits && (
+                  <div className="flex items-center gap-2 mt-1.5 ml-7">
+                    {/* Deficit indikátory — textové, ne buttony */}
+                    {card.missingTodayInterview && (
+                      <span
+                        className="text-[10px] flex items-center gap-1"
+                        style={{ color: ambient.muted, opacity: 0.75 }}
+                      >
+                        <AlertCircle className="w-3 h-3" />
+                        chybí dnešní hodnocení
+                      </span>
+                    )}
+                    {card.missingTherapistFeedback && (
+                      <span
+                        className="text-[10px] flex items-center gap-1"
+                        style={{ color: ambient.muted, opacity: 0.75 }}
+                      >
+                        <AlertCircle className="w-3 h-3" />
+                        chybí feedback
+                      </span>
+                    )}
+                    {card.isStale && (
+                      <span
+                        className="text-[10px] flex items-center gap-1"
+                        style={{ color: ambient.muted, opacity: 0.7 }}
+                      >
+                        <Clock className="w-3 h-3" />
+                        {Math.round(card.hoursStale)}h bez kontaktu
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
