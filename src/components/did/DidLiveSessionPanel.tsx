@@ -327,6 +327,68 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
     }
   };
 
+  // ── Quick note (📝) — vloží poznámku do toku jako user message ──
+  const handleAddNote = () => {
+    const text = noteDraft.trim();
+    if (!text) return;
+    const stamp = new Date().toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" });
+    setMessages(prev => [
+      ...prev,
+      { role: "user", content: `📝 *[Poznámka ${stamp}]*\n\n${text}` },
+    ]);
+    setNoteDraft("");
+    setNoteDialogOpen(false);
+    toast.success("Poznámka uložena");
+  };
+
+  // ── Lehké ukončení sezení (handoff stav, bez plné analýzy) ──
+  // Pro tento pass: uloží surový přepis + audio segmenty do did_part_sessions
+  // a propíše „sezení ukončeno" stav. Plná Karelova analýza se neprovádí.
+  const handleLightClose = async () => {
+    if (messages.length < 2) {
+      toast.error("Sezení je prázdné.");
+      return;
+    }
+    setIsClosingLight(true);
+    try {
+      const transcript = messages
+        .map(m => `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${m.content}`)
+        .join("\n\n");
+      const switchLogText = switchLog.length > 0
+        ? `\n\n## SWITCH LOG\n${switchLog.map(s => `- ${s.time}: ${s.from} → ${s.to}`).join("\n")}`
+        : "";
+      const audioAnalyses = messages
+        .filter(m => m.role === "assistant" && messages[messages.indexOf(m) - 1]?.content?.includes("🎙️"))
+        .map(m => m.content);
+
+      await supabase.from("did_part_sessions").insert({
+        part_name: partName,
+        therapist: therapistName,
+        session_type: "live",
+        ai_analysis: "",
+        karel_notes: `## SUROVÝ PŘEPIS (bez analýzy)\n\n${transcript}${switchLogText}`,
+        audio_analysis: audioAnalyses.join("\n---\n") || "",
+        karel_therapist_feedback: "",
+      });
+
+      toast.success("Sezení ukončeno — připraveno pro následnou analýzu");
+      setHandoffDialogOpen(false);
+      setCompletedReport("Surový přepis uložen. Plná analýza proběhne v dalším kroku.");
+      setMessages([]);
+      setInput("");
+      setSwitchLog([]);
+      setActivePart(partName);
+      audioSegmentCountRef.current = 0;
+      imageSegmentCountRef.current = 0;
+      setSessionCompleted(true);
+    } catch (e) {
+      console.error("Light close failed:", e);
+      toast.error("Nepodařilo se ukončit sezení");
+    } finally {
+      setIsClosingLight(false);
+    }
+  };
+
   // End session — generate analysis + save to did_part_sessions
   const handleEndSession = async () => {
     if (messages.length < 2) {
