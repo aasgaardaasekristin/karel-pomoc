@@ -75,11 +75,12 @@ const StudyCard = ({
   children,
   className,
   accent,
+  ...rest
 }: {
   children: React.ReactNode;
   className?: string;
   accent?: "crisis" | "gold" | "warning";
-}) => {
+} & React.HTMLAttributes<HTMLDivElement>) => {
   const borderLeft =
     accent === "crisis"
       ? "border-l-[3px] border-l-destructive"
@@ -89,7 +90,7 @@ const StudyCard = ({
           ? "border-l-[3px] border-l-accent"
           : "";
 
-  return <div className={cn("jung-card p-5", borderLeft, className)}>{children}</div>;
+  return <div className={cn("jung-card p-5", borderLeft, className)} {...rest}>{children}</div>;
 };
 
 const SectionTitle = ({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) => (
