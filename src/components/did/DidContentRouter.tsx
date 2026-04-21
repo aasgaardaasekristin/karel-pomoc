@@ -14,7 +14,8 @@ import KarelOverviewPanel from "@/components/did/KarelOverviewPanel";
 import TeamDeliberationsPanel from "@/components/did/TeamDeliberationsPanel";
 import DidDailySessionPlan from "@/components/did/DidDailySessionPlan";
 import DeliberationRoom from "@/components/did/DeliberationRoom";
-import { useCrisisOperationalState as usePracovnaCrisisState } from "@/hooks/useCrisisOperationalState";
+// Pracovna Rebuild Pass (2026-04-21): useCrisisOperationalState already imported below
+// for global context; Pracovna re-uses it via the unified module — no duplicate hook.
 import AdminSpravaLauncher from "@/components/did/AdminSpravaLauncher";
 import DidMeetingPanel from "@/components/did/DidMeetingPanel";
 import DidRegistryOverview from "@/components/did/DidRegistryOverview";
@@ -940,19 +941,38 @@ const SurfaceTab: React.FC<{ active: boolean; onClick: () => void; children: Rea
 );
 
 /* ─────────────────────────────────────────────────────────────────────────
-   PracovnaSurface — hlavní workflow plocha.
+   PracovnaSurface — Pracovna Rebuild Pass (2026-04-21)
 
-   Vertikální scroll-stack v jediném max-w-[900px] containeru:
-     1) Karlův přehled (KarelOverviewPanel variant="embedded")
-        — briefing + therapist foundation + part foundation
-     2) Operativa dne (DidDashboard)
-        — krize, dnešní sezení, queue, ops snapshot bar
-     3) Rychlé workflow odkazy
-        — Otevřené porady / Hanička / Káťa / Live sezení
+   Pracovna má PŘESNĚ 4 vrstvy a nic jiného:
 
-   Karlův přehled je první sekce, aby decision deck vedl pohled.
-   Workflow handoff body (porady / Hanička room / Káťa room / Live) jsou
-   vždy dostupné dole, takže Karlovy úkoly z přehledu mají kam vést.
+     1) Krizová signalizace
+          → globální `<CrisisAlert />` (App.tsx, sticky banner) + lehký
+            anchor marker "crisis-signal", který CTA z workspaců scrolluje
+            do view, aby uživatel věděl, kde se signal nachází. Detail
+            krize je výhradně v `CrisisDetailWorkspace` (Sheet drawer)
+            přes `useCrisisDetail()`.
+
+     2) Karlův briefing
+          → `KarelOverviewPanel variant="embedded"`. Jediný owner
+            decision decku (ask_hanka / ask_kata / decisions /
+            proposed_session). Žádný druhý decision deck pod ním.
+
+     3) Týmové přípravy / otevřené porady
+          → `TeamDeliberationsPanel` přímo (ne přes DidDashboard wrapper).
+            Klik otevře `DeliberationRoom` (modal v Pracovně).
+
+     4) Dnešní schválená sezení
+          → `DidDailySessionPlan` přímo (ne přes DidDashboard wrapper).
+            Renderuje jen `did_daily_session_plans` pro dnešek.
+
+   ODSTRANĚNO oproti předchozí verzi:
+     - DidDashboard wrapper (loadoval parts/threads/snapshot/realtime
+       channels bez viditelného výstupu na Pracovně — čistá zátěž).
+     - Anchor "operativa" (mid-level scroll target nad nezobrazeným
+       blokem). Anchory teď ukazují přímo na 4 vrstvy.
+
+   Workflow handoff (Hanička / Káťa / Porady / Live) je výhradně v
+   `Komunikace` surface — Pracovna ho neduplikuje.
    ───────────────────────────────────────────────────────────────────── */
 interface PracovnaSurfaceProps {
   onManualUpdate: () => Promise<void>;
@@ -970,34 +990,39 @@ interface PracovnaSurfaceProps {
   onOpenKata: () => void;
 }
 
-const PracovnaSurface: React.FC<PracovnaSurfaceProps> = ({
-  onManualUpdate,
-  isManualUpdateLoading,
-  handleDidSubModeSelect,
-  handleQuickThread,
-  didInitialContext,
-  basicDocsRef,
-  didContextPrime,
-  onOpenMeeting,
-  onOpenLive,
-  onOpenHanicka,
-  onOpenKata,
-}) => {
-  // ── Crisis Workspace Precision Routing Pass (2026-04-21) ──
-  // Anchor handoff: karty z CrisisDetailWorkspace nastaví do sessionStorage
-  // klíč `karel_pracovna_anchor` (např. "karel-overview", "today-session-plan",
-  // "team-deliberations", "operativa"). Pracovna ho při mountu přečte,
-  // najde `data-pracovna-anchor=<klíč>`, scrollne tam a krátce highlightne
-  // ring, aby uživatel věděl, kde je. Klíč po použití mažeme.
+const PracovnaSurface: React.FC<PracovnaSurfaceProps> = () => {
+  const [refreshTrigger] = useState(0);
+  const [openDeliberationId, setOpenDeliberationId] = useState<string | null>(null);
+
+  // SLICE 2 deep-link: Chat handler ukládá deliberation_id do sessionStorage.
+  // Po mountu Pracovny ho přečteme a otevřeme příslušnou poradu.
+  useEffect(() => {
+    try {
+      const pendingId = sessionStorage.getItem("karel_open_deliberation_id");
+      if (pendingId) {
+        sessionStorage.removeItem("karel_open_deliberation_id");
+        setOpenDeliberationId(pendingId);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // ── Anchor handoff: karty z CrisisDetailWorkspace nastaví do sessionStorage
+  // klíč `karel_pracovna_anchor`. Povolené hodnoty po Rebuild Passu:
+  //   - "crisis-signal"        → globální CrisisAlert banner
+  //   - "karel-overview"       → SEKCE 2 (briefing)
+  //   - "team-deliberations"   → SEKCE 3 (otevřené porady)
+  //   - "today-session-plan"   → SEKCE 4 (dnešní sezení)
+  // Legacy anchor "operativa" mapujeme na "team-deliberations" jako nejbližší
+  // smysluplný cíl, aby staré linky neskončily mimo viewport.
   useEffect(() => {
     let timer: number | undefined;
     let highlightTimer: number | undefined;
     try {
-      const anchor = sessionStorage.getItem("karel_pracovna_anchor");
-      if (!anchor) return;
+      const raw = sessionStorage.getItem("karel_pracovna_anchor");
+      if (!raw) return;
       sessionStorage.removeItem("karel_pracovna_anchor");
+      const anchor = raw === "operativa" ? "team-deliberations" : raw;
 
-      // Defer to next tick so DOM is mounted.
       timer = window.setTimeout(() => {
         const el = document.querySelector<HTMLElement>(`[data-pracovna-anchor="${anchor}"]`);
         if (!el) return;
@@ -1016,35 +1041,64 @@ const PracovnaSurface: React.FC<PracovnaSurfaceProps> = ({
 
   return (
     <div className="mx-auto max-w-[900px] space-y-6 px-3 sm:px-4 py-6">
-      {/* ── SEKCE 1 — KARLŮV PŘEHLED (decision deck — řídicí sekce) ── */}
-      <section aria-label="Karlův přehled" data-pracovna-anchor="karel-overview">
+      {/* ── VRSTVA 1 — KRIZOVÁ SIGNALIZACE ──
+          Vlastní banner žije globálně v App.tsx (sticky nahoře).
+          Tady je jen anchor marker pro scroll handoff z workspaců.
+          Pokud žádná krize není, marker je 0px vysoký a neviditelný. */}
+      <div
+        data-pracovna-anchor="crisis-signal"
+        aria-label="Krizová signalizace (banner v záhlaví aplikace)"
+        className="h-0"
+      />
+
+      {/* ── VRSTVA 2 — KARLŮV BRIEFING (jediný decision deck) ── */}
+      <section aria-label="Karlův briefing" data-pracovna-anchor="karel-overview">
         <ErrorBoundary fallbackTitle="Karlův přehled selhal">
-          <KarelOverviewPanel variant="embedded" />
-        </ErrorBoundary>
-      </section>
-
-      {/* Jemný vizuální oddělovač mezi decision deckem a operativou */}
-      <div className="border-t border-border/40" aria-hidden />
-
-      {/* ── SEKCE 2 — OPERATIVA DNE (frontstage dashboard) ── */}
-      <section aria-label="Operativa dne" data-pracovna-anchor="operativa">
-        <ErrorBoundary fallbackTitle="Dashboard selhal">
-          <DidDashboard
-            onManualUpdate={onManualUpdate}
-            isUpdating={isManualUpdateLoading}
-            onQuickSubMode={handleDidSubModeSelect}
-            onQuickThread={handleQuickThread}
-            contextDocs={didInitialContext || basicDocsRef.current}
-            onRefreshMemory={() => didContextPrime.runPrime(undefined, "mamka")}
-            isRefreshingMemory={!!(didContextPrime as any).isPriming}
+          <KarelOverviewPanel
+            variant="embedded"
+            refreshTrigger={refreshTrigger}
+            onOpenDeliberation={(id) => setOpenDeliberationId(id)}
           />
         </ErrorBoundary>
       </section>
 
-      {/* Slice 3A (2026-04-21): „Pracovní místnosti" sekce 3 odstraněna —
-          duplicitní s `Komunikace` surface (4 stejné buttony). Spec sekce A2
-          zamkla Communication Surface jako jediného ownera těchto launcherů.
-          `WorkflowButton` helper odstraněn jako dead code (Slice 3A finish). */}
+      {/* Jemný oddělovač mezi briefingem a týmovou agendou */}
+      <div className="border-t border-border/40" aria-hidden />
+
+      {/* ── VRSTVA 3 — TÝMOVÉ PŘÍPRAVY / OTEVŘENÉ PORADY ── */}
+      <section
+        aria-label="Týmové přípravy a otevřené porady"
+        data-pracovna-anchor="team-deliberations"
+        className="jung-card p-5 space-y-3"
+      >
+        <ErrorBoundary fallbackTitle="Porada týmu selhala">
+          <TeamDeliberationsPanel
+            refreshTrigger={refreshTrigger}
+            onOpenRoom={(id) => setOpenDeliberationId(id)}
+          />
+        </ErrorBoundary>
+      </section>
+
+      {/* ── VRSTVA 4 — DNEŠNÍ SCHVÁLENÁ SEZENÍ ── */}
+      <section
+        aria-label="Dnešní schválená sezení"
+        data-pracovna-anchor="today-session-plan"
+        className="jung-card p-5 space-y-3"
+      >
+        <h3 className="jung-section-title flex items-center gap-2 text-[15px]">
+          <span className="text-primary">●</span> Dnes
+        </h3>
+        <div className="max-h-[22rem] overflow-auto pr-1">
+          <ErrorBoundary fallbackTitle="Plán sezení selhal">
+            <DidDailySessionPlan refreshTrigger={refreshTrigger} />
+          </ErrorBoundary>
+        </div>
+      </section>
+
+      <DeliberationRoom
+        deliberationId={openDeliberationId}
+        onClose={() => setOpenDeliberationId(null)}
+      />
     </div>
   );
 };
