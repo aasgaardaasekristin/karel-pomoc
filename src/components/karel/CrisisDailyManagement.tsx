@@ -228,6 +228,33 @@ const CrisisDailyManagement: React.FC<Props> = ({ card, onRefetch }) => {
         ))}
       </div>
 
+      {/* ── Workflow akce (přesunuto z banneru, Crisis Banner Repair Pass 2026-04-21) ── */}
+      <div className="bg-muted/30 rounded-lg p-3 space-y-2">
+        <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+          <ArrowRight className="w-3.5 h-3.5" /> Workflow akce
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {card.missingTodayInterview && card.eventId && (
+            <ActionBtn loadingKey="start_assessment" onClick={handleStartAssessment}>
+              <Play className="w-3 h-3" /> Spustit dnešní hodnocení
+            </ActionBtn>
+          )}
+          {card.missingTherapistFeedback && card.eventId && (
+            <ActionBtn loadingKey="request_feedback" onClick={handleRequestFeedback}>
+              <ClipboardList className="w-3 h-3" /> Získat feedback terapeutek
+            </ActionBtn>
+          )}
+          <ActionBtn loadingKey="open_meeting" onClick={handleOpenMeeting}>
+            <Handshake className="w-3 h-3" /> Otevřít poradu
+          </ActionBtn>
+          {!card.missingTodayInterview && !card.missingTherapistFeedback && (
+            <span className="text-[10px] text-muted-foreground italic self-center">
+              Žádné akutní deficitní akce — můžeš otevřít poradu nebo přejít na přechod stavu níže.
+            </span>
+          )}
+        </div>
+      </div>
+
       {/* Clinical summary */}
       <div className="bg-muted/30 rounded-lg p-3 space-y-1">
         <p className="text-xs font-bold text-foreground flex items-center gap-1.5"><Activity className="w-3.5 h-3.5" /> Klinické shrnutí</p>
