@@ -11,7 +11,9 @@ import type { DidSubMode } from "./DidSubModeSelector";
 import KarelDailyPlan from "./KarelDailyPlan";
 // DidDailyBriefingPanel přesunut do `KarelOverviewPanel` (Surface Split 2026-04-20).
 import DidDailySessionPlan from "./DidDailySessionPlan";
-import DidSprava from "./DidSprava";
+// Slice 3A (2026-04-21): DidSprava launcher přesunut z headeru Pracovny
+// do AdminSurface (DidContentRouter → AdminSpravaLauncher). Pracovna je
+// teď čistá od admin tooling (spec sekce G).
 import CommandCrisisCard, { type CommandCrisis } from "./CommandCrisisCard";
 import TeamDeliberationsPanel from "./TeamDeliberationsPanel";
 import DeliberationRoom from "./DeliberationRoom";
@@ -112,11 +114,9 @@ const DidDashboard = ({
   //    NOT used here so KarelDailyPlan never receives a stale hasCrisisBanner.
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
-  const [isBootstrapping, setIsBootstrapping] = useState(false);
-  const [isAuditing, setIsAuditing] = useState(false);
-  const [isReformatting, setIsReformatting] = useState(false);
-  const [isCentrumSyncing, setIsCentrumSyncing] = useState(false);
-  const [isCleaningTasks, setIsCleaningTasks] = useState(false);
+  // Slice 3A (2026-04-21): admin state (bootstrapping/auditing/reformatting/
+  // centrumSyncing/cleaningTasks) přesunut do `AdminSpravaLauncher`. Pracovna
+  // je teď čistá od admin tooling.
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [loading, setLoading] = useState(true);
   const [lastRefreshAt, setLastRefreshAt] = useState<Date>(new Date());
@@ -366,120 +366,9 @@ const DidDashboard = ({
     };
   }, [refreshAll]);
 
-  const runDidBootstrap = useCallback(async () => {
-    setIsBootstrapping(true);
-    try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-memory-bootstrap`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ phase: "scan" }),
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || "Bootstrap selhal");
-      toast.success("Bootstrap DID paměti spuštěn");
-      setRefreshTrigger((prev) => prev + 1);
-    } catch (error: any) {
-      toast.error(error?.message || "Bootstrap DID paměti selhal");
-    } finally {
-      setIsBootstrapping(false);
-    }
-  }, []);
-
-  const runHealthAudit = useCallback(async () => {
-    setIsAuditing(true);
-    try {
-      const headers = await getAuthHeaders();
-      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-kartoteka-health`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({}),
-      });
-      if (!resp.ok) throw new Error(await resp.text());
-      const data = await resp.json();
-      toast.success(`Audit dokončen: ${data.cardsAudited} karet, ${data.tasksCreated} nových úkolů`);
-      setRefreshTrigger((prev) => prev + 1);
-    } catch {
-      toast.error("Audit kartotéky selhal");
-    } finally {
-      setIsAuditing(false);
-    }
-  }, []);
-
-  const runReformat = useCallback(async () => {
-    setIsReformatting(true);
-    try {
-      const headers = await getAuthHeaders();
-      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-reformat-cards`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({}),
-      });
-      if (!resp.ok) throw new Error(await resp.text());
-      const data = await resp.json();
-      toast.success(`Přeformátováno: ${data.reformatted || 0} karet`);
-      setRefreshTrigger((prev) => prev + 1);
-    } catch {
-      toast.error("Přeformátování selhalo");
-    } finally {
-      setIsReformatting(false);
-    }
-  }, []);
-
-  const runCentrumSync = useCallback(async () => {
-    setIsCentrumSyncing(true);
-    try {
-      const headers = await getAuthHeaders();
-      const today = todayISO();
-      const [centrumResp, dashboardResp] = await Promise.allSettled([
-        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-centrum-sync`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({}),
-        }),
-        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-daily-dashboard`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ date: today, trigger: "manual" }),
-        }),
-      ]);
-
-      const results: string[] = [];
-      if (centrumResp.status === "fulfilled" && centrumResp.value.ok) {
-        const data = await centrumResp.value.json();
-        results.push(data.summary || "Centrum ✅");
-      } else {
-        results.push("Centrum ❌");
-      }
-      if (dashboardResp.status === "fulfilled" && dashboardResp.value.ok) results.push("Dashboard ✅");
-      toast.success(results.join(" | "));
-      setRefreshTrigger((prev) => prev + 1);
-    } catch {
-      toast.error("Synchronizace Centra selhala");
-    } finally {
-      setIsCentrumSyncing(false);
-    }
-  }, []);
-
-  const runCleanupTasks = useCallback(async () => {
-    setIsCleaningTasks(true);
-    try {
-      const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-      const { data, error } = await supabase
-        .from("did_therapist_tasks")
-        .update({ status: "archived" } as any)
-        .in("status", ["not_started", "pending"] as any)
-        .lt("created_at", sevenDaysAgo)
-        .select("id");
-      if (error) throw error;
-      toast.success(`Archivováno ${data?.length || 0} starých úkolů`);
-      setRefreshTrigger((prev) => prev + 1);
-    } catch {
-      toast.error("Čištění úkolů selhalo");
-    } finally {
-      setIsCleaningTasks(false);
-    }
-  }, []);
+  // Slice 3A (2026-04-21): runDidBootstrap / runHealthAudit / runReformat /
+  // runCentrumSync / runCleanupTasks přesunuty do AdminSpravaLauncher
+  // (DidContentRouter → AdminSurface). Pracovna je čistá.
 
 
   if (loading) {
@@ -524,24 +413,9 @@ const DidDashboard = ({
             >
               <RefreshCw className="h-3 w-3" /> Obnovit
             </Button>
-            <DidSprava
-              onBootstrap={runDidBootstrap}
-              isBootstrapping={isBootstrapping}
-              onHealthAudit={runHealthAudit}
-              isAuditing={isAuditing}
-              onReformat={runReformat}
-              isReformatting={isReformatting}
-              onManualUpdate={onManualUpdate}
-              isUpdating={isUpdating}
-              onCentrumSync={runCentrumSync}
-              isCentrumSyncing={isCentrumSyncing}
-              onCleanupTasks={runCleanupTasks}
-              isCleaningTasks={isCleaningTasks}
-              onRefreshMemory={onRefreshMemory}
-              isRefreshingMemory={isRefreshingMemory}
-              refreshTrigger={refreshTrigger}
-              onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
-            />
+            {/* Slice 3A (2026-04-21): „Správa" launcher přesunut do
+                AdminSurface (DidContentRouter → AdminSpravaLauncher).
+                Pracovna je čistá od admin tooling. */}
           </div>
         </div>
 

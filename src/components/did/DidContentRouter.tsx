@@ -12,6 +12,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import DidEntryScreen from "@/components/did/DidEntryScreen";
 import DidDashboard from "@/components/did/DidDashboard";
 import KarelOverviewPanel from "@/components/did/KarelOverviewPanel";
+import AdminSpravaLauncher from "@/components/did/AdminSpravaLauncher";
 import DidMeetingPanel from "@/components/did/DidMeetingPanel";
 import DidRegistryOverview from "@/components/did/DidRegistryOverview";
 import DidPartSelector from "@/components/did/DidPartSelector";
@@ -907,6 +908,9 @@ const TerapeutSurfaces: React.FC<TerapeutSurfacesProps> = ({
           {surface === "admin" && (
             <AdminSurface
               navigate={navigate}
+              onManualUpdate={onManualUpdate}
+              isManualUpdateLoading={isManualUpdateLoading}
+              didContextPrime={didContextPrime}
             />
           )}
         </div>
@@ -1034,16 +1038,9 @@ const PracovnaSurface: React.FC<PracovnaSurfaceProps> = ({
         </ErrorBoundary>
       </section>
 
-      {/* ── SEKCE 3 — RYCHLÉ WORKFLOW ODKAZY ── */}
-      <section aria-label="Workflow odkazy" data-pracovna-anchor="rooms" className="jung-card p-4 space-y-3">
-        <h3 className="text-sm font-serif tracking-wide text-foreground">Pracovní místnosti</h3>
-        <div className="grid grid-cols-2 gap-2">
-          <WorkflowButton onClick={onOpenMeeting} title="Otevřené porady" desc="Společná negotiation room" />
-          <WorkflowButton onClick={onOpenLive} title="Live DID sezení" desc="Execution room (audio + chat)" />
-          <WorkflowButton onClick={onOpenHanicka} title="Hanička room" desc="Tandem-supervize" />
-          <WorkflowButton onClick={onOpenKata} title="Káťa room" desc="Konzultační room" />
-        </div>
-      </section>
+      {/* Slice 3A (2026-04-21): „Pracovní místnosti" sekce 3 odstraněna —
+          duplicitní s `Komunikace` surface (4 stejné buttony). Spec sekce A2
+          zamkla Communication Surface jako jediného ownera těchto launcherů. */}
     </div>
   );
 };
@@ -1127,71 +1124,51 @@ const CommunicationSurface: React.FC<{
      DidSprava (Dialog) zůstává původním wiringem v Dashboardu (uvnitř DidDashboard
      headeru). Z Adminu otevřeme to samé tlačítko skrze přepnutí na Pracovnu —
      uživatel uvidí "Správa" tlačítko v hlavičce Dashboardu. Tato plocha drží
-     mapu admin nástrojů a popis, co kde žije (servisní gateway). */
-const AdminSurface: React.FC<{ navigate: (path: string) => void }> = () => {
+     mapu admin nástrojů a popis, co kde žije (servisní gateway).
+
+     Slice 3A (2026-04-21): AdminSurface se stal SKUTEČNÝM hostitelem
+     admin tooling. `AdminSpravaLauncher` (drží wiring + render `<DidSprava>`)
+     se přesunul z headeru Pracovny sem. Pracovna je čistá. */
+interface AdminSurfaceProps {
+  navigate: (path: string) => void;
+  onManualUpdate: () => Promise<void>;
+  isManualUpdateLoading: boolean;
+  didContextPrime: { runPrime: (partName?: string, subMode?: string) => void; primeCache: string | null; isPriming: boolean };
+}
+
+const AdminSurface: React.FC<AdminSurfaceProps> = ({
+  onManualUpdate,
+  isManualUpdateLoading,
+  didContextPrime,
+}) => {
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6 space-y-4">
-      <div className="jung-card p-4 space-y-2">
+      <div className="jung-card p-4 space-y-3">
         <h3 className="text-sm font-serif tracking-wide text-foreground">🔧 Admin / Servisní plocha</h3>
         <p className="text-xs text-muted-foreground leading-relaxed">
           Diagnostika, údržba a low-level operativní servis. Hlavní pracovní plocha (Pracovna)
           zůstává čistá od těchto nástrojů, aby Karel a terapeutky měly přehledné prostředí.
         </p>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <AdminCard
-          title="Working Memory"
-          desc="Inspect derived runtime layer — therapist_state, part_state, snapshot integrita."
-          where="Pracovna → Dashboard hlavička → Správa → záložka WM"
-        />
-        <AdminCard
-          title="Health audit"
-          desc="Audit kartotéky, hledání chybějících sekcí, návrh úkolů na doplnění."
-          where="Pracovna → Dashboard hlavička → Správa → Health"
-        />
-        <AdminCard
-          title="Drive queue"
-          desc="Frontu zápisů na Drive, pending writes, queue watchdog."
-          where="Pracovna → Dashboard hlavička → Správa → Write Queue Inbox"
-        />
-        <AdminCard
-          title="Registry / Recovery"
-          desc="Did part registry, recovery panel, cleanup duplicit."
-          where="Pracovna → Dashboard hlavička → Správa → Registry / Recovery"
-        />
-        <AdminCard
-          title="Centrum sync"
-          desc="Manuální synchronizace 00_CENTRUM dokumentů s DB."
-          where="Pracovna → Dashboard hlavička → Správa → Centrum sync"
-        />
-        <AdminCard
-          title="Cleanup úkolů"
-          desc="Archivace starých nesplněných úkolů (>7 dní)."
-          where="Pracovna → Dashboard hlavička → Správa → Cleanup tasks"
-        />
+        <div className="pt-2 border-t border-border/40">
+          <p className="text-[11px] text-muted-foreground mb-2">
+            Otevřít kompletní správu (21 záložek: Bezpečnost, Otázky, Zápisy, Packet, Předávka, Recovery, Live, Nástroje, Plán, Kartotéka, Paměť, Poznámky, Trendy, Cíle, Zdraví, Registr, Reporty, Cleanup, WM, Vzhled):
+          </p>
+          <AdminSpravaLauncher
+            onManualUpdate={onManualUpdate}
+            isUpdating={isManualUpdateLoading}
+            onRefreshMemory={() => didContextPrime.runPrime(undefined, "mamka")}
+            isRefreshingMemory={!!didContextPrime.isPriming}
+          />
+        </div>
       </div>
 
       <div className="jung-card p-3 text-[11px] text-muted-foreground">
-        Pozn.: Admin tooly žijí uvnitř <strong>DidSprava</strong> dialogu, který se otevírá
-        z hlavičky Dashboardu (v Pracovně). Tato plocha slouží jako mapa, kde co najít —
-        bez duplikace state managementu.
+        Pozn.: Krizová vrstva NEMÁ admin entry — krizový detail se otevírá výhradně
+        z banneru, Karlova přehledu nebo Operativy (single owner = CrisisDetailWorkspace).
       </div>
     </div>
   );
 };
-
-const AdminCard: React.FC<{ title: string; desc: string; where: string }> = ({
-  title, desc, where,
-}) => (
-  <div className="jung-card p-3 space-y-1.5">
-    <div className="text-xs font-serif tracking-wide text-foreground">{title}</div>
-    <div className="text-[11px] text-muted-foreground leading-snug">{desc}</div>
-    <div className="text-[10px] text-muted-foreground/70 italic pt-1 border-t border-border/30">
-      {where}
-    </div>
-  </div>
-);
 
 const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
   const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
