@@ -1,26 +1,22 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Shield, ChevronDown, ChevronUp, Bell, Clock } from "lucide-react";
 import { useCrisisOperationalState, type CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
-import CrisisOperationalDetail from "./CrisisOperationalDetail";
+import { useCrisisDetail } from "@/contexts/CrisisDetailContext";
 
 /**
- * CrisisAlert — SIGNALIZAČNÍ vrstva (Crisis Function Reallocation Repair Pass, 2026-04-21).
+ * CrisisAlert — SIGNALIZAČNÍ vrstva (Crisis Detail UX Repair Pass, 2026-04-21).
  *
- * ROLE (po reallocaci):
- *   - Stručně signalizovat, že existuje aktivní krize.
- *   - Ukázat IDENTITU části, severity, operating state, den krize.
- *   - Případně "Xh bez kontaktu" jako jediný klinicky-relevantní časový signál.
- *   - Jediný CTA: "Otevřít detail".
+ * ROLE:
+ *   - Stručně signalizovat aktivní krize.
+ *   - Jediný CTA: „Otevřít detail" → otevře pracovní plochu
+ *     (`CrisisDetailWorkspace` jako right-side Sheet drawer).
+ *   - Stejnou plochu otevírá i „Otevřít detail" v Karlově přehledu —
+ *     společný owner = `useCrisisDetail()`.
  *
- * CO SEM UŽ NEPATŘÍ (přesunuto do Karlova přehledu / detailu):
- *   - primaryTherapist (ownership leakage — krizi řeší tým, ne jméno v banneru)
- *   - missingTodayInterview (Karlův pracovní deficit → Karlův přehled)
- *   - missingTherapistFeedback (Karlův pracovní deficit → Karlův přehled)
- *
- * VIZUÁLNÍ PRINCIPY:
- *   - Klidné, profesionální, terapeutické
- *   - Jeden řádek, kompaktní, bez druhé řady deficitních statusů
- *   - Severity jako jemný ambientní tón, ne dominantní badge
+ * Banner už nikdy:
+ *   - nedělá inline accordion s detailem
+ *   - nenosí ownership / deficit / workflow
+ *   - není dvojí zdroj pravdy pro „kde je detail"
  */
 
 const STATE_LABELS: Record<string, string> = {
@@ -35,7 +31,6 @@ const STATE_LABELS: Record<string, string> = {
   monitoring_post: "monitoring",
 };
 
-// ── Severity → kultivovaný HSL ambient (jemný, ne křiklavý) ──
 const severityAmbient = (severity: string) => {
   switch (severity?.toLowerCase()) {
     case "critical":
@@ -71,27 +66,13 @@ const severityAmbient = (severity: string) => {
 };
 
 const CrisisAlert: React.FC = () => {
-  const { cards, loading, refetch, globalUnreadBriefCount } = useCrisisOperationalState();
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  // Handoff bridge — Karlův přehled (KarelCrisisDeficits) emituje
-  // `karel:open-crisis-detail` s cardId; banner na něj zareaguje rozbalením
-  // příslušné krize. (Crisis Function Reallocation Repair Pass 2026-04-21.)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const ce = e as CustomEvent<{ cardId?: string }>;
-      const cardId = ce.detail?.cardId;
-      if (cardId) setExpandedId(cardId);
-    };
-    window.addEventListener("karel:open-crisis-detail", handler as EventListener);
-    return () => window.removeEventListener("karel:open-crisis-detail", handler as EventListener);
-  }, []);
+  const { cards, loading, globalUnreadBriefCount } = useCrisisOperationalState();
+  const { activeCardId, openCrisisDetail, closeCrisisDetail } = useCrisisDetail();
 
   if (loading || cards.length === 0) return null;
 
   return (
     <div className="sticky top-0 z-50">
-      {/* ── Globální brief indicator (nepřehnaný, jemný) ── */}
       {globalUnreadBriefCount > 0 && (
         <div
           className="px-4 py-1 flex items-center justify-center gap-1.5 text-[11px]"
@@ -108,7 +89,7 @@ const CrisisAlert: React.FC = () => {
 
       {cards.map((card: CrisisOperationalCard) => {
         const id = card.eventId || card.alertId || card.partName;
-        const isExpanded = expandedId === id;
+        const isActive = activeCardId === id;
         const stateLabel = card.operatingState
           ? STATE_LABELS[card.operatingState] || card.operatingState
           : "aktivní";
@@ -116,7 +97,6 @@ const CrisisAlert: React.FC = () => {
 
         return (
           <div key={id}>
-            {/* ── Banner row — jediný řádek, signalizace, žádný workflow toolbar ── */}
             <div
               className="transition-colors"
               style={{
@@ -127,15 +107,12 @@ const CrisisAlert: React.FC = () => {
             >
               <div className="max-w-[900px] mx-auto px-4 py-2.5">
                 <div className="flex items-center gap-3 text-[13px]">
-                  {/* Ikona jako jemný akcent */}
                   <Shield className="w-4 h-4 shrink-0" style={{ color: ambient.muted }} />
 
-                  {/* Identita části */}
                   <span className="font-medium" style={{ color: ambient.accent }}>
                     {card.displayName}
                   </span>
 
-                  {/* Severity — jemný textový tag */}
                   <span
                     className="text-[11px] px-1.5 py-0.5 rounded-sm font-normal"
                     style={{
@@ -147,19 +124,16 @@ const CrisisAlert: React.FC = () => {
                     {card.severity}
                   </span>
 
-                  {/* Operating state */}
                   <span className="text-[11px]" style={{ color: ambient.muted }}>
                     {stateLabel}
                   </span>
 
-                  {/* Den krize */}
                   {card.daysActive != null && (
                     <span className="text-[11px]" style={{ color: ambient.muted, opacity: 0.8 }}>
                       den {card.daysActive}
                     </span>
                   )}
 
-                  {/* Xh bez kontaktu — jediný klinicky-relevantní časový signál */}
                   {card.isStale && (
                     <span
                       className="text-[11px] flex items-center gap-1"
@@ -170,9 +144,8 @@ const CrisisAlert: React.FC = () => {
                     </span>
                   )}
 
-                  {/* Jediný CTA — vpravo */}
                   <button
-                    onClick={() => setExpandedId(isExpanded ? null : id)}
+                    onClick={() => (isActive ? closeCrisisDetail() : openCrisisDetail(id))}
                     className="ml-auto flex items-center gap-1 text-[11px] px-2 py-1 rounded transition-colors"
                     style={{
                       color: ambient.accent,
@@ -184,9 +157,9 @@ const CrisisAlert: React.FC = () => {
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = "transparent";
                     }}
-                    aria-label={isExpanded ? "Zavřít detail krize" : "Otevřít detail krize"}
+                    aria-label={isActive ? "Zavřít detail krize" : "Otevřít detail krize"}
                   >
-                    {isExpanded ? (
+                    {isActive ? (
                       <>
                         Zavřít <ChevronUp className="w-3.5 h-3.5" />
                       </>
@@ -199,11 +172,6 @@ const CrisisAlert: React.FC = () => {
                 </div>
               </div>
             </div>
-
-            {/* ── Detail (operativní karta) ── */}
-            {isExpanded && (
-              <CrisisOperationalDetail card={card} onRefetch={refetch} />
-            )}
           </div>
         );
       })}

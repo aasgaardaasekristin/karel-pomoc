@@ -26,6 +26,7 @@
 import React from "react";
 import { AlertCircle, Clock, ClipboardList, Play, ExternalLink } from "lucide-react";
 import { useCrisisOperationalState, type CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
+import { useCrisisDetail } from "@/contexts/CrisisDetailContext";
 
 type DeficitKind = "missing_interview" | "missing_feedback" | "stale";
 
@@ -80,20 +81,9 @@ function buildDeficits(cards: CrisisOperationalCard[]): Deficit[] {
   return out;
 }
 
-function emitOpenCrisisDetail(cardId: string) {
-  // Lightweight handoff bridge — CrisisAlert může v budoucnu poslouchat.
-  // V tomto passu nechceme přepisovat routing; toto je nejmenší correct handoff.
-  try {
-    window.dispatchEvent(new CustomEvent("karel:open-crisis-detail", { detail: { cardId } }));
-  } catch {
-    /* no-op */
-  }
-  // Plus: scroll na vrch, kde je banner.
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
 const KarelCrisisDeficits: React.FC = () => {
   const { cards, loading } = useCrisisOperationalState();
+  const { openCrisisDetail } = useCrisisDetail();
 
   if (loading) return null;
   const deficits = buildDeficits(cards);
@@ -139,7 +129,7 @@ const KarelCrisisDeficits: React.FC = () => {
               )}
             </div>
             <button
-              onClick={() => emitOpenCrisisDetail(d.cardId)}
+              onClick={() => openCrisisDetail(d.cardId)}
               className="shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded text-primary hover:bg-primary/10 transition-colors"
               aria-label={`Otevřít detail krize pro ${d.displayName}`}
             >
