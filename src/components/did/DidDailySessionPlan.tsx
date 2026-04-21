@@ -40,6 +40,14 @@ interface PreviousSession {
 
 interface Props {
   refreshTrigger: number;
+  /**
+   * Pracovna SESSION-CONTROLS CLEANUP (2026-04-21):
+   *  Když true, skryjí se plánovací/údržbové akce, které nepatří na hlavní
+   *  pracovní stůl (Nový plán, Určit část, Přegenerovat, Smazat).
+   *  Layer 4 v Pracovně tak zobrazuje jen schválená dnešní sezení a akce
+   *  jejich průběhu (Zahájit / Splněno / Live / Ukončit).
+   */
+  compact?: boolean;
 }
 
 const urgencyLabels: Record<string, string> = {
@@ -66,7 +74,7 @@ const GENERATION_STEPS = [
 
 import DidLiveSessionPanel from "./DidLiveSessionPanel";
 
-const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
+const DidDailySessionPlan = ({ refreshTrigger, compact = false }: Props) => {
   const [plans, setPlans] = useState<SessionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
