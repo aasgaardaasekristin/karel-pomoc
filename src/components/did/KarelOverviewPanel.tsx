@@ -158,121 +158,132 @@ const KarelOverviewPanel = ({
     loadFoundation();
   }, [loadFoundation, refreshTrigger, internalRefresh]);
 
-  return (
-    <div className="min-h-screen" data-no-swipe-back="true">
-      <div className="relative z-10 mx-auto max-w-[900px] space-y-4 px-4 py-6">
-        {/* Header — minimal, jen marker pro „decision deck" */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Brain className="h-4 w-4 text-primary" />
-            <span className="font-serif tracking-wide">Karlův přehled</span>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 px-3 text-[12px] text-muted-foreground hover:text-foreground"
-            onClick={() => setInternalRefresh((n) => n + 1)}
-          >
-            <RefreshCw className="h-3 w-3" /> Obnovit
-          </Button>
+  // Embedded mód: žádný vlastní min-h-screen wrapper, žádný horní padding,
+  // vnější layout drží Pracovna. Ostatní obsah (header + 3 bloky) sdílí.
+  const isEmbedded = variant === "embedded";
+
+  const content = (
+    <div className={isEmbedded ? "space-y-4" : "relative z-10 mx-auto max-w-[900px] space-y-4 px-4 py-6"}>
+      {/* Header — minimal, jen marker pro „decision deck" */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Brain className="h-4 w-4 text-primary" />
+          <span className="font-serif tracking-wide">Karlův přehled</span>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 px-3 text-[12px] text-muted-foreground hover:text-foreground"
+          onClick={() => setInternalRefresh((n) => n + 1)}
+        >
+          <RefreshCw className="h-3 w-3" /> Obnovit
+        </Button>
+      </div>
 
-        {/* ── BLOCK A — Karlův denní briefing (single source of truth) ── */}
-        <div className="jung-hero-section rounded-2xl p-4">
-          <ErrorBoundary fallbackTitle="Karlův přehled selhal">
-            <DidDailyBriefingPanel
-              refreshTrigger={refreshTrigger + internalRefresh}
-              onOpenDeliberation={onOpenDeliberation}
-            />
-          </ErrorBoundary>
-        </div>
+      {/* ── BLOCK A — Karlův denní briefing (single source of truth) ── */}
+      <div className="jung-hero-section rounded-2xl p-4">
+        <ErrorBoundary fallbackTitle="Karlův přehled selhal">
+          <DidDailyBriefingPanel
+            refreshTrigger={refreshTrigger + internalRefresh}
+            onOpenDeliberation={onOpenDeliberation}
+          />
+        </ErrorBoundary>
+      </div>
 
-        {/* ── BLOCK B — Therapist Intelligence Foundation (read-only) ── */}
-        <div className="jung-card p-4 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-serif">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span>Stav terapeutek</span>
-            {foundation?.therapist_state && (
-              <span className="text-[10px] font-light text-muted-foreground ml-auto">
-                Foundation {foundation.therapist_state.version}
-              </span>
-            )}
-          </div>
-
-          {loading ? (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" /> Načítám…
-            </div>
-          ) : foundation?.therapist_state ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <TherapistMiniCard name="Hanička" state={foundation.therapist_state.hanka} />
-              <TherapistMiniCard name="Káťa" state={foundation.therapist_state.kata} />
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              Foundation zatím není ve dnešním WM snapshotu. Spusť „Obnovit" nebo počkej na další WM bootstrap.
-            </p>
+      {/* ── BLOCK B — Therapist Intelligence Foundation (read-only) ── */}
+      <div className="jung-card p-4 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-serif">
+          <Sparkles className="h-4 w-4 text-primary" />
+          <span>Stav terapeutek</span>
+          {foundation?.therapist_state && (
+            <span className="text-[10px] font-light text-muted-foreground ml-auto">
+              Foundation {foundation.therapist_state.version}
+            </span>
           )}
         </div>
 
-        {/* ── BLOCK C — Part Intelligence Foundation (read-only) ── */}
-        <div className="jung-card p-4 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-serif">
-            <Users className="h-4 w-4 text-primary" />
-            <span>Stav částí</span>
-            {foundation?.part_state && (
-              <span className="text-[10px] font-light text-muted-foreground ml-auto">
-                Foundation {foundation.part_state.version}
-              </span>
-            )}
+        {loading ? (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" /> Načítám…
           </div>
-
-          {loading ? (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" /> Načítám…
-            </div>
-          ) : foundation?.part_state ? (
-            <>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                <MiniStat label="Celkem" value={foundation.part_state.summary.total_parts} />
-                <MiniStat
-                  label="V krizi"
-                  value={foundation.part_state.summary.parts_with_open_crisis}
-                  tone={foundation.part_state.summary.parts_with_open_crisis > 0 ? "danger" : "neutral"}
-                />
-                <MiniStat label="Aktivní dnes" value={foundation.part_state.summary.parts_active_today} />
-                <MiniStat label="Ticho" value={foundation.part_state.summary.parts_silent} />
-              </div>
-
-              {foundation.part_state.parts.length > 0 ? (
-                <div className="space-y-1.5 max-h-[24rem] overflow-y-auto pr-1">
-                  {foundation.part_state.parts
-                    .slice()
-                    .sort((a, b) => carePriorityRank(b.care_priority.level) - carePriorityRank(a.care_priority.level))
-                    .map((p) => (
-                      <PartMiniRow key={p.part_name_normalized} part={p} />
-                    ))}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Žádné části zatím v foundation vrstvě nejsou.
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              Foundation zatím není ve dnešním WM snapshotu. Spusť „Obnovit" nebo počkej na další WM bootstrap.
-            </p>
-          )}
-        </div>
-
-        {foundation?.generated_at && (
-          <p className="text-[10px] text-muted-foreground text-center">
-            Foundation generována: {new Date(foundation.generated_at).toLocaleString("cs")}
+        ) : foundation?.therapist_state ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <TherapistMiniCard name="Hanička" state={foundation.therapist_state.hanka} />
+            <TherapistMiniCard name="Káťa" state={foundation.therapist_state.kata} />
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Foundation zatím není ve dnešním WM snapshotu. Spusť „Obnovit" nebo počkej na další WM bootstrap.
           </p>
         )}
       </div>
+
+      {/* ── BLOCK C — Part Intelligence Foundation (read-only) ── */}
+      <div className="jung-card p-4 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-serif">
+          <Users className="h-4 w-4 text-primary" />
+          <span>Stav částí</span>
+          {foundation?.part_state && (
+            <span className="text-[10px] font-light text-muted-foreground ml-auto">
+              Foundation {foundation.part_state.version}
+            </span>
+          )}
+        </div>
+
+        {loading ? (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" /> Načítám…
+          </div>
+        ) : foundation?.part_state ? (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <MiniStat label="Celkem" value={foundation.part_state.summary.total_parts} />
+              <MiniStat
+                label="V krizi"
+                value={foundation.part_state.summary.parts_with_open_crisis}
+                tone={foundation.part_state.summary.parts_with_open_crisis > 0 ? "danger" : "neutral"}
+              />
+              <MiniStat label="Aktivní dnes" value={foundation.part_state.summary.parts_active_today} />
+              <MiniStat label="Ticho" value={foundation.part_state.summary.parts_silent} />
+            </div>
+
+            {foundation.part_state.parts.length > 0 ? (
+              <div className="space-y-1.5 max-h-[24rem] overflow-y-auto pr-1">
+                {foundation.part_state.parts
+                  .slice()
+                  .sort((a, b) => carePriorityRank(b.care_priority.level) - carePriorityRank(a.care_priority.level))
+                  .map((p) => (
+                    <PartMiniRow key={p.part_name_normalized} part={p} />
+                  ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Žádné části zatím v foundation vrstvě nejsou.
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Foundation zatím není ve dnešním WM snapshotu. Spusť „Obnovit" nebo počkej na další WM bootstrap.
+          </p>
+        )}
+      </div>
+
+      {foundation?.generated_at && (
+        <p className="text-[10px] text-muted-foreground text-center">
+          Foundation generována: {new Date(foundation.generated_at).toLocaleString("cs")}
+        </p>
+      )}
     </div>
+  );
+
+  if (isEmbedded) return content;
+
+  return (
+    <div className="min-h-screen" data-no-swipe-back="true">
+      {content}
+    </div>
+  );
   );
 };
 
