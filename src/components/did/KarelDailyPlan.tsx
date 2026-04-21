@@ -453,9 +453,15 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
           .limit(40),
         supabase
           .from("did_daily_session_plans")
-          .select("id, selected_part, therapist, plan_date")
+          .select("id, selected_part, therapist, plan_date, status")
+          // OTEVŘENÉ stavy plánu (pravda po Slice "Session Finalization State"):
+          //   generated         = vygenerováno, sezení neběží
+          //   in_progress       = právě běží live sezení
+          //   awaiting_analysis = light close — surový přepis, čeká na analýzu
+          // `done` / `skipped` / legacy `completed` se sem ZÁMĚRNĚ nedostane,
+          // aby Pracovna nelhala, že uzavřené sezení dál čeká na zahájení.
           .eq("plan_date", today)
-          .in("status", ["planned", "in_progress", "generated"])
+          .in("status", ["generated", "in_progress", "awaiting_analysis"])
           .limit(3),
         (supabase as any)
           .from("did_pending_questions")
