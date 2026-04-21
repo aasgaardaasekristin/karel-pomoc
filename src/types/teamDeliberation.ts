@@ -242,14 +242,32 @@ export function isAllowedDeliberationReason(
   );
 }
 
+/**
+ * SESSION PREP SIGNOFF FIX (2026-04-21):
+ * Pro `session_plan` je workflow gated POUZE dvěma terapeutickými podpisy
+ * (Hanička + Káťa). Karel se podepíše automaticky na serveru.
+ * Pro ostatní typy zůstává klasický 3-podpisový model (vč. krize, kde
+ * Karlův podpis je gated synthesí).
+ */
 export function signoffProgress(d: TeamDeliberation): {
   signed: number;
   total: number;
   missing: Array<"hanka" | "kata" | "karel">;
 } {
+  const isSessionPlan = d.deliberation_type === "session_plan";
+  const requiredSigners: Array<"hanka" | "kata" | "karel"> = isSessionPlan
+    ? ["hanka", "kata"]
+    : ["hanka", "kata", "karel"];
   const missing: Array<"hanka" | "kata" | "karel"> = [];
-  if (!d.hanka_signed_at) missing.push("hanka");
-  if (!d.kata_signed_at) missing.push("kata");
-  if (!d.karel_signed_at) missing.push("karel");
-  return { signed: 3 - missing.length, total: 3, missing };
+  for (const who of requiredSigners) {
+    const ts =
+      who === "hanka" ? d.hanka_signed_at :
+      who === "kata" ? d.kata_signed_at : d.karel_signed_at;
+    if (!ts) missing.push(who);
+  }
+  return {
+    signed: requiredSigners.length - missing.length,
+    total: requiredSigners.length,
+    missing,
+  };
 }
