@@ -124,9 +124,9 @@ const CrisisDailyManagement: React.FC<Props> = ({ card, onRefetch }) => {
       let deliberationId: string | null = null;
       if (card.eventId) {
         try {
-          const { data } = await supabase
+          const { data } = await (supabase as any)
             .from("did_team_deliberations")
-            .select("id, status")
+            .select("id")
             .eq("crisis_event_id", card.eventId)
             .neq("status", "finalized")
             .order("created_at", { ascending: false })
