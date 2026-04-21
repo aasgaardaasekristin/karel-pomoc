@@ -308,26 +308,7 @@ const CrisisWorkspaceHeader: React.FC<{
             {Math.round(card.hoursStale)}h bez kontaktu
           </span>
         )}
-        {card.primaryTherapist && card.primaryTherapist !== "neurčeno" && (
-          <span className="inline-flex items-center gap-1">
-            <Users className="w-3 h-3" />
-            tým: <strong className="text-foreground">{card.primaryTherapist}</strong>
-            {card.secondaryTherapist && card.secondaryTherapist !== card.primaryTherapist && (
-              <>, <strong className="text-foreground">{card.secondaryTherapist}</strong></>
-            )}
-          </span>
-        )}
-        {(card.alertId || card.eventId) && (
-          <button
-            onClick={onAcknowledge}
-            disabled={ackLoading}
-            className="ml-auto inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
-            title="Skrýt banner a označit jako vzato na vědomí"
-          >
-            {ackLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
-            Vzít na vědomí
-          </button>
-        )}
+        {/* tým + acknowledge intentionally removed — banner-level metadata only */}
       </div>
     </SheetHeader>
   );
@@ -551,12 +532,15 @@ const CrisisLaunchpadSection: React.FC<{
   ];
 
   // ── Render ──────────────────────────────────────────────────────────
+  // Hlavní problém = klinický důvod krize (trigger / clinical summary).
+  // mainBlocker je deficitní signál (chybí výsledek apod.) — zobrazujeme až
+  // jako fallback, hlavní problém má být skutečné klinické "co se děje".
   const mainProblem =
-    card.mainBlocker ||
     card.triggerDescription ||
     card.clinicalSummary ||
     card.displaySummary ||
-    "Není zaznamenán hlavní problém.";
+    card.mainBlocker ||
+    "Hlavní problém krize není dosud zaznamenán (chybí trigger_description / clinical_summary v crisis_events).";
 
   return (
     <div className="p-5 space-y-5">
