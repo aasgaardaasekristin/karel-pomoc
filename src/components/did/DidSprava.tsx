@@ -187,7 +187,7 @@ const DidSprava = ({
   const [livePlans, setLivePlans] = useState<Array<{ id: string; selected_part: string; session_lead: string; therapist?: string | null; plan_markdown: string; status: string; plan_date: string }>>([]);
   const [livePlansLoading, setLivePlansLoading] = useState(false);
   const [newAlertCount, setNewAlertCount] = useState(0);
-  const [hasCrisis, setHasCrisis] = useState(false);
+  // Slice 3A: hasCrisis state odstraněn (Krize tab je pryč).
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
   const { cycleStatus, stats } = useProcessingStatus(refreshTrigger);
   const { health, reload: reloadHealth } = useCycleHealth(refreshTrigger);
@@ -257,7 +257,7 @@ const DidSprava = ({
       if (!requested) return;
       sessionStorage.removeItem("karel_sprava_open_tab");
       // Whitelist: jen taby, které tento komponent zná.
-      const allowed = ["safety","questions","writes","packet","handoff","recovery","live","tools","crisis","plan","kartoteka","memory","notes","trends","goals","health","registry","reports","cleanup","wm","theme"] as const;
+      const allowed = ["safety","questions","writes","packet","handoff","recovery","live","tools","plan","kartoteka","memory","notes","trends","goals","health","registry","reports","cleanup","wm","theme"] as const;
       if ((allowed as readonly string[]).includes(requested)) {
         setActiveTab(requested as typeof activeTab);
         setOpen(true);
