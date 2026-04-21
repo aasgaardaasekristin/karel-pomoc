@@ -845,6 +845,29 @@ const PlanCard = ({
           </Badge>
         )}
 
+        {/* SESSION PREP ROOM PASS — stav přípravné místnosti.
+            Renderuje se jen když je gate aktivní (Pracovna). */}
+        {prepGateEnabled && plan.status === "generated" && !isArchived && (
+          prepLoading ? (
+            <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-muted-foreground/30 text-muted-foreground">
+              <Loader2 className="mr-0.5 h-2.5 w-2.5 animate-spin" /> Příprava…
+            </Badge>
+          ) : prepApproved ? (
+            <Badge className="text-[10px] h-5 px-1.5 bg-primary/15 text-primary border border-primary/30">
+              <CheckCircle2 className="mr-0.5 h-2.5 w-2.5" /> Připraveno k zahájení
+            </Badge>
+          ) : prepInProgress ? (
+            <Badge className="text-[10px] h-5 px-1.5 bg-amber-500/15 text-amber-700 border border-amber-500/30">
+              <Users className="mr-0.5 h-2.5 w-2.5" />
+              Příprava ({prepProgress?.signed ?? 0}/3 podpisů)
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/40 text-amber-700">
+              <Lock className="mr-0.5 h-2.5 w-2.5" /> Bez přípravy
+            </Badge>
+          )
+        )}
+
         <div className="ml-auto flex items-center gap-1">
           <Button variant="ghost" size="sm" onClick={onToggleExpand} className="h-6 px-1.5 text-[0.625rem]">
             {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -856,7 +879,48 @@ const PlanCard = ({
       <div className="flex flex-wrap items-center gap-1 mb-1.5">
         {plan.status === "generated" && !isArchived && (
           <>
-            <Button variant="outline" size="sm" onClick={onStartSession} className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10">
+            {/* SESSION PREP ROOM PASS — primární akce v Pracovně:
+                 - Když existuje rozpracovaná porada → "Otevřít přípravu"
+                 - Když porada neexistuje → "Připravit s týmem" (vytvoří ji)
+                 - Když je porada schválená → fallthrough na "Zahájit" níže
+                 Mimo Pracovnu (prepGateEnabled=false) se nic z toho nerendrují. */}
+            {prepGateEnabled && prepInProgress && prepRoom && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => onOpenPrepRoom?.(prepRoom.id)}
+                className="h-6 px-2 text-[10px]"
+              >
+                <Users className="mr-0.5 h-2.5 w-2.5" /> Otevřít přípravu
+                {prepProgress && ` (${prepProgress.signed}/3)`}
+              </Button>
+            )}
+            {prepGateEnabled && !prepLoading && !prepRoom && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleCreatePrep}
+                disabled={creatingPrep}
+                className="h-6 px-2 text-[10px]"
+              >
+                {creatingPrep ? (
+                  <Loader2 className="mr-0.5 h-2.5 w-2.5 animate-spin" />
+                ) : (
+                  <Users className="mr-0.5 h-2.5 w-2.5" />
+                )}
+                Připravit s týmem
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onStartSession}
+              disabled={startBlockedByPrep}
+              title={startBlockedByPrep
+                ? "Nejdřív tým musí v přípravné místnosti podepsat plán."
+                : undefined}
+              className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-50"
+            >
               <Play className="mr-0.5 h-2.5 w-2.5" /> Zahájit
             </Button>
             <Button variant="outline" size="sm" onClick={onMarkDone} className="h-6 px-2 text-[10px] border-green-500/40 text-green-700 hover:bg-green-500/10">
