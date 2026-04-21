@@ -760,6 +760,30 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
     setSessionCompleted(true);
   };
 
+  // ── Post-session interrogation room ──
+  // Otevírá se po kliknutí na "Ukončit a analyzovat". Vede cílené doptávání před finální analýzou.
+  if (showInterrogation && !sessionCompleted) {
+    return (
+      <DidPostSessionInterrogation
+        partName={partName}
+        therapistName={therapistName}
+        contextBrief={contextBrief}
+        liveMessages={messages}
+        switchLog={switchLog}
+        audioSegmentCount={audioSegmentCountRef.current}
+        imageSegmentCount={imageSegmentCountRef.current}
+        isSubmitting={isFinishing}
+        onCancel={() => setShowInterrogation(false)}
+        onSubmit={(qa, extraNote) => {
+          setInterrogationPayload({ qa, extraNote });
+          setShowInterrogation(false);
+          // Spustit finální analýzu s Q&A obohacením
+          handleEndSession(qa, extraNote);
+        }}
+      />
+    );
+  }
+
   // ── Session completed screen ──
   if (sessionCompleted) {
     const handleNewSession = () => {
