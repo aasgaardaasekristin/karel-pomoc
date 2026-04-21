@@ -23,6 +23,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DidDailyBriefingPanel from "./DidDailyBriefingPanel";
+import KarelCrisisDeficits from "./KarelCrisisDeficits";
 
 interface TherapistStateMini {
   therapist: "hanka" | "kata";
@@ -189,6 +190,15 @@ const KarelOverviewPanel = ({
           />
         </ErrorBoundary>
       </div>
+
+      {/* ── BLOCK A2 — Krizové deficity dne (Crisis Function Reallocation 2026-04-21) ──
+            Sem byly přesunuty deficitní signály, které dříve viseli v krizovém banneru:
+            chybí dnešní hodnocení / chybí feedback / dlouho bez kontaktu.
+            Banner zůstává čistá signalizační vrstva; tady jsou Karlovy
+            pracovní deficity s handoffem do detailu krize. */}
+      <ErrorBoundary fallbackTitle="Krizové deficity nelze načíst">
+        <KarelCrisisDeficits />
+      </ErrorBoundary>
 
       {/* ── BLOCK B — Therapist Intelligence Foundation (read-only) ── */}
       <div className="jung-card p-4 space-y-3">

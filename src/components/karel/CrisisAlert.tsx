@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Shield, ChevronDown, ChevronUp, Bell, Clock } from "lucide-react";
 import { useCrisisOperationalState, type CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
 import CrisisOperationalDetail from "./CrisisOperationalDetail";
@@ -73,6 +73,19 @@ const severityAmbient = (severity: string) => {
 const CrisisAlert: React.FC = () => {
   const { cards, loading, refetch, globalUnreadBriefCount } = useCrisisOperationalState();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Handoff bridge — Karlův přehled (KarelCrisisDeficits) emituje
+  // `karel:open-crisis-detail` s cardId; banner na něj zareaguje rozbalením
+  // příslušné krize. (Crisis Function Reallocation Repair Pass 2026-04-21.)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const ce = e as CustomEvent<{ cardId?: string }>;
+      const cardId = ce.detail?.cardId;
+      if (cardId) setExpandedId(cardId);
+    };
+    window.addEventListener("karel:open-crisis-detail", handler as EventListener);
+    return () => window.removeEventListener("karel:open-crisis-detail", handler as EventListener);
+  }, []);
 
   if (loading || cards.length === 0) return null;
 
