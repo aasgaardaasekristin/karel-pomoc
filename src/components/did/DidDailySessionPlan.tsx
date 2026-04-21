@@ -564,6 +564,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false }: Props) => {
             onRegenerate={() => handlePartSelected(plan.selected_part)}
             onOpenLive={() => setLiveSessionActive(true)}
             prevSession={plan.id === firstPendingPlan?.id ? prevSession : null}
+            compact={compact}
           />
         ))}
 
@@ -586,6 +587,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false }: Props) => {
                 onOpenLive={() => {}}
                 prevSession={null}
                 isArchived
+                compact={compact}
               />
             ))}
           </div>
