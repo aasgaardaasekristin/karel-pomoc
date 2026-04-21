@@ -129,6 +129,24 @@ Deno.serve(async (req: Request) => {
     if (signer === "kata" && !row.kata_signed_at) patch.kata_signed_at = nowIso;
     if (signer === "karel" && !row.karel_signed_at) patch.karel_signed_at = nowIso;
 
+    // SESSION PREP SIGNOFF FIX (2026-04-21):
+    // Pro `session_plan` je třetí ruční Karlův podpis architektonicky špatně.
+    // Workflow je: Hanička + Káťa podepíší → plán je připravený k zahájení.
+    // Karel se v tomhle typu porady podepisuje AUTOMATICKY na serveru,
+    // jakmile máme oba terapeutické podpisy. Pro `crisis` zůstává Karlův
+    // podpis ruční, protože vyžaduje syntézu.
+    if (
+      row.deliberation_type === "session_plan" &&
+      !row.karel_signed_at &&
+      signer !== "karel"
+    ) {
+      const hankaWillBeSigned = !!row.hanka_signed_at || signer === "hanka";
+      const kataWillBeSigned = !!row.kata_signed_at || signer === "kata";
+      if (hankaWillBeSigned && kataWillBeSigned) {
+        patch.karel_signed_at = nowIso;
+      }
+    }
+
     if (Object.keys(patch).length === 0) {
       return new Response(JSON.stringify({ deliberation: row, note: "already signed" }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
