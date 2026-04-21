@@ -111,7 +111,7 @@ export async function readUnprocessedPantryB(
   const { data, error } = await sb
     .from("karel_pantry_b_entries")
     .select(
-      "id, entry_kind, source_kind, source_ref, summary, detail, intended_destinations, related_part_name, related_therapist, related_crisis_event_id, created_at",
+      "id, entry_kind, source_kind, source_ref, summary, detail, intended_destinations, related_part_name, related_therapist, related_crisis_event_id, created_at, flush_result",
     )
     .eq("user_id", userId)
     .is("processed_at", null)
