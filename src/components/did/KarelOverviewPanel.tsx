@@ -23,8 +23,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DidDailyBriefingPanel from "./DidDailyBriefingPanel";
-import KarelCrisisDeficits from "./KarelCrisisDeficits";
-import DailyDecisionTasks from "./DailyDecisionTasks";
+// Emergency Simplification Pass (2026-04-21): KarelCrisisDeficits + DailyDecisionTasks
+// odstraněny z Karlova přehledu (duplicitní vývěska pod briefingem).
 
 interface TherapistStateMini {
   therapist: "hanka" | "kata";
