@@ -1,7 +1,9 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Activity, AlertTriangle, Clock, Users, Target, CalendarCheck,
   MessageSquareDashed, ArrowRight, RefreshCw, Loader2, Send, Brain,
+  Play, ClipboardList, Handshake,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -50,10 +52,101 @@ async function callFn(fnName: string, body: Record<string, any>) {
 }
 
 const CrisisDailyManagement: React.FC<Props> = ({ card, onRefetch }) => {
+  const navigate = useNavigate();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [eveningForm, setEveningForm] = useState<{ open: boolean; decision: string; notes: string; nextDayPlan: string }>({
     open: false, decision: "", notes: "", nextDayPlan: "",
   });
+
+  // ── Workflow akce (přesunuto z banneru sem v Crisis Banner Repair Pass) ──
+
+  const navigateToCrisisThread = (partName: string, eventId: string | null) => {
+    const params = new URLSearchParams();
+    params.set("crisis_action", "interview");
+    params.set("part_name", partName);
+    if (eventId) params.set("crisis_event_id", eventId);
+    try { sessionStorage.setItem("karel_hub_section", "did"); } catch { /* ignore */ }
+    navigate(`/chat?${params.toString()}`);
+  };
+
+  const navigateToFeedback = (eventId: string | null) => {
+    const params = new URLSearchParams();
+    params.set("crisis_action", "feedback");
+    if (eventId) params.set("crisis_event_id", eventId);
+    try { sessionStorage.setItem("karel_hub_section", "did"); } catch { /* ignore */ }
+    navigate(`/chat?${params.toString()}`);
+  };
+
+  const handleStartAssessment = async () => {
+    if (!card.eventId) return;
+    await withLoading("start_assessment", async () => {
+      const data = await callFn("karel-crisis-daily-assessment", {
+        crisis_event_id: card.eventId,
+        crisis_alert_id: card.alertId,
+        part_name: card.partName,
+      });
+      if (data?.error) {
+        toast.error(`Spuštění hodnocení selhalo: ${data.error}`);
+        return;
+      }
+      toast.success("Dnešní hodnocení založeno — otevírám krizové vlákno");
+      navigateToCrisisThread(card.partName, card.eventId);
+    });
+  };
+
+  const handleRequestFeedback = async () => {
+    if (!card.eventId) return;
+    await withLoading("request_feedback", async () => {
+      const data = await callFn("karel-crisis-daily-assessment", {
+        crisis_event_id: card.eventId,
+        crisis_alert_id: card.alertId,
+        part_name: card.partName,
+        generate_therapist_questions: true,
+      });
+      if (data?.error) {
+        toast.error(`Generování otázek selhalo: ${data.error}`);
+        return;
+      }
+      toast.success("Otázky pro terapeutky vygenerovány — otevírám feedback");
+      navigateToFeedback(card.eventId);
+    });
+  };
+
+  /**
+   * Otevřít poradu — najde existující open deliberation pro tuto krizi
+   * a otevře ji v Pracovně přes sessionStorage bridge `karel_open_deliberation_id`,
+   * který DidDashboard přečte v useEffect a setne openDeliberationId.
+   * Pokud žádná open porada neexistuje, naviguje do Pracovny, kde žije
+   * `TeamDeliberationsPanel` a uživatel může poradu otevřít/založit.
+   */
+  const handleOpenMeeting = async () => {
+    await withLoading("open_meeting", async () => {
+      let deliberationId: string | null = null;
+      if (card.eventId) {
+        try {
+          const { data } = await supabase
+            .from("did_team_deliberations")
+            .select("id, status")
+            .eq("crisis_event_id", card.eventId)
+            .neq("status", "finalized")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          deliberationId = (data as { id?: string } | null)?.id ?? null;
+        } catch { /* fall through to dashboard */ }
+      }
+
+      if (deliberationId) {
+        try { sessionStorage.setItem("karel_open_deliberation_id", deliberationId); } catch { /* ignore */ }
+        toast.success("Otevírám poradu týmu");
+      } else {
+        toast.info("Žádná otevřená porada — otevírám sekci Porady v Pracovně");
+      }
+      try { sessionStorage.setItem("karel_hub_section", "did"); } catch { /* ignore */ }
+      try { sessionStorage.setItem("karel_terapeut_surface", "pracovna"); } catch { /* ignore */ }
+      navigate("/chat");
+    });
+  };
 
   const withLoading = async (key: string, fn: () => Promise<void>) => {
     setActionLoading(key);
