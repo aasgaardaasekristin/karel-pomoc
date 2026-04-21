@@ -399,24 +399,45 @@ const CrisisLaunchpadSection: React.FC<{
   }, [card.eventId, card.alertId]);
 
   // ── Navigation helpers ──────────────────────────────────────────────
-  const goPracovnaKarel = () => {
+  // Pracovna anchor model: PracovnaSurface čte sessionStorage
+  // `karel_pracovna_anchor` a scrollne na element [data-pracovna-anchor=…].
+  // Anchor klíče (povolené v PracovnaSurface):
+  //   - "karel-overview"      → KarelOverviewPanel (decision deck, ask_hanka/kata)
+  //   - "operativa"           → DidDashboard (top of operativa block)
+  //   - "crisis-command"      → CommandCrisisCard (krize per-part)
+  //   - "therapist-tasks"     → KarelDailyPlan (operational queue, úkoly terapeutek)
+  //   - "team-deliberations"  → TeamDeliberationsPanel
+  //   - "today-session-plan"  → DidDailySessionPlan (dnešní sezení)
+  //   - "rooms"               → Pracovní místnosti (porady / live / Hanička / Káťa)
+  const goPracovna = (anchor: string) => {
     try { sessionStorage.setItem("karel_hub_section", "did"); } catch {}
     try { sessionStorage.setItem("karel_terapeut_surface", "pracovna"); } catch {}
+    try { sessionStorage.setItem("karel_pracovna_anchor", anchor); } catch {}
+    onClose();
+    navigate("/chat");
+  };
+
+  const goSpravaTab = (tab: string) => {
+    // Otevře dialog Správa na konkrétním tabu (např. "questions").
+    try { sessionStorage.setItem("karel_hub_section", "did"); } catch {}
+    try { sessionStorage.setItem("karel_terapeut_surface", "pracovna"); } catch {}
+    try { sessionStorage.setItem("karel_sprava_open_tab", tab); } catch {}
     onClose();
     navigate("/chat");
   };
 
   const goPracovnaMeeting = () => {
-    try { sessionStorage.setItem("karel_hub_section", "did"); } catch {}
-    try { sessionStorage.setItem("karel_terapeut_surface", "pracovna"); } catch {}
     if (openMeetingId) {
       try { sessionStorage.setItem("karel_open_deliberation_id", openMeetingId); } catch {}
       toast.success("Otevírám poradu týmu");
+      try { sessionStorage.setItem("karel_hub_section", "did"); } catch {}
+      try { sessionStorage.setItem("karel_terapeut_surface", "pracovna"); } catch {}
+      onClose();
+      navigate("/chat");
     } else {
       toast.info("Žádná otevřená porada — otevírám sekci Porady v Pracovně");
+      goPracovna("team-deliberations");
     }
-    onClose();
-    navigate("/chat");
   };
 
   const goCrisisInterview = () => {
