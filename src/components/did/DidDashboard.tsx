@@ -391,37 +391,13 @@ const DidDashboard = ({
   return (
     <div className="min-h-screen" data-no-swipe-back="true">
       <div className="relative z-10 mx-auto max-w-[900px] space-y-4 px-4 py-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-[12px] text-muted-foreground">
-              {lastRefreshAt.toLocaleTimeString("cs", { hour: "2-digit", minute: "2-digit" })}
-            </span>
-            <div className="flex items-center gap-1">
-              <div
-                className={cn(
-                  "h-1.5 w-1.5 rounded-full",
-                  realtimeConnected ? "bg-primary" : "bg-muted-foreground/40",
-                )}
-              />
-              <span className="text-[11px] text-muted-foreground">
-                {realtimeConnected ? "live" : "offline"}
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1 px-3 text-[12px] text-muted-foreground hover:text-foreground"
-              onClick={() => setRefreshTrigger((prev) => prev + 1)}
-            >
-              <RefreshCw className="h-3 w-3" /> Obnovit
-            </Button>
-            {/* Slice 3A (2026-04-21): „Správa" launcher přesunut do
-                AdminSurface (DidContentRouter → AdminSpravaLauncher).
-                Pracovna je čistá od admin tooling. */}
-          </div>
-        </div>
+        {/* Dashboard Reality Cleanup Pass (2026-04-21):
+            - Header (timestamp + live + Obnovit) ODSTRANĚN — duplicita s
+              headerem `KarelOverviewPanel`. Pracovna má jeden „Obnovit" nahoře.
+            - `KarelDailyPlan` ODSTRANĚN — renderoval jen `CommandFourSections`
+              (DNES NOVĚ / DNES HORŠÍ / DNES VYŽADUJE ZÁSAH), což je významová
+              duplicita s `DailyDecisionTasks` (Nové dnes / Reissue / Blokující).
+              Single owner decision decku = `DailyDecisionTasks`. */}
 
         {/* ── BLOCK 1 — CRISIS COMMAND (renders only when active crisis exists) ── */}
         {snapshot?.command?.crises?.length > 0 && (
@@ -434,30 +410,6 @@ const DidDashboard = ({
             </ErrorBoundary>
           </div>
         )}
-
-        {/* ── 2026-04-20 SURFACE SPLIT ──
-              `DidDailyBriefingPanel` (Karlův hlas) je přesunutý do
-              samostatné plochy `KarelOverviewPanel` (`🧠 Karlův přehled`).
-              Dashboard zůstává frontstage operativy, bez Karlova narativu.
-            ── */}
-
-        {/* ── BLOCK 2 — OPERATIONAL QUEUE (přechodová vrstva: tasks/questions/sessions backlog).
-                hideDuplicateBlocks=true zajišťuje, že tu NEBUDE druhý „Karlův přehled":
-                  - skrytá narativní hlavička (greeting + 5 odstavců)
-                  - skryté „Návrh sezení na dnes" (vyřešeno v briefing.proposed_session)
-                  - skryté „Haničko, potřebuji od tebe" + „Káťo, potřebuji od tebe"
-                    (vyřešeno v briefing.ask_hanka / briefing.ask_kata)
-                  - skryté „Čekám na vaše odpovědi" (vyřešeno v briefing.waiting_for)
-                Ponecháno: CommandFourSections, vstupní pole pro vzkazy. ── */}
-        <div className="jung-hero-section rounded-2xl p-1" data-pracovna-anchor="therapist-tasks">
-          <ErrorBoundary fallbackTitle="Denní plán selhal">
-            <KarelDailyPlan
-              refreshTrigger={refreshTrigger}
-              snapshot={snapshot}
-              hideDuplicateBlocks
-            />
-          </ErrorBoundary>
-        </div>
 
         {/* ── BLOCK 2b — TEAM DELIBERATIONS (společná porada týmu, max 2+1) ── */}
         <StudyCard className="space-y-3" data-pracovna-anchor="team-deliberations">
