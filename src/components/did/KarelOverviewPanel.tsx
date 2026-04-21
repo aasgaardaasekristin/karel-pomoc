@@ -124,7 +124,11 @@ function loadFoundationFromSnapshot(snapshot: any): FoundationData {
   };
 }
 
-const KarelOverviewPanel = ({ refreshTrigger = 0, onOpenDeliberation }: Props) => {
+const KarelOverviewPanel = ({
+  refreshTrigger = 0,
+  onOpenDeliberation,
+  variant = "standalone",
+}: Props) => {
   const [foundation, setFoundation] = useState<FoundationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [internalRefresh, setInternalRefresh] = useState(0);
