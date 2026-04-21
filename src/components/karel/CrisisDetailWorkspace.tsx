@@ -460,14 +460,17 @@ const CrisisLaunchpadSection: React.FC<{
   };
 
   // ── Action cards ────────────────────────────────────────────────────
+  // Každá karta má KONKRÉTNÍ destinaci. Nic nevede „obecně do Pracovny" —
+  // pokud cílí do Pracovny, vždy nese anchor klíč pro scroll na sekci.
   const cards: ActionCard[] = [
     {
       key: "karel-overview",
       icon: <Brain className="w-4 h-4" />,
       title: "Karlův přehled",
-      description: "Dnešní krizové deficity, plán dne a Karlův decision context.",
-      cta: "Otevřít Pracovnu",
-      onClick: goPracovnaKarel,
+      description: "Decision deck: dnešní krizové deficity, ask_hanka / ask_kata, plán dne.",
+      cta: "Skočit na Karlův přehled",
+      // Anchor: KarelOverviewPanel section v Pracovně.
+      onClick: () => goPracovna("karel-overview"),
     },
     {
       key: "open-meeting",
@@ -475,8 +478,8 @@ const CrisisLaunchpadSection: React.FC<{
       title: "Porada týmu",
       description: openMeetingId
         ? "Existuje otevřená porada k této krizi."
-        : "Žádná otevřená porada — můžeš ji založit v Pracovně.",
-      cta: openMeetingId ? "Otevřít poradu" : "Otevřít sekci Porady",
+        : "Žádná otevřená porada — sekce Porady v Operativě dne.",
+      cta: openMeetingId ? "Otevřít poradu" : "Skočit na Porady",
       onClick: goPracovnaMeeting,
       highlight: !!openMeetingId,
       meta: meetingLoading ? "…" : openMeetingId ? "1 otevřená" : "žádná",
@@ -485,27 +488,30 @@ const CrisisLaunchpadSection: React.FC<{
       key: "therapist-tasks",
       icon: <ListChecks className="w-4 h-4" />,
       title: "Úkoly terapeutů",
-      description: "Konkrétní krizové úkoly pro Haničku a Káťu.",
-      cta: "Otevřít úkoly",
-      onClick: goPracovnaKarel,
+      description: "Operational queue (KarelDailyPlan) — krizové úkoly pro Haničku a Káťu.",
+      cta: "Skočit na Úkoly terapeutů",
+      // Anchor: KarelDailyPlan v DidDashboard (sekce Operativa dne).
+      onClick: () => goPracovna("therapist-tasks"),
       meta: openTaskCount == null ? "…" : `${openTaskCount} otevřených`,
     },
     {
       key: "questions",
       icon: <MessageCircleQuestion className="w-4 h-4" />,
       title: "Otázky pro jednotlivce",
-      description: "Dotazy směřované na konkrétní terapeutku — vyžadují odpověď.",
-      cta: "Otevřít otázky",
-      onClick: goPracovnaKarel,
+      description: "PendingQuestionsPanel — dotazy na konkrétní terapeutku, vyžadují odpověď.",
+      cta: "Otevřít panel otázek",
+      // Deep-link do DidSprava dialog → tab "questions" → PendingQuestionsPanel.
+      onClick: () => goSpravaTab("questions"),
       meta: openQuestionCount == null ? "…" : `${openQuestionCount} otevřených`,
     },
     {
       key: "session-proposal",
       icon: <CalendarPlus className="w-4 h-4" />,
       title: "Návrh sezení s částí",
-      description: "Karlův plán dne nese návrh, kdy a jak vést sezení s částí.",
-      cta: "Otevřít plán dne",
-      onClick: goPracovnaKarel,
+      description: "Dnešní plán sezení (DidDailySessionPlan) — schválení a spuštění.",
+      cta: "Skočit na Plán sezení",
+      // Anchor: DidDailySessionPlan v DidDashboard (sekce Dnes).
+      onClick: () => goPracovna("today-session-plan"),
     },
     {
       key: "direct-therapy",
@@ -530,7 +536,7 @@ const CrisisLaunchpadSection: React.FC<{
       cta: card.missingTodayInterview ? "Spustit hodnocení" : "Hotovo dnes",
       onClick: card.missingTodayInterview && card.eventId ? goCrisisInterview : undefined,
       disabledReason: !card.missingTodayInterview
-        ? "Dnešní interview už proběhlo — další krok je v záložce Řízení."
+        ? "Dnešní interview už proběhlo — další krok je ve workflow této krize."
         : !card.eventId
           ? "Bez crisis_event nelze hodnocení založit."
           : undefined,
