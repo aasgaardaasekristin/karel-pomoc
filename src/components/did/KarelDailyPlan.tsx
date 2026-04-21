@@ -328,7 +328,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
 
   // Data
   const [tasks, setTasks] = useState<{ id: string; task: string; assigned_to: string; status: string; priority: string; created_at?: string; due_date?: string | null; detail_instruction?: any }[]>([]);
-  const [sessions, setSessions] = useState<{ id: string; selected_part: string; therapist: string; plan_date: string }[]>([]);
+  const [sessions, setSessions] = useState<{ id: string; selected_part: string; therapist: string; plan_date: string; status?: string }[]>([]);
   const [questions, setQuestions] = useState<{ id: string; question: string; directed_to: string | null }[]>([]);
   const [recentThreads, setRecentThreads] = useState<{ part_name: string; last_activity_at: string; sub_mode: string; thread_label: string | null }[]>([]);
   const [recentInterviews, setRecentInterviews] = useState<{
