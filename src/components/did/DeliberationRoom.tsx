@@ -544,46 +544,76 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
 
         {d && (
           <div className="shrink-0 border-t border-border/60 px-6 py-3 bg-background space-y-2">
-            <div className="flex items-center gap-2">
-              {(["hanka", "kata", "karel"] as const).map((who) => {
-                const signed =
-                  who === "hanka" ? d.hanka_signed_at :
-                  who === "kata" ? d.kata_signed_at : d.karel_signed_at;
-                const crisisAnswersReady =
-                  areAllQuestionsAnswered(d.questions_for_hanka ?? []) &&
-                  areAllQuestionsAnswered(d.questions_for_kata ?? []);
-                // GATE: Karlův podpis je u krizové porady aktivní jen poté,
-                // co proběhla FRESH syntéza nad aktuálními odpověďmi.
-                // Po každé nové odpovědi / diskusní zprávě se karel_synthesis
-                // automaticky vynuluje (viz useTeamDeliberations.invalidateSynthesis),
-                // takže Karel musí syntetizovat znova.
-                const karelGateBlocked =
-                  who === "karel" &&
-                  d.deliberation_type === "crisis" &&
-                  (!crisisAnswersReady || !d.karel_synthesis);
-                const disabled = !!signed || signing === who || karelGateBlocked || isReadOnly;
-                return (
-                  <Button
-                    key={who}
-                    size="sm"
-                    variant={signed ? "secondary" : "default"}
-                    disabled={disabled}
-                    title={karelGateBlocked
-                      ? 'Karel musí (znovu) syntetizovat odpovědi terapeutek — viz tlačítko „Spustit Karlovu syntézu".'
-                      : undefined}
-                    className="h-8 text-[11px] flex-1"
-                    onClick={() => handleSign(who)}
-                  >
-                    {signing === who ? (
-                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                    ) : signed ? (
-                      <CheckCircle2 className="w-3 h-3 mr-1 text-primary" />
-                    ) : null}
-                    {signed ? `${who === "hanka" ? "Hanička" : who === "kata" ? "Káťa" : "Karel"} ✓` : `Podepsat za ${who === "hanka" ? "Haničku" : who === "kata" ? "Káťu" : "Karla"}`}
-                  </Button>
-                );
-              })}
-            </div>
+            {/* SESSION PREP SIGNOFF FIX (2026-04-21):
+                Pro `session_plan` jsou jen 2 podpisové buttony (Hanička + Káťa).
+                Karel se podepíše automaticky na serveru po druhém podpisu.
+                Pro ostatní typy (crisis, team_task, …) zůstává 3-tlačítkový model. */}
+            {(() => {
+              const isSessionPlan = d.deliberation_type === "session_plan";
+              const visibleSigners: Array<"hanka" | "kata" | "karel"> = isSessionPlan
+                ? ["hanka", "kata"]
+                : ["hanka", "kata", "karel"];
+              return (
+                <div className="flex items-center gap-2">
+                  {visibleSigners.map((who) => {
+                    const signed =
+                      who === "hanka" ? d.hanka_signed_at :
+                      who === "kata" ? d.kata_signed_at : d.karel_signed_at;
+                    const crisisAnswersReady =
+                      areAllQuestionsAnswered(d.questions_for_hanka ?? []) &&
+                      areAllQuestionsAnswered(d.questions_for_kata ?? []);
+                    // Karlův ruční gate platí jen pro `crisis` (vyžaduje fresh syntézu).
+                    // U `session_plan` se Karel vůbec nezobrazuje (auto-podpis na serveru).
+                    const karelGateBlocked =
+                      who === "karel" &&
+                      d.deliberation_type === "crisis" &&
+                      (!crisisAnswersReady || !d.karel_synthesis);
+                    const disabled = !!signed || signing === who || karelGateBlocked || isReadOnly;
+                    return (
+                      <Button
+                        key={who}
+                        size="sm"
+                        variant={signed ? "secondary" : "default"}
+                        disabled={disabled}
+                        title={karelGateBlocked
+                          ? 'Karel musí (znovu) syntetizovat odpovědi terapeutek — viz tlačítko „Spustit Karlovu syntézu".'
+                          : undefined}
+                        className="h-8 text-[11px] flex-1"
+                        onClick={() => handleSign(who)}
+                      >
+                        {signing === who ? (
+                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                        ) : signed ? (
+                          <CheckCircle2 className="w-3 h-3 mr-1 text-primary" />
+                        ) : null}
+                        {signed ? `${who === "hanka" ? "Hanička" : who === "kata" ? "Káťa" : "Karel"} ✓` : `Podepsat za ${who === "hanka" ? "Haničku" : who === "kata" ? "Káťu" : "Karla"}`}
+                      </Button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {/* READY-TO-START stav — viditelný hned po dvou terapeutických podpisech
+                u session_plan (bridge proběhne na serveru, Karel se sám podepíše,
+                trigger překlopí status na approved a vznikne plán v did_daily_session_plans). */}
+            {d.deliberation_type === "session_plan" &&
+              !!d.hanka_signed_at &&
+              !!d.kata_signed_at && (
+                <section className="rounded-md border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-[11px] font-semibold text-emerald-700">
+                      Připraveno k zahájení
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Hanička i Káťa podepsaly. Karel automaticky uzavřel přípravu
+                      a propsal plán do dnešního sezení.
+                    </p>
+                  </div>
+                </section>
+              )}
+
             {(d.status === "approved" || bridgedPlanId) && d.deliberation_type === "session_plan" && (
               <Button
                 size="sm"
@@ -591,7 +621,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 onClick={goToLiveSession}
                 disabled={!bridgedPlanId && !d.linked_live_session_id}
               >
-                Otevřít DID live sezení <ArrowRight className="w-3 h-3 ml-1" />
+                Zahájit sezení <ArrowRight className="w-3 h-3 ml-1" />
               </Button>
             )}
           </div>
