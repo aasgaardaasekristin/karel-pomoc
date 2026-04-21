@@ -367,10 +367,9 @@ interface ActionCard {
 
 const CrisisLaunchpadSection: React.FC<{
   card: CrisisOperationalCard;
-  onJumpToManagement: () => void;
   onJumpToClosure?: () => void;
   onClose: () => void;
-}> = ({ card, onJumpToManagement, onJumpToClosure, onClose }) => {
+}> = ({ card, onJumpToClosure, onClose }) => {
   const navigate = useNavigate();
   const [openMeetingId, setOpenMeetingId] = useState<string | null>(null);
   const [openTaskCount, setOpenTaskCount] = useState<number | null>(null);
