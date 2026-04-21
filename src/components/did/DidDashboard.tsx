@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
-import { Clock, RefreshCw, MessageCircleQuestion, FileText, AlertTriangle, Calendar } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Clock, MessageCircleQuestion, FileText, AlertTriangle, Calendar } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { isNonDidEntity } from "@/lib/didPartNaming";
 import type { DidSubMode } from "./DidSubModeSelector";
-import KarelDailyPlan from "./KarelDailyPlan";
-// DidDailyBriefingPanel přesunut do `KarelOverviewPanel` (Surface Split 2026-04-20).
+// Dashboard Reality Cleanup Pass (2026-04-21):
+//   - `KarelDailyPlan` odstraněn z této plochy. Renderoval jen
+//     `CommandFourSections` (DNES NOVĚ / DNES HORŠÍ / DNES VYŽADUJE ZÁSAH),
+//     což je významová duplicita s `DailyDecisionTasks` v `KarelOverviewPanel`
+//     (Nové dnes / Vyžaduje reissue / Blokující čekání). Single owner
+//     decision decku = `DailyDecisionTasks`.
+//   - `DidDailyBriefingPanel` (Karlův hlas) bydlí v `KarelOverviewPanel`.
 import DidDailySessionPlan from "./DidDailySessionPlan";
 // Slice 3A (2026-04-21): DidSprava launcher přesunut z headeru Pracovny
 // do AdminSurface (DidContentRouter → AdminSpravaLauncher). Pracovna je
