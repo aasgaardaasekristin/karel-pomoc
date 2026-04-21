@@ -7198,6 +7198,99 @@ Vra\u0165 JSON:
       console.warn("[PART-STATUS] Auto-detection failed (non-fatal):", partStatusErr);
     }
 
+    // ═══ HOURGLASS: PHASE 8B — SPIŽÍRNA B FLUSH ═══
+    // Před Drive flushem zpracovat všechny denní implikace nasbírané ze
+    // Spižírny B (post-chat writeback, deliberation synthesis, atd.) a
+    // routnout je do canonical cílů: did_implications, did_therapist_tasks,
+    // did_pending_questions. Mark processed_at + log do flush_result.
+    await setPhase("phase_8b_pantry_b_flush", "Fáze 8B: Spižírna B flush");
+    try {
+      const { data: ddcRow } = await sb
+        .from("did_daily_context")
+        .select("user_id")
+        .order("context_date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const flushUserId = (ddcRow as any)?.user_id as string | undefined;
+      if (!flushUserId) {
+        console.warn("[PHASE_8B] No user_id resolvable, skipping Pantry B flush");
+      } else {
+        const entries = await readUnprocessedPantryB(sb as any, flushUserId);
+        console.log(`[PHASE_8B] Spižírna B: ${entries.length} unprocessed entries`);
+
+        const processedIds: string[] = [];
+        let routedToImplications = 0;
+        let routedToTasks = 0;
+        let routedToQuestions = 0;
+
+        for (const entry of entries) {
+          try {
+            const dests = (entry.intended_destinations as string[]) || [];
+
+            if (dests.includes("did_implications")) {
+              const { error: implErr } = await sb.from("did_implications").insert({
+                user_id: flushUserId,
+                content: entry.summary,
+                source_type: "pantry_b_flush",
+                source_id: entry.id,
+                part_name: entry.related_part_name,
+                metadata: {
+                  pantry_entry_kind: entry.entry_kind,
+                  pantry_source_kind: entry.source_kind,
+                  ...((entry.detail as Record<string, unknown>) || {}),
+                },
+              });
+              if (!implErr) routedToImplications++;
+            }
+
+            if (dests.includes("did_therapist_tasks") && entry.related_therapist) {
+              const { error: taskErr } = await sb.from("did_therapist_tasks").insert({
+                user_id: flushUserId,
+                therapist: entry.related_therapist,
+                task_text: entry.summary.slice(0, 500),
+                source_kind: "pantry_b_flush",
+                source_ref: entry.id,
+                related_part_name: entry.related_part_name,
+                priority: entry.entry_kind === "risk" ? "high" : "normal",
+              });
+              if (!taskErr) routedToTasks++;
+            }
+
+            if (dests.includes("did_pending_questions") && entry.related_therapist) {
+              const { error: qErr } = await sb.from("did_pending_questions").insert({
+                user_id: flushUserId,
+                question: entry.summary.slice(0, 500),
+                asked_to: entry.related_therapist,
+                part_name: entry.related_part_name,
+                status: "pending",
+                source_kind: "pantry_b_flush",
+                source_ref: entry.id,
+              });
+              if (!qErr) routedToQuestions++;
+            }
+
+            processedIds.push(entry.id);
+          } catch (entryErr) {
+            console.warn(`[PHASE_8B] Entry ${entry.id} routing failed:`, entryErr);
+          }
+        }
+
+        if (processedIds.length > 0) {
+          await markPantryBProcessed(sb as any, processedIds, "karel-did-daily-cycle:phase_8b", {
+            routed_to_implications: routedToImplications,
+            routed_to_tasks: routedToTasks,
+            routed_to_questions: routedToQuestions,
+            flushed_at: new Date().toISOString(),
+          });
+        }
+
+        const purged = await purgeExpiredPantryB(sb as any);
+        console.log(`[PHASE_8B] ✅ Flush done: ${processedIds.length}/${entries.length} entries processed (impl=${routedToImplications}, tasks=${routedToTasks}, questions=${routedToQuestions}); purged ${purged} expired.`);
+      }
+    } catch (pbErr) {
+      console.error("[PHASE_8B] Pantry B flush failed (non-fatal):", pbErr);
+    }
+
     await setPhase("phase_9_queue_flush", "Fáze 9: Drive queue flush");
     // ═══ PHASE_9_QUEUE_FLUSH_AND_POST_ACTIONS ═══
     // Moved here so ALL write-producing phases (therapist intelligence, PAMET_KAREL, crisis escalation)
