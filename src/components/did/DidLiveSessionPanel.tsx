@@ -13,6 +13,7 @@ import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { Progress } from "@/components/ui/progress";
 import RichMarkdown from "@/components/ui/RichMarkdown";
+import DidPostSessionInterrogation, { type InterrogationAnswer } from "./DidPostSessionInterrogation";
 
 type Message = { role: "user" | "assistant"; content: string };
 
