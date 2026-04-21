@@ -155,6 +155,25 @@ export const DASHBOARD_MAX_CRISIS_BONUS = 1;
  *
  * Řazení uvnitř obou bucketů: priority desc, updated_at desc.
  */
+/**
+ * Final Pracovna Cleanup Verdict (2026-04-21):
+ * Testovací / throwaway porady (CLOSEOUT TEST, throwaway, UI proof, …)
+ * NIKDY nesmí být vidět na hlavní Pracovna ploše. Filtruje se v dashboard
+ * partition (overflow je nezahrnuje vůbec).
+ */
+const TEST_TITLE_PATTERNS = [
+  /\[?\s*closeout\s*test/i,
+  /throwaway/i,
+  /ui\s*proof/i,
+  /\btest\s*porada\b/i,
+  /\bsmoke\s*test\b/i,
+];
+
+function isTestDeliberation(d: TeamDeliberation): boolean {
+  const haystack = `${d.title || ""} ${d.reason || ""}`;
+  return TEST_TITLE_PATTERNS.some((rx) => rx.test(haystack));
+}
+
 export function partitionDashboardDeliberations(
   list: TeamDeliberation[]
 ): { primary: TeamDeliberation[]; overflow: TeamDeliberation[] } {
@@ -166,7 +185,9 @@ export function partitionDashboardDeliberations(
     low: 4,
   };
   const open = list.filter(
-    (d) => d.status === "active" || d.status === "awaiting_signoff"
+    (d) =>
+      (d.status === "active" || d.status === "awaiting_signoff") &&
+      !isTestDeliberation(d)
   );
   const sorted = [...open].sort((a, b) => {
     const pa = PRIORITY_RANK[a.priority] ?? 5;
