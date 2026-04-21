@@ -850,7 +850,7 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
             <Button
               variant="destructive"
               size="sm"
-              onClick={handleEndSession}
+              onClick={() => setShowInterrogation(true)}
               disabled={isFinishing || isClosingLight || messages.length < 2}
               className="gap-1.5 text-xs h-9"
             >
