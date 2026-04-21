@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, ChevronUp, PenLine, MessageSquare, Play, Square, Clock, Trash2, RefreshCw, Plus } from "lucide-react";
+import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, ChevronUp, PenLine, MessageSquare, Play, Square, Clock, Trash2, RefreshCw, Plus, Users, Lock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -10,6 +10,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import RichMarkdown from "@/components/ui/RichMarkdown";
+import { useSessionPrepRoom } from "@/hooks/useSessionPrepRoom";
+import { signoffProgress } from "@/types/teamDeliberation";
 
 interface SessionPlan {
   id: string;
@@ -711,6 +713,26 @@ const PlanCard = ({
     ? "krizová intervence"
     : plan.session_lead === "obe" ? "kombinované" : plan.session_format || (plan.session_lead === "kata" ? "chat" : "osobně");
 
+  // ── SESSION PREP ROOM PASS (2026-04-21) ──
+  // Najde poradu (session_plan deliberation) navázanou na tento dnešní plán.
+  // Když existuje:
+  //   - approved → plán je „připravený k zahájení", aktivuj „Zahájit sezení"
+  //   - active / awaiting_signoff → blokuj „Zahájit", nabídni „Otevřít přípravu"
+  // Když neexistuje (legacy / manuálně generovaný plán mimo deliberation flow):
+  //   - blokuj „Zahájit", nabídni „Připravit s týmem" (vytvoří poradu)
+  // Když není dodán `onOpenPrepRoom` (komponenta žije mimo Pracovnu — např.
+  // session prep wizard), prep gate se přeskakuje a UI je legacy chování.
+  const prepGateEnabled = !!onOpenPrepRoom;
+  const { deliberation: prepRoom, loading: prepLoading, createForExistingPlan } =
+    useSessionPrepRoom(prepGateEnabled ? plan.id : null);
+  const [creatingPrep, setCreatingPrep] = useState(false);
+  const prepApproved = prepRoom?.status === "approved";
+  const prepInProgress = prepRoom && (prepRoom.status === "active" || prepRoom.status === "awaiting_signoff");
+  const prepProgress = prepRoom ? signoffProgress(prepRoom) : null;
+  // „Zahájit" je v Pracovně dostupné JEN když je plán schválený přes prep room.
+  // Mimo Pracovnu (prepGateEnabled=false) zůstává staré chování.
+  const startBlockedByPrep = prepGateEnabled && !prepApproved;
+
   // Overdue calculation using Prague timezone
   const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
   const isOverdue = plan.status === "generated" && plan.plan_date < todayPrague;
@@ -730,6 +752,33 @@ const PlanCard = ({
     : isOverdue
     ? "border-l-[3px] border-l-amber-500"
     : "";
+
+  const handleCreatePrep = async () => {
+    if (creatingPrep) return;
+    setCreatingPrep(true);
+    try {
+      const ledBy: "Hanička" | "Káťa" | "společně" =
+        plan.session_lead === "kata" ? "Káťa"
+          : plan.session_lead === "obe" ? "společně"
+          : "Hanička";
+      const created = await createForExistingPlan({
+        daily_plan_id: plan.id,
+        part_name: plan.selected_part,
+        plan_markdown: plan.plan_markdown,
+        led_by: ledBy,
+      });
+      if (created?.id) {
+        toast.success("Přípravná místnost otevřena.");
+        onOpenPrepRoom?.(created.id);
+      } else {
+        toast.error("Nepodařilo se založit přípravu.");
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Nepodařilo se založit přípravu.");
+    } finally {
+      setCreatingPrep(false);
+    }
+  };
 
   return (
     <div className={`rounded-md border p-2.5 mt-1.5 transition-all ${lifeCycleBorder} ${
