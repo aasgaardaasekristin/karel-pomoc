@@ -48,6 +48,15 @@ interface Props {
    *  jejich průběhu (Zahájit / Splněno / Live / Ukončit).
    */
   compact?: boolean;
+  /**
+   * SESSION PREP ROOM PASS (2026-04-21):
+   *  Otevírá `DeliberationRoom` (modal) pro přípravnou poradu typu
+   *  `session_plan` navázanou na konkrétní dnešní plán. Pracovna ho
+   *  přepošle z hostitelského surface (PracovnaSurface drží
+   *  setOpenDeliberationId).
+   *  Když není dodán, prep CTA se nerendrují — chování zůstává původní.
+   */
+  onOpenPrepRoom?: (deliberationId: string) => void;
 }
 
 const urgencyLabels: Record<string, string> = {
