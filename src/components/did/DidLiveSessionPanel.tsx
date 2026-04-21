@@ -13,6 +13,7 @@ import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { Progress } from "@/components/ui/progress";
 import RichMarkdown from "@/components/ui/RichMarkdown";
+import DidPostSessionInterrogation, { type InterrogationAnswer } from "./DidPostSessionInterrogation";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -77,6 +78,14 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onB
   // Lehké ukončení bez plné post-session analýzy (pro tento pass — handoff stav).
   const [handoffDialogOpen, setHandoffDialogOpen] = useState(false);
   const [isClosingLight, setIsClosingLight] = useState(false);
+
+  // ── Post-session interrogation room ──
+  // Mezikrok mezi LIVE a finální analýzou: Karel klade cílené otázky, terapeut doplňuje.
+  const [showInterrogation, setShowInterrogation] = useState(false);
+  const [interrogationPayload, setInterrogationPayload] = useState<{
+    qa: InterrogationAnswer[];
+    extraNote: string;
+  } | null>(null);
 
   const EMOTION_OPTIONS = [
     "klidná", "nejistá", "frustrovaná", "dojatá",
@@ -394,7 +403,8 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
   };
 
   // End session — generate analysis + save to did_part_sessions
-  const handleEndSession = async () => {
+  // Optional `qa` parameter: výstup z post-session interrogation roomu (cílené otázky + odpovědi).
+  const handleEndSession = async (qa?: InterrogationAnswer[], extraNote?: string) => {
     if (messages.length < 2) {
       toast.error("Sezení je prázdné.");
       return;
@@ -408,13 +418,21 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
         .filter(m => m.role === "assistant" && messages[messages.indexOf(m) - 1]?.content?.includes("🎙️"))
         .map(m => m.content);
 
+      // Build interrogation block (cílené Q&A + vlastní postřeh terapeutky)
+      const answeredQA = (qa || []).filter(item => item.answer.trim().length > 0);
+      const interrogationBlock = answeredQA.length > 0 || (extraNote && extraNote.trim())
+        ? `\n\nDOPTÁVÁNÍ PO SEZENÍ (post-session interrogation):\n${
+            answeredQA.map((it, i) => `Q${i + 1}: ${it.question}\nA${i + 1}: ${it.answer}${it.attachments.length > 0 ? `\n   📎 ${it.attachments.map(a => `${a.kind}: ${a.label}`).join(", ")}` : ""}`).join("\n\n")
+          }${extraNote && extraNote.trim() ? `\n\nVLASTNÍ POSTŘEH TERAPEUTKY:\n${extraNote.trim()}` : ""}`
+        : "";
+
       // Build finalization prompt
       const finalizationPrompt = `Sezení s částí "${partName}" (terapeutka: ${therapistName}) právě skončilo. 
 
 CELÝ PRŮBĚH SEZENÍ:
 ${messages.map(m => `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${m.content}`).join("\n")}
 
-${audioAnalyses.length > 0 ? `AUDIO ANALÝZY ZE SEZENÍ:\n${audioAnalyses.join("\n---\n")}` : ""}
+${audioAnalyses.length > 0 ? `AUDIO ANALÝZY ZE SEZENÍ:\n${audioAnalyses.join("\n---\n")}` : ""}${interrogationBlock}
 
 VYGENERUJ STRUKTUROVANOU ANALÝZU v tomto formátu:
 
@@ -742,6 +760,30 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
     setSessionCompleted(true);
   };
 
+  // ── Post-session interrogation room ──
+  // Otevírá se po kliknutí na "Ukončit a analyzovat". Vede cílené doptávání před finální analýzou.
+  if (showInterrogation && !sessionCompleted) {
+    return (
+      <DidPostSessionInterrogation
+        partName={partName}
+        therapistName={therapistName}
+        contextBrief={contextBrief}
+        liveMessages={messages}
+        switchLog={switchLog}
+        audioSegmentCount={audioSegmentCountRef.current}
+        imageSegmentCount={imageSegmentCountRef.current}
+        isSubmitting={isFinishing}
+        onCancel={() => setShowInterrogation(false)}
+        onSubmit={(qa, extraNote) => {
+          setInterrogationPayload({ qa, extraNote });
+          setShowInterrogation(false);
+          // Spustit finální analýzu s Q&A obohacením
+          handleEndSession(qa, extraNote);
+        }}
+      />
+    );
+  }
+
   // ── Session completed screen ──
   if (sessionCompleted) {
     const handleNewSession = () => {
@@ -832,7 +874,7 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
             <Button
               variant="destructive"
               size="sm"
-              onClick={handleEndSession}
+              onClick={() => setShowInterrogation(true)}
               disabled={isFinishing || isClosingLight || messages.length < 2}
               className="gap-1.5 text-xs h-9"
             >
