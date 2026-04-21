@@ -790,21 +790,23 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
 };
 
 /* ─────────────────────────────────────────────────────────────────────────
-   Surface Reorganization Pass (2026-04-20)
-   TerapeutSurfaces — locked target IA pro DID/Terapeut hlavní plochu.
+   DID/Terapeut Workspace Pass (2026-04-21)
+   TerapeutSurfaces — 3 hlavní top-level plochy:
 
-   4 ploch:
-     🩺 Dashboard       → frontstage operativy (DidDashboard)
-     🧠 Karlův přehled  → decision deck (KarelOverviewPanel)
-     💬 Komunikace      → Hanička / Káťa / Porady / Live (původní výběr)
-     🔧 Admin           → DidSprava (admin/diagnostika v dialogu)
+     🧠 Pracovna     → workflow-first hlavní pracovní plocha:
+                       1) Karlův přehled (decision deck — sekce nahoře)
+                       2) Operativní dashboard (frontstage — pod přehledem)
+                       Karlův přehled NENÍ samostatná app-like záložka.
+                       Je to řídicí sekce uvnitř Pracovny.
+     💬 Komunikace   → Hanička / Káťa / Porady / Live (rooms a vlákna)
+     🔧 Admin        → servisní plocha — DidSprava launcher + diagnostika
 
-   Kartotéka částí žije pod Komunikace → Live → Kartotéka (původní cesta,
-   nerozbíjíme runtime contracty). Centrum (Drive snapshot view) zůstává
-   v Adminu — provozní servis, ne hlavní plocha.
+   Předchozí surface split (Dashboard | Karlův přehled | Komunikace | Admin)
+   byl jen mezikrok. Workspace Pass dává Karlovu přehledu správné místo
+   uvnitř Pracovny — workflow-first, ne panelově rovnocenné.
    ───────────────────────────────────────────────────────────────────── */
 
-type TerapeutSurface = "dashboard" | "overview" | "communication" | "admin";
+type TerapeutSurface = "pracovna" | "communication" | "admin";
 
 interface TerapeutSurfacesProps {
   navigate: (path: string) => void;
@@ -835,15 +837,18 @@ const TerapeutSurfaces: React.FC<TerapeutSurfacesProps> = ({
   basicDocsRef,
   didContextPrime,
 }) => {
-  // Persistovaná volba plochy přes navigace (sessionStorage), default = dashboard.
+  // Persistovaná volba plochy přes navigace (sessionStorage), default = pracovna.
+  // Migrujeme staré klíče (dashboard / overview) → pracovna.
   const [surface, setSurface] = useState<TerapeutSurface>(() => {
     try {
       const saved = sessionStorage.getItem("karel_terapeut_surface");
-      if (saved === "overview" || saved === "communication" || saved === "admin" || saved === "dashboard") {
+      if (saved === "communication" || saved === "admin" || saved === "pracovna") {
         return saved;
       }
+      // Migration ze surface splitu — Dashboard i Karlův přehled žijí v Pracovně.
+      if (saved === "dashboard" || saved === "overview") return "pracovna";
     } catch { /* ignore */ }
-    return "dashboard";
+    return "pracovna";
   });
 
   const switchSurface = (next: TerapeutSurface) => {
@@ -853,15 +858,12 @@ const TerapeutSurfaces: React.FC<TerapeutSurfacesProps> = ({
 
   return (
     <div className="jung-study flex-1 flex flex-col min-h-0">
-      {/* Tab bar — minimal, sticky, semantic tokens only */}
+      {/* Tab bar — 3 hlavní plochy, sticky, semantic tokens only */}
       <div className="shrink-0 border-b border-border/60 bg-background/80 backdrop-blur-sm">
         <div className="mx-auto max-w-[900px] px-3 sm:px-4">
           <nav role="tablist" aria-label="DID/Terapeut plochy" className="flex items-center gap-1 overflow-x-auto py-2">
-            <SurfaceTab active={surface === "dashboard"} onClick={() => switchSurface("dashboard")}>
-              🩺 Dashboard
-            </SurfaceTab>
-            <SurfaceTab active={surface === "overview"} onClick={() => switchSurface("overview")}>
-              🧠 Karlův přehled
+            <SurfaceTab active={surface === "pracovna"} onClick={() => switchSurface("pracovna")}>
+              🧠 Pracovna
             </SurfaceTab>
             <SurfaceTab active={surface === "communication"} onClick={() => switchSurface("communication")}>
               💬 Komunikace
@@ -875,25 +877,22 @@ const TerapeutSurfaces: React.FC<TerapeutSurfacesProps> = ({
 
       <ScrollArea className="flex-1">
         <div className="relative z-10 min-h-full">
-          {surface === "dashboard" && (
-            <ErrorBoundary fallbackTitle="Dashboard selhal">
-              <DidDashboard
-                onManualUpdate={onManualUpdate}
-                isUpdating={isManualUpdateLoading}
-                syncProgress={syncProgress}
-                onQuickSubMode={handleDidSubModeSelect}
-                onQuickThread={handleQuickThread}
-                contextDocs={didInitialContext || basicDocsRef.current}
-                onRefreshMemory={() => didContextPrime.runPrime(undefined, "mamka")}
-                isRefreshingMemory={!!(didContextPrime as any).isPriming}
-              />
-            </ErrorBoundary>
-          )}
-
-          {surface === "overview" && (
-            <ErrorBoundary fallbackTitle="Karlův přehled selhal">
-              <KarelOverviewPanel />
-            </ErrorBoundary>
+          {surface === "pracovna" && (
+            <PracovnaSurface
+              onManualUpdate={onManualUpdate}
+              isManualUpdateLoading={isManualUpdateLoading}
+              syncProgress={syncProgress}
+              handleDidSubModeSelect={handleDidSubModeSelect}
+              handleQuickThread={handleQuickThread}
+              didInitialContext={didInitialContext}
+              basicDocsRef={basicDocsRef}
+              didContextPrime={didContextPrime}
+              onOpenCommunication={() => switchSurface("communication")}
+              onOpenMeeting={() => { setMeetingTherapist("hanka"); setDidFlowState("meeting"); }}
+              onOpenLive={() => { setDidSubMode("mamka"); setDidFlowState("live-session"); }}
+              onOpenHanicka={() => { setDidSubMode("mamka"); setDidFlowState("pin-entry"); }}
+              onOpenKata={() => { setDidSubMode("kata"); setDidFlowState("pin-entry"); }}
+            />
           )}
 
           {surface === "communication" && (
@@ -930,6 +929,112 @@ const SurfaceTab: React.FC<{ active: boolean; onClick: () => void; children: Rea
     }`}
   >
     {children}
+  </button>
+);
+
+/* ─────────────────────────────────────────────────────────────────────────
+   PracovnaSurface — hlavní workflow plocha.
+
+   Vertikální scroll-stack v jediném max-w-[900px] containeru:
+     1) Karlův přehled (KarelOverviewPanel variant="embedded")
+        — briefing + therapist foundation + part foundation
+     2) Operativa dne (DidDashboard)
+        — krize, dnešní sezení, queue, ops snapshot bar
+     3) Rychlé workflow odkazy
+        — Otevřené porady / Hanička / Káťa / Live sezení
+
+   Karlův přehled je první sekce, aby decision deck vedl pohled.
+   Workflow handoff body (porady / Hanička room / Káťa room / Live) jsou
+   vždy dostupné dole, takže Karlovy úkoly z přehledu mají kam vést.
+   ───────────────────────────────────────────────────────────────────── */
+interface PracovnaSurfaceProps {
+  onManualUpdate: () => Promise<void>;
+  isManualUpdateLoading: boolean;
+  syncProgress: SyncProgress | null;
+  handleDidSubModeSelect: (subMode: any) => void;
+  handleQuickThread: (threadId: string, partName: string) => Promise<void>;
+  didInitialContext: string;
+  basicDocsRef: React.MutableRefObject<string>;
+  didContextPrime: { runPrime: (partName?: string, subMode?: string) => void; primeCache: string | null; isPriming: boolean };
+  onOpenCommunication: () => void;
+  onOpenMeeting: () => void;
+  onOpenLive: () => void;
+  onOpenHanicka: () => void;
+  onOpenKata: () => void;
+}
+
+const PracovnaSurface: React.FC<PracovnaSurfaceProps> = ({
+  onManualUpdate,
+  isManualUpdateLoading,
+  handleDidSubModeSelect,
+  handleQuickThread,
+  didInitialContext,
+  basicDocsRef,
+  didContextPrime,
+  onOpenMeeting,
+  onOpenLive,
+  onOpenHanicka,
+  onOpenKata,
+}) => {
+  return (
+    <div className="mx-auto max-w-[900px] space-y-6 px-3 sm:px-4 py-6">
+      {/* ── SEKCE 1 — KARLŮV PŘEHLED (decision deck — řídicí sekce) ── */}
+      <section aria-label="Karlův přehled">
+        <ErrorBoundary fallbackTitle="Karlův přehled selhal">
+          <KarelOverviewPanel variant="embedded" />
+        </ErrorBoundary>
+      </section>
+
+      {/* Jemný vizuální oddělovač mezi decision deckem a operativou */}
+      <div className="border-t border-border/40" aria-hidden />
+
+      {/* ── SEKCE 2 — OPERATIVA DNE (frontstage dashboard) ──
+            DidDashboard nese: krize, KarelDailyPlan (operational queue —
+            úkoly/otázky/sessions backlog), Team Deliberations, dnešní plán
+            sezení, ops snapshot bar. Karlův hlavní narativ tu už není
+            (přesunut do Karlova přehledu výše). */}
+      <section aria-label="Operativa dne">
+        <ErrorBoundary fallbackTitle="Dashboard selhal">
+          <DidDashboard
+            onManualUpdate={onManualUpdate}
+            isUpdating={isManualUpdateLoading}
+            onQuickSubMode={handleDidSubModeSelect}
+            onQuickThread={handleQuickThread}
+            contextDocs={didInitialContext || basicDocsRef.current}
+            onRefreshMemory={() => didContextPrime.runPrime(undefined, "mamka")}
+            isRefreshingMemory={!!(didContextPrime as any).isPriming}
+          />
+        </ErrorBoundary>
+      </section>
+
+      {/* ── SEKCE 3 — RYCHLÉ WORKFLOW ODKAZY ──
+            Workflow handoff body z Karlova přehledu (úkoly pro tým →
+            porada; úkol pro jednu terapeutku → její room; návrh sezení →
+            porada → Live). Tyto buttony jsou redundantní rychlé vstupy,
+            samotné workflow routing logika žije uvnitř KarelOverviewPanel
+            / DidDailyBriefingPanel CTA buttons. */}
+      <section aria-label="Workflow odkazy" className="jung-card p-4 space-y-3">
+        <h3 className="text-sm font-serif tracking-wide text-foreground">Pracovní místnosti</h3>
+        <div className="grid grid-cols-2 gap-2">
+          <WorkflowButton onClick={onOpenMeeting} title="Otevřené porady" desc="Společná negotiation room" />
+          <WorkflowButton onClick={onOpenLive} title="Live DID sezení" desc="Execution room (audio + chat)" />
+          <WorkflowButton onClick={onOpenHanicka} title="Hanička room" desc="Tandem-supervize" />
+          <WorkflowButton onClick={onOpenKata} title="Káťa room" desc="Konzultační room" />
+        </div>
+      </section>
+    </div>
+  );
+};
+
+const WorkflowButton: React.FC<{ onClick: () => void; title: string; desc: string }> = ({
+  onClick, title, desc,
+}) => (
+  <button
+    onClick={onClick}
+    className="text-left p-3 rounded-xl border border-border/60 bg-card/40 hover:bg-card hover:shadow-sm transition-all"
+  >
+    <div className="text-xs font-serif tracking-wide text-foreground">{title}</div>
+    <div className="text-[11px] text-muted-foreground mt-0.5">{desc}</div>
   </button>
 );
 
@@ -996,22 +1101,72 @@ const CommunicationSurface: React.FC<{
   </div>
 );
 
-/* ── Admin plocha — instrukce + přímé otevření DidSprava dialogu ──
-     Admin (DidSprava) zůstává inline jako Dialog v Dashboardu. Tady jen
-     navedeme uživatele a poskytneme rychlý odkaz. To nerozbíjí stávající
-     wiring — všechny admin tooly žijí dál uvnitř DidSprava. */
-const AdminSurface: React.FC<{ navigate: (path: string) => void }> = () => (
-  <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6 space-y-4">
-    <div className="jung-card p-4 space-y-2">
-      <h3 className="text-sm font-serif tracking-wide text-foreground">🔧 Admin / Diagnostika</h3>
-      <p className="text-xs text-muted-foreground leading-relaxed">
-        Servisní plocha — Working Memory inspect, registry, drive queue, health audit, recovery.
-        Otevři přes tlačítko <strong>Správa</strong> v horním pravém rohu Dashboardu.
-      </p>
-      <p className="text-[11px] text-muted-foreground">
-        Tato plocha záměrně nedrží trvalá data — admin tooly žijí v dialogu, aby běžná pracovní plocha
-        zůstala čistá.
-      </p>
+/* ── Admin plocha — servisní launcher pro DidSprava + WM/Registry quick info ──
+     DidSprava (Dialog) zůstává původním wiringem v Dashboardu (uvnitř DidDashboard
+     headeru). Z Adminu otevřeme to samé tlačítko skrze přepnutí na Pracovnu —
+     uživatel uvidí "Správa" tlačítko v hlavičce Dashboardu. Tato plocha drží
+     mapu admin nástrojů a popis, co kde žije (servisní gateway). */
+const AdminSurface: React.FC<{ navigate: (path: string) => void }> = () => {
+  return (
+    <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6 space-y-4">
+      <div className="jung-card p-4 space-y-2">
+        <h3 className="text-sm font-serif tracking-wide text-foreground">🔧 Admin / Servisní plocha</h3>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Diagnostika, údržba a low-level operativní servis. Hlavní pracovní plocha (Pracovna)
+          zůstává čistá od těchto nástrojů, aby Karel a terapeutky měly přehledné prostředí.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <AdminCard
+          title="Working Memory"
+          desc="Inspect derived runtime layer — therapist_state, part_state, snapshot integrita."
+          where="Pracovna → Dashboard hlavička → Správa → záložka WM"
+        />
+        <AdminCard
+          title="Health audit"
+          desc="Audit kartotéky, hledání chybějících sekcí, návrh úkolů na doplnění."
+          where="Pracovna → Dashboard hlavička → Správa → Health"
+        />
+        <AdminCard
+          title="Drive queue"
+          desc="Frontu zápisů na Drive, pending writes, queue watchdog."
+          where="Pracovna → Dashboard hlavička → Správa → Write Queue Inbox"
+        />
+        <AdminCard
+          title="Registry / Recovery"
+          desc="Did part registry, recovery panel, cleanup duplicit."
+          where="Pracovna → Dashboard hlavička → Správa → Registry / Recovery"
+        />
+        <AdminCard
+          title="Centrum sync"
+          desc="Manuální synchronizace 00_CENTRUM dokumentů s DB."
+          where="Pracovna → Dashboard hlavička → Správa → Centrum sync"
+        />
+        <AdminCard
+          title="Cleanup úkolů"
+          desc="Archivace starých nesplněných úkolů (>7 dní)."
+          where="Pracovna → Dashboard hlavička → Správa → Cleanup tasks"
+        />
+      </div>
+
+      <div className="jung-card p-3 text-[11px] text-muted-foreground">
+        Pozn.: Admin tooly žijí uvnitř <strong>DidSprava</strong> dialogu, který se otevírá
+        z hlavičky Dashboardu (v Pracovně). Tato plocha slouží jako mapa, kde co najít —
+        bez duplikace state managementu.
+      </div>
+    </div>
+  );
+};
+
+const AdminCard: React.FC<{ title: string; desc: string; where: string }> = ({
+  title, desc, where,
+}) => (
+  <div className="jung-card p-3 space-y-1.5">
+    <div className="text-xs font-serif tracking-wide text-foreground">{title}</div>
+    <div className="text-[11px] text-muted-foreground leading-snug">{desc}</div>
+    <div className="text-[10px] text-muted-foreground/70 italic pt-1 border-t border-border/30">
+      {where}
     </div>
   </div>
 );
