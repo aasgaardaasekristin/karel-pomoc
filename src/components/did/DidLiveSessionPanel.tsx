@@ -79,6 +79,14 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onB
   const [handoffDialogOpen, setHandoffDialogOpen] = useState(false);
   const [isClosingLight, setIsClosingLight] = useState(false);
 
+  // ── Post-session interrogation room ──
+  // Mezikrok mezi LIVE a finální analýzou: Karel klade cílené otázky, terapeut doplňuje.
+  const [showInterrogation, setShowInterrogation] = useState(false);
+  const [interrogationPayload, setInterrogationPayload] = useState<{
+    qa: InterrogationAnswer[];
+    extraNote: string;
+  } | null>(null);
+
   const EMOTION_OPTIONS = [
     "klidná", "nejistá", "frustrovaná", "dojatá",
     "vyčerpaná", "nadějná", "úzkostná", "překvapená",
