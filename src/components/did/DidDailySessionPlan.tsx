@@ -83,7 +83,7 @@ const GENERATION_STEPS = [
 
 import DidLiveSessionPanel from "./DidLiveSessionPanel";
 
-const DidDailySessionPlan = ({ refreshTrigger, compact = false }: Props) => {
+const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }: Props) => {
   const [plans, setPlans] = useState<SessionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -574,6 +574,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false }: Props) => {
             onOpenLive={() => setLiveSessionActive(true)}
             prevSession={plan.id === firstPendingPlan?.id ? prevSession : null}
             compact={compact}
+            onOpenPrepRoom={onOpenPrepRoom}
           />
         ))}
 
@@ -597,6 +598,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false }: Props) => {
                 prevSession={null}
                 isArchived
                 compact={compact}
+                onOpenPrepRoom={onOpenPrepRoom}
               />
             ))}
           </div>
@@ -682,6 +684,8 @@ interface PlanCardProps {
   isArchived?: boolean;
   /** Pracovna SESSION-CONTROLS CLEANUP: skrývá Přegenerovat / Smazat. */
   compact?: boolean;
+  /** SESSION PREP ROOM PASS: otevírá `DeliberationRoom` modal. */
+  onOpenPrepRoom?: (deliberationId: string) => void;
 }
 
 const PlanCard = ({
@@ -698,6 +702,7 @@ const PlanCard = ({
   prevSession,
   isArchived,
   compact = false,
+  onOpenPrepRoom,
 }: PlanCardProps) => {
   const leadLabel = plan.session_format === "crisis_intervention" || plan.session_lead === "all"
     ? "Karel (vlákno) · Káťa (telefon) · Hanička (sezení)"
