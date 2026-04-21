@@ -24,6 +24,7 @@ import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DidDailyBriefingPanel from "./DidDailyBriefingPanel";
 import KarelCrisisDeficits from "./KarelCrisisDeficits";
+import DailyDecisionTasks from "./DailyDecisionTasks";
 
 interface TherapistStateMini {
   therapist: "hanka" | "kata";
@@ -191,7 +192,17 @@ const KarelOverviewPanel = ({
         </ErrorBoundary>
       </div>
 
-      {/* ── BLOCK A2 — Krizové deficity dne (Crisis Function Reallocation 2026-04-21) ──
+      {/* ── BLOCK A2 — Dnešní rozhodovací práce (Slice 3B Decision Deck) ──
+            Derived view-model nad existujícími zdroji (tasks, pending questions,
+            briefing waiting items, crisis deficits, session proposals). Ukazuje
+            jen new_today / needs_reissue / escalate_to_meeting / blocking
+            waiting_response. Operativa dne, done, dropped a not_relevant_anymore
+            sem nepatří — Slice 2 RE-ANCHOR SPEC sekce D. */}
+      <ErrorBoundary fallbackTitle="Decision deck nelze načíst">
+        <DailyDecisionTasks refreshTrigger={refreshTrigger + internalRefresh} />
+      </ErrorBoundary>
+
+      {/* ── BLOCK A3 — Krizové deficity dne (Crisis Function Reallocation 2026-04-21) ──
             Sem byly přesunuty deficitní signály, které dříve viseli v krizovém banneru:
             chybí dnešní hodnocení / chybí feedback / dlouho bez kontaktu.
             Banner zůstává čistá signalizační vrstva; tady jsou Karlovy
