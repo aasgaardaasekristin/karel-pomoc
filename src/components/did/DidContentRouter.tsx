@@ -1040,22 +1040,11 @@ const PracovnaSurface: React.FC<PracovnaSurfaceProps> = ({
 
       {/* Slice 3A (2026-04-21): „Pracovní místnosti" sekce 3 odstraněna —
           duplicitní s `Komunikace` surface (4 stejné buttony). Spec sekce A2
-          zamkla Communication Surface jako jediného ownera těchto launcherů. */}
+          zamkla Communication Surface jako jediného ownera těchto launcherů.
+          `WorkflowButton` helper odstraněn jako dead code (Slice 3A finish). */}
     </div>
   );
 };
-
-const WorkflowButton: React.FC<{ onClick: () => void; title: string; desc: string }> = ({
-  onClick, title, desc,
-}) => (
-  <button
-    onClick={onClick}
-    className="text-left p-3 rounded-xl border border-border/60 bg-card/40 hover:bg-card hover:shadow-sm transition-all"
-  >
-    <div className="text-xs font-serif tracking-wide text-foreground">{title}</div>
-    <div className="text-[11px] text-muted-foreground mt-0.5">{desc}</div>
-  </button>
-);
 
 /* ── Komunikace plocha — původní 4 buttony (Hanička / Káťa / Porady / Live) ── */
 const CommunicationSurface: React.FC<{
@@ -1120,15 +1109,17 @@ const CommunicationSurface: React.FC<{
   </div>
 );
 
-/* ── Admin plocha — servisní launcher pro DidSprava + WM/Registry quick info ──
-     DidSprava (Dialog) zůstává původním wiringem v Dashboardu (uvnitř DidDashboard
-     headeru). Z Adminu otevřeme to samé tlačítko skrze přepnutí na Pracovnu —
-     uživatel uvidí "Správa" tlačítko v hlavičce Dashboardu. Tato plocha drží
-     mapu admin nástrojů a popis, co kde žije (servisní gateway).
+/* ── Admin plocha — skutečný hostitel admin tooling.
 
-     Slice 3A (2026-04-21): AdminSurface se stal SKUTEČNÝM hostitelem
-     admin tooling. `AdminSpravaLauncher` (drží wiring + render `<DidSprava>`)
-     se přesunul z headeru Pracovny sem. Pracovna je čistá. */
+     Slice 3A (2026-04-21): AdminSurface je SKUTEČNÝM hostitelem admin
+     tooling. `AdminSpravaLauncher` (drží wiring + render `<DidSprava>`
+     Dialog launcheru — bootstrap / health audit / reformat / centrum-sync
+     / cleanup-tasks / refresh-memory) byl přesunut z headeru Pracovny
+     sem. Pracovna (`DidDashboard` header) je teď čistá od admin tooling.
+
+     Krizová vrstva NEMÁ admin entry — jediný owner crisis detailu je
+     `CrisisDetailWorkspace` přes `useCrisisDetail()`. Vstupy: CrisisAlert
+     banner, KarelCrisisDeficits, CommandCrisisCard. */
 interface AdminSurfaceProps {
   navigate: (path: string) => void;
   onManualUpdate: () => Promise<void>;
