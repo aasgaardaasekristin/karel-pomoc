@@ -277,7 +277,7 @@ const CrisisWorkspaceHeader: React.FC<{
           </span>
         )}
         {card.isStale && (
-          <span className="inline-flex items-center gap-1 text-amber-700">
+          <span className="inline-flex items-center gap-1 text-accent-foreground/90">
             <Clock className="w-3 h-3" />
             {Math.round(card.hoursStale)}h bez kontaktu
           </span>
@@ -367,7 +367,7 @@ const CrisisOverviewSection: React.FC<{
           <ul className="space-y-1">
             {deficits.map((d, i) => (
               <li key={i} className="text-sm text-foreground flex items-start gap-2">
-                <AlertCircle className="w-3.5 h-3.5 mt-0.5 text-amber-700 shrink-0" />
+                <AlertCircle className="w-3.5 h-3.5 mt-0.5 text-accent shrink-0" />
                 <span>{d}</span>
               </li>
             ))}
