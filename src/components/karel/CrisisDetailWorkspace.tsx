@@ -87,22 +87,7 @@ const STATE_LABELS: Record<string, string> = {
   monitoring_post: "monitoring",
 };
 
-async function callFn(fnName: string, body: Record<string, any>) {
-  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-  const session = (await supabase.auth.getSession()).data.session;
-  const res = await fetch(`https://${projectId}.supabase.co/functions/v1/${fnName}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  const payload = text ? JSON.parse(text) : {};
-  if (!res.ok) throw new Error(payload?.error || `HTTP ${res.status}`);
-  return payload;
-}
+// (acknowledge je řešen přímo přes supabase update — backend nemá akci `acknowledge_alert`)
 
 const CrisisDetailWorkspace: React.FC = () => {
   const { activeCardId, closeCrisisDetail, initialTab } = useCrisisDetail();
