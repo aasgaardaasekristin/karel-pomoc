@@ -413,24 +413,9 @@ const DidDashboard = ({
             >
               <RefreshCw className="h-3 w-3" /> Obnovit
             </Button>
-            <DidSprava
-              onBootstrap={runDidBootstrap}
-              isBootstrapping={isBootstrapping}
-              onHealthAudit={runHealthAudit}
-              isAuditing={isAuditing}
-              onReformat={runReformat}
-              isReformatting={isReformatting}
-              onManualUpdate={onManualUpdate}
-              isUpdating={isUpdating}
-              onCentrumSync={runCentrumSync}
-              isCentrumSyncing={isCentrumSyncing}
-              onCleanupTasks={runCleanupTasks}
-              isCleaningTasks={isCleaningTasks}
-              onRefreshMemory={onRefreshMemory}
-              isRefreshingMemory={isRefreshingMemory}
-              refreshTrigger={refreshTrigger}
-              onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
-            />
+            {/* Slice 3A (2026-04-21): „Správa" launcher přesunut do
+                AdminSurface (DidContentRouter → AdminSpravaLauncher).
+                Pracovna je čistá od admin tooling. */}
           </div>
         </div>
 
