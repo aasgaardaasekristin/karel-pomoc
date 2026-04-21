@@ -27,6 +27,12 @@ interface DidLiveSessionPanelProps {
   partName: string;
   therapistName: string; // "Hanka" or "Káťa"
   contextBrief?: string;
+  /**
+   * ID dnešního did_daily_session_plans řádku, ze kterého live sezení vzniklo.
+   * Používá se k pravdivému přepsání stavu plánu po light close / finální analýze.
+   * Optional pro zpětnou kompatibilitu — když chybí, status se nepřepisuje.
+   */
+  planId?: string;
   onEnd: (summary: string) => void;
   onBack: () => void;
 }
@@ -36,7 +42,7 @@ interface DidLiveSessionPanelProps {
  * Karel advises the therapist in real-time during work with a DID part.
  * Similar to LiveSessionPanel but with DID-specific context and prompts.
  */
-const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onBack }: DidLiveSessionPanelProps) => {
+const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, onEnd, onBack }: DidLiveSessionPanelProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
