@@ -389,6 +389,23 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
         karel_therapist_feedback: "",
       });
 
+      // ── PRAVDIVÝ STAV PLÁNU: light close → awaiting_analysis ──
+      // Plán už neběží, ale taky není analyzovaný. Pracovna layer 4 toto
+      // musí vidět jinak než `in_progress` nebo `done`.
+      if (planId) {
+        try {
+          await (supabase as any)
+            .from("did_daily_session_plans")
+            .update({
+              status: "awaiting_analysis",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", planId);
+        } catch (planErr) {
+          console.warn("Failed to update plan status to awaiting_analysis:", planErr);
+        }
+      }
+
       toast.success("Sezení ukončeno — připraveno pro následnou analýzu");
       setHandoffDialogOpen(false);
       setCompletedReport("Surový přepis uložen. Plná analýza proběhne v dalším kroku.");
