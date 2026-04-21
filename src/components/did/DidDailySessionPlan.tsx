@@ -671,6 +671,8 @@ interface PlanCardProps {
   onOpenLive: () => void;
   prevSession: PreviousSession | null;
   isArchived?: boolean;
+  /** Pracovna SESSION-CONTROLS CLEANUP: skrývá Přegenerovat / Smazat. */
+  compact?: boolean;
 }
 
 const PlanCard = ({
@@ -686,6 +688,7 @@ const PlanCard = ({
   onOpenLive,
   prevSession,
   isArchived,
+  compact = false,
 }: PlanCardProps) => {
   const leadLabel = plan.session_format === "crisis_intervention" || plan.session_lead === "all"
     ? "Karel (vlákno) · Káťa (telefon) · Hanička (sezení)"
