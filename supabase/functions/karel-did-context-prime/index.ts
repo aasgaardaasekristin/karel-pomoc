@@ -730,6 +730,11 @@ serve(async (req) => {
     const now = new Date();
 
     // ═══ CACHE CHECK ═══
+    // ⚠️ ISOLATION GUARD (HOURGLASS_CACHE_AUDIT_2026_04_21):
+    //    `context_cache` je PROMPT-PRIME ONLY. NIKDO mimo tuto funkci
+    //    ji nesmí číst jako runtime truth. Spižírna A (selectPantryA)
+    //    si data tahá rovnou z canonical layeru (did_daily_context +
+    //    karel_working_memory_snapshots), ne odsud.
     // Normalize cache key: "general" and "hana_personal" are the same mode
     const normalizedSubMode = (subMode === "hana_personal" || subMode === "personal") ? "general" : (subMode || "none");
     const cacheKey = `${partName || "none"}|${normalizedSubMode}`;

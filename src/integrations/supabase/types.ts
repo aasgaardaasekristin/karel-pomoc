@@ -3845,6 +3845,63 @@ export type Database = {
         }
         Relationships: []
       }
+      karel_pantry_b_entries: {
+        Row: {
+          created_at: string
+          detail: Json
+          entry_kind: string
+          expires_at: string
+          flush_result: Json | null
+          id: string
+          intended_destinations: string[]
+          processed_at: string | null
+          processed_by: string | null
+          related_crisis_event_id: string | null
+          related_part_name: string | null
+          related_therapist: string | null
+          source_kind: string
+          source_ref: string | null
+          summary: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          detail?: Json
+          entry_kind: string
+          expires_at?: string
+          flush_result?: Json | null
+          id?: string
+          intended_destinations?: string[]
+          processed_at?: string | null
+          processed_by?: string | null
+          related_crisis_event_id?: string | null
+          related_part_name?: string | null
+          related_therapist?: string | null
+          source_kind: string
+          source_ref?: string | null
+          summary: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          detail?: Json
+          entry_kind?: string
+          expires_at?: string
+          flush_result?: Json | null
+          id?: string
+          intended_destinations?: string[]
+          processed_at?: string | null
+          processed_by?: string | null
+          related_crisis_event_id?: string | null
+          related_part_name?: string | null
+          related_therapist?: string | null
+          source_kind?: string
+          source_ref?: string | null
+          summary?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       karel_promises: {
         Row: {
           context: string | null
