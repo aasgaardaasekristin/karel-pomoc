@@ -390,27 +390,14 @@ const DidDashboard = ({
   return (
     <div className="min-h-screen" data-no-swipe-back="true">
       <div className="relative z-10 mx-auto max-w-[900px] space-y-4 px-4 py-6">
-        {/* Dashboard Reality Cleanup Pass (2026-04-21):
-            - Header (timestamp + live + Obnovit) ODSTRANĚN — duplicita s
-              headerem `KarelOverviewPanel`. Pracovna má jeden „Obnovit" nahoře.
-            - `KarelDailyPlan` ODSTRANĚN — renderoval jen `CommandFourSections`
-              (DNES NOVĚ / DNES HORŠÍ / DNES VYŽADUJE ZÁSAH), což je významová
-              duplicita s `DailyDecisionTasks` (Nové dnes / Reissue / Blokující).
-              Single owner decision decku = `DailyDecisionTasks`. */}
+        {/* Final Pracovna Cleanup Verdict (2026-04-21):
+            - CommandCrisisCard ODPOJEN — duplicita s CrisisAlert bannerem.
+              Operativní detail krizí dostupný přes CrisisDetailWorkspace.
+            - OpsSnapshotBar ODPOJEN — counter strip přesunut mimo Pracovna.
+            - Pracovna teď renderuje jen porady + dnešní sezení. Briefing
+              vlastní KarelOverviewPanel (nadřazený layout). */}
 
-        {/* ── BLOCK 1 — CRISIS COMMAND (renders only when active crisis exists) ── */}
-        {snapshot?.command?.crises?.length > 0 && (
-          <div data-pracovna-anchor="crisis-command">
-            <ErrorBoundary fallbackTitle="Velitelská karta selhala">
-              <CommandCrisisCard
-                crises={snapshot.command.crises as CommandCrisis[]}
-                refreshTrigger={refreshTrigger}
-              />
-            </ErrorBoundary>
-          </div>
-        )}
-
-        {/* ── BLOCK 2b — TEAM DELIBERATIONS (společná porada týmu, max 2+1) ── */}
+        {/* ── BLOCK 1 — TEAM DELIBERATIONS (společná porada týmu) ── */}
         <StudyCard className="space-y-3" data-pracovna-anchor="team-deliberations">
           <ErrorBoundary fallbackTitle="Porada týmu selhala">
             <TeamDeliberationsPanel
@@ -420,6 +407,7 @@ const DidDashboard = ({
           </ErrorBoundary>
         </StudyCard>
 
+        {/* ── BLOCK 2 — DNEŠNÍ SEZENÍ ── */}
         <StudyCard className="space-y-4" data-pracovna-anchor="today-session-plan">
           <SectionTitle icon={<Clock className="h-4 w-4 text-primary" />}>Dnes</SectionTitle>
 
@@ -429,8 +417,6 @@ const DidDashboard = ({
             </ErrorBoundary>
           </div>
         </StudyCard>
-
-        <OpsSnapshotBar refreshTrigger={refreshTrigger} parts={parts} activeThreads={activeThreads} />
       </div>
 
       <DeliberationRoom
