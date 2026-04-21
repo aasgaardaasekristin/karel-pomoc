@@ -75,7 +75,7 @@ const CrisisAlert: React.FC = () => {
     <div className="sticky top-0 z-50">
       {globalUnreadBriefCount > 0 && (
         <div
-          className="px-4 py-1 flex items-center justify-center gap-1.5 text-[11px]"
+          className="px-3 py-0.5 flex items-center justify-center gap-1.5 text-[11px]"
           style={{
             backgroundColor: "hsl(8 20% 95%)",
             color: "hsl(8 40% 35%)",
@@ -105,16 +105,16 @@ const CrisisAlert: React.FC = () => {
                 borderLeft: `2px solid ${ambient.accent}`,
               }}
             >
-              <div className="max-w-[900px] mx-auto px-4 py-2.5">
-                <div className="flex items-center gap-3 text-[13px]">
-                  <Shield className="w-4 h-4 shrink-0" style={{ color: ambient.muted }} />
+              <div className="max-w-[900px] mx-auto px-3 py-1.5">
+                <div className="flex items-center gap-2 text-[12px] leading-tight">
+                  <Shield className="w-3.5 h-3.5 shrink-0" style={{ color: ambient.muted }} />
 
-                  <span className="font-medium" style={{ color: ambient.accent }}>
+                  <span className="font-medium truncate" style={{ color: ambient.accent }}>
                     {card.displayName}
                   </span>
 
                   <span
-                    className="text-[11px] px-1.5 py-0.5 rounded-sm font-normal"
+                    className="text-[10px] px-1 py-0.5 rounded-sm font-normal leading-none"
                     style={{
                       backgroundColor: "transparent",
                       color: ambient.accent,
@@ -124,48 +124,50 @@ const CrisisAlert: React.FC = () => {
                     {card.severity}
                   </span>
 
-                  <span className="text-[11px]" style={{ color: ambient.muted }}>
+                  <span className="text-[10px] whitespace-nowrap" style={{ color: ambient.muted }}>
                     {stateLabel}
                   </span>
 
                   {card.daysActive != null && (
-                    <span className="text-[11px]" style={{ color: ambient.muted, opacity: 0.8 }}>
+                    <span className="text-[10px] whitespace-nowrap" style={{ color: ambient.muted, opacity: 0.8 }}>
                       den {card.daysActive}
                     </span>
                   )}
 
                   {card.isStale && (
                     <span
-                      className="text-[11px] flex items-center gap-1"
+                      className="text-[10px] flex items-center gap-1 whitespace-nowrap"
                       style={{ color: ambient.muted, opacity: 0.85 }}
                     >
                       <Clock className="w-3 h-3" />
-                      {Math.round(card.hoursStale)}h bez kontaktu
+                      {Math.round(card.hoursStale)}h
                     </span>
                   )}
 
                   <button
                     onClick={() => (isActive ? closeCrisisDetail() : openCrisisDetail(id))}
-                    className="ml-auto flex items-center gap-1 text-[11px] px-2 py-1 rounded transition-colors"
+                    className="ml-auto flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors"
                     style={{
-                      color: ambient.accent,
+                      color: ambient.muted,
                       backgroundColor: "transparent",
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = "hsl(0 0% 100% / 0.4)";
+                      e.currentTarget.style.color = ambient.accent;
+                      e.currentTarget.style.backgroundColor = "hsl(0 0% 100% / 0.3)";
                     }}
                     onMouseLeave={(e) => {
+                      e.currentTarget.style.color = ambient.muted;
                       e.currentTarget.style.backgroundColor = "transparent";
                     }}
                     aria-label={isActive ? "Zavřít detail krize" : "Otevřít detail krize"}
                   >
                     {isActive ? (
                       <>
-                        Zavřít <ChevronUp className="w-3.5 h-3.5" />
+                        Zavřít <ChevronUp className="w-3 h-3" />
                       </>
                     ) : (
                       <>
-                        Otevřít detail <ChevronDown className="w-3.5 h-3.5" />
+                        Detail <ChevronDown className="w-3 h-3" />
                       </>
                     )}
                   </button>
