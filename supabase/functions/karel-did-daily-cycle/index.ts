@@ -5,6 +5,11 @@ import { Resend } from "https://esm.sh/resend@2.0.0";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
+import {
+  readUnprocessedPantryB,
+  markPantryBProcessed,
+  purgeExpiredPantryB,
+} from "../_shared/pantryB.ts";
 
 // OAuth2 token helper
 async function getAccessToken(): Promise<string> {
