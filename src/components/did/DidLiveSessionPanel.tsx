@@ -64,6 +64,9 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onB
   const [isSavingReflection, setIsSavingReflection] = useState(false);
   const [sessionCompleted, setSessionCompleted] = useState(false);
   const [completedReport, setCompletedReport] = useState("");
+  // 'light'  = ukončeno bez analýzy (uložen surový přepis, čeká na následný analytický krok)
+  // 'analyzed' = plně zpracované sezení s Karlovou analýzou
+  const [completionMode, setCompletionMode] = useState<"light" | "analyzed">("analyzed");
 
   // ── Live Session Room v1 additions (session prep → live) ──
   // Plán panel viditelný hned v živé místnosti, ne jen jako skrytý kontext.
