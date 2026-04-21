@@ -586,24 +586,15 @@ const CrisisLaunchpadSection: React.FC<{
         <h3 className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
           Akční launchpad
         </h3>
-        <div className="flex items-center gap-2">
+        {onJumpToClosure && (
           <button
-            onClick={onJumpToManagement}
+            onClick={onJumpToClosure}
             className="text-[11px] px-2 py-1 rounded text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors inline-flex items-center gap-1"
-            title="Detailní denní workflow této krize"
+            title="Closure readiness této krize"
           >
-            Řízení <ArrowRight className="w-3 h-3" />
+            Uzavření <ArrowRight className="w-3 h-3" />
           </button>
-          {onJumpToClosure && (
-            <button
-              onClick={onJumpToClosure}
-              className="text-[11px] px-2 py-1 rounded text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors inline-flex items-center gap-1"
-              title="Closure readiness této krize"
-            >
-              Uzavření <ArrowRight className="w-3 h-3" />
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
