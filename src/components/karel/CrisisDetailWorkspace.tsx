@@ -326,18 +326,18 @@ const CrisisWorkspaceHeader: React.FC<{
         {card.primaryTherapist && card.primaryTherapist !== "neurčeno" && (
           <span className="inline-flex items-center gap-1">
             <Users className="w-3 h-3" />
-            vede: <strong className="text-foreground">{card.primaryTherapist}</strong>
-            {card.secondaryTherapist && (
-              <> · podpora: <strong className="text-foreground">{card.secondaryTherapist}</strong></>
+            tým: <strong className="text-foreground">{card.primaryTherapist}</strong>
+            {card.secondaryTherapist && card.secondaryTherapist !== card.primaryTherapist && (
+              <>, <strong className="text-foreground">{card.secondaryTherapist}</strong></>
             )}
           </span>
         )}
-        {card.alertId && (
+        {(card.alertId || card.eventId) && (
           <button
             onClick={onAcknowledge}
             disabled={ackLoading}
             className="ml-auto inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
-            title="Vzít alert na vědomí"
+            title="Skrýt banner a označit jako vzato na vědomí"
           >
             {ackLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
             Vzít na vědomí
