@@ -7198,11 +7198,37 @@ Vra\u0165 JSON:
       console.warn("[PART-STATUS] Auto-detection failed (non-fatal):", partStatusErr);
     }
 
-    // ═══ HOURGLASS: PHASE 8B — SPIŽÍRNA B FLUSH ═══
-    // Před Drive flushem zpracovat všechny denní implikace nasbírané ze
-    // Spižírny B (post-chat writeback, deliberation synthesis, atd.) a
-    // routnout je do canonical cílů: did_implications, did_therapist_tasks,
-    // did_pending_questions. Mark processed_at + log do flush_result.
+    // ═══ HOURGLASS: PHASE 8B — SPIŽÍRNA B FLUSH (schema-correct, no-silent-loss) ═══
+    //
+    // Routuje denní implikace z Spižírny B do canonical cílů:
+    //   - did_therapist_tasks      — task pro Hanku/Káťu
+    //   - did_pending_questions    — otevřená otázka pro Hanku/Káťu
+    //   - did_implications         — DOČASNĚ VYPNUTO (viz níže)
+    //
+    // BEZPEČNOSTNÍ PRAVIDLA (anti silent-loss):
+    //   1. Entry se označí jako processed POUZE pokud VŠECHNY požadované
+    //      cíle reálně uspěly (insert bez chyby).
+    //   2. Pokud jakýkoliv požadovaný cíl selže nebo je blocked, entry
+    //      ZŮSTÁVÁ unprocessed (processed_at = NULL) a re-tryne se příští
+    //      cyklus. Místo processed_at zapíšeme jen flush_result s důvodem.
+    //   3. did_implications: NEpíšeme vůbec. Tabulka má NOT NULL
+    //      observation_id s FK do did_observations(id). Spižírna B
+    //      neprodukuje observation rows, a synthetizovat fake observation
+    //      jen kvůli FK je nepravdivé. Destinace zůstává v entry detail
+    //      pro budoucí korektní napojení (až bude observation pipeline
+    //      generovat odpovídající observation_id).
+    //
+    // Schema reference (ověřeno proti information_schema 2026-04-21):
+    //   did_therapist_tasks    : user_id, task, assigned_to ∈ {hanka,kata,both},
+    //                            status (default 'pending'), priority, source,
+    //                            note, category, task_tier
+    //   did_pending_questions  : question (NOT NULL), directed_to, subject_type,
+    //                            subject_id, status ∈ {open,answered,expired,irrelevant},
+    //                            context, blocking
+    //   did_implications       : NOT NULL observation_id, impact_type ∈
+    //                            {context_only,immediate_plan,part_profile,risk,team_coordination},
+    //                            destinations[], implication_text, status ∈
+    //                            {active,done,expired,superseded}
     await setPhase("phase_8b_pantry_b_flush", "Fáze 8B: Spižírna B flush");
     try {
       const { data: ddcRow } = await sb
@@ -7218,74 +7244,186 @@ Vra\u0165 JSON:
         const entries = await readUnprocessedPantryB(sb as any, flushUserId);
         console.log(`[PHASE_8B] Spižírna B: ${entries.length} unprocessed entries`);
 
-        const processedIds: string[] = [];
-        let routedToImplications = 0;
+        const fullyProcessedIds: string[] = [];
+        const partialOrBlocked: Array<{ id: string; result: Record<string, unknown> }> = [];
+        let routedToImplications = 0; // vždy 0 dokud je destinace blocked
         let routedToTasks = 0;
         let routedToQuestions = 0;
+        let blockedImplications = 0;
 
         for (const entry of entries) {
-          try {
-            const dests = (entry.intended_destinations as string[]) || [];
+          const dests = (entry.intended_destinations as string[]) || [];
+          const requested: string[] = [];
+          const succeeded: string[] = [];
+          const failed: Array<{ destination: string; reason: string }> = [];
+          const blocked: Array<{ destination: string; reason: string }> = [];
 
-            if (dests.includes("did_implications")) {
-              const { error: implErr } = await sb.from("did_implications").insert({
-                user_id: flushUserId,
-                content: entry.summary,
-                source_type: "pantry_b_flush",
-                source_id: entry.id,
-                part_name: entry.related_part_name,
-                metadata: {
-                  pantry_entry_kind: entry.entry_kind,
-                  pantry_source_kind: entry.source_kind,
-                  ...((entry.detail as Record<string, unknown>) || {}),
-                },
+          // ── DESTINATION 1: did_therapist_tasks ──────────────────────
+          if (dests.includes("did_therapist_tasks")) {
+            requested.push("did_therapist_tasks");
+            const therapist = (entry.related_therapist || "").toLowerCase();
+            if (therapist !== "hanka" && therapist !== "kata") {
+              blocked.push({
+                destination: "did_therapist_tasks",
+                reason: "missing_or_invalid_related_therapist",
               });
-              if (!implErr) routedToImplications++;
+            } else {
+              try {
+                const { error: taskErr } = await sb.from("did_therapist_tasks").insert({
+                  user_id: flushUserId,
+                  task: entry.summary.slice(0, 500),
+                  assigned_to: therapist,
+                  status: "pending",
+                  priority: entry.entry_kind === "risk" ? "high" : "normal",
+                  source: "pantry_b_flush",
+                  category: entry.entry_kind || "general",
+                  note: JSON.stringify({
+                    pantry_entry_id: entry.id,
+                    pantry_entry_kind: entry.entry_kind,
+                    pantry_source_kind: entry.source_kind,
+                    pantry_source_ref: entry.source_ref ?? null,
+                    related_part_name: entry.related_part_name ?? null,
+                  }),
+                });
+                if (taskErr) {
+                  failed.push({ destination: "did_therapist_tasks", reason: taskErr.message });
+                } else {
+                  succeeded.push("did_therapist_tasks");
+                  routedToTasks++;
+                }
+              } catch (e) {
+                failed.push({
+                  destination: "did_therapist_tasks",
+                  reason: (e as Error).message ?? "unknown_exception",
+                });
+              }
             }
+          }
 
-            if (dests.includes("did_therapist_tasks") && entry.related_therapist) {
-              const { error: taskErr } = await sb.from("did_therapist_tasks").insert({
-                user_id: flushUserId,
-                therapist: entry.related_therapist,
-                task_text: entry.summary.slice(0, 500),
-                source_kind: "pantry_b_flush",
-                source_ref: entry.id,
-                related_part_name: entry.related_part_name,
-                priority: entry.entry_kind === "risk" ? "high" : "normal",
+          // ── DESTINATION 2: did_pending_questions ────────────────────
+          if (dests.includes("did_pending_questions")) {
+            requested.push("did_pending_questions");
+            const therapist = (entry.related_therapist || "").toLowerCase();
+            if (therapist !== "hanka" && therapist !== "kata") {
+              blocked.push({
+                destination: "did_pending_questions",
+                reason: "missing_or_invalid_related_therapist",
               });
-              if (!taskErr) routedToTasks++;
+            } else {
+              try {
+                const { error: qErr } = await sb.from("did_pending_questions").insert({
+                  question: entry.summary.slice(0, 500),
+                  directed_to: therapist,
+                  subject_type: entry.related_part_name ? "part" : null,
+                  subject_id: entry.related_part_name ?? null,
+                  status: "open",
+                  context: JSON.stringify({
+                    pantry_entry_id: entry.id,
+                    pantry_entry_kind: entry.entry_kind,
+                    pantry_source_kind: entry.source_kind,
+                    pantry_source_ref: entry.source_ref ?? null,
+                  }),
+                });
+                if (qErr) {
+                  failed.push({ destination: "did_pending_questions", reason: qErr.message });
+                } else {
+                  succeeded.push("did_pending_questions");
+                  routedToQuestions++;
+                }
+              } catch (e) {
+                failed.push({
+                  destination: "did_pending_questions",
+                  reason: (e as Error).message ?? "unknown_exception",
+                });
+              }
             }
+          }
 
-            if (dests.includes("did_pending_questions") && entry.related_therapist) {
-              const { error: qErr } = await sb.from("did_pending_questions").insert({
-                user_id: flushUserId,
-                question: entry.summary.slice(0, 500),
-                asked_to: entry.related_therapist,
-                part_name: entry.related_part_name,
-                status: "pending",
-                source_kind: "pantry_b_flush",
-                source_ref: entry.id,
-              });
-              if (!qErr) routedToQuestions++;
-            }
+          // ── DESTINATION 3: did_implications ─ DOČASNĚ BLOCKED ──────
+          // Důvod: did_implications.observation_id je NOT NULL + FK do
+          // did_observations. Spižírna B neprodukuje observation rows.
+          // Synthetizovat fake observation jen pro vyplnění FK by porušilo
+          // datovou integritu. Entry zůstane v Pantry B unprocessed dokud
+          // tuto destinaci explicitně nezapojíme přes observation pipeline.
+          if (dests.includes("did_implications")) {
+            requested.push("did_implications");
+            blocked.push({
+              destination: "did_implications",
+              reason:
+                "schema_blocked_observation_id_required_no_safe_synthesis_path",
+            });
+            blockedImplications++;
+          }
 
-            processedIds.push(entry.id);
-          } catch (entryErr) {
-            console.warn(`[PHASE_8B] Entry ${entry.id} routing failed:`, entryErr);
+          // ── EVAL: fully processed jen když všechny requested uspěly ─
+          const fullySucceeded =
+            requested.length > 0 &&
+            succeeded.length === requested.length &&
+            failed.length === 0 &&
+            blocked.length === 0;
+
+          // Pokud entry nemá žádnou rozpoznanou destinaci, považujeme ji
+          // za processed (nemá kam jít = nejde o ztrátu, je to no-op routing).
+          const noDestinationRecognized = requested.length === 0;
+
+          if (fullySucceeded || noDestinationRecognized) {
+            fullyProcessedIds.push(entry.id);
+          } else {
+            partialOrBlocked.push({
+              id: entry.id,
+              result: {
+                requested_destinations: requested,
+                succeeded,
+                failed,
+                blocked,
+                last_attempt_at: new Date().toISOString(),
+                retryable: failed.length > 0 || blocked.length > 0,
+              },
+            });
           }
         }
 
-        if (processedIds.length > 0) {
-          await markPantryBProcessed(sb as any, processedIds, "karel-did-daily-cycle:phase_8b", {
-            routed_to_implications: routedToImplications,
-            routed_to_tasks: routedToTasks,
-            routed_to_questions: routedToQuestions,
-            flushed_at: new Date().toISOString(),
-          });
+        // ── MARK fully processed (anti silent-loss: jen tyto) ────────
+        if (fullyProcessedIds.length > 0) {
+          await markPantryBProcessed(
+            sb as any,
+            fullyProcessedIds,
+            "karel-did-daily-cycle:phase_8b",
+            {
+              routed_to_implications: routedToImplications,
+              routed_to_tasks: routedToTasks,
+              routed_to_questions: routedToQuestions,
+              flushed_at: new Date().toISOString(),
+              status: "fully_processed",
+            },
+          );
+        }
+
+        // ── ZAPSAT diagnostiku k partial/blocked entries (NEoznačit processed!) ──
+        // processed_at zůstává NULL → příští cyklus si entry znovu vezme.
+        // Aktualizujeme jen flush_result, abychom uchovali poslední důvod.
+        for (const pb of partialOrBlocked) {
+          try {
+            const { error: diagErr } = await sb
+              .from("karel_pantry_b_entries")
+              .update({ flush_result: pb.result })
+              .eq("id", pb.id)
+              .is("processed_at", null);
+            if (diagErr) {
+              console.warn(`[PHASE_8B] Failed to write flush_result for ${pb.id}:`, diagErr.message);
+            }
+          } catch (e) {
+            console.warn(`[PHASE_8B] flush_result update threw for ${pb.id}:`, e);
+          }
         }
 
         const purged = await purgeExpiredPantryB(sb as any);
-        console.log(`[PHASE_8B] ✅ Flush done: ${processedIds.length}/${entries.length} entries processed (impl=${routedToImplications}, tasks=${routedToTasks}, questions=${routedToQuestions}); purged ${purged} expired.`);
+        console.log(
+          `[PHASE_8B] ✅ Flush done: processed=${fullyProcessedIds.length}/${entries.length}, ` +
+            `partial_or_blocked=${partialOrBlocked.length}, ` +
+            `tasks=${routedToTasks}, questions=${routedToQuestions}, ` +
+            `implications_blocked=${blockedImplications} (schema), purged=${purged} expired.`,
+        );
       }
     } catch (pbErr) {
       console.error("[PHASE_8B] Pantry B flush failed (non-fatal):", pbErr);
