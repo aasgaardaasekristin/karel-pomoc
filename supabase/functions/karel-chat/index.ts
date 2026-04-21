@@ -18,6 +18,11 @@ import {
   type EvidencePersistenceContext,
 } from "../_shared/evidencePersistence.ts";
 import type { ExtractedWriteOutput } from "../_shared/phase5Types.ts";
+import {
+  appendPantryB,
+  type PantryBEntryKind,
+  type PantryBDestination,
+} from "../_shared/pantryB.ts";
 import { normalizeKarelContext } from "../_shared/karelContextNormalizer.ts";
 import { buildKarelIdentityBlock } from "../_shared/karelIdentity.ts";
 import { getKarelTone } from "../_shared/karelTonalRouter.ts";
