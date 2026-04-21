@@ -26,6 +26,7 @@
 import React from "react";
 import { AlertCircle, Clock, ClipboardList, Play, ExternalLink } from "lucide-react";
 import { useCrisisOperationalState, type CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
+import { useCrisisDetail } from "@/contexts/CrisisDetailContext";
 
 type DeficitKind = "missing_interview" | "missing_feedback" | "stale";
 
