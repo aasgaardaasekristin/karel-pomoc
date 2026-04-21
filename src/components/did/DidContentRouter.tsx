@@ -976,10 +976,41 @@ const PracovnaSurface: React.FC<PracovnaSurfaceProps> = ({
   onOpenHanicka,
   onOpenKata,
 }) => {
+  // ── Crisis Workspace Precision Routing Pass (2026-04-21) ──
+  // Anchor handoff: karty z CrisisDetailWorkspace nastaví do sessionStorage
+  // klíč `karel_pracovna_anchor` (např. "karel-overview", "today-session-plan",
+  // "team-deliberations", "operativa"). Pracovna ho při mountu přečte,
+  // najde `data-pracovna-anchor=<klíč>`, scrollne tam a krátce highlightne
+  // ring, aby uživatel věděl, kde je. Klíč po použití mažeme.
+  useEffect(() => {
+    let timer: number | undefined;
+    let highlightTimer: number | undefined;
+    try {
+      const anchor = sessionStorage.getItem("karel_pracovna_anchor");
+      if (!anchor) return;
+      sessionStorage.removeItem("karel_pracovna_anchor");
+
+      // Defer to next tick so DOM is mounted.
+      timer = window.setTimeout(() => {
+        const el = document.querySelector<HTMLElement>(`[data-pracovna-anchor="${anchor}"]`);
+        if (!el) return;
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        el.classList.add("ring-2", "ring-primary/60", "rounded-xl", "transition-shadow");
+        highlightTimer = window.setTimeout(() => {
+          el.classList.remove("ring-2", "ring-primary/60");
+        }, 2200);
+      }, 120);
+    } catch { /* ignore */ }
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      if (highlightTimer) window.clearTimeout(highlightTimer);
+    };
+  }, []);
+
   return (
     <div className="mx-auto max-w-[900px] space-y-6 px-3 sm:px-4 py-6">
       {/* ── SEKCE 1 — KARLŮV PŘEHLED (decision deck — řídicí sekce) ── */}
-      <section aria-label="Karlův přehled">
+      <section aria-label="Karlův přehled" data-pracovna-anchor="karel-overview">
         <ErrorBoundary fallbackTitle="Karlův přehled selhal">
           <KarelOverviewPanel variant="embedded" />
         </ErrorBoundary>
@@ -988,12 +1019,8 @@ const PracovnaSurface: React.FC<PracovnaSurfaceProps> = ({
       {/* Jemný vizuální oddělovač mezi decision deckem a operativou */}
       <div className="border-t border-border/40" aria-hidden />
 
-      {/* ── SEKCE 2 — OPERATIVA DNE (frontstage dashboard) ──
-            DidDashboard nese: krize, KarelDailyPlan (operational queue —
-            úkoly/otázky/sessions backlog), Team Deliberations, dnešní plán
-            sezení, ops snapshot bar. Karlův hlavní narativ tu už není
-            (přesunut do Karlova přehledu výše). */}
-      <section aria-label="Operativa dne">
+      {/* ── SEKCE 2 — OPERATIVA DNE (frontstage dashboard) ── */}
+      <section aria-label="Operativa dne" data-pracovna-anchor="operativa">
         <ErrorBoundary fallbackTitle="Dashboard selhal">
           <DidDashboard
             onManualUpdate={onManualUpdate}
@@ -1007,13 +1034,8 @@ const PracovnaSurface: React.FC<PracovnaSurfaceProps> = ({
         </ErrorBoundary>
       </section>
 
-      {/* ── SEKCE 3 — RYCHLÉ WORKFLOW ODKAZY ──
-            Workflow handoff body z Karlova přehledu (úkoly pro tým →
-            porada; úkol pro jednu terapeutku → její room; návrh sezení →
-            porada → Live). Tyto buttony jsou redundantní rychlé vstupy,
-            samotné workflow routing logika žije uvnitř KarelOverviewPanel
-            / DidDailyBriefingPanel CTA buttons. */}
-      <section aria-label="Workflow odkazy" className="jung-card p-4 space-y-3">
+      {/* ── SEKCE 3 — RYCHLÉ WORKFLOW ODKAZY ── */}
+      <section aria-label="Workflow odkazy" data-pracovna-anchor="rooms" className="jung-card p-4 space-y-3">
         <h3 className="text-sm font-serif tracking-wide text-foreground">Pracovní místnosti</h3>
         <div className="grid grid-cols-2 gap-2">
           <WorkflowButton onClick={onOpenMeeting} title="Otevřené porady" desc="Společná negotiation room" />
