@@ -66,6 +66,15 @@ interface FoundationData {
 interface Props {
   refreshTrigger?: number;
   onOpenDeliberation?: (id: string) => void;
+  /**
+   * Workspace Pass (2026-04-21):
+   *  - "standalone" — historický mód (vlastní min-h-screen + own padding).
+   *  - "embedded"   — sekce uvnitř Pracovny: žádný vlastní viewport wrapper,
+   *                  žádný horní padding, vnější layout drží Pracovna.
+   * Default zachováván jako "standalone" kvůli zpětné kompatibilitě
+   * (kdyby panel ještě někde žil mimo Pracovnu).
+   */
+  variant?: "standalone" | "embedded";
 }
 
 const SUPPORT_TONE: Record<string, string> = {
