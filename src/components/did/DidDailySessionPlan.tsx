@@ -40,6 +40,14 @@ interface PreviousSession {
 
 interface Props {
   refreshTrigger: number;
+  /**
+   * Pracovna SESSION-CONTROLS CLEANUP (2026-04-21):
+   *  Když true, skryjí se plánovací/údržbové akce, které nepatří na hlavní
+   *  pracovní stůl (Nový plán, Určit část, Přegenerovat, Smazat).
+   *  Layer 4 v Pracovně tak zobrazuje jen schválená dnešní sezení a akce
+   *  jejich průběhu (Zahájit / Splněno / Live / Ukončit).
+   */
+  compact?: boolean;
 }
 
 const urgencyLabels: Record<string, string> = {
@@ -66,7 +74,7 @@ const GENERATION_STEPS = [
 
 import DidLiveSessionPanel from "./DidLiveSessionPanel";
 
-const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
+const DidDailySessionPlan = ({ refreshTrigger, compact = false }: Props) => {
   const [plans, setPlans] = useState<SessionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -419,7 +427,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
             Plán sezení na dnes
           </h4>
           <div className="flex items-center gap-1.5">
-            {!generating && (
+            {!generating && !compact && (
               <>
                 <Button
                   variant="outline"
@@ -556,6 +564,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
             onRegenerate={() => handlePartSelected(plan.selected_part)}
             onOpenLive={() => setLiveSessionActive(true)}
             prevSession={plan.id === firstPendingPlan?.id ? prevSession : null}
+            compact={compact}
           />
         ))}
 
@@ -578,6 +587,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                 onOpenLive={() => {}}
                 prevSession={null}
                 isArchived
+                compact={compact}
               />
             ))}
           </div>
@@ -661,6 +671,8 @@ interface PlanCardProps {
   onOpenLive: () => void;
   prevSession: PreviousSession | null;
   isArchived?: boolean;
+  /** Pracovna SESSION-CONTROLS CLEANUP: skrývá Přegenerovat / Smazat. */
+  compact?: boolean;
 }
 
 const PlanCard = ({
@@ -676,6 +688,7 @@ const PlanCard = ({
   onOpenLive,
   prevSession,
   isArchived,
+  compact = false,
 }: PlanCardProps) => {
   const leadLabel = plan.session_format === "crisis_intervention" || plan.session_lead === "all"
     ? "Karel (vlákno) · Káťa (telefon) · Hanička (sezení)"
@@ -803,12 +816,16 @@ const PlanCard = ({
             ↩ Vrátit
           </Button>
         )}
-        <Button variant="ghost" size="sm" onClick={onRegenerate} className="h-6 px-2 text-[0.625rem] text-muted-foreground">
-          <RefreshCw className="mr-0.5 h-2.5 w-2.5" /> Přegenerovat
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onDelete} className="h-6 px-2 text-[0.625rem] text-destructive/70 hover:text-destructive">
-          <Trash2 className="mr-0.5 h-2.5 w-2.5" /> Smazat
-        </Button>
+        {!compact && (
+          <>
+            <Button variant="ghost" size="sm" onClick={onRegenerate} className="h-6 px-2 text-[0.625rem] text-muted-foreground">
+              <RefreshCw className="mr-0.5 h-2.5 w-2.5" /> Přegenerovat
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onDelete} className="h-6 px-2 text-[0.625rem] text-destructive/70 hover:text-destructive">
+              <Trash2 className="mr-0.5 h-2.5 w-2.5" /> Smazat
+            </Button>
+          </>
+        )}
       </div>
 
       {/* ═══ EXPANDED CONTENT ═══ */}
