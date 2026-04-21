@@ -253,9 +253,12 @@ export async function selectPantryA(
       .eq("user_id", userId)
       .eq("context_date", yesterday)
       .maybeSingle(),
+    // Status filter MUSÍ odpovídat reálnému CHECK constraintu tabulky
+    // did_implications.status ∈ {'active','done','expired','superseded'}
+    // (viz did_implications_status_check). 'active' = otevřená/nevyřešená.
     sb.from("did_implications")
       .select("id, implication_text, owner, destinations, status, review_at")
-      .in("status", ["open", "in_progress", "needs_review"])
+      .eq("status", "active")
       .order("created_at", { ascending: false })
       .limit(40),
     sb.from("did_pending_questions")
