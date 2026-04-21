@@ -2321,6 +2321,54 @@ serve(async (req) => {
     });
   }
 
+  // ═══ MANUAL → BACKGROUND DETACH (504 IDLE_TIMEOUT FIX) ═══
+  // The full daily cycle routinely runs 3–10 minutes (AI phases + Drive ops).
+  // Edge runtime hard-kills any HTTP request idle >150s with code IDLE_TIMEOUT,
+  // which surfaces in the UI as a blank-screen runtime error.
+  // For manual UI triggers (source="manual") we therefore detach the heavy run
+  // via EdgeRuntime.waitUntil and return 202 Accepted immediately. The UI can
+  // then poll {action:"status"} for progress instead of waiting on the socket.
+  // Cron / watchdog / dedup-bypassed paths still run synchronously as before.
+  if (isManualTriggerEarly && earlyBody?._bg !== true) {
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+      const bgBody = { ...earlyBody, _bg: true };
+      const bgPromise = fetch(`${supabaseUrl}/functions/v1/karel-did-daily-cycle`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceKey}`,
+          "x-detached": "1",
+        },
+        body: JSON.stringify(bgBody),
+      }).then(async (r) => {
+        // Drain body to free socket; log status for diagnostics.
+        try { await r.text(); } catch {}
+        console.log(`[daily-cycle] background self-invoke status=${r.status}`);
+      }).catch((e) => {
+        console.warn("[daily-cycle] background self-invoke failed:", (e as Error)?.message || e);
+      });
+      // @ts-ignore — EdgeRuntime is provided by Supabase edge runtime.
+      if (typeof EdgeRuntime !== "undefined" && (EdgeRuntime as any)?.waitUntil) {
+        // @ts-ignore
+        (EdgeRuntime as any).waitUntil(bgPromise);
+      }
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          accepted: true,
+          mode: "background",
+          message: "Manual run detached; poll {action:'status'} for progress.",
+        }),
+        { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    } catch (detachErr) {
+      console.warn("[daily-cycle] manual detach failed, falling through to sync:", detachErr);
+      // Fall through to synchronous path so we don't hide the work entirely.
+    }
+  }
+
   // === DEDUP: Skip if a successful daily cycle completed in last 3 hours ===
   // Manual admin trigger (source="manual") bypasses dedup so the harness
   // can prove an end-to-end run on demand.
