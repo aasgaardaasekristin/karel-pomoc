@@ -1,14 +1,6 @@
-import { useEffect, useState } from "react";
 import { AlertOctagon, Clock, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import DidCrisisPanel from "./DidCrisisPanel";
+import { useCrisisDetail } from "@/contexts/CrisisDetailContext";
 
 export interface CommandCrisis {
   crisisEventId?: string | null; // canonical crisis_events.id (preferred)
@@ -40,14 +32,9 @@ interface Props {
   refreshTrigger?: number;
 }
 
-export default function CommandCrisisCard({ crises, refreshTrigger }: Props) {
+export default function CommandCrisisCard({ crises, refreshTrigger: _refreshTrigger }: Props) {
   const navigate = useNavigate();
-  const [openDetailFor, setOpenDetailFor] = useState<string | null>(null);
-
-  // Reset open sheet on refresh
-  useEffect(() => {
-    setOpenDetailFor(null);
-  }, [refreshTrigger]);
+  const { openCrisisDetail } = useCrisisDetail();
 
   if (!crises || crises.length === 0) return null;
 
@@ -136,36 +123,19 @@ export default function CommandCrisisCard({ crises, refreshTrigger }: Props) {
                     </button>
                   ))}
 
-                  <Sheet
-                    open={openDetailFor === c.partName}
-                    onOpenChange={(o) =>
-                      setOpenDetailFor(o ? c.partName : null)
+                  {/* Slice 3A (2026-04-21): single crisis detail owner.
+                      Místo paralelního <Sheet><DidCrisisPanel/></Sheet>
+                      voláme společný useCrisisDetail() — stejný workspace,
+                      který otevírá CrisisAlert i KarelCrisisDeficits. */}
+                  <button
+                    onClick={() =>
+                      openCrisisDetail(c.crisisEventId || c.partName)
                     }
+                    className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-card/40 px-2.5 py-1 text-[11.5px] font-medium text-foreground/80 transition-colors hover:bg-card/70"
+                    aria-label={`Otevřít krizový detail pro ${c.partName}`}
                   >
-                    <SheetTrigger asChild>
-                      <button
-                        className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-card/40 px-2.5 py-1 text-[11.5px] font-medium text-foreground/80 transition-colors hover:bg-card/70"
-                      >
-                        Otevřít detail
-                      </button>
-                    </SheetTrigger>
-                    <SheetContent
-                      side="right"
-                      className="w-full overflow-y-auto sm:max-w-md"
-                    >
-                      <SheetHeader>
-                        <SheetTitle className="font-serif text-base">
-                          Krizový detail — {c.partName}
-                        </SheetTitle>
-                      </SheetHeader>
-                      <div className="mt-4">
-                        <DidCrisisPanel
-                          crisisId={c.crisisEventId || undefined}
-                          partName={c.crisisEventId ? undefined : c.partName}
-                        />
-                      </div>
-                    </SheetContent>
-                  </Sheet>
+                    Otevřít detail
+                  </button>
                 </div>
               </div>
             </div>
