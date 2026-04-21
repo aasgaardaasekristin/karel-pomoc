@@ -1090,7 +1090,11 @@ const PracovnaSurface: React.FC<PracovnaSurfaceProps> = () => {
         </h3>
         <div className="max-h-[22rem] overflow-auto pr-1">
           <ErrorBoundary fallbackTitle="Plán sezení selhal">
-            <DidDailySessionPlan refreshTrigger={refreshTrigger} compact />
+            <DidDailySessionPlan
+              refreshTrigger={refreshTrigger}
+              compact
+              onOpenPrepRoom={(id) => setOpenDeliberationId(id)}
+            />
           </ErrorBoundary>
         </div>
       </section>
