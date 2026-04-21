@@ -2,16 +2,17 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft, Camera, X, Shuffle, CheckCircle, RotateCcw } from "lucide-react";
+import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft, Camera, X, Shuffle, CheckCircle, RotateCcw, FileText, ChevronDown, ChevronUp, StickyNote, DoorClosed } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import ChatMessage from "@/components/ChatMessage";
 import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { Progress } from "@/components/ui/progress";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -63,6 +64,16 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onB
   const [isSavingReflection, setIsSavingReflection] = useState(false);
   const [sessionCompleted, setSessionCompleted] = useState(false);
   const [completedReport, setCompletedReport] = useState("");
+
+  // ── Live Session Room v1 additions (session prep → live) ──
+  // Plán panel viditelný hned v živé místnosti, ne jen jako skrytý kontext.
+  const [planExpanded, setPlanExpanded] = useState(true);
+  // Quick-note dialog — sběr poznámek během sezení (zařadí se do toku jako 📝).
+  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  // Lehké ukončení bez plné post-session analýzy (pro tento pass — handoff stav).
+  const [handoffDialogOpen, setHandoffDialogOpen] = useState(false);
+  const [isClosingLight, setIsClosingLight] = useState(false);
 
   const EMOTION_OPTIONS = [
     "klidná", "nejistá", "frustrovaná", "dojatá",
@@ -313,6 +324,68 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
       toast.error("Chyba při analýze obrázku");
     } finally {
       setIsImageAnalyzing(false);
+    }
+  };
+
+  // ── Quick note (📝) — vloží poznámku do toku jako user message ──
+  const handleAddNote = () => {
+    const text = noteDraft.trim();
+    if (!text) return;
+    const stamp = new Date().toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" });
+    setMessages(prev => [
+      ...prev,
+      { role: "user", content: `📝 *[Poznámka ${stamp}]*\n\n${text}` },
+    ]);
+    setNoteDraft("");
+    setNoteDialogOpen(false);
+    toast.success("Poznámka uložena");
+  };
+
+  // ── Lehké ukončení sezení (handoff stav, bez plné analýzy) ──
+  // Pro tento pass: uloží surový přepis + audio segmenty do did_part_sessions
+  // a propíše „sezení ukončeno" stav. Plná Karelova analýza se neprovádí.
+  const handleLightClose = async () => {
+    if (messages.length < 2) {
+      toast.error("Sezení je prázdné.");
+      return;
+    }
+    setIsClosingLight(true);
+    try {
+      const transcript = messages
+        .map(m => `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${m.content}`)
+        .join("\n\n");
+      const switchLogText = switchLog.length > 0
+        ? `\n\n## SWITCH LOG\n${switchLog.map(s => `- ${s.time}: ${s.from} → ${s.to}`).join("\n")}`
+        : "";
+      const audioAnalyses = messages
+        .filter(m => m.role === "assistant" && messages[messages.indexOf(m) - 1]?.content?.includes("🎙️"))
+        .map(m => m.content);
+
+      await supabase.from("did_part_sessions").insert({
+        part_name: partName,
+        therapist: therapistName,
+        session_type: "live",
+        ai_analysis: "",
+        karel_notes: `## SUROVÝ PŘEPIS (bez analýzy)\n\n${transcript}${switchLogText}`,
+        audio_analysis: audioAnalyses.join("\n---\n") || "",
+        karel_therapist_feedback: "",
+      });
+
+      toast.success("Sezení ukončeno — připraveno pro následnou analýzu");
+      setHandoffDialogOpen(false);
+      setCompletedReport("Surový přepis uložen. Plná analýza proběhne v dalším kroku.");
+      setMessages([]);
+      setInput("");
+      setSwitchLog([]);
+      setActivePart(partName);
+      audioSegmentCountRef.current = 0;
+      imageSegmentCountRef.current = 0;
+      setSessionCompleted(true);
+    } catch (e) {
+      console.error("Light close failed:", e);
+      toast.error("Nepodařilo se ukončit sezení");
+    } finally {
+      setIsClosingLight(false);
     }
   };
 
@@ -705,8 +778,15 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
               <span className="text-sm">🧩</span>
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-sm font-semibold text-foreground">Live DID sezení</h3>
+                <Badge className="text-[9px] gap-1 h-4 bg-destructive/15 text-destructive border border-destructive/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
+                  LIVE
+                </Badge>
+                <Badge variant="outline" className="text-[9px] h-4 border-primary/30 text-primary">
+                  připraveno · podepsáno týmem
+                </Badge>
                 {switchLog.length > 0 && (
                   <Badge variant="outline" className="text-[9px] gap-0.5 h-4 border-amber-500/40 text-amber-700 dark:text-amber-400">
                     <Shuffle className="w-2.5 h-2.5" />
@@ -715,27 +795,73 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
                 )}
               </div>
               <p className="text-xs text-muted-foreground truncate">
-                <span className={`font-medium ${switchFlash ? "text-amber-600 dark:text-amber-400" : ""}`}>{activePart}</span>
+                Část: <span className={`font-medium ${switchFlash ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>{activePart}</span>
                 {activePart !== partName && <span className="text-muted-foreground/60"> (start: {partName})</span>}
-                {" • "}{therapistName}
+                {" · vede "}<span className="font-medium text-foreground">{therapistName}</span>
               </p>
             </div>
           </div>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={handleEndSession}
-            disabled={isFinishing || messages.length < 2}
-            className="gap-1.5 text-xs h-9 shrink-0"
-          >
-            {isFinishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <StopCircle className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">Ukončit a analyzovat</span>
-            <span className="sm:hidden">Ukončit</span>
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setHandoffDialogOpen(true)}
+              disabled={isFinishing || isClosingLight || messages.length < 2}
+              className="gap-1.5 text-xs h-9"
+            >
+              <DoorClosed className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Ukončit sezení</span>
+              <span className="sm:hidden">Ukončit</span>
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleEndSession}
+              disabled={isFinishing || isClosingLight || messages.length < 2}
+              className="gap-1.5 text-xs h-9"
+            >
+              {isFinishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <StopCircle className="w-3.5 h-3.5" />}
+              <span className="hidden md:inline">Ukončit a analyzovat</span>
+              <span className="md:hidden">Analyzovat</span>
+            </Button>
+          </div>
         </div>
 
-        {/* Audio & Image tools strip */}
+        {/* ── Schválený plán (z přípravné porady) ── */}
+        {contextBrief && (
+          <div className="mt-3 rounded-md border border-primary/25 bg-primary/5">
+            <button
+              type="button"
+              onClick={() => setPlanExpanded(v => !v)}
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span className="text-xs font-medium text-foreground">Schválený plán sezení</span>
+                <Badge variant="outline" className="text-[9px] h-4 border-primary/30 text-primary">
+                  z přípravné porady
+                </Badge>
+              </div>
+              {planExpanded ? (
+                <ChevronUp className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              )}
+            </button>
+            {planExpanded && (
+              <div className="px-3 pb-3 pt-0 max-h-72 overflow-y-auto border-t border-primary/15">
+                <RichMarkdown compact>{contextBrief}</RichMarkdown>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Audio & Image & Note tools strip */}
         <div className="mt-3 flex items-center gap-2 flex-wrap">
+          {/* Note button */}
+          <Button variant="outline" size="sm" onClick={() => setNoteDialogOpen(true)} className="gap-1.5 h-8 text-xs">
+            <StickyNote className="w-3.5 h-3.5" /> Poznámka
+          </Button>
           {/* Camera button */}
           <Button variant="outline" size="sm" onClick={imageUpload.openFilePicker} className="gap-1.5 h-8 text-xs">
             <Camera className="w-3.5 h-3.5" /> Fotka
@@ -966,6 +1092,68 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Quick Note Dialog ── */}
+      <Dialog open={noteDialogOpen} onOpenChange={setNoteDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <StickyNote className="w-4 h-4 text-primary" />
+              Poznámka ze sezení
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Krátká poznámka, postřeh nebo citace — uloží se do toku sezení s časem.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={noteDraft}
+            onChange={e => setNoteDraft(e.target.value)}
+            placeholder="Co se stalo, co řekla část, neverbální signál…"
+            className="min-h-[6rem] text-sm"
+            autoFocus
+          />
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" size="sm" onClick={() => { setNoteDialogOpen(false); setNoteDraft(""); }}>
+              Zrušit
+            </Button>
+            <Button size="sm" onClick={handleAddNote} disabled={!noteDraft.trim()}>
+              Přidat poznámku
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Lehké ukončení sezení (handoff bez plné analýzy) ── */}
+      <Dialog open={handoffDialogOpen} onOpenChange={setHandoffDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <DoorClosed className="w-4 h-4 text-primary" />
+              Ukončit sezení
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Uloží surový přepis, audio segmenty i poznámky a sezení označí jako <strong>ukončené, připravené pro následnou analýzu</strong>. Plnou Karelovu analýzu spustíš v dalším kroku zvlášť.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-xs text-muted-foreground space-y-1.5 rounded-md border border-border/60 bg-muted/30 p-3">
+            <div>• Část: <span className="font-medium text-foreground">{partName}</span></div>
+            <div>• Vede: <span className="font-medium text-foreground">{therapistName}</span></div>
+            <div>• Záznamů v toku: <span className="font-medium text-foreground">{messages.length}</span></div>
+            {switchLog.length > 0 && (
+              <div>• Switche: <span className="font-medium text-foreground">{switchLog.length}×</span></div>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setHandoffDialogOpen(false)} disabled={isClosingLight}>
+              Zpět do sezení
+            </Button>
+            <Button size="sm" onClick={handleLightClose} disabled={isClosingLight} className="gap-1.5">
+              {isClosingLight ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DoorClosed className="w-3.5 h-3.5" />}
+              Ukončit a uložit přepis
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
