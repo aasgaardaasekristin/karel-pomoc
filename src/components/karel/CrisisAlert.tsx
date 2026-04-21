@@ -1,10 +1,27 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Shield, ChevronDown, ChevronUp, AlertTriangle, Users, Bell, ExternalLink } from "lucide-react";
-import { useCrisisOperationalState, type CrisisOperationalCard, type CrisisCTA } from "@/hooks/useCrisisOperationalState";
+import { Shield, ChevronDown, ChevronUp, Bell, Users, Clock } from "lucide-react";
+import { useCrisisOperationalState, type CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
 import CrisisOperationalDetail from "./CrisisOperationalDetail";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
+
+/**
+ * CrisisAlert — SIGNALIZAČNÍ vrstva (Crisis Banner Repair Pass, 2026-04-21).
+ *
+ * ROLE:
+ *   - Stručně signalizovat, že existuje aktivní krize.
+ *   - Ukázat identitu části, severity, operační stav, den krize, čas bez kontaktu.
+ *   - 1–2 status badges (display-only).
+ *   - Jediný vstup: "Otevřít detail" → expanze do CrisisOperationalDetail.
+ *
+ * NEDĚLÁ (přesunuto do detailu / porad / therapist rooms):
+ *   - "Spustit hodnocení", "Získat feedback", "Otevřít poradu" (Řízení tab v detailu)
+ *   - Přímé DB side-effects, edge function calls
+ *   - Routing do Hanička/Káťa rooms (řeší KarelOverviewPanel a detail)
+ *
+ * VIZUÁL:
+ *   - Tlumený warm tint (žádná tvrdá červená přes celý vršek)
+ *   - Severity rozlišena pouze jemným akcentem na levém border + badge barvou
+ *   - Kompaktní 1-řádkový layout (ikona + identita + badges + chevron)
+ */
 
 const STATE_LABELS: Record<string, string> = {
   active: "aktivní",
@@ -18,221 +35,175 @@ const STATE_LABELS: Record<string, string> = {
   monitoring_post: "monitoring",
 };
 
-async function callEdgeFn(fnName: string, body: Record<string, any>) {
-  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-  const session = (await supabase.auth.getSession()).data.session;
-  const res = await fetch(`https://${projectId}.supabase.co/functions/v1/${fnName}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`Edge function ${fnName} failed: ${res.status}`);
-  return res.json();
-}
+// ── Severity → kultivovaný HSL tint (žádná křiklavá červená) ──
+//   Zdroj: design system semantic tokens; inline RGBA jen jako fallback,
+//   protože banner je sticky nad Pracovnou a potřebuje vlastní subtle pozadí.
+const severityTint = (severity: string) => {
+  switch (severity?.toLowerCase()) {
+    case "critical":
+      // tlumený rose/wine — varuje, ale neřve
+      return { bg: "hsl(8 35% 96%)", border: "hsl(8 45% 78%)", accent: "hsl(8 55% 45%)" };
+    case "high":
+    case "elevated":
+      // teplý terracotta
+      return { bg: "hsl(20 40% 96%)", border: "hsl(20 50% 80%)", accent: "hsl(20 60% 42%)" };
+    case "moderate":
+      // sand / ochre
+      return { bg: "hsl(38 40% 96%)", border: "hsl(38 45% 80%)", accent: "hsl(38 55% 38%)" };
+    default:
+      // low / unknown — neutral stone
+      return { bg: "hsl(34 22% 95%)", border: "hsl(34 18% 82%)", accent: "hsl(34 25% 38%)" };
+  }
+};
 
 const CrisisAlert: React.FC = () => {
-  const navigate = useNavigate();
   const { cards, loading, refetch, globalUnreadBriefCount } = useCrisisOperationalState();
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [initialTab, setInitialTab] = useState<"management" | "closure" | "history" | "audit" | undefined>(undefined);
-  const [ctaLoading, setCtaLoading] = useState<string | null>(null);
 
   if (loading || cards.length === 0) return null;
 
-  // ── Deep-link: open crisis thread in DID/Kluci ──
-  const navigateToCrisisThread = (partName: string, eventId: string | null) => {
-    const params = new URLSearchParams();
-    params.set("crisis_action", "interview");
-    params.set("part_name", partName);
-    if (eventId) params.set("crisis_event_id", eventId);
-    // Store hub section so Chat.tsx knows we're in DID mode
-    try { sessionStorage.setItem("karel_hub_section", "did"); } catch {}
-    navigate(`/chat?${params.toString()}`);
-  };
-
-  // ── Deep-link: open feedback workspace ──
-  const navigateToFeedback = (eventId: string | null) => {
-    const params = new URLSearchParams();
-    params.set("crisis_action", "feedback");
-    if (eventId) params.set("crisis_event_id", eventId);
-    try { sessionStorage.setItem("karel_hub_section", "did"); } catch {}
-    navigate(`/chat?${params.toString()}`);
-  };
-
-  // ── CTA: Spustit dnešní hodnocení (create assessment + open thread) ──
-  const handleStartAssessment = async (card: CrisisOperationalCard) => {
-    setCtaLoading("start_assessment");
-    try {
-      await callEdgeFn("karel-crisis-daily-assessment", {
-        crisis_event_id: card.eventId,
-        crisis_alert_id: card.alertId,
-        part_name: card.partName,
-      });
-      toast.success("Dnešní hodnocení založeno — otevírám krizové vlákno");
-      // After assessment is created, navigate to the crisis thread
-      navigateToCrisisThread(card.partName, card.eventId);
-    } catch (e: any) {
-      toast.error(`Spuštění hodnocení selhalo: ${e.message}`);
-    } finally {
-      setCtaLoading(null);
-    }
-  };
-
-  // ── CTA: Získat feedback terapeutek (generate questions + open workspace) ──
-  const handleRequestFeedback = async (card: CrisisOperationalCard) => {
-    setCtaLoading("request_feedback");
-    try {
-      await callEdgeFn("karel-crisis-daily-assessment", {
-        crisis_event_id: card.eventId,
-        crisis_alert_id: card.alertId,
-        part_name: card.partName,
-        generate_therapist_questions: true,
-      });
-      toast.success("Otázky pro terapeutky vygenerovány — otevírám feedback");
-      navigateToFeedback(card.eventId);
-    } catch (e: any) {
-      toast.error(`Generování otázek selhalo: ${e.message}`);
-    } finally {
-      setCtaLoading(null);
-    }
-  };
-
   return (
     <div className="sticky top-0 z-50">
-      {/* Global brief indicator */}
+      {/* ── Globální brief indicator (nepřehnaný, jemný) ── */}
       {globalUnreadBriefCount > 0 && (
-        <div className="text-white px-4 py-1 flex items-center justify-center gap-1 text-[11px]" style={{ backgroundColor: "#5C1A1A" }}>
+        <div
+          className="px-4 py-1 flex items-center justify-center gap-1.5 text-[11px]"
+          style={{
+            backgroundColor: "hsl(8 25% 92%)",
+            color: "hsl(8 45% 30%)",
+            borderBottom: "1px solid hsl(8 25% 82%)",
+          }}
+        >
           <Bell className="w-3 h-3" />
-          {globalUnreadBriefCount} nepřečtený brief{globalUnreadBriefCount > 1 ? "y" : ""} (celkem)
+          {globalUnreadBriefCount} nepřečtený brief{globalUnreadBriefCount > 1 ? "y" : ""}
         </div>
       )}
 
-      {cards.map(card => {
+      {cards.map((card: CrisisOperationalCard) => {
         const id = card.eventId || card.alertId || card.partName;
         const isExpanded = expandedId === id;
-        const stateLabel = card.operatingState ? STATE_LABELS[card.operatingState] || card.operatingState : "aktivní";
-
-        const hasMeeting = card.meetingOpen || (card.closureMeeting && card.closureMeeting.status !== "finalized");
-        const meetingLabel = card.closureMeeting ? "closure meeting" : card.meetingOpen ? "porada" : card.crisisMeetingRequired ? "⚠ porada doporučena" : null;
+        const stateLabel = card.operatingState
+          ? STATE_LABELS[card.operatingState] || card.operatingState
+          : "aktivní";
+        const tint = severityTint(card.severity);
 
         return (
           <div key={id}>
-            <div className="text-white px-4 py-2" style={{ backgroundColor: "#7C2D2D" }}>
-              <div className="max-w-[900px] mx-auto">
-                {/* ── Row 1: Identity + status badges ── */}
-                <div className="flex items-center gap-2 text-[13px] flex-wrap">
-                  <Shield className="w-4 h-4 shrink-0" />
-                  <span className="font-bold">{card.displayName}</span>
-                  <span className="text-white/70 text-[11px]">{card.severity}</span>
-                  <span className="bg-white/15 text-[10px] px-1.5 py-0.5 rounded font-medium">{stateLabel}</span>
-                  {card.daysActive && <span className="text-white/60 text-[11px]">den {card.daysActive}</span>}
+            {/* ── Banner row (signalizační, 1 řádek, kultivovaný tint) ── */}
+            <div
+              className="px-4 py-2 transition-colors"
+              style={{
+                backgroundColor: tint.bg,
+                borderBottom: `1px solid ${tint.border}`,
+                borderLeft: `3px solid ${tint.accent}`,
+              }}
+            >
+              <div className="max-w-[900px] mx-auto flex items-center gap-2 text-[13px] flex-wrap">
+                <Shield className="w-4 h-4 shrink-0" style={{ color: tint.accent }} />
+                <span className="font-semibold" style={{ color: tint.accent }}>
+                  {card.displayName}
+                </span>
 
-                  {/* ── Status links (navigational, not orchestration) ── */}
-                  {card.missingTodayInterview && (
-                    <button
-                      onClick={() => navigateToCrisisThread(card.partName, card.eventId)}
-                      className="text-[10px] bg-yellow-500/30 hover:bg-yellow-500/50 text-yellow-100 px-1.5 py-0.5 rounded flex items-center gap-1 cursor-pointer transition-colors underline underline-offset-2"
-                    >
-                      <ExternalLink className="w-2.5 h-2.5" />
-                      chybí: interview
-                    </button>
-                  )}
-                  {card.missingTherapistFeedback && (
-                    <button
-                      onClick={() => navigateToFeedback(card.eventId)}
-                      className="text-[10px] bg-yellow-500/30 hover:bg-yellow-500/50 text-yellow-100 px-1.5 py-0.5 rounded flex items-center gap-1 cursor-pointer transition-colors underline underline-offset-2"
-                    >
-                      <ExternalLink className="w-2.5 h-2.5" />
-                      chybí: feedback
-                    </button>
-                  )}
-                  {card.unansweredQuestionCount > 0 && (
-                    <button
-                      onClick={() => navigateToFeedback(card.eventId)}
-                      className="text-[10px] bg-yellow-500/30 hover:bg-yellow-500/50 text-yellow-100 px-1.5 py-0.5 rounded flex items-center gap-1 cursor-pointer transition-colors underline underline-offset-2"
-                    >
-                      <ExternalLink className="w-2.5 h-2.5" />
-                      {card.unansweredQuestionCount} otázek
-                    </button>
-                  )}
+                {/* severity (display-only) */}
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                  style={{
+                    backgroundColor: tint.accent,
+                    color: "white",
+                    opacity: 0.85,
+                  }}
+                >
+                  {card.severity}
+                </span>
 
-                  {meetingLabel && (
-                    <span className="text-[10px] bg-blue-500/30 text-blue-100 px-1.5 py-0.5 rounded flex items-center gap-1">
-                      <Users className="w-3 h-3" />
-                      {meetingLabel}
-                    </span>
-                  )}
+                {/* operating state (display-only badge) */}
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded"
+                  style={{
+                    backgroundColor: "hsl(0 0% 100% / 0.7)",
+                    color: tint.accent,
+                    border: `1px solid ${tint.border}`,
+                  }}
+                >
+                  {stateLabel}
+                </span>
 
-                  <button
-                    onClick={() => { setInitialTab(undefined); setExpandedId(isExpanded ? null : id); }}
-                    className="hover:bg-white/10 px-1.5 py-1 rounded transition-colors shrink-0 ml-auto"
-                  >
-                    {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-
-                {/* ── Row 2: Contact freshness + action CTAs ── */}
-                {!isExpanded && (
-                  <div className="flex items-center gap-3 mt-1 text-[11px] text-white/70 flex-wrap">
-                    {/* Plain text: hours without contact */}
-                    {card.isStale && (
-                      <span className="text-white/50">
-                        {Math.round(card.hoursStale)}h bez kontaktu s částí
-                      </span>
-                    )}
-
-                    {/* Non-duplicate blocker (only show if it's NOT the stale message) */}
-                    {card.mainBlocker && (
-                      <span className="flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3 text-yellow-300 shrink-0" />
-                        {card.mainBlocker}
-                      </span>
-                    )}
-
-                    {/* ── Action CTAs (orchestration, not navigation) ── */}
-                    <div className="flex gap-1.5 ml-auto">
-                      {/* Spustit dnešní hodnocení — creates assessment then navigates */}
-                      {card.missingTodayInterview && card.eventId && (
-                        <button
-                          onClick={() => handleStartAssessment(card)}
-                          disabled={ctaLoading === "start_assessment"}
-                          className="text-[10px] px-2 py-0.5 rounded bg-amber-500/30 hover:bg-amber-500/50 text-yellow-100 transition-colors disabled:opacity-50 disabled:cursor-wait"
-                        >
-                          {ctaLoading === "start_assessment" ? "⏳ Zakládám…" : "▶ Spustit hodnocení"}
-                        </button>
-                      )}
-
-                      {/* Získat feedback terapeutek — generates questions then navigates */}
-                      {card.missingTherapistFeedback && card.eventId && (
-                        <button
-                          onClick={() => handleRequestFeedback(card)}
-                          disabled={ctaLoading === "request_feedback"}
-                          className="text-[10px] px-2 py-0.5 rounded bg-white/15 hover:bg-white/25 text-white/90 transition-colors disabled:opacity-50 disabled:cursor-wait"
-                        >
-                          {ctaLoading === "request_feedback" ? "⏳ Generuji…" : "📋 Získat feedback"}
-                        </button>
-                      )}
-
-                      {/* Meeting CTA */}
-                      {card.crisisMeetingRequired && !card.meetingOpen && (
-                        <button
-                          onClick={() => { setInitialTab("closure"); setExpandedId(id); }}
-                          className="text-[10px] px-2 py-0.5 rounded bg-blue-500/30 hover:bg-blue-500/50 text-blue-100 transition-colors"
-                        >
-                          🤝 Porada
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                {/* den krize (display-only) */}
+                {card.daysActive != null && (
+                  <span className="text-[11px]" style={{ color: tint.accent, opacity: 0.7 }}>
+                    den {card.daysActive}
+                  </span>
                 )}
+
+                {/* primary therapist (display-only) */}
+                {card.primaryTherapist && card.primaryTherapist !== "neurčeno" && (
+                  <span
+                    className="text-[10px] flex items-center gap-1"
+                    style={{ color: tint.accent, opacity: 0.75 }}
+                  >
+                    <Users className="w-3 h-3" />
+                    {card.primaryTherapist}
+                  </span>
+                )}
+
+                {/* hours stale (display-only, jen když relevantní) */}
+                {card.isStale && (
+                  <span
+                    className="text-[10px] flex items-center gap-1"
+                    style={{ color: tint.accent, opacity: 0.75 }}
+                  >
+                    <Clock className="w-3 h-3" />
+                    {Math.round(card.hoursStale)}h bez kontaktu
+                  </span>
+                )}
+
+                {/* ── 1–2 statusové deficitní badges (display-only, ne CTA) ── */}
+                {card.missingTodayInterview && (
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded"
+                    style={{
+                      backgroundColor: "hsl(38 50% 90%)",
+                      color: "hsl(38 60% 30%)",
+                    }}
+                  >
+                    chybí: dnešní hodnocení
+                  </span>
+                )}
+                {card.missingTherapistFeedback && (
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded"
+                    style={{
+                      backgroundColor: "hsl(38 50% 90%)",
+                      color: "hsl(38 60% 30%)",
+                    }}
+                  >
+                    chybí: feedback
+                  </span>
+                )}
+
+                {/* ── Jediný vstup: Otevřít detail ── */}
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : id)}
+                  className="ml-auto flex items-center gap-1 text-[11px] px-2 py-1 rounded transition-colors hover:bg-white/40"
+                  style={{ color: tint.accent }}
+                  aria-label={isExpanded ? "Zavřít detail krize" : "Otevřít detail krize"}
+                >
+                  {isExpanded ? (
+                    <>
+                      Zavřít <ChevronUp className="w-3.5 h-3.5" />
+                    </>
+                  ) : (
+                    <>
+                      Otevřít detail <ChevronDown className="w-3.5 h-3.5" />
+                    </>
+                  )}
+                </button>
               </div>
             </div>
 
+            {/* ── Detail (operativní karta) ── */}
             {isExpanded && (
-              <CrisisOperationalDetail card={card} onRefetch={refetch} initialTab={initialTab} />
+              <CrisisOperationalDetail card={card} onRefetch={refetch} />
             )}
           </div>
         );
