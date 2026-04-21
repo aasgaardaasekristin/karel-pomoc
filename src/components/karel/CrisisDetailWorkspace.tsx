@@ -532,12 +532,15 @@ const CrisisLaunchpadSection: React.FC<{
   ];
 
   // ── Render ──────────────────────────────────────────────────────────
+  // Hlavní problém = klinický důvod krize (trigger / clinical summary).
+  // mainBlocker je deficitní signál (chybí výsledek apod.) — zobrazujeme až
+  // jako fallback, hlavní problém má být skutečné klinické "co se děje".
   const mainProblem =
-    card.mainBlocker ||
     card.triggerDescription ||
     card.clinicalSummary ||
     card.displaySummary ||
-    "Není zaznamenán hlavní problém.";
+    card.mainBlocker ||
+    "Hlavní problém krize není dosud zaznamenán (chybí trigger_description / clinical_summary v crisis_events).";
 
   return (
     <div className="p-5 space-y-5">
