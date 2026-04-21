@@ -1459,7 +1459,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                     sourceMode: modeLabel,
                     sourceThreadId: didThreadLabel || null,
                     sourceType: isCastMode ? "part_direct" : "thread",
-                    userId: user.id,
+                    userId: memUserId,
                   };
 
                   let insertedCount = 0;
@@ -1505,7 +1505,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                       contentType: resolveGovernedContentType(intent),
                       subjectType: resolveGovernedSubjectType(intent),
                       subjectId: resolveGovernedSubjectId(intent, therapistKey),
-                      userId: user.id,
+                      userId: memUserId,
                       success: !writeErr,
                       errorMessage: writeErr?.message,
                     });
@@ -1554,7 +1554,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                             ?? matchedOutput.summary;
 
                           await appendPantryB(sbMem, {
-                            user_id: user.id,
+                            user_id: memUserId,
                             entry_kind: entryKind,
                             source_kind: "chat_postwriteback",
                             source_ref: chatSourceId,
