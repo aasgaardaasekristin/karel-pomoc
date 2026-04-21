@@ -64,16 +64,13 @@ import {
 } from "@/hooks/useCrisisOperationalState";
 import { useCrisisDetail } from "@/contexts/CrisisDetailContext";
 
-import CrisisDailyManagement from "./CrisisDailyManagement";
-import CrisisSessionQA from "./CrisisSessionQA";
 import CrisisClosureWorkflow from "./CrisisClosureWorkflow";
 import CrisisHistoryTimeline, { type JournalEntry } from "./CrisisHistoryTimeline";
 
-type TabKey = "overview" | "management" | "closure" | "history";
+type TabKey = "overview" | "closure" | "history";
 
 const TABS: { key: TabKey; label: string; hint: string }[] = [
   { key: "overview", label: "Přehled", hint: "akční launchpad" },
-  { key: "management", label: "Řízení", hint: "denní workflow této krize" },
   { key: "closure", label: "Uzavření", hint: "closure readiness" },
   { key: "history", label: "Historie", hint: "deník zásahů" },
 ];
@@ -90,22 +87,7 @@ const STATE_LABELS: Record<string, string> = {
   monitoring_post: "monitoring",
 };
 
-async function callFn(fnName: string, body: Record<string, any>) {
-  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-  const session = (await supabase.auth.getSession()).data.session;
-  const res = await fetch(`https://${projectId}.supabase.co/functions/v1/${fnName}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  const payload = text ? JSON.parse(text) : {};
-  if (!res.ok) throw new Error(payload?.error || `HTTP ${res.status}`);
-  return payload;
-}
+// (acknowledge je řešen přímo přes supabase update — backend nemá akci `acknowledge_alert`)
 
 const CrisisDetailWorkspace: React.FC = () => {
   const { activeCardId, closeCrisisDetail, initialTab } = useCrisisDetail();
@@ -170,19 +152,34 @@ const CrisisDetailWorkspace: React.FC = () => {
   }, [activeTab, card]);
 
   const handleAcknowledge = async () => {
-    if (!card?.alertId) return;
+    if (!card) return;
     setAckLoading(true);
     try {
-      const data = await callFn("karel-crisis-closure-meeting", {
-        action: "acknowledge_alert",
-        alert_id: card.alertId,
-      });
-      if (data.success) {
-        toast.success("Alert vzat na vědomí");
-        refetch();
-      } else {
-        toast.error(data.error || "Chyba při potvrzení");
+      // Direct DB updates — there is no acknowledge_alert backend action.
+      // We mark the alert as acknowledged AND dismiss the banner on the event.
+      const stamp = new Date().toISOString();
+      const ops: Promise<any>[] = [];
+      if (card.alertId) {
+        ops.push(
+          (supabase as any)
+            .from("crisis_alerts")
+            .update({ acknowledged_at: stamp, acknowledged_by: "karel" })
+            .eq("id", card.alertId),
+        );
       }
+      if (card.eventId) {
+        ops.push(
+          (supabase as any)
+            .from("crisis_events")
+            .update({ banner_dismissed: true, banner_dismissed_at: stamp })
+            .eq("id", card.eventId),
+        );
+      }
+      const results = await Promise.all(ops);
+      const firstError = results.find((r) => r?.error)?.error;
+      if (firstError) throw new Error(firstError.message);
+      toast.success("Vzato na vědomí — banner skryt");
+      refetch();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Chyba při potvrzení");
     } finally {
@@ -243,16 +240,9 @@ const CrisisDetailWorkspace: React.FC = () => {
               {activeTab === "overview" && (
                 <CrisisLaunchpadSection
                   card={card}
-                  onJumpToManagement={() => setActiveTab("management")}
                   onJumpToClosure={closureRelevant ? () => setActiveTab("closure") : undefined}
                   onClose={closeCrisisDetail}
                 />
-              )}
-              {activeTab === "management" && (
-                <div className="p-5 space-y-5">
-                  <CrisisDailyManagement card={card} onRefetch={refetch} />
-                  <CrisisSessionQA card={card} onRefetch={refetch} />
-                </div>
               )}
               {activeTab === "closure" && (
                 <div className="p-5">
@@ -321,18 +311,18 @@ const CrisisWorkspaceHeader: React.FC<{
         {card.primaryTherapist && card.primaryTherapist !== "neurčeno" && (
           <span className="inline-flex items-center gap-1">
             <Users className="w-3 h-3" />
-            vede: <strong className="text-foreground">{card.primaryTherapist}</strong>
-            {card.secondaryTherapist && (
-              <> · podpora: <strong className="text-foreground">{card.secondaryTherapist}</strong></>
+            tým: <strong className="text-foreground">{card.primaryTherapist}</strong>
+            {card.secondaryTherapist && card.secondaryTherapist !== card.primaryTherapist && (
+              <>, <strong className="text-foreground">{card.secondaryTherapist}</strong></>
             )}
           </span>
         )}
-        {card.alertId && (
+        {(card.alertId || card.eventId) && (
           <button
             onClick={onAcknowledge}
             disabled={ackLoading}
             className="ml-auto inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
-            title="Vzít alert na vědomí"
+            title="Skrýt banner a označit jako vzato na vědomí"
           >
             {ackLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
             Vzít na vědomí
@@ -362,10 +352,9 @@ interface ActionCard {
 
 const CrisisLaunchpadSection: React.FC<{
   card: CrisisOperationalCard;
-  onJumpToManagement: () => void;
   onJumpToClosure?: () => void;
   onClose: () => void;
-}> = ({ card, onJumpToManagement, onJumpToClosure, onClose }) => {
+}> = ({ card, onJumpToClosure, onClose }) => {
   const navigate = useNavigate();
   const [openMeetingId, setOpenMeetingId] = useState<string | null>(null);
   const [openTaskCount, setOpenTaskCount] = useState<number | null>(null);
@@ -582,24 +571,15 @@ const CrisisLaunchpadSection: React.FC<{
         <h3 className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
           Akční launchpad
         </h3>
-        <div className="flex items-center gap-2">
+        {onJumpToClosure && (
           <button
-            onClick={onJumpToManagement}
+            onClick={onJumpToClosure}
             className="text-[11px] px-2 py-1 rounded text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors inline-flex items-center gap-1"
-            title="Detailní denní workflow této krize"
+            title="Closure readiness této krize"
           >
-            Řízení <ArrowRight className="w-3 h-3" />
+            Uzavření <ArrowRight className="w-3 h-3" />
           </button>
-          {onJumpToClosure && (
-            <button
-              onClick={onJumpToClosure}
-              className="text-[11px] px-2 py-1 rounded text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors inline-flex items-center gap-1"
-              title="Closure readiness této krize"
-            >
-              Uzavření <ArrowRight className="w-3 h-3" />
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">

@@ -16,9 +16,9 @@ import React, { createContext, useCallback, useContext, useMemo, useState } from
 
 interface CrisisDetailContextValue {
   activeCardId: string | null;
-  openCrisisDetail: (cardId: string, opts?: { initialTab?: "overview" | "management" | "closure" | "history" }) => void;
+  openCrisisDetail: (cardId: string, opts?: { initialTab?: "overview" | "closure" | "history" }) => void;
   closeCrisisDetail: () => void;
-  initialTab: "overview" | "management" | "closure" | "history";
+  initialTab: "overview" | "closure" | "history";
 }
 
 const CrisisDetailContext = createContext<CrisisDetailContextValue | null>(null);
