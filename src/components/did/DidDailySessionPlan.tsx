@@ -816,12 +816,16 @@ const PlanCard = ({
             ↩ Vrátit
           </Button>
         )}
-        <Button variant="ghost" size="sm" onClick={onRegenerate} className="h-6 px-2 text-[0.625rem] text-muted-foreground">
-          <RefreshCw className="mr-0.5 h-2.5 w-2.5" /> Přegenerovat
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onDelete} className="h-6 px-2 text-[0.625rem] text-destructive/70 hover:text-destructive">
-          <Trash2 className="mr-0.5 h-2.5 w-2.5" /> Smazat
-        </Button>
+        {!compact && (
+          <>
+            <Button variant="ghost" size="sm" onClick={onRegenerate} className="h-6 px-2 text-[0.625rem] text-muted-foreground">
+              <RefreshCw className="mr-0.5 h-2.5 w-2.5" /> Přegenerovat
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onDelete} className="h-6 px-2 text-[0.625rem] text-destructive/70 hover:text-destructive">
+              <Trash2 className="mr-0.5 h-2.5 w-2.5" /> Smazat
+            </Button>
+          </>
+        )}
       </div>
 
       {/* ═══ EXPANDED CONTENT ═══ */}
