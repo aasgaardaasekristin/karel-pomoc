@@ -907,6 +907,9 @@ const TerapeutSurfaces: React.FC<TerapeutSurfacesProps> = ({
           {surface === "admin" && (
             <AdminSurface
               navigate={navigate}
+              onManualUpdate={onManualUpdate}
+              isManualUpdateLoading={isManualUpdateLoading}
+              didContextPrime={didContextPrime}
             />
           )}
         </div>
@@ -1034,16 +1037,9 @@ const PracovnaSurface: React.FC<PracovnaSurfaceProps> = ({
         </ErrorBoundary>
       </section>
 
-      {/* ── SEKCE 3 — RYCHLÉ WORKFLOW ODKAZY ── */}
-      <section aria-label="Workflow odkazy" data-pracovna-anchor="rooms" className="jung-card p-4 space-y-3">
-        <h3 className="text-sm font-serif tracking-wide text-foreground">Pracovní místnosti</h3>
-        <div className="grid grid-cols-2 gap-2">
-          <WorkflowButton onClick={onOpenMeeting} title="Otevřené porady" desc="Společná negotiation room" />
-          <WorkflowButton onClick={onOpenLive} title="Live DID sezení" desc="Execution room (audio + chat)" />
-          <WorkflowButton onClick={onOpenHanicka} title="Hanička room" desc="Tandem-supervize" />
-          <WorkflowButton onClick={onOpenKata} title="Káťa room" desc="Konzultační room" />
-        </div>
-      </section>
+      {/* Slice 3A (2026-04-21): „Pracovní místnosti" sekce 3 odstraněna —
+          duplicitní s `Komunikace` surface (4 stejné buttony). Spec sekce A2
+          zamkla Communication Surface jako jediného ownera těchto launcherů. */}
     </div>
   );
 };
