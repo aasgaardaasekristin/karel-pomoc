@@ -46,6 +46,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useDidThreads } from "@/hooks/useDidThreads";
 import type { DeliberationType } from "@/types/teamDeliberation";
+import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 
 interface BriefingDecision {
   /** SLICE 3 — stabilní serverové UUID briefing itemu (linked_briefing_item_id). */
@@ -220,11 +221,12 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const loadLatest = useCallback(async () => {
     setLoading(true);
     try {
+      const today = pragueTodayISO();
       const { data, error } = await supabase
         .from("did_daily_briefings")
         .select("*")
         .eq("is_stale", false)
-        .order("briefing_date", { ascending: false })
+        .eq("briefing_date", today)
         .order("generated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
