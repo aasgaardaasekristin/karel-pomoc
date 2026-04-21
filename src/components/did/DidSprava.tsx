@@ -245,6 +245,25 @@ const DidSprava = ({
     return () => clearInterval(interval);
   }, [refreshTrigger]);
 
+  // ── Crisis Workspace Precision Routing Pass (2026-04-21) ──
+  // Deep-link: jiná část aplikace (např. CrisisDetailWorkspace) může do
+  // sessionStorage uložit klíč `karel_sprava_open_tab` s názvem tabu
+  // (např. "questions"). Tento effect ho přečte, otevře dialog Správa
+  // a přepne na požadovaný tab. Klíč po použití mažeme.
+  useEffect(() => {
+    try {
+      const requested = sessionStorage.getItem("karel_sprava_open_tab");
+      if (!requested) return;
+      sessionStorage.removeItem("karel_sprava_open_tab");
+      // Whitelist: jen taby, které tento komponent zná.
+      const allowed = ["safety","questions","writes","packet","handoff","recovery","live","tools","crisis","plan","kartoteka","memory","notes","trends","goals","health","registry","reports","cleanup","wm","theme"] as const;
+      if ((allowed as readonly string[]).includes(requested)) {
+        setActiveTab(requested as typeof activeTab);
+        setOpen(true);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
