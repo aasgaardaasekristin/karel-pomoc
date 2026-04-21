@@ -64,6 +64,9 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onB
   const [isSavingReflection, setIsSavingReflection] = useState(false);
   const [sessionCompleted, setSessionCompleted] = useState(false);
   const [completedReport, setCompletedReport] = useState("");
+  // 'light'  = ukončeno bez analýzy (uložen surový přepis, čeká na následný analytický krok)
+  // 'analyzed' = plně zpracované sezení s Karlovou analýzou
+  const [completionMode, setCompletionMode] = useState<"light" | "analyzed">("analyzed");
 
   // ── Live Session Room v1 additions (session prep → live) ──
   // Plán panel viditelný hned v živé místnosti, ne jen jako skrytý kontext.
@@ -380,6 +383,7 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
       setActivePart(partName);
       audioSegmentCountRef.current = 0;
       imageSegmentCountRef.current = 0;
+      setCompletionMode("light");
       setSessionCompleted(true);
     } catch (e) {
       console.error("Light close failed:", e);
@@ -734,6 +738,7 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
     setActivePart(partName);
     audioSegmentCountRef.current = 0;
     imageSegmentCountRef.current = 0;
+    setCompletionMode("analyzed");
     setSessionCompleted(true);
   };
 
@@ -742,16 +747,27 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
     const handleNewSession = () => {
       setSessionCompleted(false);
       setCompletedReport("");
+      setCompletionMode("analyzed");
       // messages are already [], auto-greet will fire
     };
+    const isLight = completionMode === "light";
+    const headline = isLight ? "Sezení ukončeno" : "Sezení ukončeno a analyzováno";
+    const subline = isLight
+      ? <>Sezení s <span className="font-medium">{partName}</span> ({therapistName}) bylo ukončeno. Surový přepis je uložen — připraveno pro následný analytický krok.</>
+      : <>Sezení s <span className="font-medium">{partName}</span> ({therapistName}) bylo úspěšně zpracováno a uloženo.</>;
     return (
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="bg-card rounded-xl border border-border p-8 space-y-4 text-center max-w-md w-full">
-          <CheckCircle className="w-14 h-14 text-primary mx-auto" />
-          <h3 className="text-lg font-semibold text-foreground">Sezení ukončeno a analyzováno</h3>
-          <p className="text-sm text-muted-foreground">
-            Sezení s <span className="font-medium">{partName}</span> ({therapistName}) bylo úspěšně zpracováno a uloženo.
-          </p>
+          <CheckCircle className={`w-14 h-14 mx-auto ${isLight ? "text-amber-500" : "text-primary"}`} />
+          <h3 className="text-lg font-semibold text-foreground">{headline}</h3>
+          <p className="text-sm text-muted-foreground">{subline}</p>
+          {isLight && (
+            <div className="text-xs text-muted-foreground rounded-md border border-border/60 bg-muted/30 p-3 text-left space-y-1">
+              <div>✓ Přepis uložen do <span className="font-mono">did_part_sessions</span></div>
+              <div>✓ Žádná Karlova analýza dosud neproběhla</div>
+              <div>↪ Připraveno pro následnou analýzu</div>
+            </div>
+          )}
           <div className="flex gap-3 justify-center pt-2">
             <Button variant="outline" onClick={handleNewSession} className="gap-1.5">
               <RotateCcw className="w-4 h-4" /> Zahájit nové sezení
