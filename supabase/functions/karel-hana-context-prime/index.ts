@@ -142,6 +142,10 @@ serve(async (req) => {
     console.log("[context-prime] Starting for user:", userId);
 
     // ═══ CACHE CHECK ═══
+    // ⚠️ ISOLATION GUARD (HOURGLASS_CACHE_AUDIT_2026_04_21):
+    //    `context_cache` je PROMPT-PRIME ONLY. Hana personal vs. therapeutic
+    //    se NIKDY nesmí mixovat — readeři Spižírny A používají typed sloty
+    //    (hana_personal / hana_therapeutic), ne tento prompt blob.
     const { data: cached } = await sb
       .from("context_cache")
       .select("context_data, created_at")
