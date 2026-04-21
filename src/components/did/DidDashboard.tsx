@@ -11,7 +11,9 @@ import type { DidSubMode } from "./DidSubModeSelector";
 import KarelDailyPlan from "./KarelDailyPlan";
 // DidDailyBriefingPanel přesunut do `KarelOverviewPanel` (Surface Split 2026-04-20).
 import DidDailySessionPlan from "./DidDailySessionPlan";
-import DidSprava from "./DidSprava";
+// Slice 3A (2026-04-21): DidSprava launcher přesunut z headeru Pracovny
+// do AdminSurface (DidContentRouter → AdminSpravaLauncher). Pracovna je
+// teď čistá od admin tooling (spec sekce G).
 import CommandCrisisCard, { type CommandCrisis } from "./CommandCrisisCard";
 import TeamDeliberationsPanel from "./TeamDeliberationsPanel";
 import DeliberationRoom from "./DeliberationRoom";
