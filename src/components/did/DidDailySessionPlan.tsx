@@ -427,7 +427,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false }: Props) => {
             Plán sezení na dnes
           </h4>
           <div className="flex items-center gap-1.5">
-            {!generating && (
+            {!generating && !compact && (
               <>
                 <Button
                   variant="outline"
