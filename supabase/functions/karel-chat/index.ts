@@ -1343,6 +1343,27 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
           const sbMem = createSbForMem(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
           try {
+            // ═══ MINIMAL WRITER FIX: scoped auth lookup ═══
+            // Without this, downstream code (evidence persistence, drive enqueue,
+            // appendPantryB) hits `ReferenceError: user is not defined` because
+            // `user` was never bound in this branch. Mirrors the pattern used in
+            // the daily-context branch (l.165) and tasks branch (l.1230).
+            let memUserId: string | null = null;
+            const memAuthHeader = req.headers.get("Authorization");
+            if (memAuthHeader?.startsWith("Bearer ")) {
+              const userSbMem = createSbForMem(
+                Deno.env.get("SUPABASE_URL")!,
+                Deno.env.get("SUPABASE_ANON_KEY")!,
+                { global: { headers: { Authorization: memAuthHeader } } },
+              );
+              const { data: { user: memUser } } = await userSbMem.auth.getUser();
+              memUserId = memUser?.id || null;
+            }
+            if (!memUserId) {
+              console.warn("[post-chat-writeback] Skipping: no authenticated user in scope.");
+              return;
+            }
+
             const lastUserMsgMem = (messages as any[]).filter((m: any) => m.role === "user").pop();
             const userTextMem = typeof lastUserMsgMem?.content === "string" ? lastUserMsgMem.content : "";
 
@@ -1438,7 +1459,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                     sourceMode: modeLabel,
                     sourceThreadId: didThreadLabel || null,
                     sourceType: isCastMode ? "part_direct" : "thread",
-                    userId: user.id,
+                    userId: memUserId,
                   };
 
                   let insertedCount = 0;
@@ -1484,7 +1505,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                       contentType: resolveGovernedContentType(intent),
                       subjectType: resolveGovernedSubjectType(intent),
                       subjectId: resolveGovernedSubjectId(intent, therapistKey),
-                      userId: user.id,
+                      userId: memUserId,
                       success: !writeErr,
                       errorMessage: writeErr?.message,
                     });
@@ -1533,7 +1554,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                             ?? matchedOutput.summary;
 
                           await appendPantryB(sbMem, {
-                            user_id: user.id,
+                            user_id: memUserId,
                             entry_kind: entryKind,
                             source_kind: "chat_postwriteback",
                             source_ref: chatSourceId,
