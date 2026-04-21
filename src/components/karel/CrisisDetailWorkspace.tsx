@@ -167,19 +167,34 @@ const CrisisDetailWorkspace: React.FC = () => {
   }, [activeTab, card]);
 
   const handleAcknowledge = async () => {
-    if (!card?.alertId) return;
+    if (!card) return;
     setAckLoading(true);
     try {
-      const data = await callFn("karel-crisis-closure-meeting", {
-        action: "acknowledge_alert",
-        alert_id: card.alertId,
-      });
-      if (data.success) {
-        toast.success("Alert vzat na vědomí");
-        refetch();
-      } else {
-        toast.error(data.error || "Chyba při potvrzení");
+      // Direct DB updates — there is no acknowledge_alert backend action.
+      // We mark the alert as acknowledged AND dismiss the banner on the event.
+      const stamp = new Date().toISOString();
+      const ops: Promise<any>[] = [];
+      if (card.alertId) {
+        ops.push(
+          (supabase as any)
+            .from("crisis_alerts")
+            .update({ acknowledged_at: stamp, acknowledged_by: "karel" })
+            .eq("id", card.alertId),
+        );
       }
+      if (card.eventId) {
+        ops.push(
+          (supabase as any)
+            .from("crisis_events")
+            .update({ banner_dismissed: true, banner_dismissed_at: stamp })
+            .eq("id", card.eventId),
+        );
+      }
+      const results = await Promise.all(ops);
+      const firstError = results.find((r) => r?.error)?.error;
+      if (firstError) throw new Error(firstError.message);
+      toast.success("Vzato na vědomí — banner skryt");
+      refetch();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Chyba při potvrzení");
     } finally {
@@ -240,16 +255,9 @@ const CrisisDetailWorkspace: React.FC = () => {
               {activeTab === "overview" && (
                 <CrisisLaunchpadSection
                   card={card}
-                  onJumpToManagement={() => setActiveTab("management")}
                   onJumpToClosure={closureRelevant ? () => setActiveTab("closure") : undefined}
                   onClose={closeCrisisDetail}
                 />
-              )}
-              {activeTab === "management" && (
-                <div className="p-5 space-y-5">
-                  <CrisisDailyManagement card={card} onRefetch={refetch} />
-                  <CrisisSessionQA card={card} onRefetch={refetch} />
-                </div>
               )}
               {activeTab === "closure" && (
                 <div className="p-5">
