@@ -284,7 +284,6 @@ const KarelOverviewPanel = ({
       {content}
     </div>
   );
-  );
 };
 
 function carePriorityRank(level: string): number {
