@@ -12,7 +12,9 @@ import DidCardCleanup from "./DidCardCleanup";
 import DidReportDiagnostics from "./DidReportDiagnostics";
 import DidKartotekaTab from "./DidKartotekaTab";
 import DidPlanTab from "./DidPlanTab";
-import DidCrisisPanel from "./DidCrisisPanel";
+// Slice 3A (2026-04-21): „Krize" tab odstraněn — single crisis detail owner =
+// CrisisDetailWorkspace přes useCrisisDetail(). DidCrisisPanel se otevírá
+// už jen z CrisisAlert / KarelCrisisDeficits / CommandCrisisCard.
 import DidMemoryTab from "./DidMemoryTab";
 import DidTrendsTab from "./DidTrendsTab";
 import DidTherapistNotes from "./DidTherapistNotes";
@@ -179,7 +181,7 @@ const DidSprava = ({
   onSelectPart,
 }: Props) => {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory" | "notes" | "trends" | "goals" | "safety" | "writes" | "packet" | "handoff" | "recovery" | "live" | "questions" | "wm">("tools");
+  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "memory" | "notes" | "trends" | "goals" | "safety" | "writes" | "packet" | "handoff" | "recovery" | "live" | "questions" | "wm">("tools");
   const opsSnapshot = useOperationalInboxCounts(refreshTrigger);
   const [livePlan, setLivePlan] = useState<{ id: string; partName: string; therapistName: string; contextBrief: string } | null>(null);
   const [livePlans, setLivePlans] = useState<Array<{ id: string; selected_part: string; session_lead: string; therapist?: string | null; plan_markdown: string; status: string; plan_date: string }>>([]);
@@ -233,9 +235,8 @@ const DidSprava = ({
   }, [health.running, reloadHealth]);
 
   useEffect(() => {
-    supabase.from("crisis_events").select("id", { count: "exact", head: true }).not("phase", "eq", "closed")
-      .then(({ count }) => setHasCrisis((count || 0) > 0));
-    
+    // Slice 3A: hasCrisis flag se už nepoužívá pro „Krize" tab (odstraněn).
+    // Necháváme jen safety_alerts polling pro badge na „Bezpečnost" tabu.
     const loadAlertCount = async () => {
       const { count } = await (supabase as any).from("safety_alerts").select("id", { count: "exact", head: true }).eq("status", "new");
       setNewAlertCount(count || 0);
