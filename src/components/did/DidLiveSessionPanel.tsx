@@ -27,6 +27,12 @@ interface DidLiveSessionPanelProps {
   partName: string;
   therapistName: string; // "Hanka" or "Káťa"
   contextBrief?: string;
+  /**
+   * ID dnešního did_daily_session_plans řádku, ze kterého live sezení vzniklo.
+   * Používá se k pravdivému přepsání stavu plánu po light close / finální analýze.
+   * Optional pro zpětnou kompatibilitu — když chybí, status se nepřepisuje.
+   */
+  planId?: string;
   onEnd: (summary: string) => void;
   onBack: () => void;
 }
@@ -36,7 +42,7 @@ interface DidLiveSessionPanelProps {
  * Karel advises the therapist in real-time during work with a DID part.
  * Similar to LiveSessionPanel but with DID-specific context and prompts.
  */
-const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onBack }: DidLiveSessionPanelProps) => {
+const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, onEnd, onBack }: DidLiveSessionPanelProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -382,6 +388,23 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
         audio_analysis: audioAnalyses.join("\n---\n") || "",
         karel_therapist_feedback: "",
       });
+
+      // ── PRAVDIVÝ STAV PLÁNU: light close → awaiting_analysis ──
+      // Plán už neběží, ale taky není analyzovaný. Pracovna layer 4 toto
+      // musí vidět jinak než `in_progress` nebo `done`.
+      if (planId) {
+        try {
+          await (supabase as any)
+            .from("did_daily_session_plans")
+            .update({
+              status: "awaiting_analysis",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", planId);
+        } catch (planErr) {
+          console.warn("Failed to update plan status to awaiting_analysis:", planErr);
+        }
+      }
 
       toast.success("Sezení ukončeno — připraveno pro následnou analýzu");
       setHandoffDialogOpen(false);
@@ -747,6 +770,24 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
     setShowReflection(false);
     setIsSavingReflection(false);
     toast.success("Sezení uloženo a analyzováno");
+
+    // ── PRAVDIVÝ STAV PLÁNU: finální analýza dokončena → done ──
+    // Po analyzed větvi (handleEndSession → finishAfterReflection) musí být plán
+    // v Pracovně viditelný jako uzavřený, ne dál jako `in_progress`.
+    if (planId) {
+      try {
+        await (supabase as any)
+          .from("did_daily_session_plans")
+          .update({
+            status: "done",
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", planId);
+      } catch (planErr) {
+        console.warn("Failed to update plan status to done:", planErr);
+      }
+    }
 
     // Set completed state + reset all session states
     setCompletedReport(report || "Zápis nebyl vygenerován.");

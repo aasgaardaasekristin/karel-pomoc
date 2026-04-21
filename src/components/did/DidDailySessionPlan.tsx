@@ -418,6 +418,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
           partName={firstPendingPlan.selected_part}
           therapistName={firstPendingPlan.session_lead === "kata" ? "Káťa" : "Hanka"}
           contextBrief={firstPendingPlan.plan_markdown}
+          planId={firstPendingPlan.id}
           onEnd={handleLiveSessionEnd}
           onBack={() => setLiveSessionActive(false)}
         />

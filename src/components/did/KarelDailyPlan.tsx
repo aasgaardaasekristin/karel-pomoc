@@ -328,7 +328,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
 
   // Data
   const [tasks, setTasks] = useState<{ id: string; task: string; assigned_to: string; status: string; priority: string; created_at?: string; due_date?: string | null; detail_instruction?: any }[]>([]);
-  const [sessions, setSessions] = useState<{ id: string; selected_part: string; therapist: string; plan_date: string }[]>([]);
+  const [sessions, setSessions] = useState<{ id: string; selected_part: string; therapist: string; plan_date: string; status?: string }[]>([]);
   const [questions, setQuestions] = useState<{ id: string; question: string; directed_to: string | null }[]>([]);
   const [recentThreads, setRecentThreads] = useState<{ part_name: string; last_activity_at: string; sub_mode: string; thread_label: string | null }[]>([]);
   const [recentInterviews, setRecentInterviews] = useState<{
@@ -453,9 +453,15 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
           .limit(40),
         supabase
           .from("did_daily_session_plans")
-          .select("id, selected_part, therapist, plan_date")
+          .select("id, selected_part, therapist, plan_date, status")
+          // OTEVŘENÉ stavy plánu (pravda po Slice "Session Finalization State"):
+          //   generated         = vygenerováno, sezení neběží
+          //   in_progress       = právě běží live sezení
+          //   awaiting_analysis = light close — surový přepis, čeká na analýzu
+          // `done` / `skipped` / legacy `completed` se sem ZÁMĚRNĚ nedostane,
+          // aby Pracovna nelhala, že uzavřené sezení dál čeká na zahájení.
           .eq("plan_date", today)
-          .in("status", ["planned", "in_progress", "generated"])
+          .in("status", ["generated", "in_progress", "awaiting_analysis"])
           .limit(3),
         (supabase as any)
           .from("did_pending_questions")
@@ -1269,6 +1275,17 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
                     <div className="flex-1">
                       <span className="font-medium text-foreground/80">{s.selected_part}</span>
                       <span className="text-foreground/50"> — {s.therapist || "terapeutka dle domluvy"}</span>
+                      {/* Pravdivý stav plánu (Slice: Session Finalization State) */}
+                      {s.status === "in_progress" && (
+                        <span className="ml-2 inline-flex items-center gap-1 text-[10.5px] font-medium px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/25">
+                          ● live
+                        </span>
+                      )}
+                      {s.status === "awaiting_analysis" && (
+                        <span className="ml-2 inline-flex items-center gap-1 text-[10.5px] font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 border border-amber-500/30">
+                          ⏳ čeká na analýzu
+                        </span>
+                      )}
                       <div className="mt-1">
                         <ActionLink label="Otevřít plán sezení" onClick={() => openSessionPlan(s.selected_part)} />
                       </div>
