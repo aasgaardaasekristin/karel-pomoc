@@ -399,24 +399,45 @@ const CrisisLaunchpadSection: React.FC<{
   }, [card.eventId, card.alertId]);
 
   // ── Navigation helpers ──────────────────────────────────────────────
-  const goPracovnaKarel = () => {
+  // Pracovna anchor model: PracovnaSurface čte sessionStorage
+  // `karel_pracovna_anchor` a scrollne na element [data-pracovna-anchor=…].
+  // Anchor klíče (povolené v PracovnaSurface):
+  //   - "karel-overview"      → KarelOverviewPanel (decision deck, ask_hanka/kata)
+  //   - "operativa"           → DidDashboard (top of operativa block)
+  //   - "crisis-command"      → CommandCrisisCard (krize per-part)
+  //   - "therapist-tasks"     → KarelDailyPlan (operational queue, úkoly terapeutek)
+  //   - "team-deliberations"  → TeamDeliberationsPanel
+  //   - "today-session-plan"  → DidDailySessionPlan (dnešní sezení)
+  //   - "rooms"               → Pracovní místnosti (porady / live / Hanička / Káťa)
+  const goPracovna = (anchor: string) => {
     try { sessionStorage.setItem("karel_hub_section", "did"); } catch {}
     try { sessionStorage.setItem("karel_terapeut_surface", "pracovna"); } catch {}
+    try { sessionStorage.setItem("karel_pracovna_anchor", anchor); } catch {}
+    onClose();
+    navigate("/chat");
+  };
+
+  const goSpravaTab = (tab: string) => {
+    // Otevře dialog Správa na konkrétním tabu (např. "questions").
+    try { sessionStorage.setItem("karel_hub_section", "did"); } catch {}
+    try { sessionStorage.setItem("karel_terapeut_surface", "pracovna"); } catch {}
+    try { sessionStorage.setItem("karel_sprava_open_tab", tab); } catch {}
     onClose();
     navigate("/chat");
   };
 
   const goPracovnaMeeting = () => {
-    try { sessionStorage.setItem("karel_hub_section", "did"); } catch {}
-    try { sessionStorage.setItem("karel_terapeut_surface", "pracovna"); } catch {}
     if (openMeetingId) {
       try { sessionStorage.setItem("karel_open_deliberation_id", openMeetingId); } catch {}
       toast.success("Otevírám poradu týmu");
+      try { sessionStorage.setItem("karel_hub_section", "did"); } catch {}
+      try { sessionStorage.setItem("karel_terapeut_surface", "pracovna"); } catch {}
+      onClose();
+      navigate("/chat");
     } else {
       toast.info("Žádná otevřená porada — otevírám sekci Porady v Pracovně");
+      goPracovna("team-deliberations");
     }
-    onClose();
-    navigate("/chat");
   };
 
   const goCrisisInterview = () => {
@@ -439,14 +460,17 @@ const CrisisLaunchpadSection: React.FC<{
   };
 
   // ── Action cards ────────────────────────────────────────────────────
+  // Každá karta má KONKRÉTNÍ destinaci. Nic nevede „obecně do Pracovny" —
+  // pokud cílí do Pracovny, vždy nese anchor klíč pro scroll na sekci.
   const cards: ActionCard[] = [
     {
       key: "karel-overview",
       icon: <Brain className="w-4 h-4" />,
       title: "Karlův přehled",
-      description: "Dnešní krizové deficity, plán dne a Karlův decision context.",
-      cta: "Otevřít Pracovnu",
-      onClick: goPracovnaKarel,
+      description: "Decision deck: dnešní krizové deficity, ask_hanka / ask_kata, plán dne.",
+      cta: "Skočit na Karlův přehled",
+      // Anchor: KarelOverviewPanel section v Pracovně.
+      onClick: () => goPracovna("karel-overview"),
     },
     {
       key: "open-meeting",
@@ -454,8 +478,8 @@ const CrisisLaunchpadSection: React.FC<{
       title: "Porada týmu",
       description: openMeetingId
         ? "Existuje otevřená porada k této krizi."
-        : "Žádná otevřená porada — můžeš ji založit v Pracovně.",
-      cta: openMeetingId ? "Otevřít poradu" : "Otevřít sekci Porady",
+        : "Žádná otevřená porada — sekce Porady v Operativě dne.",
+      cta: openMeetingId ? "Otevřít poradu" : "Skočit na Porady",
       onClick: goPracovnaMeeting,
       highlight: !!openMeetingId,
       meta: meetingLoading ? "…" : openMeetingId ? "1 otevřená" : "žádná",
@@ -464,27 +488,30 @@ const CrisisLaunchpadSection: React.FC<{
       key: "therapist-tasks",
       icon: <ListChecks className="w-4 h-4" />,
       title: "Úkoly terapeutů",
-      description: "Konkrétní krizové úkoly pro Haničku a Káťu.",
-      cta: "Otevřít úkoly",
-      onClick: goPracovnaKarel,
+      description: "Operational queue (KarelDailyPlan) — krizové úkoly pro Haničku a Káťu.",
+      cta: "Skočit na Úkoly terapeutů",
+      // Anchor: KarelDailyPlan v DidDashboard (sekce Operativa dne).
+      onClick: () => goPracovna("therapist-tasks"),
       meta: openTaskCount == null ? "…" : `${openTaskCount} otevřených`,
     },
     {
       key: "questions",
       icon: <MessageCircleQuestion className="w-4 h-4" />,
       title: "Otázky pro jednotlivce",
-      description: "Dotazy směřované na konkrétní terapeutku — vyžadují odpověď.",
-      cta: "Otevřít otázky",
-      onClick: goPracovnaKarel,
+      description: "PendingQuestionsPanel — dotazy na konkrétní terapeutku, vyžadují odpověď.",
+      cta: "Otevřít panel otázek",
+      // Deep-link do DidSprava dialog → tab "questions" → PendingQuestionsPanel.
+      onClick: () => goSpravaTab("questions"),
       meta: openQuestionCount == null ? "…" : `${openQuestionCount} otevřených`,
     },
     {
       key: "session-proposal",
       icon: <CalendarPlus className="w-4 h-4" />,
       title: "Návrh sezení s částí",
-      description: "Karlův plán dne nese návrh, kdy a jak vést sezení s částí.",
-      cta: "Otevřít plán dne",
-      onClick: goPracovnaKarel,
+      description: "Dnešní plán sezení (DidDailySessionPlan) — schválení a spuštění.",
+      cta: "Skočit na Plán sezení",
+      // Anchor: DidDailySessionPlan v DidDashboard (sekce Dnes).
+      onClick: () => goPracovna("today-session-plan"),
     },
     {
       key: "direct-therapy",
@@ -509,7 +536,7 @@ const CrisisLaunchpadSection: React.FC<{
       cta: card.missingTodayInterview ? "Spustit hodnocení" : "Hotovo dnes",
       onClick: card.missingTodayInterview && card.eventId ? goCrisisInterview : undefined,
       disabledReason: !card.missingTodayInterview
-        ? "Dnešní interview už proběhlo — další krok je v záložce Řízení."
+        ? "Dnešní interview už proběhlo — další krok je ve workflow této krize."
         : !card.eventId
           ? "Bez crisis_event nelze hodnocení založit."
           : undefined,
