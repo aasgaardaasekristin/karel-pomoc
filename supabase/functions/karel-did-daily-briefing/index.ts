@@ -25,6 +25,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
+import { selectPantryA, summarizePantryAForPrompt, type PantryASnapshot } from "../_shared/pantryA.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -170,6 +171,33 @@ async function gatherContext(supabase: any) {
     .select("id, name");
   const partsById = new Map((parts || []).map((p: any) => [p.id, p.name]));
 
+  // ═══ HOURGLASS: SPIŽÍRNA A READER (briefing) ═══
+  // Reálný konzument composed morning view-modelu. Briefing už netahá vše
+  // ručně — Pantry A přidává canonical priority, parts/therapists status,
+  // oddělené Hana personal vs. therapeutic sloty, Káťa kontext, včerejší
+  // sezení a otevřené follow-upy. Vlastní gather query výše zůstávají
+  // jako safety net pro případ, že canonical layer dnes neexistuje.
+  let pantryA: PantryASnapshot | null = null;
+  let pantryASummary = "";
+  try {
+    const { data: anyCtxRow } = await supabase
+      .from("did_daily_context")
+      .select("user_id")
+      .order("context_date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const userId = anyCtxRow?.user_id;
+    if (userId) {
+      pantryA = await selectPantryA(supabase, userId);
+      pantryASummary = summarizePantryAForPrompt(pantryA);
+      console.log(`[briefing] Pantry A loaded: canonical_present=${pantryA.sources.canonical_present}, parts=${pantryA.parts_status.length}, followups=${pantryA.open_followups.length}, priorities=${pantryA.today_priorities.length}`);
+    } else {
+      console.warn("[briefing] Pantry A skipped: no user_id resolvable from did_daily_context");
+    }
+  } catch (pErr) {
+    console.warn("[briefing] Pantry A load failed (non-fatal):", pErr);
+  }
+
   return {
     today: pragueDayISO(),
     crises: crisesRes.data || [],
@@ -186,6 +214,8 @@ async function gatherContext(supabase: any) {
     recent_session_plans: (plansRes.data || []).map((p: any) => ({
       ...p, part_name: p.part_id ? partsById.get(p.part_id) : null,
     })),
+    pantry_a: pantryA,
+    pantry_a_summary: pantryASummary,
   };
 }
 
