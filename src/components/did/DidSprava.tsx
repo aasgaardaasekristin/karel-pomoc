@@ -182,7 +182,7 @@ const DidSprava = ({
   onSelectPart,
 }: Props) => {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "memory" | "notes" | "trends" | "goals" | "safety" | "writes" | "packet" | "handoff" | "recovery" | "live" | "questions" | "wm">("tools");
+  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "memory" | "notes" | "trends" | "goals" | "safety" | "writes" | "packet" | "handoff" | "recovery" | "live" | "questions" | "wm" | "hourglass">("tools");
   const opsSnapshot = useOperationalInboxCounts(refreshTrigger);
   const [livePlan, setLivePlan] = useState<{ id: string; partName: string; therapistName: string; contextBrief: string } | null>(null);
   const [livePlans, setLivePlans] = useState<Array<{ id: string; selected_part: string; session_lead: string; therapist?: string | null; plan_markdown: string; status: string; plan_date: string }>>([]);
@@ -258,7 +258,7 @@ const DidSprava = ({
       if (!requested) return;
       sessionStorage.removeItem("karel_sprava_open_tab");
       // Whitelist: jen taby, které tento komponent zná.
-      const allowed = ["safety","questions","writes","packet","handoff","recovery","live","tools","plan","kartoteka","memory","notes","trends","goals","health","registry","reports","cleanup","wm","theme"] as const;
+      const allowed = ["safety","questions","writes","packet","handoff","recovery","live","tools","plan","kartoteka","memory","notes","trends","goals","health","registry","reports","cleanup","wm","hourglass","theme"] as const;
       if ((allowed as readonly string[]).includes(requested)) {
         setActiveTab(requested as typeof activeTab);
         setOpen(true);
@@ -322,6 +322,7 @@ const DidSprava = ({
             { key: "reports" as const, label: "Reporty" },
             { key: "cleanup" as const, label: "Cleanup" },
             { key: "wm" as const, label: "🧠 WM" },
+            { key: "hourglass" as const, label: "⏳ Hourglass" },
             { key: "theme" as const, label: "Vzhled" },
           ]).map(tab => (
             <button
@@ -532,6 +533,12 @@ const DidSprava = ({
         {activeTab === "wm" && (
           <div className="space-y-2">
             <DidWorkingMemoryPanel />
+          </div>
+        )}
+
+        {activeTab === "hourglass" && (
+          <div className="space-y-2">
+            <HourglassInspectPanel refreshTrigger={refreshTrigger} />
           </div>
         )}
 
