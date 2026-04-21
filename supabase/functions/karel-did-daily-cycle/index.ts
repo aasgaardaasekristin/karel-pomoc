@@ -7259,8 +7259,27 @@ Vra\u0165 JSON:
 
         for (const entry of entries) {
           const dests = (entry.intended_destinations as string[]) || [];
+
+          // ── RETRY-SAFE GUARD ────────────────────────────────────────
+          // Pokud entry už má z předchozího (částečně úspěšného) pokusu
+          // zapsané `flush_result.succeeded`, MUSÍME tyto destinace přeskočit,
+          // jinak vznikne duplikát (např. duplicitní task v did_therapist_tasks).
+          // Předchozí succeeded zůstávají v novém flush_result, abychom
+          // nezatlali historický důkaz, že už proběhly.
+          const prevFlush =
+            (entry as any).flush_result &&
+            typeof (entry as any).flush_result === "object"
+              ? ((entry as any).flush_result as Record<string, unknown>)
+              : null;
+          const prevSucceeded: string[] = Array.isArray(prevFlush?.succeeded)
+            ? ((prevFlush!.succeeded as unknown[]).filter(
+                (x) => typeof x === "string",
+              ) as string[])
+            : [];
+
           const requested: string[] = [];
-          const succeeded: string[] = [];
+          const succeeded: string[] = [...prevSucceeded]; // historie + nové úspěchy
+          const skippedAlreadyDone: string[] = [];
           const failed: Array<{ destination: string; reason: string }> = [];
           const blocked: Array<{ destination: string; reason: string }> = [];
 
@@ -7283,31 +7302,36 @@ Vra\u0165 JSON:
           // ── DESTINATION 1: did_therapist_tasks ──────────────────────
           if (dests.includes("did_therapist_tasks")) {
             requested.push("did_therapist_tasks");
-            const shape = buildTherapistTaskInsert(flushUserId, entryRef);
-            if (!shape.ok) {
-              blocked.push({
-                destination: "did_therapist_tasks",
-                reason: shape.reason,
-              });
+            if (prevSucceeded.includes("did_therapist_tasks")) {
+              // Už dříve uspělo — NEzapisovat znovu (anti-duplicate guard).
+              skippedAlreadyDone.push("did_therapist_tasks");
             } else {
-              try {
-                const { error: taskErr } = await sb
-                  .from("did_therapist_tasks")
-                  .insert(shape.value);
-                if (taskErr) {
+              const shape = buildTherapistTaskInsert(flushUserId, entryRef);
+              if (!shape.ok) {
+                blocked.push({
+                  destination: "did_therapist_tasks",
+                  reason: shape.reason,
+                });
+              } else {
+                try {
+                  const { error: taskErr } = await sb
+                    .from("did_therapist_tasks")
+                    .insert(shape.value);
+                  if (taskErr) {
+                    failed.push({
+                      destination: "did_therapist_tasks",
+                      reason: taskErr.message,
+                    });
+                  } else {
+                    succeeded.push("did_therapist_tasks");
+                    routedToTasks++;
+                  }
+                } catch (e) {
                   failed.push({
                     destination: "did_therapist_tasks",
-                    reason: taskErr.message,
+                    reason: (e as Error).message ?? "unknown_exception",
                   });
-                } else {
-                  succeeded.push("did_therapist_tasks");
-                  routedToTasks++;
                 }
-              } catch (e) {
-                failed.push({
-                  destination: "did_therapist_tasks",
-                  reason: (e as Error).message ?? "unknown_exception",
-                });
               }
             }
           }
@@ -7315,31 +7339,35 @@ Vra\u0165 JSON:
           // ── DESTINATION 2: did_pending_questions ────────────────────
           if (dests.includes("did_pending_questions")) {
             requested.push("did_pending_questions");
-            const shape = buildPendingQuestionInsert(entryRef);
-            if (!shape.ok) {
-              blocked.push({
-                destination: "did_pending_questions",
-                reason: shape.reason,
-              });
+            if (prevSucceeded.includes("did_pending_questions")) {
+              skippedAlreadyDone.push("did_pending_questions");
             } else {
-              try {
-                const { error: qErr } = await sb
-                  .from("did_pending_questions")
-                  .insert(shape.value);
-                if (qErr) {
+              const shape = buildPendingQuestionInsert(entryRef);
+              if (!shape.ok) {
+                blocked.push({
+                  destination: "did_pending_questions",
+                  reason: shape.reason,
+                });
+              } else {
+                try {
+                  const { error: qErr } = await sb
+                    .from("did_pending_questions")
+                    .insert(shape.value);
+                  if (qErr) {
+                    failed.push({
+                      destination: "did_pending_questions",
+                      reason: qErr.message,
+                    });
+                  } else {
+                    succeeded.push("did_pending_questions");
+                    routedToQuestions++;
+                  }
+                } catch (e) {
                   failed.push({
                     destination: "did_pending_questions",
-                    reason: qErr.message,
+                    reason: (e as Error).message ?? "unknown_exception",
                   });
-                } else {
-                  succeeded.push("did_pending_questions");
-                  routedToQuestions++;
                 }
-              } catch (e) {
-                failed.push({
-                  destination: "did_pending_questions",
-                  reason: (e as Error).message ?? "unknown_exception",
-                });
               }
             }
           }
@@ -7362,10 +7390,12 @@ Vra\u0165 JSON:
             blockedImplications++;
           }
 
-          // ── EVAL: fully processed jen když všechny requested uspěly ─
-          const fullySucceeded =
+          // ── EVAL: fully processed jen když všechny requested jsou v
+          // succeeded (počítaje předchozí úspěchy + nové úspěchy +
+          // skipped-already-done) a žádný failed / blocked nezbývá.
+          const allRequestedCovered =
             requested.length > 0 &&
-            succeeded.length === requested.length &&
+            requested.every((d) => succeeded.includes(d)) &&
             failed.length === 0 &&
             blocked.length === 0;
 
@@ -7373,18 +7403,19 @@ Vra\u0165 JSON:
           // za processed (nemá kam jít = nejde o ztrátu, je to no-op routing).
           const noDestinationRecognized = requested.length === 0;
 
-          if (fullySucceeded || noDestinationRecognized) {
+          if (allRequestedCovered || noDestinationRecognized) {
             fullyProcessedIds.push(entry.id);
           } else {
             partialOrBlocked.push({
               id: entry.id,
               result: {
                 requested_destinations: requested,
-                succeeded,
+                succeeded, // historie + tento pokus (zachováno pro další retry)
+                skipped_already_done: skippedAlreadyDone,
                 failed,
                 blocked,
                 last_attempt_at: new Date().toISOString(),
-                retryable: failed.length > 0 || blocked.length > 0,
+                retryable: failed.length > 0, // blocked-only není retryable
               },
             });
           }
