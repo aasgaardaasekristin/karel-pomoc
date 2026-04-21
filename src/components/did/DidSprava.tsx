@@ -309,7 +309,7 @@ const DidSprava = ({
               { key: "recovery" as const, label: "💓 Recovery" },
               { key: "live" as const, label: "⚡ Live" },
             { key: "tools" as const, label: "Nástroje" },
-            ...(hasCrisis ? [{ key: "crisis" as const, label: "Krize" }] : []),
+            // Slice 3A (2026-04-21): „Krize" tab odstraněn — viz CrisisDetailWorkspace.
             { key: "plan" as const, label: "Plán" },
             { key: "kartoteka" as const, label: "Kartotéka" },
             { key: "memory" as const, label: "Paměť" },
@@ -546,11 +546,7 @@ const DidSprava = ({
           </div>
         )}
 
-        {activeTab === "crisis" && (
-          <div className="space-y-2">
-            <DidCrisisPanel refreshTrigger={refreshTrigger} />
-          </div>
-        )}
+        {/* Slice 3A: „crisis" tab block odstraněn (paralelní detail owner). */}
 
         {activeTab === "memory" && (
           <div className="space-y-2">
