@@ -856,8 +856,12 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
           </div>
         )}
 
-        {/* Audio & Image tools strip */}
+        {/* Audio & Image & Note tools strip */}
         <div className="mt-3 flex items-center gap-2 flex-wrap">
+          {/* Note button */}
+          <Button variant="outline" size="sm" onClick={() => setNoteDialogOpen(true)} className="gap-1.5 h-8 text-xs">
+            <StickyNote className="w-3.5 h-3.5" /> Poznámka
+          </Button>
           {/* Camera button */}
           <Button variant="outline" size="sm" onClick={imageUpload.openFilePicker} className="gap-1.5 h-8 text-xs">
             <Camera className="w-3.5 h-3.5" /> Fotka
