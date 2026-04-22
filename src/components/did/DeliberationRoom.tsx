@@ -110,6 +110,88 @@ function QuestionList({
   );
 }
 
+/**
+ * THERAPIST-LED TRUTH PASS (2026-04-22):
+ * Živý program_draft panel. Karel ho přepisuje po každém vstupu terapeutky
+ * (přes karel-team-deliberation-iterate). Tady se jen renderuje + ukáže
+ * Karlův poslední komentář "co konkrétně změnil".
+ */
+function LiveProgramDraftPanel({
+  d,
+  iterating,
+  lastIterateComment,
+}: {
+  d: TeamDeliberation;
+  iterating: boolean;
+  lastIterateComment: string | null;
+}) {
+  const draft = ((d as any).program_draft as AgendaBlock[] | null) ?? [];
+  const fallback = (d.agenda_outline ?? []) as AgendaBlock[];
+  const blocks = draft.length > 0 ? draft : fallback;
+  const usingDraft = draft.length > 0;
+
+  if (blocks.length === 0) {
+    return (
+      <section className="rounded-lg border border-dashed border-border/60 bg-card/30 p-3">
+        <h4 className="text-[11px] font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5 text-primary" />
+          Živý program sezení
+        </h4>
+        <p className="text-[10.5px] text-muted-foreground italic">
+          Karel ještě nemá co iterovat — jakmile Hanička nebo Káťa odpoví na
+          otázku nebo přidá podnět do diskuse, Karel program sestaví bod po bodu
+          a dál ho s vámi bude upřesňovat.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-lg border border-primary/25 bg-primary/5 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-[11px] font-semibold text-primary flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5" />
+          Živý program sezení {usingDraft ? "" : "(první návrh)"}
+        </h4>
+        {iterating && (
+          <span className="text-[10px] text-primary/70 italic flex items-center gap-1">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Karel přepisuje program…
+          </span>
+        )}
+      </div>
+      <ol className="space-y-1.5">
+        {blocks.map((b, i) => (
+          <li key={i} className="text-[11px] flex gap-2">
+            <span className="font-semibold text-primary shrink-0">
+              {i + 1}.
+              {typeof b.minutes === "number" && b.minutes > 0 ? ` ${b.minutes}′` : ""}
+            </span>
+            <span className="flex-1">
+              <span className="font-medium text-foreground">{b.block}</span>
+              {b.detail && (
+                <span className="block text-foreground/75 mt-0.5">{b.detail}</span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ol>
+      {lastIterateComment && (
+        <div className="rounded-md border border-primary/20 bg-card/60 p-2 text-[10.5px] text-foreground/85 italic">
+          <span className="text-primary not-italic font-semibold mr-1">Karel:</span>
+          {lastIterateComment}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * @deprecated SESSION-PLAN cesta je nahrazená iterativní logikou
+ * (`karel-team-deliberation-iterate`). Tento blok zůstává jen pro typ
+ * `crisis`, kde je explicitní syntéza pořád potřebná před uzavřením.
+ */
+
 function KarelSynthesisBlock({
   d,
   synthesizing,
