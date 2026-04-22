@@ -272,7 +272,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
 
   useEffect(() => {
     loadLatest();
-  }, [loadLatest, refreshTrigger]);
+    loadApprovedToday();
+  }, [loadLatest, loadApprovedToday, refreshTrigger]);
 
   const handleRegenerate = async () => {
     setRegenerating(true);
