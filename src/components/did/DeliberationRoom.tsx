@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import {
@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import RichMarkdown from "@/components/ui/RichMarkdown";
-import { Loader2, CheckCircle2, Send, ArrowRight, Users, Brain, AlertTriangle } from "lucide-react";
+import { Loader2, CheckCircle2, Send, ArrowRight, Users, Brain, AlertTriangle, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useTeamDeliberations } from "@/hooks/useTeamDeliberations";
 import {
@@ -21,6 +21,7 @@ import {
   type TeamDeliberation,
   type DeliberationQuestion,
   type KarelSynthesis,
+  type AgendaBlock,
 } from "@/types/teamDeliberation";
 
 interface Props {
@@ -108,6 +109,88 @@ function QuestionList({
     </div>
   );
 }
+
+/**
+ * THERAPIST-LED TRUTH PASS (2026-04-22):
+ * Živý program_draft panel. Karel ho přepisuje po každém vstupu terapeutky
+ * (přes karel-team-deliberation-iterate). Tady se jen renderuje + ukáže
+ * Karlův poslední komentář "co konkrétně změnil".
+ */
+function LiveProgramDraftPanel({
+  d,
+  iterating,
+  lastIterateComment,
+}: {
+  d: TeamDeliberation;
+  iterating: boolean;
+  lastIterateComment: string | null;
+}) {
+  const draft = ((d as any).program_draft as AgendaBlock[] | null) ?? [];
+  const fallback = (d.agenda_outline ?? []) as AgendaBlock[];
+  const blocks = draft.length > 0 ? draft : fallback;
+  const usingDraft = draft.length > 0;
+
+  if (blocks.length === 0) {
+    return (
+      <section className="rounded-lg border border-dashed border-border/60 bg-card/30 p-3">
+        <h4 className="text-[11px] font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5 text-primary" />
+          Živý program sezení
+        </h4>
+        <p className="text-[10.5px] text-muted-foreground italic">
+          Karel ještě nemá co iterovat — jakmile Hanička nebo Káťa odpoví na
+          otázku nebo přidá podnět do diskuse, Karel program sestaví bod po bodu
+          a dál ho s vámi bude upřesňovat.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-lg border border-primary/25 bg-primary/5 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-[11px] font-semibold text-primary flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5" />
+          Živý program sezení {usingDraft ? "" : "(první návrh)"}
+        </h4>
+        {iterating && (
+          <span className="text-[10px] text-primary/70 italic flex items-center gap-1">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Karel přepisuje program…
+          </span>
+        )}
+      </div>
+      <ol className="space-y-1.5">
+        {blocks.map((b, i) => (
+          <li key={i} className="text-[11px] flex gap-2">
+            <span className="font-semibold text-primary shrink-0">
+              {i + 1}.
+              {typeof b.minutes === "number" && b.minutes > 0 ? ` ${b.minutes}′` : ""}
+            </span>
+            <span className="flex-1">
+              <span className="font-medium text-foreground">{b.block}</span>
+              {b.detail && (
+                <span className="block text-foreground/75 mt-0.5">{b.detail}</span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ol>
+      {lastIterateComment && (
+        <div className="rounded-md border border-primary/20 bg-card/60 p-2 text-[10.5px] text-foreground/85 italic">
+          <span className="text-primary not-italic font-semibold mr-1">Karel:</span>
+          {lastIterateComment}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * @deprecated SESSION-PLAN cesta je nahrazená iterativní logikou
+ * (`karel-team-deliberation-iterate`). Tento blok zůstává jen pro typ
+ * `crisis`, kde je explicitní syntéza pořád potřebná před uzavřením.
+ */
 
 function KarelSynthesisBlock({
   d,
@@ -250,7 +333,7 @@ function KarelSynthesisBlock({
 
 const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
   const navigate = useNavigate();
-  const { sign, synthesize, answerQuestion, postMessage, reload, items } = useTeamDeliberations(0);
+  const { sign, synthesize, answerQuestion, postMessage, iterateProgram, reload, items } = useTeamDeliberations(0);
   const [d, setD] = useState<TeamDeliberation | null>(null);
   const [loading, setLoading] = useState(true);
   const [signing, setSigning] = useState<string | null>(null);
@@ -258,6 +341,10 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
   const [chatDraft, setChatDraft] = useState("");
   const [chatAuthor, setChatAuthor] = useState<"hanka" | "kata">("hanka");
   const [bridgedPlanId, setBridgedPlanId] = useState<string | null>(null);
+  // THERAPIST-LED TRUTH PASS — iterativní program
+  const [iterating, setIterating] = useState(false);
+  const [lastIterateComment, setLastIterateComment] = useState<string | null>(null);
+  const lastIterateInputRef = useRef<string>("");
 
   useEffect(() => {
     const found = items.find((x) => x.id === deliberationId) ?? null;
@@ -296,6 +383,33 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
   }, [deliberationId]);
 
   if (!deliberationId) return null;
+
+  /**
+   * THERAPIST-LED TRUTH PASS — fire-and-forget volání iterace programu.
+   * Spouští se po každé nové odpovědi nebo diskusní zprávě terapeutky
+   * (pro typ `session_plan`). Krize zůstává ve starém synthesis flow.
+   */
+  const triggerIterate = async (input: { author: "hanka" | "kata"; text: string }) => {
+    if (!d || d.deliberation_type !== "session_plan") return;
+    if (d.status === "approved" || d.status === "closed" || d.status === "archived") return;
+    const dedupe = `${input.author}::${input.text.trim()}`;
+    if (dedupe === lastIterateInputRef.current) return;
+    lastIterateInputRef.current = dedupe;
+    setIterating(true);
+    try {
+      const res = await iterateProgram(d.id, input);
+      if (res?.no_op) {
+        // Karel nic nezměnil — neukazujeme prázdný komentář.
+      } else if (res?.karel_inline_comment) {
+        setLastIterateComment(res.karel_inline_comment);
+      }
+    } catch (e: any) {
+      console.warn("[DeliberationRoom] iterateProgram failed:", e?.message ?? e);
+      // Tichá chyba — uživatelská akce (odpověď) už proběhla, iterace je doplňková.
+    } finally {
+      setIterating(false);
+    }
+  };
 
   const handleSign = async (who: "hanka" | "kata") => {
     if (!d) return;
@@ -336,6 +450,8 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
     if (!d) return;
     try {
       await answerQuestion(d.id, who, idx, answer);
+      // Iterativní přepis programu po odpovědi terapeutky.
+      void triggerIterate({ author: who, text: answer });
     } catch (e: any) {
       toast.error(e?.message ?? "Uložení odpovědi selhalo.");
     }
@@ -343,9 +459,13 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
 
   const handlePostMessage = async () => {
     if (!d || !chatDraft.trim()) return;
+    const text = chatDraft.trim();
+    const author = chatAuthor;
     try {
-      await postMessage(d.id, chatAuthor, chatDraft.trim());
+      await postMessage(d.id, author, text);
       setChatDraft("");
+      // Iterativní přepis programu po novém podnětu z diskuse.
+      void triggerIterate({ author, text });
     } catch (e: any) {
       toast.error(e?.message ?? "Odeslání selhalo.");
     }
@@ -358,8 +478,12 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
     onClose();
   };
 
-  const sp = d ? signoffProgress(d) : { signed: 0, total: 3, missing: [] };
+  const sp = d ? signoffProgress(d) : { signed: 0, total: 2, missing: [] };
   const isReadOnly = d?.status === "approved";
+  // PER-THERAPIST LOCK — pokud Hanka podepsala, její sekce read-only,
+  // ale Káťa může pořád odpovídat / přidávat podněty (a obráceně).
+  const hankaLocked = !!d?.hanka_signed_at;
+  const kataLocked = !!d?.kata_signed_at;
 
   return (
     <Dialog open={!!deliberationId} onOpenChange={(open) => !open && onClose()}>
@@ -384,6 +508,18 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
               <span className="text-muted-foreground ml-1">
                 podpisy {sp.signed}/{sp.total}
               </span>
+              {/* THERAPIST-LED 2-PODPIS — dynamický badge "Schválily: …" */}
+              {(hankaLocked || kataLocked) && (
+                <span className="ml-2 inline-flex items-center gap-1 text-emerald-700">
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span className="text-[10px] font-medium">
+                    Schválily:{" "}
+                    {[hankaLocked ? "Hanička" : null, kataLocked ? "Káťa" : null]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </span>
+                </span>
+              )}
             </DialogDescription>
           )}
         </DialogHeader>
@@ -431,54 +567,78 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 <RichMarkdown compact>{d.karel_proposed_plan ?? "(zatím bez návrhu)"}</RichMarkdown>
               </section>
 
-              {/* SLICE 3 — Agenda / minutáž (zejména pro session_plan) */}
-              {Array.isArray((d as any).agenda_outline) && (d as any).agenda_outline.length > 0 && (
-                <section className="rounded-lg border border-border/60 bg-card/40 p-3">
-                  <h4 className="text-[11px] font-semibold text-foreground mb-2">
-                    Osnova / minutáž
-                  </h4>
-                  <ol className="space-y-1.5">
-                    {((d as any).agenda_outline as Array<{block:string;minutes?:number|null;detail?:string|null}>).map((b, i) => (
-                      <li key={i} className="text-[11px] flex gap-2">
-                        <span className="font-semibold text-primary shrink-0">
-                          {i + 1}.
-                          {typeof b.minutes === "number" && b.minutes > 0 ? ` ${b.minutes}′` : ""}
-                        </span>
-                        <span className="flex-1">
-                          <span className="font-medium text-foreground">{b.block}</span>
-                          {b.detail && (
-                            <span className="block text-foreground/75 mt-0.5">{b.detail}</span>
-                          )}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                </section>
+              {/* THERAPIST-LED TRUTH PASS — Živý program (program_draft).
+                  Pro session_plan nahrazuje statickou agendu + Karlovu syntézu.
+                  Karel sem dopisuje po každé odpovědi/podnětu terapeutek. */}
+              {d.deliberation_type === "session_plan" && (
+                <LiveProgramDraftPanel
+                  d={d}
+                  iterating={iterating}
+                  lastIterateComment={lastIterateComment}
+                />
               )}
 
-              {/* Otázky pro Haničku */}
-              <section className="rounded-lg border border-border/60 p-3">
-                <h4 className="text-[11px] font-semibold mb-2 text-foreground">
+              {/* SLICE 3 — Statická Agenda / minutáž — POUZE pro non-session_plan
+                  typy (krize, supervize, …), kde iterativní program_draft nemá smysl. */}
+              {d.deliberation_type !== "session_plan" &&
+                Array.isArray((d as any).agenda_outline) &&
+                (d as any).agenda_outline.length > 0 && (
+                  <section className="rounded-lg border border-border/60 bg-card/40 p-3">
+                    <h4 className="text-[11px] font-semibold text-foreground mb-2">
+                      Osnova / minutáž
+                    </h4>
+                    <ol className="space-y-1.5">
+                      {((d as any).agenda_outline as Array<{block:string;minutes?:number|null;detail?:string|null}>).map((b, i) => (
+                        <li key={i} className="text-[11px] flex gap-2">
+                          <span className="font-semibold text-primary shrink-0">
+                            {i + 1}.
+                            {typeof b.minutes === "number" && b.minutes > 0 ? ` ${b.minutes}′` : ""}
+                          </span>
+                          <span className="flex-1">
+                            <span className="font-medium text-foreground">{b.block}</span>
+                            {b.detail && (
+                              <span className="block text-foreground/75 mt-0.5">{b.detail}</span>
+                            )}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+              )}
+
+              {/* Otázky pro Haničku — read-only po jejím podpisu (Káťa stále edituje). */}
+              <section className={`rounded-lg border p-3 ${hankaLocked ? "border-emerald-500/30 bg-emerald-500/5" : "border-border/60"}`}>
+                <h4 className="text-[11px] font-semibold mb-2 text-foreground flex items-center gap-1.5">
                   Pro Haničku
+                  {hankaLocked && (
+                    <span className="text-[9px] text-emerald-700 inline-flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> uzavřeno podpisem
+                    </span>
+                  )}
                 </h4>
                 <QuestionList
                   questions={d.questions_for_hanka ?? []}
                   who="hanka"
                   onAnswer={(idx, ans) => handleAnswer("hanka", idx, ans)}
-                  readOnly={isReadOnly}
+                  readOnly={isReadOnly || hankaLocked}
                 />
               </section>
 
-              {/* Otázky pro Káťu */}
-              <section className="rounded-lg border border-border/60 p-3">
-                <h4 className="text-[11px] font-semibold mb-2 text-foreground">
+              {/* Otázky pro Káťu — read-only po jejím podpisu (Hanka stále edituje). */}
+              <section className={`rounded-lg border p-3 ${kataLocked ? "border-emerald-500/30 bg-emerald-500/5" : "border-border/60"}`}>
+                <h4 className="text-[11px] font-semibold mb-2 text-foreground flex items-center gap-1.5">
                   Pro Káťu
+                  {kataLocked && (
+                    <span className="text-[9px] text-emerald-700 inline-flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> uzavřeno podpisem
+                    </span>
+                  )}
                 </h4>
                 <QuestionList
                   questions={d.questions_for_kata ?? []}
                   who="kata"
                   onAnswer={(idx, ans) => handleAnswer("kata", idx, ans)}
-                  readOnly={isReadOnly}
+                  readOnly={isReadOnly || kataLocked}
                 />
               </section>
 
@@ -499,28 +659,33 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 </section>
               )}
 
-              {/* KARLOVA SYNTÉZA — povinná pro `crisis` před Karlovým podpisem */}
-              <KarelSynthesisBlock
-                d={d}
-                synthesizing={synthesizing}
-                onSynthesize={handleSynthesize}
-                readOnly={isReadOnly}
-              />
+              {/* KARLOVA SYNTÉZA — povinná POUZE pro `crisis` před uzavřením.
+                  Pro `session_plan` ji nahrazuje iterativní program_draft. */}
+              {d.deliberation_type !== "session_plan" && (
+                <KarelSynthesisBlock
+                  d={d}
+                  synthesizing={synthesizing}
+                  onSynthesize={handleSynthesize}
+                  readOnly={isReadOnly}
+                />
+              )}
 
-              {!isReadOnly && (
+              {!isReadOnly && !(hankaLocked && kataLocked) && (
                 <section className="rounded-lg border border-dashed border-border/60 p-3 space-y-2">
                   <div className="flex items-center gap-1.5">
-                    {(["hanka", "kata", "karel"] as const).map((who) => (
-                      <Button
-                        key={who}
-                        size="sm"
-                        variant={chatAuthor === who ? "default" : "outline"}
-                        className="h-6 px-2 text-[10px]"
-                        onClick={() => setChatAuthor(who)}
-                      >
-                        {who === "hanka" ? "Hanička" : who === "kata" ? "Káťa" : "Karel"}
-                      </Button>
-                    ))}
+                    {(["hanka", "kata"] as const)
+                      .filter((who) => (who === "hanka" ? !hankaLocked : !kataLocked))
+                      .map((who) => (
+                        <Button
+                          key={who}
+                          size="sm"
+                          variant={chatAuthor === who ? "default" : "outline"}
+                          className="h-6 px-2 text-[10px]"
+                          onClick={() => setChatAuthor(who)}
+                        >
+                          {who === "hanka" ? "Hanička" : "Káťa"}
+                        </Button>
+                      ))}
                   </div>
                   <Textarea
                     value={chatDraft}
@@ -531,7 +696,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                   <Button
                     size="sm"
                     className="h-7 text-[11px]"
-                    disabled={!chatDraft.trim()}
+                    disabled={!chatDraft.trim() || (chatAuthor === "hanka" ? hankaLocked : kataLocked)}
                     onClick={handlePostMessage}
                   >
                     <Send className="w-3 h-3 mr-1" /> Odeslat

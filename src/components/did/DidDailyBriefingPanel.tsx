@@ -633,12 +633,17 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
-      {/* 4. Dnešní navržené sezení — klikatelné */}
-      {hasProposed && p.proposed_session && (
+      {/* 4. Dnešní navržené sezení — klikatelné.
+          THERAPIST-LED TRUTH PASS (2026-04-22): Tato sekce zobrazuje POUZE
+          první návrh sezení a CTA "Otevřít poradu". Pokud je porada už
+          schválená (status='approved' nebo existuje plan v
+          did_daily_session_plans), schová se — autoritativní zdroj je
+          v Pracovna → Dnes → "Plán dnešního sezení". */}
+      {hasProposed && p.proposed_session && !proposedAlreadyApproved && (
         <>
           <NarrativeDivider />
           <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary" />}>
-            Dnešní navržené sezení
+            Návrh sezení k poradě
           </SectionHead>
           <button
             type="button"
@@ -663,7 +668,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               {p.proposed_session.why_today}
             </p>
             <div className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">
-              <span className="text-muted-foreground italic">První pracovní verze: </span>
+              <span className="text-muted-foreground italic">První pracovní verze (k diskusi v poradě): </span>
               {p.proposed_session.first_draft}
             </div>
             {p.proposed_session.kata_involvement && (
@@ -672,14 +677,24 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               </p>
             )}
             <p className="text-[11px] text-primary/70 italic">
-              Otevřít plán sezení →
+              Otevřít poradu →
             </p>
           </button>
+        </>
+      )}
 
-          {/* 2026-04-22 — KAREL+ČÁST HERNA CTA odstraněno z briefingu.
-              Briefing nese pouze NÁVRH sezení; klik vede do Společné porady týmu,
-              kde se schvaluje. Vstup do herny je až v sekci `Sezení s Karlem`
-              v `Dnes` (Pracovna), po podpisech. */}
+      {/* DUPLICITY GUARD — když porada už schválena, briefing nezdvojuje plán.
+          Autoritativní karta je v Pracovna → Dnes → "Plán dnešního sezení". */}
+      {hasProposed && p.proposed_session && proposedAlreadyApproved && (
+        <>
+          <NarrativeDivider />
+          <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-emerald-600" />}>
+            Dnešní sezení je schválené
+          </SectionHead>
+          <p className="mt-2 text-[12px] text-muted-foreground italic">
+            Plán sezení s {p.proposed_session.part_name} je schválen oběma terapeutkami.
+            Otevři ho v sekci <strong>Dnes → Plán dnešního sezení</strong>.
+          </p>
         </>
       )}
 
