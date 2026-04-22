@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/auth.ts";
 import { findKartotekaRoot, normalize } from "../_shared/driveRegistry.ts";
+import { appendPantryB } from "../_shared/pantryB.ts";
 
 // ── OAuth2 token ──
 async function getAccessToken(): Promise<string> {
@@ -574,6 +575,94 @@ serve(async (req) => {
           console.log(`[apply-analysis] ✅ Session plan created for ${part.name}`);
         }
       }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 6. PANTRY B: zápis dnešních klinických implikací pro briefing reader
+    // ══════════════════════════════════════════════════════════
+    // Bez tohoto kroku zítřejší ranní briefing nevidí, co dnes z analýzy
+    // vyplynulo: rizikové části, externí stresory (lék/styk/soud), doporučená
+    // sezení. Tundrupek/Derin a Arthur/Říha typové signály se sem propíšou
+    // jako followup_need / risk záznamy a briefing je zítra ráno přečte.
+    try {
+      const pantryRows: Array<{ kind: string; summary: string; part: string; detail: any }> = [];
+
+      for (const part of analysis.parts || []) {
+        if (!part?.name) continue;
+        const isHighRisk = part.risk_level === "high" || part.risk_level === "medium";
+        const recNeeded = part.session_recommendation?.needed === true;
+        const hasEmotion = part.recent_emotions && String(part.recent_emotions).trim().length > 0;
+
+        if (recNeeded) {
+          const goals = (part.session_recommendation?.goals || []).slice(0, 3).join(", ");
+          pantryRows.push({
+            kind: "followup_need",
+            summary: `Doporučené sezení s ${part.name}${
+              goals ? ` — ${goals}` : ""
+            } (priorita ${part.session_recommendation?.priority || "?"}, vede ${part.session_recommendation?.who_leads || "dle dohody"})`,
+            part: part.name,
+            detail: {
+              risk_level: part.risk_level,
+              needs: part.needs ?? [],
+              session_recommendation: part.session_recommendation,
+              recent_emotions: part.recent_emotions ?? null,
+            },
+          });
+        } else if (isHighRisk && hasEmotion) {
+          pantryRows.push({
+            kind: "risk",
+            summary: `${part.name}: ${part.recent_emotions} (riziko ${part.risk_level})`,
+            part: part.name,
+            detail: {
+              risk_level: part.risk_level,
+              needs: part.needs ?? [],
+              recent_emotions: part.recent_emotions,
+              relationship_to_therapists: part.relationship_to_therapists ?? null,
+            },
+          });
+        }
+      }
+
+      // Therapist-level externí kontext (lék, soud, styk, …) jako plan_change
+      for (const who of ["Hanka", "Kata"] as const) {
+        const sit = (analysis.therapists?.[who]?.situational ?? null) as any;
+        if (!sit) continue;
+        const stressors = Array.isArray(sit.current_stressors) ? sit.current_stressors : [];
+        if (stressors.length === 0 && !sit.notes) continue;
+        pantryRows.push({
+          kind: "plan_change",
+          summary: `${who === "Hanka" ? "Hanička" : "Káťa"} — situační vstup (${analysisDate}): ${
+            stressors.slice(0, 3).join(", ") || (sit.notes || "").slice(0, 180)
+          }`,
+          part: "",
+          detail: { therapist: who.toLowerCase(), situational: sit },
+        });
+      }
+
+      let pantryWritten = 0;
+      for (const r of pantryRows.slice(0, 25)) {
+        const ok = await appendPantryB(sb, {
+          user_id: userId,
+          entry_kind: r.kind as any,
+          source_kind: "therapy_session",
+          source_ref: `apply-analysis:${analysisDate}:${r.part || "global"}`,
+          summary: r.summary,
+          detail: { ...r.detail, source_date: analysisDate },
+          intended_destinations: r.kind === "risk"
+            ? ["briefing_input", "did_pending_questions"]
+            : r.kind === "followup_need"
+              ? ["briefing_input", "did_therapist_tasks"]
+              : ["briefing_input"],
+          related_part_name: r.part || undefined,
+          related_therapist: r.detail?.therapist === "hanka" ? "hanka"
+            : r.detail?.therapist === "kata" ? "kata" : undefined,
+        });
+        if (ok) pantryWritten++;
+      }
+      (results as any).pantry_b_written = pantryWritten;
+      console.log(`[apply-analysis] Pantry B: ${pantryWritten}/${pantryRows.length} entries written`);
+    } catch (pErr) {
+      console.warn("[apply-analysis] Pantry B append failed (non-fatal):", pErr);
     }
 
     console.log(`[apply-analysis] ✅ Done: pamet_h=${results.pamet_hanka}, pamet_k=${results.pamet_kata}, parts=${results.parts_updated}, tasks=${results.tasks_created}`);
