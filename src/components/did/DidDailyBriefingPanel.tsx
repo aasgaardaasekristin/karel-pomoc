@@ -217,6 +217,35 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [openingItemId, setOpeningItemId] = useState<string | null>(null);
+  /**
+   * THERAPIST-LED TRUTH PASS (2026-04-22) — Duplicity guard.
+   * Set obsahuje názvy částí, pro které dnes existuje schválený
+   * `did_daily_session_plans` (status='approved'). Pokud briefingem navržené
+   * sezení směřuje na takovou část, briefing skryje "Návrh sezení k poradě"
+   * a zobrazí pouze info, že plán je schválený a leží v Pracovna → Dnes.
+   */
+  const [approvedTodayParts, setApprovedTodayParts] = useState<Set<string>>(new Set());
+
+  const loadApprovedToday = useCallback(async () => {
+    try {
+      const today = pragueTodayISO();
+      const { data, error } = await supabase
+        .from("did_daily_session_plans")
+        .select("selected_part,status")
+        .eq("plan_date", today)
+        .eq("status", "approved");
+      if (error) throw error;
+      const set = new Set<string>(
+        ((data ?? []) as Array<{ selected_part: string | null }>)
+          .map((r) => (r.selected_part || "").trim())
+          .filter((s) => s.length > 0),
+      );
+      setApprovedTodayParts(set);
+    } catch (e) {
+      console.error("[DidDailyBriefingPanel] loadApprovedToday failed:", e);
+      setApprovedTodayParts(new Set());
+    }
+  }, []);
 
   const loadLatest = useCallback(async () => {
     setLoading(true);
@@ -243,7 +272,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
 
   useEffect(() => {
     loadLatest();
-  }, [loadLatest, refreshTrigger]);
+    loadApprovedToday();
+  }, [loadLatest, loadApprovedToday, refreshTrigger]);
 
   const handleRegenerate = async () => {
     setRegenerating(true);
@@ -573,6 +603,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
 
   const p = briefing.payload;
   const hasProposed = !!p.proposed_session?.part_name;
+  const proposedPartName = (p.proposed_session?.part_name ?? "").trim();
+  const proposedAlreadyApproved =
+    proposedPartName.length > 0 && approvedTodayParts.has(proposedPartName);
   const decisions = (p.decisions ?? []).slice(0, 3);
   const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
   const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
@@ -688,7 +721,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       {hasProposed && p.proposed_session && proposedAlreadyApproved && (
         <>
           <NarrativeDivider />
-          <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-emerald-600" />}>
+          <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary" />}>
             Dnešní sezení je schválené
           </SectionHead>
           <p className="mt-2 text-[12px] text-muted-foreground italic">
