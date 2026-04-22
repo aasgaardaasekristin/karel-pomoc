@@ -676,31 +676,10 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             </p>
           </button>
 
-          {/* 2026-04-22 — Karel + část room ("herna") CTA.
-              Sekundární akce vedle plánu porady. Otevírá dnešní dedikované
-              did_threads vlákno (sub_mode=karel_part_session) idempotentně
-              přes karel-part-session-prepare. */}
-          <button
-            type="button"
-            disabled={openingItemId === `kps::${p.proposed_session.part_name}`}
-            onClick={() => openKarelPartSessionRoom(p.proposed_session!)}
-            className="mt-2 w-full text-left p-2.5 rounded-lg border border-accent/25 bg-accent/5 hover:bg-accent/10 transition-colors flex items-center gap-2.5 cursor-pointer disabled:opacity-60"
-          >
-            <span className="text-base leading-none">🎲</span>
-            <div className="flex-1 min-w-0">
-              <div className="text-[12px] uppercase tracking-wider text-accent-foreground/70 font-medium">
-                Herna Karel + {p.proposed_session.part_name}
-              </div>
-              <div className="text-[12px] text-foreground/70 leading-snug">
-                Otevřít dnešní pracovní room s částí (60 min, hry).
-              </div>
-            </div>
-            {openingItemId === `kps::${p.proposed_session.part_name}` ? (
-              <Loader2 className="w-4 h-4 text-accent animate-spin shrink-0" />
-            ) : (
-              <ArrowRight className="w-4 h-4 text-accent/60 shrink-0" />
-            )}
-          </button>
+          {/* 2026-04-22 — KAREL+ČÁST HERNA CTA odstraněno z briefingu.
+              Briefing nese pouze NÁVRH sezení; klik vede do Společné porady týmu,
+              kde se schvaluje. Vstup do herny je až v sekci `Sezení s Karlem`
+              v `Dnes` (Pracovna), po podpisech. */}
         </>
       )}
 

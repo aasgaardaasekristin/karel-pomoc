@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, ChevronUp, PenLine, MessageSquare, Play, Square, Clock, Trash2, RefreshCw, Plus, Users, Lock } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, ChevronUp, PenLine, MessageSquare, Play, Square, Clock, Trash2, RefreshCw, Plus, Users, Lock, Dices } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -934,6 +935,28 @@ const PlanCard = ({
             >
               <Play className="mr-0.5 h-2.5 w-2.5" /> Zahájit
             </Button>
+            {/* 2026-04-22 — KAREL+ČÁST HERNA: vstup do připravené místnosti.
+                 Renderuje se jen když je plán schválený poradou (prepApproved)
+                 a NENÍ to krizová intervence (tu vede terapeutka, ne Karel).
+                 Klik volá `karel-part-session-prepare` (idempotentní) a deep-linkuje
+                 do `/chat?workspace_thread=<id>`. */}
+            {prepGateEnabled && prepApproved && plan.session_format !== "crisis_intervention" && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={onOpenPartRoom}
+                disabled={openingPartRoom}
+                className="h-6 px-2 text-[10px]"
+                title={`Otevřít hernu Karel + ${plan.selected_part}`}
+              >
+                {openingPartRoom ? (
+                  <Loader2 className="mr-0.5 h-2.5 w-2.5 animate-spin" />
+                ) : (
+                  <Dices className="mr-0.5 h-2.5 w-2.5" />
+                )}
+                Vstup do herny
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={onMarkDone} className="h-6 px-2 text-[10px] border-green-500/40 text-green-700 hover:bg-green-500/10">
               <CheckCircle2 className="mr-0.5 h-2.5 w-2.5" /> Splněno
             </Button>
