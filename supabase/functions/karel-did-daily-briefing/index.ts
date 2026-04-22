@@ -815,6 +815,25 @@ Deno.serve(async (req) => {
 
     if (insertErr) throw insertErr;
 
+    // ── PANTRY B: označit načtené entries jako processed ──
+    // Brifing je jediný místo, kde Pantry B implikace mají oficiální dopad.
+    // Po úspěšném zápisu briefingu řekneme reaktor-loop / cleanupu, že tyhle
+    // záznamy už splnily svůj účel a nemají se znovu injectovat zítra.
+    try {
+      const consumedIds = (context.pantry_b_entries ?? [])
+        .map((e: any) => e?.id)
+        .filter((id: any) => typeof id === "string");
+      if (consumedIds.length > 0) {
+        await markPantryBProcessed(supabase, consumedIds, "karel-did-daily-briefing", {
+          briefing_id: inserted.id,
+          briefing_date: today,
+        });
+        console.log(`[briefing] Pantry B: marked ${consumedIds.length} entries as processed`);
+      }
+    } catch (mErr) {
+      console.warn("[briefing] Pantry B mark-processed failed (non-fatal):", mErr);
+    }
+
     return new Response(
       JSON.stringify({ briefing: inserted, cached: false, candidates: candidates.slice(0, 5) }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
