@@ -749,10 +749,37 @@ const PlanCard = ({
   // Volá idempotentní `karel-part-session-prepare` a deep-linkuje do herny.
   const navigate = useNavigate();
   const [openingPartRoom, setOpeningPartRoom] = useState(false);
+
+  // KAREL+ČÁST IN DNES TRUTH PASS (2026-04-22):
+  //   Inline doplnění od Haničky / Káti k programu před vstupem do herny.
+  //   Ukládáme do localStorage per plan.id (frontend-only, žádný nový model
+  //   ani sloupec — uživatel výslovně řekl: "žádná nová tabulka").
+  //   Při vstupu do herny se text předá do `karel-part-session-prepare` jako
+  //   součást `briefing_proposed_session.therapist_addendum`, takže Karel ho
+  //   zahrne do generování dnešního programu.
+  const addendumKey = `karel_part_addendum_${plan.id}`;
+  const [therapistAddendum, setTherapistAddendum] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem(addendumKey) ?? "";
+  });
+  const [addendumSavedAt, setAddendumSavedAt] = useState<string | null>(null);
+  const onSaveAddendum = useCallback(() => {
+    try {
+      localStorage.setItem(addendumKey, therapistAddendum);
+      setAddendumSavedAt(new Date().toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" }));
+      toast.success("Doplnění uloženo. Karel ho použije při vstupu do herny.");
+    } catch {
+      toast.error("Nepodařilo se uložit doplnění.");
+    }
+  }, [addendumKey, therapistAddendum]);
+
   const onOpenPartRoom = useCallback(async () => {
     if (openingPartRoom) return;
     setOpeningPartRoom(true);
     try {
+      // Vždy načteme aktuální verzi addenda z localStorage, aby se nezapomněla
+      // poslední úprava, kterou terapeutka neuložila explicitně.
+      const liveAddendum = (typeof window !== "undefined" ? localStorage.getItem(addendumKey) : "") || therapistAddendum || "";
       const { data, error } = await (supabase as any).functions.invoke(
         "karel-part-session-prepare",
         {
@@ -763,6 +790,7 @@ const PlanCard = ({
               first_draft: plan.plan_markdown,
               duration_min: 60,
               led_by: plan.session_lead === "kata" ? "Káťa" : plan.session_lead === "obe" ? "společně" : "Hanička",
+              therapist_addendum: liveAddendum.trim() || undefined,
             },
           },
         },
@@ -778,7 +806,7 @@ const PlanCard = ({
     } finally {
       setOpeningPartRoom(false);
     }
-  }, [navigate, openingPartRoom, plan.selected_part, plan.plan_markdown, plan.session_lead]);
+  }, [navigate, openingPartRoom, plan.selected_part, plan.plan_markdown, plan.session_lead, addendumKey, therapistAddendum]);
 
   // Overdue calculation using Prague timezone
   const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
@@ -971,11 +999,13 @@ const PlanCard = ({
               <Play className="mr-0.5 h-2.5 w-2.5" /> Zahájit
             </Button>
             {/* 2026-04-22 — KAREL+ČÁST HERNA: vstup do připravené místnosti.
-                 Renderuje se jen když je plán schválený poradou (prepApproved)
-                 a NENÍ to krizová intervence (tu vede terapeutka, ne Karel).
+                 Renderuje se jen když je plán schválený poradou (prepApproved).
+                 KAREL+ČÁST IN DNES TRUTH PASS (2026-04-22): odstraněn gating
+                 podle session_format — Karel může mít své sezení s částí i v
+                 krizovém kontextu (krize ≠ vyloučení Karlova vlastního sezení).
                  Klik volá `karel-part-session-prepare` (idempotentní) a deep-linkuje
                  do `/chat?workspace_thread=<id>`. */}
-            {prepGateEnabled && prepApproved && plan.session_format !== "crisis_intervention" && (
+            {prepGateEnabled && prepApproved && (
               <Button
                 variant="default"
                 size="sm"
@@ -1030,6 +1060,49 @@ const PlanCard = ({
           <div className="rounded-md border border-border/60 bg-background/40 p-3 session-plan-content">
             <RichMarkdown compact>{plan.plan_markdown}</RichMarkdown>
           </div>
+
+          {/* KAREL+ČÁST IN DNES TRUTH PASS (2026-04-22):
+               Inline doplnění od Haničky / Káti k programu před vstupem do herny.
+               Renderuje se v Pracovně (prepGateEnabled) a jen u plánů, které
+               ještě nejsou ukončené. Text se ukládá do localStorage per plan.id
+               a předává se do `karel-part-session-prepare` jako součást briefingu. */}
+          {prepGateEnabled && !isArchived && plan.status !== "done" && (
+            <div className="rounded-md border border-primary/20 bg-primary/5 p-3 space-y-2">
+              <div className="flex items-center gap-1.5">
+                <PenLine className="w-3 h-3 text-primary" />
+                <span className="text-[0.6875rem] font-medium text-primary">
+                  Doplnění před vstupem do herny
+                </span>
+                {addendumSavedAt && (
+                  <span className="text-[0.5625rem] text-muted-foreground ml-auto">
+                    uloženo {addendumSavedAt}
+                  </span>
+                )}
+              </div>
+              <p className="text-[0.625rem] leading-4 text-muted-foreground">
+                Hanička / Káťa — chceš ještě před spuštěním Karlovi něco doplnit ke
+                schválenému programu? (např. ranní stav, čerstvý postřeh, na co dnes
+                obzvlášť dát pozor) Karel to zahrne do dnešního programu.
+              </p>
+              <Textarea
+                value={therapistAddendum}
+                onChange={(e) => setTherapistAddendum(e.target.value)}
+                placeholder={`Volitelné. Např.: Tundrupek se ráno probudil zmatený, spí špatně po novém léku — buď s ním obzvlášť jemný…`}
+                className="min-h-[4.5rem] text-[0.6875rem] resize-none bg-background/60 border-border/60"
+              />
+              <div className="flex items-center justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onSaveAddendum}
+                  disabled={!therapistAddendum.trim()}
+                  className="h-6 px-2 text-[0.625rem]"
+                >
+                  Uložit doplnění
+                </Button>
+              </div>
+            </div>
+          )}
 
           {prevSession && (
             <div className="rounded-md border border-border/60 bg-background/40 p-3 space-y-2.5">

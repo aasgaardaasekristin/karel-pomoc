@@ -40,9 +40,29 @@ async function generateProgram(partName: string, briefingHint: any): Promise<str
     return defaultProgram(partName);
   }
 
-  const hintText = briefingHint
-    ? `Z dnešního briefingu vyplývá:\n- Proč dnes: ${briefingHint.why_today || "—"}\n- První pracovní verze: ${briefingHint.first_draft || "—"}\n- Délka: ${briefingHint.duration_min || 60} min`
-    : "Bez briefing-hintu — vytvoř obecný program odpovídající části.";
+  // KAREL+ČÁST IN DNES TRUTH PASS (2026-04-22):
+  //   Hint nyní obsahuje volitelný `therapist_addendum` — krátký vstup
+  //   od Haničky / Káti přímo z karty `Sezení s Karlem` v `Dnes`. Karel
+  //   ho musí zahrnout do dnešního programu (ne ignorovat).
+  const addendum = briefingHint?.therapist_addendum?.toString().trim();
+  const hintLines = briefingHint
+    ? [
+        `Z dnešního schváleného plánu vyplývá:`,
+        `- Proč dnes: ${briefingHint.why_today || "—"}`,
+        `- První pracovní verze plánu (schválená poradou):\n${briefingHint.first_draft || "—"}`,
+        `- Délka: ${briefingHint.duration_min || 60} min`,
+        `- Vede / kdo dohlíží: ${briefingHint.led_by || "Hanička"}`,
+      ]
+    : [`Bez briefing-hintu — vytvoř obecný program odpovídající části.`];
+
+  if (addendum) {
+    hintLines.push("");
+    hintLines.push(`---`);
+    hintLines.push(`DOPLNĚNÍ TERAPEUTKY (těsně před vstupem do herny — máš to bezpodmínečně zahrnout):`);
+    hintLines.push(addendum);
+  }
+
+  const hintText = hintLines.join("\n");
 
   try {
     const res = await fetch(AI_URL, {
@@ -61,6 +81,7 @@ Pravidla:
 - Žádná teorie, žádný klinický žargon směrem k části.
 - Každý blok: název, cíl (co chci pozorovat / posunout), aktivita / hra (jak), pomůcky, časování.
 - Závěr: rituál uzavření, předání zpět.
+- Pokud jsi dostal/a DOPLNĚNÍ TERAPEUTKY, MUSÍŠ ho viditelně zohlednit (např. v úvodu, v jednom z bloků, nebo v rámci bezpečnostního nastavení).
 
 Vrať POUZE markdown text (žádný JSON, žádný code-fence). Začni krátkým úvodem (cíl celku, bezpečný rámec), pak bloky 1.–5., pak Závěr.`,
           },
