@@ -659,28 +659,33 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 </section>
               )}
 
-              {/* KARLOVA SYNTÉZA — povinná pro `crisis` před Karlovým podpisem */}
-              <KarelSynthesisBlock
-                d={d}
-                synthesizing={synthesizing}
-                onSynthesize={handleSynthesize}
-                readOnly={isReadOnly}
-              />
+              {/* KARLOVA SYNTÉZA — povinná POUZE pro `crisis` před uzavřením.
+                  Pro `session_plan` ji nahrazuje iterativní program_draft. */}
+              {d.deliberation_type !== "session_plan" && (
+                <KarelSynthesisBlock
+                  d={d}
+                  synthesizing={synthesizing}
+                  onSynthesize={handleSynthesize}
+                  readOnly={isReadOnly}
+                />
+              )}
 
-              {!isReadOnly && (
+              {!isReadOnly && !(hankaLocked && kataLocked) && (
                 <section className="rounded-lg border border-dashed border-border/60 p-3 space-y-2">
                   <div className="flex items-center gap-1.5">
-                    {(["hanka", "kata"] as const).map((who) => (
-                      <Button
-                        key={who}
-                        size="sm"
-                        variant={chatAuthor === who ? "default" : "outline"}
-                        className="h-6 px-2 text-[10px]"
-                        onClick={() => setChatAuthor(who)}
-                      >
-                        {who === "hanka" ? "Hanička" : "Káťa"}
-                      </Button>
-                    ))}
+                    {(["hanka", "kata"] as const)
+                      .filter((who) => (who === "hanka" ? !hankaLocked : !kataLocked))
+                      .map((who) => (
+                        <Button
+                          key={who}
+                          size="sm"
+                          variant={chatAuthor === who ? "default" : "outline"}
+                          className="h-6 px-2 text-[10px]"
+                          onClick={() => setChatAuthor(who)}
+                        >
+                          {who === "hanka" ? "Hanička" : "Káťa"}
+                        </Button>
+                      ))}
                   </div>
                   <Textarea
                     value={chatDraft}
@@ -691,7 +696,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                   <Button
                     size="sm"
                     className="h-7 text-[11px]"
-                    disabled={!chatDraft.trim()}
+                    disabled={!chatDraft.trim() || (chatAuthor === "hanka" ? hankaLocked : kataLocked)}
                     onClick={handlePostMessage}
                   >
                     <Send className="w-3 h-3 mr-1" /> Odeslat
