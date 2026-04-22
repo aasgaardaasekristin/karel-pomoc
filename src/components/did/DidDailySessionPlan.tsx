@@ -777,6 +777,10 @@ const PlanCard = ({
       // Vždy načteme aktuální verzi addenda z localStorage, aby se nezapomněla
       // poslední úprava, kterou terapeutka neuložila explicitně.
       const liveAddendum = (typeof window !== "undefined" ? localStorage.getItem(addendumKey) : "") || therapistAddendum || "";
+      // C1 SESSION-LEAD TRUTH PASS (2026-04-22):
+      //   `first_draft` / `plan_markdown` (therapist-led program) se sem
+      //   NEPOSÍLÁ — Karel-led child-facing opener nesmí mít hint, který
+      //   by mohl reprodukovat therapist-facing obsah.
       const { data, error } = await (supabase as any).functions.invoke(
         "karel-part-session-prepare",
         {
@@ -784,7 +788,6 @@ const PlanCard = ({
             part_name: plan.selected_part,
             briefing_proposed_session: {
               why_today: `Schválené sezení (porada): ${plan.selected_part}`,
-              first_draft: plan.plan_markdown,
               duration_min: 60,
               led_by: plan.session_lead === "kata" ? "Káťa" : plan.session_lead === "obe" ? "společně" : "Hanička",
               therapist_addendum: liveAddendum.trim() || undefined,
