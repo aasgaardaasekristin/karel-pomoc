@@ -256,7 +256,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
   const [signing, setSigning] = useState<string | null>(null);
   const [synthesizing, setSynthesizing] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
-  const [chatAuthor, setChatAuthor] = useState<"hanka" | "kata" | "karel">("hanka");
+  const [chatAuthor, setChatAuthor] = useState<"hanka" | "kata">("hanka");
   const [bridgedPlanId, setBridgedPlanId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -544,38 +544,38 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
 
         {d && (
           <div className="shrink-0 border-t border-border/60 px-6 py-3 bg-background space-y-2">
-            {/* SESSION PREP SIGNOFF FIX (2026-04-21):
-                Pro `session_plan` jsou jen 2 podpisové buttony (Hanička + Káťa).
-                Karel se podepíše automaticky na serveru po druhém podpisu.
-                Pro ostatní typy (crisis, team_task, …) zůstává 3-tlačítkový model. */}
+            {/* THERAPIST-LED 2-PODPIS TRUTH PASS (2026-04-22):
+                Karel není podepisující strana. Schválení = 2 podpisy
+                (Hanička + Káťa). Karlův timestamp je audit log v DB triggeru.
+                Po podpisu jedné terapeutky její tlačítko zůstane v read-only
+                stavu, druhá stále edituje, dokud nepodepíše také. */}
             {(() => {
-              const isSessionPlan = d.deliberation_type === "session_plan";
-              const visibleSigners: Array<"hanka" | "kata" | "karel"> = isSessionPlan
-                ? ["hanka", "kata"]
-                : ["hanka", "kata", "karel"];
+              const visibleSigners: Array<"hanka" | "kata"> = ["hanka", "kata"];
               return (
                 <div className="flex items-center gap-2">
                   {visibleSigners.map((who) => {
                     const signed =
-                      who === "hanka" ? d.hanka_signed_at :
-                      who === "kata" ? d.kata_signed_at : d.karel_signed_at;
+                      who === "hanka" ? d.hanka_signed_at : d.kata_signed_at;
                     const crisisAnswersReady =
                       areAllQuestionsAnswered(d.questions_for_hanka ?? []) &&
                       areAllQuestionsAnswered(d.questions_for_kata ?? []);
-                    // Karlův ruční gate platí jen pro `crisis` (vyžaduje fresh syntézu).
-                    // U `session_plan` se Karel vůbec nezobrazuje (auto-podpis na serveru).
-                    const karelGateBlocked =
-                      who === "karel" &&
+                    // Krizová porada vyžaduje fresh syntézu předtím, než
+                    // poslední podpis poradu uzavře.
+                    const otherSigned =
+                      who === "hanka" ? !!d.kata_signed_at : !!d.hanka_signed_at;
+                    const crisisGateBlocked =
                       d.deliberation_type === "crisis" &&
+                      otherSigned &&
                       (!crisisAnswersReady || !d.karel_synthesis);
-                    const disabled = !!signed || signing === who || karelGateBlocked || isReadOnly;
+                    const disabled = !!signed || signing === who || crisisGateBlocked || isReadOnly;
+                    const label = who === "hanka" ? "Hanička" : "Káťa";
                     return (
                       <Button
                         key={who}
                         size="sm"
                         variant={signed ? "secondary" : "default"}
                         disabled={disabled}
-                        title={karelGateBlocked
+                        title={crisisGateBlocked
                           ? 'Karel musí (znovu) syntetizovat odpovědi terapeutek — viz tlačítko „Spustit Karlovu syntézu".'
                           : undefined}
                         className="h-8 text-[11px] flex-1"
@@ -586,7 +586,9 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                         ) : signed ? (
                           <CheckCircle2 className="w-3 h-3 mr-1 text-primary" />
                         ) : null}
-                        {signed ? `${who === "hanka" ? "Hanička" : who === "kata" ? "Káťa" : "Karel"} ✓` : `Podepsat za ${who === "hanka" ? "Haničku" : who === "kata" ? "Káťu" : "Karla"}`}
+                        {signed
+                          ? `${label} ✓`
+                          : `Stvrzuji podpisem souhlas (${label})`}
                       </Button>
                     );
                   })}
@@ -594,9 +596,9 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
               );
             })()}
 
-            {/* READY-TO-START stav — viditelný hned po dvou terapeutických podpisech
-                u session_plan (bridge proběhne na serveru, Karel se sám podepíše,
-                trigger překlopí status na approved a vznikne plán v did_daily_session_plans). */}
+            {/* READY-TO-START stav — viditelný hned po dvou terapeutických podpisech.
+                Bridge proběhne na serveru, trigger překlopí status na approved
+                a vznikne plán v did_daily_session_plans. */}
             {d.deliberation_type === "session_plan" &&
               !!d.hanka_signed_at &&
               !!d.kata_signed_at && (
@@ -607,8 +609,8 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                       Připraveno k zahájení
                     </p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Hanička i Káťa podepsaly. Karel automaticky uzavřel přípravu
-                      a propsal plán do dnešního sezení.
+                      Hanička i Káťa stvrdily podpisem souhlas. Plán je propsán
+                      do dnešního sezení.
                     </p>
                   </div>
                 </section>
@@ -621,7 +623,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 onClick={goToLiveSession}
                 disabled={!bridgedPlanId && !d.linked_live_session_id}
               >
-                Zahájit sezení <ArrowRight className="w-3 h-3 ml-1" />
+                Spustit sezení <ArrowRight className="w-3 h-3 ml-1" />
               </Button>
             )}
           </div>
