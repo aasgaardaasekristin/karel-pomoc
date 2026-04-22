@@ -2252,6 +2252,54 @@ export type Database = {
         }
         Relationships: []
       }
+      did_pantry_packages: {
+        Row: {
+          content_md: string
+          created_at: string
+          drive_target_path: string | null
+          flush_error: string | null
+          flushed_at: string | null
+          id: string
+          metadata: Json
+          package_type: string
+          source_id: string | null
+          source_table: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content_md: string
+          created_at?: string
+          drive_target_path?: string | null
+          flush_error?: string | null
+          flushed_at?: string | null
+          id?: string
+          metadata?: Json
+          package_type: string
+          source_id?: string | null
+          source_table?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content_md?: string
+          created_at?: string
+          drive_target_path?: string | null
+          flush_error?: string | null
+          flushed_at?: string | null
+          id?: string
+          metadata?: Json
+          package_type?: string
+          source_id?: string | null
+          source_table?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_part_profiles: {
         Row: {
           challenges: Json | null
@@ -3122,6 +3170,7 @@ export type Database = {
           hanka_signed_at: string | null
           id: string
           initial_karel_brief: string | null
+          interrogation_complete: boolean
           karel_proposed_plan: string | null
           karel_signed_at: string | null
           karel_synthesis: Json | null
@@ -3135,6 +3184,7 @@ export type Database = {
           linked_task_id: string | null
           participants: string[] | null
           priority: string
+          program_draft: Json
           questions_for_hanka: Json
           questions_for_kata: Json
           reason: string | null
@@ -3157,6 +3207,7 @@ export type Database = {
           hanka_signed_at?: string | null
           id?: string
           initial_karel_brief?: string | null
+          interrogation_complete?: boolean
           karel_proposed_plan?: string | null
           karel_signed_at?: string | null
           karel_synthesis?: Json | null
@@ -3170,6 +3221,7 @@ export type Database = {
           linked_task_id?: string | null
           participants?: string[] | null
           priority?: string
+          program_draft?: Json
           questions_for_hanka?: Json
           questions_for_kata?: Json
           reason?: string | null
@@ -3192,6 +3244,7 @@ export type Database = {
           hanka_signed_at?: string | null
           id?: string
           initial_karel_brief?: string | null
+          interrogation_complete?: boolean
           karel_proposed_plan?: string | null
           karel_signed_at?: string | null
           karel_synthesis?: Json | null
@@ -3205,6 +3258,7 @@ export type Database = {
           linked_task_id?: string | null
           participants?: string[] | null
           priority?: string
+          program_draft?: Json
           questions_for_hanka?: Json
           questions_for_kata?: Json
           reason?: string | null
