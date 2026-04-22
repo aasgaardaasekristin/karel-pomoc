@@ -14,6 +14,8 @@ import { useImageUpload } from "@/hooks/useImageUpload";
 import { Progress } from "@/components/ui/progress";
 import RichMarkdown from "@/components/ui/RichMarkdown";
 import DidPostSessionInterrogation, { type InterrogationAnswer } from "./DidPostSessionInterrogation";
+import LiveProgramChecklist from "./LiveProgramChecklist";
+import KarelInSessionCards, { type KarelHintTrigger } from "./KarelInSessionCards";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -92,6 +94,16 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
     qa: InterrogationAnswer[];
     extraNote: string;
   } | null>(null);
+
+  // ── Karel in-session feedback triggers (pravý sloupec) ──
+  const [hintTriggers, setHintTriggers] = useState<KarelHintTrigger[]>([]);
+  const pushHintTrigger = useCallback(
+    (observation: string, attachmentKind?: KarelHintTrigger["attachmentKind"]) => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      setHintTriggers(prev => [...prev.slice(-9), { id, observation, attachmentKind: attachmentKind ?? null, programBlock: null }]);
+    },
+    [],
+  );
 
   const EMOTION_OPTIONS = [
     "klidná", "nejistá", "frustrovaná", "dojatá",
@@ -786,6 +798,47 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
           .eq("id", planId);
       } catch (planErr) {
         console.warn("Failed to update plan status to done:", planErr);
+      }
+    }
+
+    // ── SPIŽÍRNA HANDOFF (THERAPIST-LED TRUTH PASS, 2026-04-22) ──
+    // Po Karlově finální analýze založíme balík do `did_pantry_packages`,
+    // který v noci (~04:15 Prague) `karel-pantry-flush-to-drive` převezme
+    // a zařadí do Drive queue. Status `pending_drive` je triggerem pro flush.
+    if (savedSessionId && (report || "").trim().length > 0) {
+      try {
+        const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+        const driveTargetPath = `06_INTERVENCE/${todayKey}_${partName}_analyza`;
+        const fullContent = `# Analýza sezení s ${partName}
+**Datum:** ${todayKey}
+**Terapeutka:** ${therapistName}
+**Session ID:** ${savedSessionId}
+${planId ? `**Plán ID:** ${planId}` : ""}
+
+---
+
+${report}${reflectionText}`;
+
+        await (supabase as any).from("did_pantry_packages").insert({
+          source_id: savedSessionId,
+          source_table: "did_part_sessions",
+          package_type: "session_analysis",
+          status: "pending_drive",
+          content_md: fullContent,
+          drive_target_path: driveTargetPath,
+          metadata: {
+            part_name: partName,
+            therapist: therapistName,
+            plan_id: planId ?? null,
+            therapist_addendum: reflectionText.length > 0,
+            generated_at: new Date().toISOString(),
+          },
+        });
+        console.log("[Spižírna] session_analysis package queued for nightly Drive flush");
+      } catch (pantryErr) {
+        console.error("Failed to enqueue pantry package:", pantryErr);
+        // Nezablokujeme UX — analýza je uložena v `did_part_sessions`,
+        // pantry je doplňková vrstva pro noční Drive propis.
       }
     }
 
