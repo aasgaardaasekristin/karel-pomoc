@@ -378,6 +378,8 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
       ...prev,
       { role: "user", content: `📝 *[Poznámka ${stamp}]*\n\n${text}` },
     ]);
+    // Karel proaktivní reakce na poznámku terapeutky
+    pushHintTrigger(`Poznámka terapeutky [${stamp}]:\n${text}`, "note");
     setNoteDraft("");
     setNoteDialogOpen(false);
     toast.success("Poznámka uložena");
