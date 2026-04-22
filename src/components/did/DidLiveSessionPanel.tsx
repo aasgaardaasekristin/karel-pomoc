@@ -12,7 +12,7 @@ import ChatMessage from "@/components/ChatMessage";
 import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { Progress } from "@/components/ui/progress";
-import RichMarkdown from "@/components/ui/RichMarkdown";
+
 import DidPostSessionInterrogation, { type InterrogationAnswer } from "./DidPostSessionInterrogation";
 import LiveProgramChecklist from "./LiveProgramChecklist";
 import KarelInSessionCards, { type KarelHintTrigger } from "./KarelInSessionCards";
@@ -181,6 +181,8 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
 
     const updatedMessages = [...messages, { role: "user" as const, content: userMessage }];
     setMessages(updatedMessages);
+    // Karel proaktivní reakce na nový input terapeutky
+    pushHintTrigger(userMessage, "note");
     setIsLoading(true);
 
     let assistantContent = "";
@@ -288,6 +290,11 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
         { role: "user", content: `🎙️ *[Audio segment #${segNum} – ${formatDuration(recorder.duration)}]*` },
         { role: "assistant", content: analysis },
       ]);
+      // Karel proaktivní reakce na čerstvou audio analýzu
+      pushHintTrigger(
+        `Nová audio analýza segmentu #${segNum} (${formatDuration(recorder.duration)}):\n${analysis.slice(0, 800)}`,
+        "audio",
+      );
       recorder.reset();
       toast.success(`Audio segment #${segNum} analyzován`);
     } catch (error) {
@@ -347,6 +354,11 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
         { role: "user", content: label },
         { role: "assistant", content: analysis },
       ]);
+      // Karel proaktivní reakce na obrazovou analýzu
+      pushHintTrigger(
+        `Nová obrazová analýza (${images.length}× ${images.length > 1 ? "obrázků" : "obrázek"}):\n${analysis.slice(0, 800)}`,
+        "image",
+      );
       imageUpload.clearImages();
       toast.success(`Obrázek #${segNum} analyzován`);
     } catch (error) {
@@ -366,6 +378,8 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
       ...prev,
       { role: "user", content: `📝 *[Poznámka ${stamp}]*\n\n${text}` },
     ]);
+    // Karel proaktivní reakce na poznámku terapeutky
+    pushHintTrigger(`Poznámka terapeutky [${stamp}]:\n${text}`, "note");
     setNoteDraft("");
     setNoteDialogOpen(false);
     toast.success("Poznámka uložena");
@@ -1001,8 +1015,23 @@ ${report}${reflectionText}`;
               )}
             </button>
             {planExpanded && (
-              <div className="px-3 pb-3 pt-0 max-h-72 overflow-y-auto border-t border-primary/15">
-                <RichMarkdown compact>{contextBrief}</RichMarkdown>
+              <div className="px-3 pb-3 pt-0 max-h-80 overflow-y-auto border-t border-primary/15">
+                <LiveProgramChecklist
+                  planMarkdown={contextBrief}
+                  storageKey={`live_program_${planId ?? "ad-hoc"}`}
+                  onItemToggle={(it) =>
+                    pushHintTrigger(
+                      `Bod programu ${it.done ? "označen jako HOTOVÝ" : "vrácen do běhu"}: „${it.text.slice(0, 200)}"`,
+                      "note",
+                    )
+                  }
+                  onObservationSubmit={(it) =>
+                    pushHintTrigger(
+                      `Pozorování k bodu „${it.text.slice(0, 120)}":\n${it.observation.slice(0, 600)}`,
+                      "note",
+                    )
+                  }
+                />
               </div>
             )}
           </div>
@@ -1133,6 +1162,23 @@ ${report}${reflectionText}`;
           )}
         </div>
       </ScrollArea>
+
+      {/* ── Karlovy in-session karty (proaktivní reakce na vstupy) ── */}
+      {hintTriggers.length > 0 && (
+        <div className="border-t border-border bg-card/30 backdrop-blur-sm">
+          <div className="max-w-3xl mx-auto px-3 sm:px-4 py-2 max-h-[14rem] overflow-y-auto">
+            <KarelInSessionCards
+              partName={activePart}
+              therapistName={therapistName}
+              triggers={hintTriggers}
+              onAnswerHint={(text) => {
+                setInput((prev) => (prev ? `${prev}\n\n${text}` : text));
+                textareaRef.current?.focus();
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Input */}
       <div className="border-t border-border bg-card/50 backdrop-blur-sm">
