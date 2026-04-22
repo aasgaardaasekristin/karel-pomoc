@@ -745,6 +745,41 @@ const PlanCard = ({
   // Mimo Pracovnu (prepGateEnabled=false) zůstává staré chování.
   const startBlockedByPrep = prepGateEnabled && !prepApproved;
 
+  // 2026-04-22 — KAREL+ČÁST HERNA vstup z karty `Sezení s Karlem`.
+  // Volá idempotentní `karel-part-session-prepare` a deep-linkuje do herny.
+  const navigate = useNavigate();
+  const [openingPartRoom, setOpeningPartRoom] = useState(false);
+  const onOpenPartRoom = useCallback(async () => {
+    if (openingPartRoom) return;
+    setOpeningPartRoom(true);
+    try {
+      const { data, error } = await (supabase as any).functions.invoke(
+        "karel-part-session-prepare",
+        {
+          body: {
+            part_name: plan.selected_part,
+            briefing_proposed_session: {
+              why_today: `Schválené sezení (porada): ${plan.selected_part}`,
+              first_draft: plan.plan_markdown,
+              duration_min: 60,
+              led_by: plan.session_lead === "kata" ? "Káťa" : plan.session_lead === "obe" ? "společně" : "Hanička",
+            },
+          },
+        },
+      );
+      if (error) throw error;
+      const threadId = (data as any)?.thread_id;
+      if (!threadId) throw new Error("Herna nebyla vytvořena.");
+      toast.success(`🎲 Herna s ${plan.selected_part} otevřena.`);
+      navigate(`/chat?workspace_thread=${threadId}`);
+    } catch (e: any) {
+      console.error("[DidDailySessionPlan] onOpenPartRoom failed:", e);
+      toast.error(e?.message || "Nepodařilo se otevřít hernu.");
+    } finally {
+      setOpeningPartRoom(false);
+    }
+  }, [navigate, openingPartRoom, plan.selected_part, plan.plan_markdown, plan.session_lead]);
+
   // Overdue calculation using Prague timezone
   const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
   const isOverdue = plan.status === "generated" && plan.plan_date < todayPrague;
