@@ -333,7 +333,7 @@ function KarelSynthesisBlock({
 
 const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
   const navigate = useNavigate();
-  const { sign, synthesize, answerQuestion, postMessage, reload, items } = useTeamDeliberations(0);
+  const { sign, synthesize, answerQuestion, postMessage, iterateProgram, reload, items } = useTeamDeliberations(0);
   const [d, setD] = useState<TeamDeliberation | null>(null);
   const [loading, setLoading] = useState(true);
   const [signing, setSigning] = useState<string | null>(null);
@@ -341,6 +341,10 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
   const [chatDraft, setChatDraft] = useState("");
   const [chatAuthor, setChatAuthor] = useState<"hanka" | "kata">("hanka");
   const [bridgedPlanId, setBridgedPlanId] = useState<string | null>(null);
+  // THERAPIST-LED TRUTH PASS — iterativní program
+  const [iterating, setIterating] = useState(false);
+  const [lastIterateComment, setLastIterateComment] = useState<string | null>(null);
+  const lastIterateInputRef = useRef<string>("");
 
   useEffect(() => {
     const found = items.find((x) => x.id === deliberationId) ?? null;
@@ -379,6 +383,33 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
   }, [deliberationId]);
 
   if (!deliberationId) return null;
+
+  /**
+   * THERAPIST-LED TRUTH PASS — fire-and-forget volání iterace programu.
+   * Spouští se po každé nové odpovědi nebo diskusní zprávě terapeutky
+   * (pro typ `session_plan`). Krize zůstává ve starém synthesis flow.
+   */
+  const triggerIterate = async (input: { author: "hanka" | "kata"; text: string }) => {
+    if (!d || d.deliberation_type !== "session_plan") return;
+    if (d.status === "approved" || d.status === "closed" || d.status === "archived") return;
+    const dedupe = `${input.author}::${input.text.trim()}`;
+    if (dedupe === lastIterateInputRef.current) return;
+    lastIterateInputRef.current = dedupe;
+    setIterating(true);
+    try {
+      const res = await iterateProgram(d.id, input);
+      if (res?.no_op) {
+        // Karel nic nezměnil — neukazujeme prázdný komentář.
+      } else if (res?.karel_inline_comment) {
+        setLastIterateComment(res.karel_inline_comment);
+      }
+    } catch (e: any) {
+      console.warn("[DeliberationRoom] iterateProgram failed:", e?.message ?? e);
+      // Tichá chyba — uživatelská akce (odpověď) už proběhla, iterace je doplňková.
+    } finally {
+      setIterating(false);
+    }
+  };
 
   const handleSign = async (who: "hanka" | "kata") => {
     if (!d) return;
@@ -419,6 +450,8 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
     if (!d) return;
     try {
       await answerQuestion(d.id, who, idx, answer);
+      // Iterativní přepis programu po odpovědi terapeutky.
+      void triggerIterate({ author: who, text: answer });
     } catch (e: any) {
       toast.error(e?.message ?? "Uložení odpovědi selhalo.");
     }
@@ -426,9 +459,13 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
 
   const handlePostMessage = async () => {
     if (!d || !chatDraft.trim()) return;
+    const text = chatDraft.trim();
+    const author = chatAuthor;
     try {
-      await postMessage(d.id, chatAuthor, chatDraft.trim());
+      await postMessage(d.id, author, text);
       setChatDraft("");
+      // Iterativní přepis programu po novém podnětu z diskuse.
+      void triggerIterate({ author, text });
     } catch (e: any) {
       toast.error(e?.message ?? "Odeslání selhalo.");
     }
@@ -441,8 +478,12 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
     onClose();
   };
 
-  const sp = d ? signoffProgress(d) : { signed: 0, total: 3, missing: [] };
+  const sp = d ? signoffProgress(d) : { signed: 0, total: 2, missing: [] };
   const isReadOnly = d?.status === "approved";
+  // PER-THERAPIST LOCK — pokud Hanka podepsala, její sekce read-only,
+  // ale Káťa může pořád odpovídat / přidávat podněty (a obráceně).
+  const hankaLocked = !!d?.hanka_signed_at;
+  const kataLocked = !!d?.kata_signed_at;
 
   return (
     <Dialog open={!!deliberationId} onOpenChange={(open) => !open && onClose()}>
