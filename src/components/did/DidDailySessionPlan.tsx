@@ -928,11 +928,11 @@ const PlanCard = ({
           ) : prepInProgress ? (
             <Badge className="text-[10px] h-5 px-1.5 bg-amber-500/15 text-amber-700 border border-amber-500/30">
               <Users className="mr-0.5 h-2.5 w-2.5" />
-              Příprava ({prepProgress?.signed ?? 0}/3 podpisů)
+              Příprava ({prepProgress?.signed ?? 0}/{prepProgress?.total ?? 2} podpisů)
             </Badge>
           ) : (
             <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/40 text-amber-700">
-              <Lock className="mr-0.5 h-2.5 w-2.5" /> Bez přípravy
+              <Lock className="mr-0.5 h-2.5 w-2.5" /> Bez schválené přípravy
             </Badge>
           )
         )}
@@ -961,7 +961,7 @@ const PlanCard = ({
                 className="h-6 px-2 text-[10px]"
               >
                 <Users className="mr-0.5 h-2.5 w-2.5" /> Otevřít přípravu
-                {prepProgress && ` (${prepProgress.signed}/3)`}
+                {prepProgress && ` (${prepProgress.signed}/${prepProgress.total})`}
               </Button>
             )}
             {prepGateEnabled && !prepLoading && !prepRoom && (
