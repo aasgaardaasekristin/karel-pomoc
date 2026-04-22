@@ -1,6 +1,15 @@
 /**
  * karel-team-deliberation-synthesize
  *
+ * ⚠️ THERAPIST-LED TRUTH PASS (2026-04-22):
+ *   Pro `deliberation_type='session_plan'` je tato funkce **DEPRECATED** —
+ *   nahrazuje ji `karel-team-deliberation-iterate`, která Karlův program
+ *   přepisuje iterativně po každém vstupu terapeutky a finální přepis
+ *   probíhá automaticky při druhém podpisu (signoff bridge).
+ *
+ *   Funkce ZŮSTÁVÁ aktivní pro `deliberation_type='crisis'`, kde Karel
+ *   provádí jednorázovou krizovou syntézu před aktivací svého podpisu.
+ *
  * Karel přečte odpovědi Haničky a Káti + discussion_log, syntetizuje je
  * a zapíše:
  *   - final_summary (markdown stručný výstup)
