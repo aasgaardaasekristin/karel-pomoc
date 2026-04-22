@@ -184,9 +184,12 @@ export function partitionDashboardDeliberations(
     normal: 3,
     low: 4,
   };
+  // UI TRUTH FIX (2026-04-22): "Otevřené porady" znamená OTEVŘENÉ.
+  // approved/closed/archived NIKDY nesmí téct do dashboard partition,
+  // jinak overflow zobrazuje karty s badge "uzavřeno" v sekci „Další otevřené porady".
   const open = list.filter(
     (d) =>
-      (d.status === "active" || d.status === "awaiting_signoff" || d.status === "approved") &&
+      (d.status === "active" || d.status === "awaiting_signoff") &&
       !isTestDeliberation(d)
   );
   const sorted = [...open].sort((a, b) => {
