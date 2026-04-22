@@ -95,6 +95,16 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
     extraNote: string;
   } | null>(null);
 
+  // ── Karel in-session feedback triggers (pravý sloupec) ──
+  const [hintTriggers, setHintTriggers] = useState<KarelHintTrigger[]>([]);
+  const pushHintTrigger = useCallback(
+    (observation: string, attachmentKind?: KarelHintTrigger["attachmentKind"]) => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      setHintTriggers(prev => [...prev.slice(-9), { id, observation, attachmentKind: attachmentKind ?? null, programBlock: null }]);
+    },
+    [],
+  );
+
   const EMOTION_OPTIONS = [
     "klidná", "nejistá", "frustrovaná", "dojatá",
     "vyčerpaná", "nadějná", "úzkostná", "překvapená",
