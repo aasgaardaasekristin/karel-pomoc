@@ -12,7 +12,7 @@ import ChatMessage from "@/components/ChatMessage";
 import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { Progress } from "@/components/ui/progress";
-import RichMarkdown from "@/components/ui/RichMarkdown";
+
 import DidPostSessionInterrogation, { type InterrogationAnswer } from "./DidPostSessionInterrogation";
 import LiveProgramChecklist from "./LiveProgramChecklist";
 import KarelInSessionCards, { type KarelHintTrigger } from "./KarelInSessionCards";
