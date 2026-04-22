@@ -290,6 +290,11 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
         { role: "user", content: `🎙️ *[Audio segment #${segNum} – ${formatDuration(recorder.duration)}]*` },
         { role: "assistant", content: analysis },
       ]);
+      // Karel proaktivní reakce na čerstvou audio analýzu
+      pushHintTrigger(
+        `Nová audio analýza segmentu #${segNum} (${formatDuration(recorder.duration)}):\n${analysis.slice(0, 800)}`,
+        "audio",
+      );
       recorder.reset();
       toast.success(`Audio segment #${segNum} analyzován`);
     } catch (error) {
