@@ -1163,6 +1163,23 @@ ${report}${reflectionText}`;
         </div>
       </ScrollArea>
 
+      {/* ── Karlovy in-session karty (proaktivní reakce na vstupy) ── */}
+      {hintTriggers.length > 0 && (
+        <div className="border-t border-border bg-card/30 backdrop-blur-sm">
+          <div className="max-w-3xl mx-auto px-3 sm:px-4 py-2 max-h-[14rem] overflow-y-auto">
+            <KarelInSessionCards
+              partName={activePart}
+              therapistName={therapistName}
+              triggers={hintTriggers}
+              onAnswerHint={(text) => {
+                setInput((prev) => (prev ? `${prev}\n\n${text}` : text));
+                textareaRef.current?.focus();
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Input */}
       <div className="border-t border-border bg-card/50 backdrop-blur-sm">
         <div className="max-w-3xl mx-auto px-3 sm:px-4 py-3">
