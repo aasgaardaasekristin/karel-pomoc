@@ -147,29 +147,29 @@ async function gatherContext(supabase: any) {
       .not("phase", "in", '("closed","CLOSED")')
       .order("severity", { ascending: false }),
     supabase.from("did_observations")
-      .select("part_id, signal_type, severity, content, created_at")
+      .select("subject_type, subject_id, fact, evidence_level, confidence, created_at")
       .gte("created_at", `${threeDaysAgo}T00:00:00Z`)
       .order("created_at", { ascending: false })
-      .limit(50),
+      .limit(80),
     supabase.from("did_observations")
-      .select("part_id, signal_type, severity, content, created_at")
+      .select("subject_type, subject_id, fact, evidence_level, confidence, created_at")
       .gte("created_at", `${sevenDaysAgo}T00:00:00Z`)
       .lt("created_at", `${threeDaysAgo}T00:00:00Z`)
-      .eq("severity", "high")
-      .limit(20),
+      .in("evidence_level", ["D1", "D2", "D3", "I1"])
+      .limit(30),
     supabase.from("did_pending_questions")
-      .select("id, part_id, question, asked_to, status")
-      .in("status", ["pending", "sent"])
+      .select("id, subject_type, subject_id, question, directed_to, status")
+      .in("status", ["open", "pending", "sent"])
       .limit(20),
     supabase.from("did_threads")
-      .select("id, title, part_name, last_message_at")
-      .gte("last_message_at", `${threeDaysAgo}T00:00:00Z`)
-      .order("last_message_at", { ascending: false })
+      .select("id, thread_label, part_name, last_activity_at")
+      .gte("last_activity_at", `${threeDaysAgo}T00:00:00Z`)
+      .order("last_activity_at", { ascending: false })
       .limit(15),
     supabase.from("did_daily_session_plans")
-      .select("id, part_id, status, plan_summary, session_date")
-      .gte("session_date", threeDaysAgo)
-      .order("session_date", { ascending: false }),
+      .select("id, plan_date, selected_part, therapist, status, plan_markdown, crisis_event_id")
+      .gte("plan_date", threeDaysAgo)
+      .order("plan_date", { ascending: false }),
   ]);
 
   const { data: parts } = await supabase
@@ -246,17 +246,27 @@ async function gatherContext(supabase: any) {
     today: pragueDayISO(),
     crises: crisesRes.data || [],
     recent_observations: (recentObsRes.data || []).map((o: any) => ({
-      ...o, part_name: o.part_id ? partsById.get(o.part_id) : null,
+      ...o,
+      part_name: o.subject_type === "part" ? o.subject_id : null,
+      content: o.fact,
+      severity: o.evidence_level,
     })),
     older_significant: (olderObsRes.data || []).map((o: any) => ({
-      ...o, part_name: o.part_id ? partsById.get(o.part_id) : null,
+      ...o,
+      part_name: o.subject_type === "part" ? o.subject_id : null,
+      content: o.fact,
+      severity: o.evidence_level,
     })),
     pending_questions: (pendingRes.data || []).map((q: any) => ({
-      ...q, part_name: q.part_id ? partsById.get(q.part_id) : null,
+      ...q,
+      part_name: q.subject_type === "part" ? q.subject_id : null,
+      asked_to: q.directed_to,
     })),
     recent_threads: threadsRes.data || [],
     recent_session_plans: (plansRes.data || []).map((p: any) => ({
-      ...p, part_name: p.part_id ? partsById.get(p.part_id) : null,
+      ...p,
+      part_name: p.selected_part ?? null,
+      session_date: p.plan_date,
     })),
     pantry_a: pantryA,
     pantry_a_summary: pantryASummary,
