@@ -1,0 +1,1 @@
+UPDATE did_team_deliberations SET hanka_signed_at = now() - interval '1 hour', kata_signed_at = now() - interval '50 minutes', karel_signed_at = now() - interval '40 minutes', status = 'approved' WHERE id = 'c6732a13-1862-43c7-9151-e7cf6200f2fa';
