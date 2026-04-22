@@ -29,6 +29,7 @@ import DidPartIdentifier from "@/components/did/DidPartIdentifier";
 import DidKidsThemeEditor from "@/components/did/DidKidsThemeEditor";
 import DidActionButtons from "@/components/did/DidActionButtons";
 import QuickNoteDialog from "@/components/did/QuickNoteDialog";
+import KarelPartSessionBanner from "@/components/did/KarelPartSessionBanner";
 import ChatInputArea from "@/components/chat/ChatInputArea";
 import AudioRecordButton from "@/components/AudioRecordButton";
 import ChatMessage from "@/components/ChatMessage";
