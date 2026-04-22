@@ -789,6 +789,47 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
       }
     }
 
+    // ── SPIŽÍRNA HANDOFF (THERAPIST-LED TRUTH PASS, 2026-04-22) ──
+    // Po Karlově finální analýze založíme balík do `did_pantry_packages`,
+    // který v noci (~04:15 Prague) `karel-pantry-flush-to-drive` převezme
+    // a zařadí do Drive queue. Status `pending_drive` je triggerem pro flush.
+    if (savedSessionId && (report || "").trim().length > 0) {
+      try {
+        const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+        const driveTargetPath = `06_INTERVENCE/${todayKey}_${partName}_analyza`;
+        const fullContent = `# Analýza sezení s ${partName}
+**Datum:** ${todayKey}
+**Terapeutka:** ${therapistName}
+**Session ID:** ${savedSessionId}
+${planId ? `**Plán ID:** ${planId}` : ""}
+
+---
+
+${report}${reflectionText}`;
+
+        await (supabase as any).from("did_pantry_packages").insert({
+          source_id: savedSessionId,
+          source_table: "did_part_sessions",
+          package_type: "session_analysis",
+          status: "pending_drive",
+          content_md: fullContent,
+          drive_target_path: driveTargetPath,
+          metadata: {
+            part_name: partName,
+            therapist: therapistName,
+            plan_id: planId ?? null,
+            therapist_addendum: reflectionText.length > 0,
+            generated_at: new Date().toISOString(),
+          },
+        });
+        console.log("[Spižírna] session_analysis package queued for nightly Drive flush");
+      } catch (pantryErr) {
+        console.error("Failed to enqueue pantry package:", pantryErr);
+        // Nezablokujeme UX — analýza je uložena v `did_part_sessions`,
+        // pantry je doplňková vrstva pro noční Drive propis.
+      }
+    }
+
     // Set completed state + reset all session states
     setCompletedReport(report || "Zápis nebyl vygenerován.");
     setMessages([]);
