@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, ChevronUp, PenLine, MessageSquare, Play, Square, Clock, Trash2, RefreshCw, Plus, Users, Lock } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, ChevronUp, PenLine, MessageSquare, Play, Square, Clock, Trash2, RefreshCw, Plus, Users, Lock, Dices } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -436,7 +437,10 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
             <Target className="w-3.5 h-3.5 text-primary" />
-            Plán sezení na dnes
+            Sezení s Karlem
+            <span className="text-[0.625rem] text-muted-foreground/70 font-normal ml-1">
+              · vykonatelné po schválení porady
+            </span>
           </h4>
           <div className="flex items-center gap-1.5">
             {!generating && !compact && (
@@ -556,9 +560,16 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
         )}
 
         {plans.length === 0 && !generating && (
-          <p className="text-[0.6875rem] text-muted-foreground">
-            Automatický plán se generuje v 6:00. Můžeš ho vygenerovat i ručně.
-          </p>
+          <div className="rounded-md border border-dashed border-border/50 bg-background/30 p-3">
+            <p className="text-[0.6875rem] text-muted-foreground leading-relaxed">
+              Dnes zatím není žádné schválené sezení.
+              <br />
+              <span className="text-muted-foreground/70">
+                Karlův návrh sezení vzniká v <strong>Společné poradě týmu</strong> (návrh → otázky → podpisy).
+                Po schválení se zde objeví vykonatelná karta s programem a vstupem do připravené místnosti.
+              </span>
+            </p>
+          </div>
         )}
 
         {/* ═══ PENDING PLANS ═══ */}
@@ -733,6 +744,41 @@ const PlanCard = ({
   // „Zahájit" je v Pracovně dostupné JEN když je plán schválený přes prep room.
   // Mimo Pracovnu (prepGateEnabled=false) zůstává staré chování.
   const startBlockedByPrep = prepGateEnabled && !prepApproved;
+
+  // 2026-04-22 — KAREL+ČÁST HERNA vstup z karty `Sezení s Karlem`.
+  // Volá idempotentní `karel-part-session-prepare` a deep-linkuje do herny.
+  const navigate = useNavigate();
+  const [openingPartRoom, setOpeningPartRoom] = useState(false);
+  const onOpenPartRoom = useCallback(async () => {
+    if (openingPartRoom) return;
+    setOpeningPartRoom(true);
+    try {
+      const { data, error } = await (supabase as any).functions.invoke(
+        "karel-part-session-prepare",
+        {
+          body: {
+            part_name: plan.selected_part,
+            briefing_proposed_session: {
+              why_today: `Schválené sezení (porada): ${plan.selected_part}`,
+              first_draft: plan.plan_markdown,
+              duration_min: 60,
+              led_by: plan.session_lead === "kata" ? "Káťa" : plan.session_lead === "obe" ? "společně" : "Hanička",
+            },
+          },
+        },
+      );
+      if (error) throw error;
+      const threadId = (data as any)?.thread_id;
+      if (!threadId) throw new Error("Herna nebyla vytvořena.");
+      toast.success(`🎲 Herna s ${plan.selected_part} otevřena.`);
+      navigate(`/chat?workspace_thread=${threadId}`);
+    } catch (e: any) {
+      console.error("[DidDailySessionPlan] onOpenPartRoom failed:", e);
+      toast.error(e?.message || "Nepodařilo se otevřít hernu.");
+    } finally {
+      setOpeningPartRoom(false);
+    }
+  }, [navigate, openingPartRoom, plan.selected_part, plan.plan_markdown, plan.session_lead]);
 
   // Overdue calculation using Prague timezone
   const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
@@ -924,6 +970,28 @@ const PlanCard = ({
             >
               <Play className="mr-0.5 h-2.5 w-2.5" /> Zahájit
             </Button>
+            {/* 2026-04-22 — KAREL+ČÁST HERNA: vstup do připravené místnosti.
+                 Renderuje se jen když je plán schválený poradou (prepApproved)
+                 a NENÍ to krizová intervence (tu vede terapeutka, ne Karel).
+                 Klik volá `karel-part-session-prepare` (idempotentní) a deep-linkuje
+                 do `/chat?workspace_thread=<id>`. */}
+            {prepGateEnabled && prepApproved && plan.session_format !== "crisis_intervention" && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={onOpenPartRoom}
+                disabled={openingPartRoom}
+                className="h-6 px-2 text-[10px]"
+                title={`Otevřít hernu Karel + ${plan.selected_part}`}
+              >
+                {openingPartRoom ? (
+                  <Loader2 className="mr-0.5 h-2.5 w-2.5 animate-spin" />
+                ) : (
+                  <Dices className="mr-0.5 h-2.5 w-2.5" />
+                )}
+                Vstup do herny
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={onMarkDone} className="h-6 px-2 text-[10px] border-green-500/40 text-green-700 hover:bg-green-500/10">
               <CheckCircle2 className="mr-0.5 h-2.5 w-2.5" /> Splněno
             </Button>
