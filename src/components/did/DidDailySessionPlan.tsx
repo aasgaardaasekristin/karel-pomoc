@@ -944,6 +944,25 @@ const PlanCard = ({
         </div>
       </div>
 
+      {/* ═══ GATE BLOCKER STRIP — viditelná pravda, proč Zahájit nejde ═══
+           Renderuje se POUZE když je prep gate aktivní (Pracovna), plán je
+           naplánovaný (status=generated) a NENÍ schválený poradou. Hanka tak
+           okamžitě vidí, co chybí, a nemusí hádat z disabled tlačítka. */}
+      {prepGateEnabled && plan.status === "generated" && !isArchived && !prepLoading && !prepApproved && (
+        <div className="mb-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5">
+          <p className="text-[0.625rem] leading-4 text-amber-800 dark:text-amber-300">
+            <Lock className="mr-1 inline h-2.5 w-2.5 -mt-px" />
+            <strong>Zahájit nelze bez schválené týmové přípravy.</strong>{" "}
+            {prepInProgress
+              ? <>Porada už běží — chybí {prepProgress?.missing
+                  ?.filter(m => m !== "karel")
+                  .map(m => m === "hanka" ? "Hanička" : "Káťa")
+                  .join(" + ") || "podpis"}.</>
+              : <>Otevřete přípravnou místnost (Karel ↔ Hanička ↔ Káťa). Karel se podepíše automaticky, jakmile podepíše Hanička i Káťa.</>}
+          </p>
+        </div>
+      )}
+
       {/* ═══ ACTION BUTTONS ═══ */}
       <div className="flex flex-wrap items-center gap-1 mb-1.5">
         {plan.status === "generated" && !isArchived && (
