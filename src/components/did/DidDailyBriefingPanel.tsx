@@ -487,6 +487,50 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     [briefing, navigate, onOpenDeliberation, openingItemId],
   );
 
+  /**
+   * 2026-04-22 — Klik na "Herna Karel + [část]".
+   *
+   * Otevře / vytvoří dnešní dedikované did_threads vlákno
+   * (sub_mode=karel_part_session, workspace_id=kps_<part>_<date>) přes
+   * edge funkci `karel-part-session-prepare`. Idempotentní — druhý klik
+   * ten samý den vrací totéž thread_id. Pak naviguje přes existující
+   * `?workspace_thread=<id>` deep-link do Chat.tsx.
+   */
+  const openKarelPartSessionRoom = useCallback(
+    async (s: ProposedSession) => {
+      const itemKey = `kps::${s.part_name}`;
+      if (openingItemId === itemKey) return;
+      setOpeningItemId(itemKey);
+      try {
+        const { data, error } = await (supabase as any).functions.invoke(
+          "karel-part-session-prepare",
+          {
+            body: {
+              part_name: s.part_name,
+              briefing_proposed_session: {
+                why_today: s.why_today,
+                first_draft: s.first_draft,
+                duration_min: s.duration_min,
+                led_by: s.led_by,
+              },
+            },
+          },
+        );
+        if (error) throw error;
+        const threadId = (data as any)?.thread_id;
+        if (!threadId) throw new Error("Herna nebyla vytvořena.");
+        toast.success(`🎲 Herna s ${s.part_name} otevřena.`);
+        navigate(`/chat?workspace_thread=${threadId}`);
+      } catch (e: any) {
+        console.error("[DidDailyBriefingPanel] openKarelPartSessionRoom failed:", e);
+        toast.error(e?.message || "Nepodařilo se otevřít hernu.");
+      } finally {
+        setOpeningItemId(null);
+      }
+    },
+    [navigate, openingItemId],
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-10">
