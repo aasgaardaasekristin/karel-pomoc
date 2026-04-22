@@ -354,6 +354,11 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
         { role: "user", content: label },
         { role: "assistant", content: analysis },
       ]);
+      // Karel proaktivní reakce na obrazovou analýzu
+      pushHintTrigger(
+        `Nová obrazová analýza (${images.length}× ${images.length > 1 ? "obrázků" : "obrázek"}):\n${analysis.slice(0, 800)}`,
+        "image",
+      );
       imageUpload.clearImages();
       toast.success(`Obrázek #${segNum} analyzován`);
     } catch (error) {
