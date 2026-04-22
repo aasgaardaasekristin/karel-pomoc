@@ -437,10 +437,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
             <Target className="w-3.5 h-3.5 text-primary" />
-            Dnešní sezení
-            <span className="text-[0.625rem] text-muted-foreground/70 font-normal ml-1">
-              · therapist-led i Karel-led plány po schválení porady
-            </span>
+            Plán dnešního sezení
           </h4>
           <div className="flex items-center gap-1.5">
             {!generating && !compact && (
