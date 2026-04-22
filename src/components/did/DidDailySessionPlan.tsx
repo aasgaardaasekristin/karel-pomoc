@@ -718,12 +718,31 @@ const PlanCard = ({
   compact = false,
   onOpenPrepRoom,
 }: PlanCardProps) => {
+  // C0 SESSION-TYPE TRUTH SEPARATION (2026-04-22):
+  //   Z existujících sloupců (`session_lead`, `session_format`) odvodíme dvě
+  //   kanonické modality. Žádný nový sloupec, žádná migrace.
+  //     - therapist-led → vede fyzicky Hanka / Káťa / společně (`session_format = "osobně"`
+  //       nebo `session_lead in ("hanka","kata","obe","all")` se "session_format" jiným než
+  //       remote/karel). Karel jen plánuje / dohlíží.
+  //     - karel-led → vede Karel přímo přes obrazovku (`session_lead = "karel"` nebo
+  //       `session_format` obsahuje "remote" / "karel"). Toto je jediný typ, který má
+  //       smysl otevírat v "herně" (child-facing room).
+  const isKarelLed =
+    plan.session_lead === "karel" ||
+    /remote|karel/i.test(plan.session_format || "");
+  const sessionModality: "therapist_led" | "karel_led" = isKarelLed ? "karel_led" : "therapist_led";
+
   const leadLabel = plan.session_format === "crisis_intervention" || plan.session_lead === "all"
     ? "Karel (vlákno) · Káťa (telefon) · Hanička (sezení)"
-    : plan.session_lead === "obe" ? "Hanka + Káťa" : plan.session_lead === "kata" ? "Káťa" : "Hanka";
+    : plan.session_lead === "obe" ? "Hanka + Káťa" : plan.session_lead === "kata" ? "Káťa" : plan.session_lead === "karel" ? "Karel (online)" : "Hanka";
   const formatLabel = plan.session_format === "crisis_intervention"
     ? "krizová intervence"
-    : plan.session_lead === "obe" ? "kombinované" : plan.session_format || (plan.session_lead === "kata" ? "chat" : "osobně");
+    : plan.session_lead === "obe" ? "kombinované" : plan.session_format || (plan.session_lead === "kata" ? "chat" : plan.session_lead === "karel" ? "online" : "osobně");
+
+  // Title shown above the badge row — pravdivě podle modality.
+  const sessionTitle = sessionModality === "karel_led"
+    ? `Sezení s Karlem (online) · ${plan.selected_part}`
+    : `Sezení s ${plan.session_lead === "kata" ? "Káťou" : plan.session_lead === "obe" ? "Hankou + Káťou" : "Hankou"} (osobně) · ${plan.selected_part}`;
 
   // ── SESSION PREP ROOM PASS (2026-04-21) ──
   // Najde poradu (session_plan deliberation) navázanou na tento dnešní plán.
