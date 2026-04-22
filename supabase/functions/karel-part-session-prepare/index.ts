@@ -34,31 +34,40 @@ function pragueTodayISO(): string {
   return d.toISOString().slice(0, 10);
 }
 
-async function generateProgram(partName: string, briefingHint: any): Promise<string> {
+/**
+ * C0 SESSION-TYPE TRUTH SEPARATION (2026-04-22):
+ *
+ * Tato funkce produkuje POUZE child-facing opener. Interní program
+ * (cíle, pomůcky, časování, bloky) se do `messages` NEUKLÁDÁ —
+ * ten patří do hidden contextu, který Karel dostane přes `karel-chat`
+ * z `did_daily_session_plans.plan_markdown` (už existuje).
+ *
+ * Důvod: dítě (část) v herně NESMÍ vidět interní terapeutický plán.
+ * Herna je remote-native child-facing místnost vedená Karlem přes
+ * obrazovku — žádné fyzické pomůcky (papír, pastelky, balónky), žádný
+ * scénář z perspektivy terapeuta v jedné místnosti.
+ */
+async function generateChildOpener(partName: string, briefingHint: any): Promise<string> {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   if (!apiKey) {
-    return defaultProgram(partName);
+    return defaultChildOpener(partName);
   }
 
-  // KAREL+ČÁST IN DNES TRUTH PASS (2026-04-22):
-  //   Hint nyní obsahuje volitelný `therapist_addendum` — krátký vstup
-  //   od Haničky / Káti přímo z karty `Sezení s Karlem` v `Dnes`. Karel
-  //   ho musí zahrnout do dnešního programu (ne ignorovat).
   const addendum = briefingHint?.therapist_addendum?.toString().trim();
+
+  // Hint pro Karla: pochopit, o čem dnešní sezení JE — ale opener
+  // samotný NESMÍ obsahovat interní cíle, časování, pomůcky ani diagnostiku.
   const hintLines = briefingHint
     ? [
-        `Z dnešního schváleného plánu vyplývá:`,
-        `- Proč dnes: ${briefingHint.why_today || "—"}`,
-        `- První pracovní verze plánu (schválená poradou):\n${briefingHint.first_draft || "—"}`,
+        `Vnitřní rámec dnešního sezení (NEUKAZUJ to v openeru — slouží jen tvému pochopení):`,
+        `- Proč dnes (interní): ${briefingHint.why_today || "—"}`,
         `- Délka: ${briefingHint.duration_min || 60} min`,
-        `- Vede / kdo dohlíží: ${briefingHint.led_by || "Hanička"}`,
       ]
-    : [`Bez briefing-hintu — vytvoř obecný program odpovídající části.`];
+    : [`Žádný briefing — udělej krátké uvítací oslovení a 1–2 jemné hravé nabídky.`];
 
   if (addendum) {
     hintLines.push("");
-    hintLines.push(`---`);
-    hintLines.push(`DOPLNĚNÍ TERAPEUTKY (těsně před vstupem do herny — máš to bezpodmínečně zahrnout):`);
+    hintLines.push(`Vnitřní doplnění terapeutky (NEUKAZUJ doslova — jen z toho čerpej tón a opatrnost):`);
     hintLines.push(addendum);
   }
 
@@ -73,17 +82,21 @@ async function generateProgram(partName: string, briefingHint: any): Promise<str
         messages: [
           {
             role: "system",
-            content: `Jsi Karel — esence C. G. Junga, traumaterapeut. Připravuješ dnešní pracovní sezení s částí "${partName}" v "herně" (Karel + část room).
+            content: `Jsi Karel — esence C. G. Junga, traumaterapeut. Otevíráš dnešní remote-native hernu s částí "${partName}". Pracuješ přes obrazovku (chat, nahrávky, fotky, kresby do screenu, asociace, škály 1–10), nikdy fyzicky.
 
-Pravidla:
-- Bezpečný, hravý rámec. Diagnostické a terapeutické kroky musí být schované do her a aktivit.
-- Min. 60 minut struktury, 4–5 bloků.
-- Žádná teorie, žádný klinický žargon směrem k části.
-- Každý blok: název, cíl (co chci pozorovat / posunout), aktivita / hra (jak), pomůcky, časování.
-- Závěr: rituál uzavření, předání zpět.
-- Pokud jsi dostal/a DOPLNĚNÍ TERAPEUTKY, MUSÍŠ ho viditelně zohlednit (např. v úvodu, v jednom z bloků, nebo v rámci bezpečnostního nastavení).
+PRAVIDLA OPENERU (TVRDÁ):
+- Maximálně 4–6 vět celkem.
+- Oslovení části jménem, krátké přivítání, ujištění o bezpečí.
+- 1–2 hravé NABÍDKY na začátek (např. "můžeme si dát pár otázek o tom, jak dnes ráno bylo", "můžeš mi nahrát hlas, jak se cítíš", "můžeš nakreslit jednu čáru, jakou má dnes barvu"), VŽDY remote (audio, foto, kresba do appky, slovní asociace, škály), NIKDY fyzické pomůcky.
+- Nech volbu otevřenou ("nic není povinné").
 
-Vrať POUZE markdown text (žádný JSON, žádný code-fence). Začni krátkým úvodem (cíl celku, bezpečný rámec), pak bloky 1.–5., pak Závěr.`,
+ZAKÁZÁNO V OPENERU:
+- žádné cíle, časy, bloky, fáze, pomůcky typu "papír, pastelky, balónky, mapa"
+- žádný klinický žargon ani interní terapeutické formulace
+- žádné "připravil jsem program / strukturu / 5 bloků"
+- žádné předpoklady, že sedíme spolu fyzicky v místnosti
+
+Vrať POUZE krátký prostý text (žádný JSON, žádný code-fence, žádné nadpisy).`,
           },
           { role: "user", content: hintText },
         ],
@@ -92,46 +105,21 @@ Vrať POUZE markdown text (žádný JSON, žádný code-fence). Začni krátkým
 
     if (!res.ok) {
       console.warn("[part-session-prepare] AI status", res.status);
-      return defaultProgram(partName);
+      return defaultChildOpener(partName);
     }
     const data = await res.json();
     const content = data?.choices?.[0]?.message?.content?.trim();
-    return content || defaultProgram(partName);
+    return content || defaultChildOpener(partName);
   } catch (e) {
     console.warn("[part-session-prepare] AI error:", e);
-    return defaultProgram(partName);
+    return defaultChildOpener(partName);
   }
 }
 
-function defaultProgram(partName: string): string {
-  return `**Dnešní sezení s ${partName}** — herna Karel + ${partName}
+function defaultChildOpener(partName: string): string {
+  return `Ahoj ${partName}, jsem rád, že jsi tady. Jsme spolu jen přes obrazovku — žádný spěch, nic nemusíš.
 
-**Cíl celku:** bezpečné setkání, ověření aktuálního stavu, malý posun.
-**Bezpečný rámec:** sedíme spolu, není kam spěchat. Když budeš chtít, můžeš kdykoliv říct "stop".
-
----
-
-**Blok 1 — Příchod (10 min)**
-- Cíl: zklidnit, naladit
-- Aktivita: krátký rituál pozdravu, dech
-- Pomůcky: žádné
-
-**Blok 2 — Hra na bezpečné místo (15 min)**
-- Cíl: ověřit, jak je dnes na tom regulace
-- Aktivita: představ si nebo nakresli místo, kde se cítíš dobře
-- Pomůcky: papír, pastelky
-
-**Blok 3 — Pracovní hra (15 min)**
-- Cíl: jemná diagnostika aktuálního tématu (bez tlaku)
-- Aktivita: vybereme spolu jednu věc, kterou si dnes zahrajeme
-
-**Blok 4 — Tělo a klid (10 min)**
-- Cíl: regulace
-- Aktivita: jemné protažení, dech, krátká meditace v bezpečném místě
-
-**Blok 5 — Závěr (10 min)**
-- Cíl: uzavřít, předat zpět
-- Aktivita: shrneme, co se dnes povedlo. Krátké rozloučení.`;
+Můžeš mi pro začátek zkusit jednu věc — buď mi napsat (nebo nahrát hlas), jak ti dnes je, anebo mi sem nakreslit jednu čáru, jakou má dnes barvu. Co tě láká víc?`;
 }
 
 serve(async (req) => {
@@ -181,13 +169,16 @@ serve(async (req) => {
 
     const userId = anyThread?.user_id ?? null;
 
-    // 3) Generate program (AI or fallback)
-    const program = await generateProgram(partName, briefingHint);
+    // 3) Generate child-facing opener (AI or fallback).
+    //    C0 SESSION-TYPE TRUTH SEPARATION (2026-04-22):
+    //    Žádný interní program, pomůcky ani časování v messages —
+    //    to patří do hidden contextu, který Karel čerpá z plan_markdown.
+    const childOpener = await generateChildOpener(partName, briefingHint);
 
     const dateLabel = new Date().toLocaleDateString("cs-CZ", { day: "numeric", month: "long" });
-    const threadLabel = `Herna Karel + ${partName} · ${dateLabel}`;
+    const threadLabel = `Herna ${partName} · ${dateLabel}`;
 
-    const opener = `🎲 **${threadLabel}**\n\nVítej v dnešní herně. Připravil jsem pro nás program — můžeme jím jít po pořádku, nebo si vybrat. Nic není povinné.\n\n---\n\n${program}`;
+    const opener = childOpener;
 
     // 4) Insert thread (workspace_type/_id nepoužíváme — UUID by neumělo
     //    deterministický string. Idempotenci hlídáme přes lookup výše.)
