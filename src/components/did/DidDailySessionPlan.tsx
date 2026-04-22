@@ -1061,6 +1061,49 @@ const PlanCard = ({
             <RichMarkdown compact>{plan.plan_markdown}</RichMarkdown>
           </div>
 
+          {/* KAREL+ČÁST IN DNES TRUTH PASS (2026-04-22):
+               Inline doplnění od Haničky / Káti k programu před vstupem do herny.
+               Renderuje se v Pracovně (prepGateEnabled) a jen u plánů, které
+               ještě nejsou ukončené. Text se ukládá do localStorage per plan.id
+               a předává se do `karel-part-session-prepare` jako součást briefingu. */}
+          {prepGateEnabled && !isArchived && plan.status !== "done" && (
+            <div className="rounded-md border border-primary/20 bg-primary/5 p-3 space-y-2">
+              <div className="flex items-center gap-1.5">
+                <PenLine className="w-3 h-3 text-primary" />
+                <span className="text-[0.6875rem] font-medium text-primary">
+                  Doplnění před vstupem do herny
+                </span>
+                {addendumSavedAt && (
+                  <span className="text-[0.5625rem] text-muted-foreground ml-auto">
+                    uloženo {addendumSavedAt}
+                  </span>
+                )}
+              </div>
+              <p className="text-[0.625rem] leading-4 text-muted-foreground">
+                Hanička / Káťa — chceš ještě před spuštěním Karlovi něco doplnit ke
+                schválenému programu? (např. ranní stav, čerstvý postřeh, na co dnes
+                obzvlášť dát pozor) Karel to zahrne do dnešního programu.
+              </p>
+              <Textarea
+                value={therapistAddendum}
+                onChange={(e) => setTherapistAddendum(e.target.value)}
+                placeholder={`Volitelné. Např.: Tundrupek se ráno probudil zmatený, spí špatně po novém léku — buď s ním obzvlášť jemný…`}
+                className="min-h-[4.5rem] text-[0.6875rem] resize-none bg-background/60 border-border/60"
+              />
+              <div className="flex items-center justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onSaveAddendum}
+                  disabled={!therapistAddendum.trim()}
+                  className="h-6 px-2 text-[0.625rem]"
+                >
+                  Uložit doplnění
+                </Button>
+              </div>
+            </div>
+          )}
+
           {prevSession && (
             <div className="rounded-md border border-border/60 bg-background/40 p-3 space-y-2.5">
               <div className="flex items-center gap-1.5 text-[0.625rem] font-medium text-muted-foreground">
