@@ -84,7 +84,8 @@ export function useTeamDeliberations(refreshTrigger = 0) {
   );
 
   const sign = useCallback(
-    async (deliberationId: string, signer: "hanka" | "kata" | "karel") => {
+    async (deliberationId: string, signer: "hanka" | "kata") => {
+      // 2 PODPISY TRUTH PASS (2026-04-22): Karel se ručně nepodepisuje.
       const { data, error } = await (supabase as any).functions.invoke(
         "karel-team-deliberation-signoff",
         { body: { deliberation_id: deliberationId, signer } },
@@ -109,6 +110,33 @@ export function useTeamDeliberations(refreshTrigger = 0) {
       if (error) throw error;
       await reload();
       return data as { deliberation: TeamDeliberation; synthesis: any };
+    },
+    [reload],
+  );
+
+  /**
+   * THERAPIST-LED TRUTH PASS (2026-04-22):
+   * Po každém vstupu terapeutky (odpověď NEBO podnět v diskuzi) Karel
+   * iterativně přepíše program_draft. Volá novou edge fn
+   * `karel-team-deliberation-iterate`, která vrátí upravenou agendu +
+   * Karlův komentář, co konkrétně změnil.
+   */
+  const iterateProgram = useCallback(
+    async (
+      deliberationId: string,
+      latestInput: { author: "hanka" | "kata"; text: string },
+    ) => {
+      const { data, error } = await (supabase as any).functions.invoke(
+        "karel-team-deliberation-iterate",
+        { body: { deliberation_id: deliberationId, latest_input: latestInput } },
+      );
+      if (error) throw error;
+      await reload();
+      return data as {
+        program_draft: Array<{ block: string; minutes?: number | null; detail?: string | null }>;
+        karel_inline_comment: string;
+        no_op?: boolean;
+      };
     },
     [reload],
   );
@@ -193,5 +221,5 @@ export function useTeamDeliberations(refreshTrigger = 0) {
     [items, reload],
   );
 
-  return { items, loading, creating, create, sign, synthesize, answerQuestion, postMessage, reload };
+  return { items, loading, creating, create, sign, synthesize, answerQuestion, postMessage, iterateProgram, reload };
 }

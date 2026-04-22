@@ -55,8 +55,11 @@ async function generateChildOpener(partName: string, briefingHint: any): Promise
 
   const addendum = briefingHint?.therapist_addendum?.toString().trim();
 
-  // Hint pro Karla: pochopit, o čem dnešní sezení JE — ale opener
-  // samotný NESMÍ obsahovat interní cíle, časování, pomůcky ani diagnostiku.
+  // C1 SESSION-LEAD TRUTH PASS (2026-04-22):
+  //   `first_draft` (therapist-led plán) NESMÍ vstoupit do hint payloadu —
+  //   child-facing opener nesmí leakovat therapist-facing program ani
+  //   implicitně přes hint. Posíláme JEN nechemické metainfo (proč dnes,
+  //   délka) + volitelné doplnění tónu od terapeutky.
   const hintLines = briefingHint
     ? [
         `Vnitřní rámec dnešního sezení (NEUKAZUJ to v openeru — slouží jen tvému pochopení):`,
