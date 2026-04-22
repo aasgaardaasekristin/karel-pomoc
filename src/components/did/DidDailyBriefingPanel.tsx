@@ -217,6 +217,35 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [openingItemId, setOpeningItemId] = useState<string | null>(null);
+  /**
+   * THERAPIST-LED TRUTH PASS (2026-04-22) — Duplicity guard.
+   * Set obsahuje názvy částí, pro které dnes existuje schválený
+   * `did_daily_session_plans` (status='approved'). Pokud briefingem navržené
+   * sezení směřuje na takovou část, briefing skryje "Návrh sezení k poradě"
+   * a zobrazí pouze info, že plán je schválený a leží v Pracovna → Dnes.
+   */
+  const [approvedTodayParts, setApprovedTodayParts] = useState<Set<string>>(new Set());
+
+  const loadApprovedToday = useCallback(async () => {
+    try {
+      const today = pragueTodayISO();
+      const { data, error } = await supabase
+        .from("did_daily_session_plans")
+        .select("selected_part,status")
+        .eq("plan_date", today)
+        .eq("status", "approved");
+      if (error) throw error;
+      const set = new Set<string>(
+        ((data ?? []) as Array<{ selected_part: string | null }>)
+          .map((r) => (r.selected_part || "").trim())
+          .filter((s) => s.length > 0),
+      );
+      setApprovedTodayParts(set);
+    } catch (e) {
+      console.error("[DidDailyBriefingPanel] loadApprovedToday failed:", e);
+      setApprovedTodayParts(new Set());
+    }
+  }, []);
 
   const loadLatest = useCallback(async () => {
     setLoading(true);
