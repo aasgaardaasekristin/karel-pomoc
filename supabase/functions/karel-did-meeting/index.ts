@@ -7,6 +7,7 @@ import { normalizeKarelContext } from "../_shared/karelContextNormalizer.ts";
 import { buildKarelIdentityBlock } from "../_shared/karelIdentity.ts";
 import { getKarelTone } from "../_shared/karelTonalRouter.ts";
 import { buildKarelVoiceGuide } from "../_shared/karelVoiceGuide.ts";
+import { appendPantryB } from "../_shared/pantryB.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -522,6 +523,31 @@ JSON pole
         outcome_tasks: tasks,
         updated_at: new Date().toISOString(),
       }).eq("id", meetingId);
+
+      // ── PANTRY B: zápis výstupů porady jako vstup pro zítřejší briefing ──
+      // Bez tohoto by Karel zítra ráno nevěděl, co se v poradě domluvilo,
+      // protože raw outcome_summary leží zaparkovaný v did_meetings a žádný
+      // čtenář ho do briefingu netáhne.
+      try {
+        await appendPantryB(sb, {
+          user_id: authResult.user.id,
+          entry_kind: "conclusion",
+          source_kind: "did_meeting",
+          source_ref: String(meetingId),
+          summary: `Porada uzavřena: ${meeting.topic} — ${summary?.slice(0, 200) || "bez AI shrnutí"}`,
+          detail: {
+            meeting_id: meetingId,
+            topic: meeting.topic,
+            agenda: meeting.agenda,
+            outcome_summary: summary,
+            outcome_tasks: tasks,
+            daily_plan_id: (meeting as any).daily_plan_id ?? null,
+          },
+          intended_destinations: ["briefing_input", "did_therapist_tasks"],
+        });
+      } catch (pErr) {
+        console.warn("[did-meeting/finalize] pantry-b append failed (non-fatal):", pErr);
+      }
 
       return new Response(JSON.stringify({ success: true, summary, tasks }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
