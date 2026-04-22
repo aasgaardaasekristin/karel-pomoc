@@ -22,6 +22,7 @@ const corsHeaders = {
 };
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { appendPantryB } from "../_shared/pantryB.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -286,6 +287,35 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: updErr.message }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // ── PANTRY B: Karlova syntéza je sama o sobě klinické rozhodnutí
+    // a měla by být součástí vstupu do zítřejšího briefingu i bez podpisů.
+    // (Podpis ji pak ještě jednou potvrdí — viz signoff hook.)
+    try {
+      const part = (updated.subject_parts ?? [])[0] ?? null;
+      await appendPantryB(admin, {
+        user_id: userId,
+        entry_kind: "hypothesis_change",
+        source_kind: "team_deliberation",
+        source_ref: deliberationId,
+        summary: `Karlova syntéza porady „${updated.title}": ${synthesis.next_step}`.slice(0, 1800),
+        detail: {
+          deliberation_id: deliberationId,
+          verdict: synthesis.verdict,
+          next_step: synthesis.next_step,
+          needs_karel_interview: synthesis.needs_karel_interview,
+          key_insights: synthesis.key_insights,
+          recommended_session_focus: synthesis.recommended_session_focus,
+          risk_signals: synthesis.risk_signals,
+          protective_signals: synthesis.protective_signals,
+        },
+        intended_destinations: ["briefing_input", "did_pending_questions"],
+        related_part_name: part ?? undefined,
+        related_crisis_event_id: updated.linked_crisis_event_id ?? undefined,
+      });
+    } catch (pErr) {
+      console.warn("[delib-synthesize] pantry-b append failed (non-fatal):", pErr);
     }
 
     return new Response(JSON.stringify({

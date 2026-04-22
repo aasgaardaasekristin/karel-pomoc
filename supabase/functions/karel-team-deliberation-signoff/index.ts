@@ -14,6 +14,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { appendPantryB } from "../_shared/pantryB.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -462,6 +463,65 @@ Deno.serve(async (req: Request) => {
           crisisEffects.crisis_event_updated = crisisEventId;
         }
       }
+    }
+
+    // ── PANTRY B: zapsat schválení / podpis jako implikaci pro zítřek ──
+    // Spouští se POUZE když podpis právě překlopil status na `approved`,
+    // tj. první moment, kdy je porada týmově dořešena. Bridge nahoře už
+    // udělal mechaniku (plán, drive write, crisis effects); Pantry B tu
+    // zachycuje LIDSKÝ smysl pro briefing reader: "co podepsali, co z
+    // toho plyne, koho se to týká".
+    try {
+      const justApproved =
+        updated.status === "approved" && row.status !== "approved";
+      if (justApproved) {
+        const part = (updated.subject_parts ?? [])[0] ?? null;
+        const summary =
+          updated.deliberation_type === "crisis"
+            ? `Krizová porada uzavřena: ${updated.title}${
+                updated.karel_synthesis?.next_step
+                  ? ` — další krok: ${updated.karel_synthesis.next_step}`
+                  : ""
+              }`
+            : `Porada podepsána: ${updated.title}${
+                updated.final_summary
+                  ? ` — závěr: ${updated.final_summary.slice(0, 240)}`
+                  : ""
+              }`;
+
+        const destinations: any[] = ["briefing_input"];
+        if (updated.deliberation_type === "session_plan") {
+          destinations.push("did_therapist_tasks");
+        }
+        if (updated.deliberation_type === "crisis") {
+          destinations.push("crisis_event_update");
+        }
+
+        await appendPantryB(admin, {
+          user_id: userId,
+          entry_kind: updated.deliberation_type === "crisis" ? "state_change" : "conclusion",
+          source_kind: "team_deliberation",
+          source_ref: deliberationId,
+          summary,
+          detail: {
+            deliberation_id: deliberationId,
+            deliberation_type: updated.deliberation_type,
+            priority: updated.priority,
+            subject_parts: updated.subject_parts ?? [],
+            final_summary: updated.final_summary ?? null,
+            karel_synthesis: updated.karel_synthesis ?? null,
+            bridged_plan_id: bridgedPlanId,
+            crisis_effects: crisisEffects,
+          },
+          intended_destinations: destinations,
+          related_part_name: part ?? undefined,
+          related_crisis_event_id: (crisisEffects as any).crisis_event_updated
+            ?? updated.linked_crisis_event_id
+            ?? undefined,
+        });
+      }
+    } catch (pErr) {
+      console.warn("[delib-signoff] pantry-b append failed (non-fatal):", pErr);
     }
 
     return new Response(JSON.stringify({

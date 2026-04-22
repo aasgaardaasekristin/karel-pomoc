@@ -18,10 +18,16 @@ export function useTeamDeliberations(refreshTrigger = 0) {
 
   const reload = useCallback(async () => {
     setLoading(true);
+    // Pull active + awaiting_signoff + recently approved (last 36h) so the
+    // dashboard can show a subtle "uzavřeno" badge on freshly signed porady
+    // before they fade out. Approved older than 36h fall off entirely.
+    const cutoff = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString();
     const { data, error } = await (supabase as any)
       .from("did_team_deliberations")
       .select("*")
-      .in("status", ["active", "awaiting_signoff"])
+      .or(
+        `status.in.(active,awaiting_signoff),and(status.eq.approved,updated_at.gte.${cutoff})`,
+      )
       .order("priority", { ascending: true })
       .order("updated_at", { ascending: false })
       .limit(50);

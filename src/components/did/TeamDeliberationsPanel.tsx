@@ -38,10 +38,15 @@ function DeliberationRow({
   onOpen,
 }: { d: TeamDeliberation; onOpen: () => void }) {
   const sp = signoffProgress(d);
+  const isApproved = d.status === "approved" || d.status === "closed";
   return (
     <button
       onClick={onOpen}
-      className="w-full text-left rounded-lg border border-border/60 bg-card/40 hover:bg-card/70 transition-colors p-3 space-y-2"
+      className={`w-full text-left rounded-lg border transition-colors p-3 space-y-2 ${
+        isApproved
+          ? "border-border/40 bg-card/20 hover:bg-card/40 opacity-75"
+          : "border-border/60 bg-card/40 hover:bg-card/70"
+      }`}
     >
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
@@ -49,7 +54,7 @@ function DeliberationRow({
             <Badge className={`text-[9px] h-4 px-1.5 border ${PRIORITY_TONE[d.priority] ?? PRIORITY_TONE.normal}`}>
               {TYPE_LABEL[d.deliberation_type] ?? d.deliberation_type}
             </Badge>
-            {d.priority === "crisis" && (
+            {d.priority === "crisis" && !isApproved && (
               <Badge className="text-[9px] h-4 px-1.5 bg-destructive/15 text-destructive border border-destructive/30">
                 <AlertTriangle className="w-2.5 h-2.5 mr-0.5" /> krize
               </Badge>
@@ -60,7 +65,7 @@ function DeliberationRow({
               </Badge>
             ))}
           </div>
-          <p className="text-[12px] font-medium text-foreground leading-snug truncate">
+          <p className={`text-[12px] font-medium leading-snug truncate ${isApproved ? "text-muted-foreground" : "text-foreground"}`}>
             {d.title}
           </p>
           {d.reason && (
@@ -79,12 +84,17 @@ function DeliberationRow({
             <> · chybí {sp.missing.map((m) => (m === "hanka" ? "Hanička" : m === "kata" ? "Káťa" : "Karel")).join(", ")}</>
           )}
         </span>
-        {d.status === "awaiting_signoff" && (
+        {isApproved && (
+          <Badge className="text-[8px] h-3.5 px-1 bg-emerald-500/10 text-emerald-700 border-emerald-500/20 ml-auto font-normal">
+            <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" /> uzavřeno
+          </Badge>
+        )}
+        {!isApproved && d.status === "awaiting_signoff" && (
           <Badge className="text-[8px] h-3.5 px-1 bg-amber-500/15 text-amber-700 border-amber-500/30 ml-auto">
             čeká na podpis
           </Badge>
         )}
-        {d.status === "active" && sp.signed === 0 && (
+        {!isApproved && d.status === "active" && sp.signed === 0 && (
           <Badge className="text-[8px] h-3.5 px-1 bg-primary/10 text-primary border-primary/20 ml-auto">
             otevřená
           </Badge>

@@ -26,6 +26,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 import { selectPantryA, summarizePantryAForPrompt, type PantryASnapshot } from "../_shared/pantryA.ts";
+import { readUnprocessedPantryB, markPantryBProcessed } from "../_shared/pantryB.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -198,6 +199,44 @@ async function gatherContext(supabase: any) {
     console.warn("[briefing] Pantry A load failed (non-fatal):", pErr);
   }
 
+  // ═══ PANTRY B READER (briefing) ═══
+  // Sběr nezpracovaných implikací z včerejška + dnešního rána.
+  // Zdroje: signoff/synthesis (porady), did-meeting finalize, apply-analysis,
+  // post-chat writebacky. Bez tohoto kroku Karel nevidí, co včera ve vláknech /
+  // poradách / sezeních vyplynulo, a briefing zní jako kdyby den začínal odznova.
+  let pantryBEntries: any[] = [];
+  let approvedDeliberations: any[] = [];
+  try {
+    const userIdForB = pantryA?.sources?.user_id
+      // Fallback k libovolnému user_id z did_daily_context (stejný pattern jako Pantry A výše).
+      ?? null;
+    let userIdResolved: string | null = userIdForB;
+    if (!userIdResolved) {
+      const { data: anyCtxRow } = await supabase
+        .from("did_daily_context")
+        .select("user_id")
+        .order("context_date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      userIdResolved = anyCtxRow?.user_id ?? null;
+    }
+    if (userIdResolved) {
+      pantryBEntries = await readUnprocessedPantryB(supabase, userIdResolved);
+      const { data: approved } = await supabase
+        .from("did_team_deliberations")
+        .select("id, title, deliberation_type, subject_parts, final_summary, karel_synthesis, updated_at")
+        .eq("user_id", userIdResolved)
+        .eq("status", "approved")
+        .gte("updated_at", `${daysAgoISO(2)}T00:00:00Z`)
+        .order("updated_at", { ascending: false })
+        .limit(10);
+      approvedDeliberations = approved ?? [];
+      console.log(`[briefing] Pantry B loaded: entries=${pantryBEntries.length}, approved_delibs=${approvedDeliberations.length}`);
+    }
+  } catch (bErr) {
+    console.warn("[briefing] Pantry B / approved deliberations load failed (non-fatal):", bErr);
+  }
+
   return {
     today: pragueDayISO(),
     crises: crisesRes.data || [],
@@ -216,6 +255,8 @@ async function gatherContext(supabase: any) {
     })),
     pantry_a: pantryA,
     pantry_a_summary: pantryASummary,
+    pantry_b_entries: pantryBEntries,
+    approved_deliberations: approvedDeliberations,
   };
 }
 
@@ -368,9 +409,29 @@ async function generateBriefing(
 ): Promise<{ payload: any; durationMs: number }> {
   const start = Date.now();
 
+  // ── PANTRY B SECTION (yesterday→today implications) ──────────────
+  const pbEntries = (context.pantry_b_entries ?? []) as any[];
+  const approvedDelibs = (context.approved_deliberations ?? []) as any[];
+  const formatPantryBLine = (e: any) => {
+    const part = e.related_part_name ? ` [${e.related_part_name}]` : "";
+    const ther = e.related_therapist ? ` (${e.related_therapist === "hanka" ? "Hanička" : "Káťa"})` : "";
+    return `- [${e.entry_kind}/${e.source_kind}]${part}${ther} ${String(e.summary || "").slice(0, 220)}`;
+  };
+  const pantryBSection = pbEntries.length > 0
+    ? `═══ SPIŽÍRNA B — VČEREJŠÍ IMPLIKACE PRO DNEŠEK ═══\nTo jsou věci, které z včerejších vláken / porad / sezení přímo plynou pro dnešní rozhodování. Použij je v greeting, last_3_days a hlavně v decisions a ask_*. NEIGNORUJ je.\n${pbEntries.slice(0, 30).map(formatPantryBLine).join("\n")}\n\n`
+    : "";
+  const approvedDelibsSection = approvedDelibs.length > 0
+    ? `═══ NEDÁVNO PODEPSANÉ PORADY (posledních 48h) ═══\n${approvedDelibs.map((d: any) => {
+        const ks = d.karel_synthesis as any;
+        const next = ks?.next_step ? ` → další krok: ${ks.next_step}` : "";
+        const subj = (d.subject_parts || []).join(", ");
+        return `- "${d.title}" (${d.deliberation_type}${subj ? `, ${subj}` : ""})${next}`;
+      }).join("\n")}\nTyto porady JSOU UZAVŘENÉ — neopakuj je jako otevřené decisions. Použij je jako pozadí pro dnešní rozhodnutí.\n\n`
+    : "";
+
   const userPrompt = `KONTEXT PRO BRIEFING (${context.today}):
 
-${context.pantry_a_summary ? `═══ SPIŽÍRNA A — RANNÍ PRACOVNÍ ZÁSOBA ═══\n${context.pantry_a_summary}\n\n` : ""}AKTIVNÍ KRIZE (${context.crises.length}):
+${context.pantry_a_summary ? `═══ SPIŽÍRNA A — RANNÍ PRACOVNÍ ZÁSOBA ═══\n${context.pantry_a_summary}\n\n` : ""}${pantryBSection}${approvedDelibsSection}AKTIVNÍ KRIZE (${context.crises.length}):
 ${context.crises.map((c: any) => `- ${c.part_name} | severity: ${c.severity} | fáze: ${c.phase} | dní aktivní: ${c.days_active || "?"} | trigger: ${c.trigger_description?.slice(0, 120) || "—"}`).join("\n") || "(žádné)"}
 
 POZOROVÁNÍ ZA POSLEDNÍ 3 DNY (${context.recent_observations.length}):
@@ -753,6 +814,25 @@ Deno.serve(async (req) => {
       .single();
 
     if (insertErr) throw insertErr;
+
+    // ── PANTRY B: označit načtené entries jako processed ──
+    // Brifing je jediný místo, kde Pantry B implikace mají oficiální dopad.
+    // Po úspěšném zápisu briefingu řekneme reaktor-loop / cleanupu, že tyhle
+    // záznamy už splnily svůj účel a nemají se znovu injectovat zítra.
+    try {
+      const consumedIds = (context.pantry_b_entries ?? [])
+        .map((e: any) => e?.id)
+        .filter((id: any) => typeof id === "string");
+      if (consumedIds.length > 0) {
+        await markPantryBProcessed(supabase, consumedIds, "karel-did-daily-briefing", {
+          briefing_id: inserted.id,
+          briefing_date: today,
+        });
+        console.log(`[briefing] Pantry B: marked ${consumedIds.length} entries as processed`);
+      }
+    } catch (mErr) {
+      console.warn("[briefing] Pantry B mark-processed failed (non-fatal):", mErr);
+    }
 
     return new Response(
       JSON.stringify({ briefing: inserted, cached: false, candidates: candidates.slice(0, 5) }),
