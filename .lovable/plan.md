@@ -1,130 +1,200 @@
-# Plán: Oprava perzistence "Krizový plán pro Arthura" + ochrana všech klikatelných položek z Karlova přehledu
 
-> **Verze 2** — zapracované 3 korekce uživatele před implementací.
-> Status: **ČEKÁ NA SCHVÁLENÍ.** Žádný kód neměnit, dokud uživatel nepotvrdí.
 
-## A. Root cause (potvrzeno z DB)
+# THERAPIST-LED SESSION TRUTH PASS — kompletní implementační plán
 
-Karlův přehled → "Krizový plán pro Arthura" → klik:
+## Pochopení toho, co chceš (1 věta)
 
-1. `DidDailyBriefingPanel.openDecisionDeliberation()`
-2. → POST `karel-team-deliberation-create` s `linked_briefing_item_id = '5dde49c1-3f68-4a96-a641-d8d122e20cda'`
-3. → server idempotence lookup filtruje `status IN (draft|active|awaiting_signoff)` — **`approved` se přeskočí**
-4. → unique index `uniq_did_team_delib_active_briefing_item` má stejný WHERE filter → `approved` ho neblokuje
-5. → INSERT projde, **vznikne nová prázdná porada `a57cbd2b…`**
-6. → UI ji otevře jako úplně novou (žádné odpovědi, žádné podpisy, Karel blocked)
+Chci jeden jediný pravdivý tok therapist-led sezení: **Karel navrhne program → terapeutky ho v zanořené poradě iterativně diskutují s Karlem → po dvou skutečných podpisech se program propíše do `Dnes` jako schválený → odtud se otevírá živá asistenční místnost → po sezení Karel vyhodnotí, doptá se, a uloží do Spižírny k nočnímu propisu na Drive.**
 
-**DB důkaz aktuálního stavu:**
+## Část 1 — Audit současného stavu (co je špatně, soubor po souboru)
 
-| linked_briefing_item_id | id | status | qh | hs/ks/krs | poznámka |
-|---|---|---|---|---|---|
-| `5dde49c1…` (Arthur krize) | `8ac5d27a…` | approved | 3 | ✅✅✅ | původní podepsaná |
-| `5dde49c1…` (Arthur krize) | `a57cbd2b…` | active | 3 | ❌❌❌ | **duplicitní prázdná, otevírá se v UI** |
-| `4fe3b11d…` (Arthur supervize) | `65cb2d6e…` | active | 3 | ❌❌❌ | rozpracovaná, OK (žádný duplikát) |
-| `a3ecbedb…` (Arthur+Říha) | `9aa036e8…` | active | 3 | ❌❌❌ | rozpracovaná, OK (žádný duplikát) |
+### Bug A: Falešné podpisy v DB
+Aktivní `did_team_deliberations` `c6732a13-…` má `hanka_signed_at`, `kata_signed_at`, `karel_signed_at` nastavené z mé G1 demo migrace. To proto „Zahájit sezení" vypadá odemčené, ač terapeutky nepodepsaly.
 
-## B. Řešení (zapracované korekce)
+### Bug B: Karel sám sebe podepisuje + zbytečné Karlovo tlačítko
+- `did_team_delib_autoderive_status` trigger dnes vyžaduje **3 podpisy** (Hanička+Káťa+Karel) pro `approved`.
+- `karel-team-deliberation-signoff` umožňuje volání s `signer='karel'`.
+- `DeliberationRoom.tsx` zobrazuje 3. tlačítko za Karla.
+- Tvoje pravda: **Karel není podepisující strana.** Schválení = 2 podpisy (Hanička+Káťa). Karel je facilitátor, ne signatář.
 
-### B1. Reuse logika — kanonická, BEZ filtru na den (korekce 1)
+### Bug C: Tři různé „dnešní plány"
+Forenzně potvrzené z předchozího auditu:
+1. `did_daily_briefings.payload.proposed_session.first_draft` (briefing AI, ranní zamrazený)
+2. `did_daily_session_plans.plan_markdown` (po podpisech, kanonický)
+3. `karel-part-session-prepare` opener (dynamicky při kliknutí, child-facing)
 
-V `karel-team-deliberation-create` změnit lookup na **dvoukrokovou kaskádu** podle čistě `linked_briefing_item_id` (žádný date filter):
+Tři zdroje, tři verze, žádný jediný zdroj pravdy.
 
-1. Najdi `draft|active|awaiting_signoff` pro daný `(user_id, linked_briefing_item_id)` → otevři ji.
-2. Jinak najdi `approved` pro daný `(user_id, linked_briefing_item_id)` → otevři ji **read-only** (klient pozná podle `status`).
-3. Jinak → INSERT (nová porada).
+### Bug D: Karel v poradě není iterativní
+Dnešní `DeliberationRoom`:
+- Karel reaguje až na kliknutí „Spustit syntézu" (manuální).
+- Když terapeutka napíše podnět, **program se neaktualizuje**.
+- Karel jen kompiluje finální shrnutí, nepřepisuje program po každém vstupu.
 
-`closed`/`archived` zůstávají mimo reuse — terapeutka je explicitně uzavřela, nový thread je správně.
+Tvoje pravda: každý vstup terapeutky musí Karel okamžitě započíst a **upravit program bod po bodu**. Program je živý dokument iterovaný v reálném čase, ne statický návrh + závěrečná syntéza.
 
-`linked_briefing_item_id` je sám o sobě stabilním identifikátorem konkrétního briefing rozhodnutí. Žádný "dnešní den" filter nepotřebuju.
+### Bug E: Karel-led „Vstup do herny" leakuje therapist-led plán
+`karel-part-session-prepare` dostává `plan.plan_markdown` jako hint → child-facing opener někdy reprodukuje therapist-facing program. C0 pass to měl řešit, ale ponechal `first_draft` v payloadu.
 
-### B2. Race-protect přes unique index (rozšíření whitelistu o `approved`)
+### Bug F: Live room neodpovídá tvé specifikaci
+`DidLiveSessionPanel` dnes:
+- ✅ Existuje vlákno
+- ✅ Karel může reagovat
+- ❌ Chybí upload audio/video/foto/screenshot/grafologie inline v panelu
+- ❌ Chybí live audio/video nahrávání v reálném čase
+- ❌ Chybí strukturované zobrazení programu „bod po bodu" s živým checklist
+- ❌ Chybí Karlovy proaktivní in-session „pozoruj X" karty s polem pro odpověď
+- ❌ Chybí tlačítko `Ukončit sezení` → post-session interrogation flow
 
-Stávající:
-```sql
-WHERE status IN ('draft','active','awaiting_signoff')
-```
-Nový:
-```sql
-WHERE status IN ('draft','active','awaiting_signoff','approved')
-```
+### Bug G: Post-session interrogation + Spižírna
+`DidPostSessionInterrogation` existuje, ale:
+- Není napojený jako jediný vstup pro „Odeslat k analýze".
+- Spižírna (cache pro noční Drive propis) — neexistuje jako explicitní vrstva. Drive zápis dnes jde přes `did_pending_drive_writes` (queue), ale není to „balík přesýpacích hodin", co popisuješ.
 
-DROP starého indexu → CREATE nového. Konkurenční INSERT po `approved` selže s 23505, server-side handler vrátí existující approved poradu místo 500.
+## Část 2 — Co opravím (5 atomických kroků)
 
-### B3. Read-only banner v `DeliberationRoom`
+### Krok 1 — DB & Trigger pravda (2 podpisy stačí)
 
-Když `d.status === 'approved'`:
-- horní banner "✅ Tato porada je už schválená — otevíráš ji jen pro náhled."
-- zneaktivnit: textarea pro odpovědi, tlačítka Podepsat, tlačítko Spustit syntézu, input pro discussion.
-- vše ostatní (Karlova syntéza, final_summary, podpisové timestampy, agenda, otázky) zůstává viditelné.
+**Migrace:**
+1. Přepsat `did_team_delib_autoderive_status` trigger:
+   ```sql
+   IF hanka_signed_at IS NOT NULL AND kata_signed_at IS NOT NULL
+      AND status NOT IN ('approved','closed','archived') THEN
+     status := 'approved';
+     karel_signed_at := COALESCE(karel_signed_at, now());  -- jen audit timestamp
+   ELSIF (hanka_signed_at IS NOT NULL OR kata_signed_at IS NOT NULL)
+         AND (hanka_signed_at IS NULL OR kata_signed_at IS NULL)
+         AND status IN ('draft','active') THEN
+     status := 'awaiting_signoff';
+   END IF;
+   ```
+   → Karel se autopodepíše jako audit log, ale nebude blokovat schválení.
 
-### B4. Cleanup duplicit — repair krok, NE inline produkční IDs (korekce 2)
+2. **Insert (data repair)** — vrátit falešné podpisy aktuální porady na NULL:
+   ```sql
+   UPDATE did_team_deliberations
+   SET hanka_signed_at=NULL, kata_signed_at=NULL, karel_signed_at=NULL, status='active'
+   WHERE id='c6732a13-1862-43c7-9151-e7cf6200f2fa';
+   ```
 
-**Idempotentní data-repair SQL** (přes `insert` tool, ne migration), který:
+### Krok 2 — `DeliberationRoom.tsx` — iterativní program + 2 tlačítka
 
-1. **Before audit query** — vypíše všechny `linked_briefing_item_id`, kde existuje řádek se status `approved` AND zároveň ≥1 řádek se status `draft|active|awaiting_signoff`.
-2. **Repair** — `DELETE FROM did_team_deliberations WHERE` …
-   - status ∈ (draft|active|awaiting_signoff)
-   - AND existuje sibling se stejným `linked_briefing_item_id` se status=approved
-   - AND tento řádek nemá žádný podpis (`hanka_signed_at IS NULL AND kata_signed_at IS NULL AND karel_signed_at IS NULL`)
-   - AND nemá žádný diskusní vstup (`jsonb_array_length(discussion_log) = 0`)
-   - AND nemá Karlovu syntézu (`karel_synthesis IS NULL`)
-3. **After audit query** — vrátí 0 řádků (potvrzení čistoty).
+**Změny:**
+- Odstranit Karlovo podpisové tlačítko úplně.
+- Přejmenovat zbývající 2 na: **„Stvrzuji podpisem souhlas (Hanička)"** a **„Stvrzuji podpisem souhlas (Káťa)"**.
+- Pro každou terapeutku po jejím podpisu: její sekce read-only (textarea disabled, podpis disabled), ale ostatní sekce zůstávají editovatelné, dokud nepodepíše druhá.
+- V hlavičce dynamický badge: `Schválily: Hanička ✓` / `Schválily: Hanička ✓, Káťa ✓`.
+- Přidat **živý program bod po bodu** v horní části místnosti — viditelný editovatelný `program_draft` (jsonb pole agendy s body).
+- Po každém novém vstupu terapeutky (odpověď na otázku NEBO vlastní podnět) trigger volání **nové edge fn `karel-team-deliberation-iterate`**, která:
+  - vezme aktuální `program_draft`
+  - vezme nový vstup terapeutky + kontext (briefing, část, předchozí diskuse)
+  - vrátí **upravený `program_draft` + komentář Karla** („Podle podnětu Hany jsem do bodu 2 přidal X, bod 4 zkrátil…")
+  - uloží do `did_team_deliberations.program_draft` + appenduje do `discussion_log`
+- Když oba podpisy → trigger bridge → `did_daily_session_plans.plan_markdown` se přepíše z finálního `program_draft` (ne z původního first_draft).
 
-**Žádné natvrdo zapsané `8ac5d27a…` nebo `a57cbd2b…`.** Selektor je čistě "duplikát ve stejné skupině s prázdným obsahem". Bezpečné spustit i opakovaně.
+**Nová edge fn `karel-team-deliberation-iterate`:**
+- Model: `google/gemini-2.5-flash` (rychlost + kvalita).
+- Input: `deliberation_id`, `latest_input` (kdo, co napsal), `current_program_draft`.
+- Output: `{ updated_program_draft, karel_inline_comment, suggested_questions_for_other_therapist }`.
+- Idempotence guard: pokud `latest_input` už zpracován (hash), no-op.
 
-Pokud by aktivní duplikát měl jakoukoliv práci (podpis / log / syntéza), repair se ho NEDOTKNE a uživatel dostane warning v after-auditu. To řeším ručně, ne automaticky.
+### Krok 3 — Single Source of Truth (skrýt duplicity)
 
-### B5. Mapa dotčených klikatelných položek (korekce 3)
+**`DidDailyBriefingPanel.tsx`:**
+- Sekce „Dnešní navržené sezení" se schová, pokud existuje approved `did_daily_session_plans` pro dnešek a danou část.
+- Jinak ukáže `proposed_session` jako návrh + CTA „Otevřít poradu" (ne jako finální plán).
 
-#### Karlův přehled — Karlovy denní briefing karty
+**`DidDailySessionPlan.tsx`:**
+- `plan_markdown` zůstává **jediný kanonický** zdroj pro:
+  - zobrazení v `Dnes`
+  - tlačítko „Spustit sezení"
+  - obsah live roomu
 
-| Karta v UI | Source pole | Click handler | Volá `karel-team-deliberation-create`? | Bug se projeví? |
-|---|---|---|---|---|
-| **Plán sezení** (`proposed_session`) | `briefing.proposed_session` | `openProposedSessionDeliberation` | ✅ ano (`type=session_plan`) | ✅ **ANO** — fix se projeví |
-| **Rozhodnutí: Krizová porada** (`decisions[type=crisis]`) | `briefing.decisions[i]` | `openDecisionDeliberation` | ✅ ano (`type=crisis`) | ✅ **ANO** — Arthur case |
-| **Rozhodnutí: Klinické** (`decisions[type=clinical]`) | `briefing.decisions[i]` | `openDecisionDeliberation` | ✅ ano (`type=team_task`) | ✅ **ANO** |
-| **Rozhodnutí: Supervize** (`decisions[type=supervision]`) | `briefing.decisions[i]` | `openDecisionDeliberation` | ✅ ano (`type=supervision`) | ✅ **ANO** |
-| **Rozhodnutí: Followup review** (`decisions[type=followup_review]`) | `briefing.decisions[i]` | `openDecisionDeliberation` | ✅ ano (`type=followup_review`) | ✅ **ANO** |
-| **Otázka pro Haničku** (`ask_hanka`) | `briefing.ask_hanka[i]` | `openAskWorkspace` | ❌ NE — vytváří `did_thread` (Karel chat) | ❌ NE — jiný flow |
-| **Otázka pro Káťu** (`ask_kata`) | `briefing.ask_kata[i]` | `openAskWorkspace` | ❌ NE — vytváří `did_thread` (Karel chat) | ❌ NE — jiný flow |
-| **Otázka pro kluky** (`ask_kluci`) | `briefing.ask_kluci[i]` | `openAskWorkspace` | ❌ NE — vytváří `did_thread` (DID chat) | ❌ NE — jiný flow |
-| **Karlova narativní syntéza** (text odstavce) | `briefing.narrative_prose` | žádný — read-only text | ❌ N/A | ❌ N/A |
+**`karel-part-session-prepare` payload:**
+- Odstranit `briefing_proposed_session` z hint payloadu.
+- Posílat jen: `{ part_name, why_today, therapist_addendum }`.
+- **POZN:** Karel-led `Vstup do herny` zůstává nedotčený jinak — jen vyčistíme leak.
 
-**Souhrn:**
-- ✅ Fix se projeví na: **proposed_session** + všech 5 typů **decisions** (crisis, clinical, supervision, team_task, followup_review).
-- ❌ Fix se NEprojeví na: ask_hanka/ask_kata/ask_kluci — ty jdou přes `did_threads` workspace, mají vlastní idempotenci přes `workspace_type+workspace_id` (případný bug tam je mimo scope tohoto passu).
+### Krok 4 — `Dnes` přejmenování + nový live entry
 
-## C. Změněné soubory
+**`DidDailySessionPlan.tsx`:**
+- Když plan je approved: text karty **„Sezení na dnes připraveno a schváleno"** + badge „Schválily: Hanička, Káťa".
+- Tlačítko **„Spustit sezení"** (přejmenování ze „Zahájit sezení") → otevře `DID/Terapeut/Live DID sezení` se vytvořeným nebo nalezeným therapist-led vláknem.
+- Bez schválení: zachovaný blocker z G1 (CTA „Otevřít přípravu (N/2)").
 
-1. **`supabase/functions/karel-team-deliberation-create/index.ts`**
-   — dvoukroková kaskáda lookupu (active → approved → insert), oba kroky bez date filtru.
-   — race-recovery branch v 23505 handleru rozšířit o `approved` whitelist.
+### Krok 5 — Live therapist-led room (rozšíření `DidLiveSessionPanel`)
 
-2. **Migration** (přes `supabase--migration` tool)
-   — `DROP INDEX IF EXISTS uniq_did_team_delib_active_briefing_item;`
-   — `CREATE UNIQUE INDEX uniq_did_team_delib_briefing_item ON did_team_deliberations (user_id, linked_briefing_item_id) WHERE linked_briefing_item_id IS NOT NULL AND status IN ('draft','active','awaiting_signoff','approved');`
+**Rozšíření UI:**
+1. **Levý panel**: schválený program bod-po-bodu jako interaktivní checklist. Klik na bod → expanduje Karlovy poznámky k bodu + pole pro Hanky odpověď („co pozorovala") + checkbox „bod hotov".
+2. **Hlavní panel**: chat s Karlem (existuje) + **inline upload bar** (univerzální komponent `UniversalAttachmentBar` už existuje):
+   - foto, screenshot, audio, video, dokument (grafologie/kresba)
+3. **Pravý panel**: Karlovy proaktivní karty („pozoruj X" / „zeptej se Y") s rychlým input polem pro odpověď, kterou Karel ihned započítá.
+4. **Live recording**: tlačítka **„Spustit live audio"** a **„Spustit live video+audio"** — chunked upload do `session-media` bucketu po 10s, server-side transkripce v reálném čase přes existující pipeline.
+5. **Spodní lišta**:
+   - Tlačítko **„Ukončit sezení"** → spustí post-session interrogation.
 
-3. **`src/components/did/DeliberationRoom.tsx`**
-   — read-only banner + `isApproved` flag → disable interactives.
+**Backend:**
+- Nová edge fn `karel-live-session-feedback` (Gemini 2.5 Flash) — fire-and-forget po každém uploadu/zprávě, vrací krátkou Karlovu poznámku zpět do chatu.
+- Karel-led „Vstup do herny" zůstává Karel-led (oddělené flow, neslučovat).
 
-4. **Data repair** (přes `supabase--insert` tool, idempotentní DELETE bez hardcoded IDs, viz B4).
+### Krok 6 — Post-session interrogation + Spižírna
 
-## D. Co NEMĚNÍM
+**Po stisknutí „Ukončit sezení":**
+1. Karel ihned napíše do chatu: „Děkuju, Hani. Mám pár otázek, abych zápis udělal pořádně:" + 3-5 cílených doptávacích otázek (jak vypadal v X, co jsi vnímala u Y).
+2. Hanka odpovídá ve stejném vlákně, Karel iteruje, dokud má slepá místa.
+3. Když má dost (vlastní self-check), Karel napíše: „Tohle stačí. Stiskni prosím **Odeslat analýzu k zápisu**."
+4. Tlačítko se odemkne (gated podle `interrogation_complete=true`).
+5. Po stisknutí:
+   - Karel vygeneruje finální analýzu (jak proběhlo, co o části zjistil, další postup, co povedlo, co příště, soulad s plánem).
+   - Uloží jako **balík do Spižírny** = nová tabulka `did_pantry_packages` s payloadem `{ session_id, type:'session_analysis', content_md, drive_target_path, status:'pending_drive' }`.
+   - Vlákno se uzamkne (`is_locked=true`).
 
-- `useTeamDeliberations` whitelist filter (`active|awaiting_signoff`) — záměrně nezobrazuje approved v dashboard panelu (UX rozhodnutí, není v scope).
-- Karlovu syntézu / signoff bridge / crisis_event update — to už funguje z předchozích passů.
-- `DidDailyBriefingPanel` click handlery — server idempotence stačí, klient se nemění.
-- `ask_*` flow přes `did_threads` — jiný bug pattern, mimo scope.
+**Spižírna → Drive (noční propis):**
+- Cron `karel-pantry-flush-to-drive` v 04:00 ráno (pg_cron + pg_net).
+- Vezme všechny `did_pantry_packages` se `status='pending_drive'` za posledních 24h.
+- Routuje přes existující `documentGovernance.ts` do správných cílů (`05A`, `05B`, `05C`, `KARTOTEKA_DID/<part>`, `PAMET_KAREL/Hana`…).
+- Po úspěšném zápisu: `status='flushed'`.
+- Pak (~05:00) běží existující `karel-did-daily-cycle`, který si z Drive natáhne base info pro nový den a v 06:00 je dashboard připravený.
 
-## E. Validace po implementaci (pořadí výstupu)
+## Část 3 — Soubory, které se změní
 
-A. **Root cause recap** — krátké shrnutí 3 vrstev (server lookup, unique index, UI absence read-only modu).
-B. **Opravené soubory** — výpis.
-C. **Repair krok pro existující duplicity** — before audit (počet duplicit = N), repair SQL (idempotentní), after audit (musí být 0).
-D. **Důkaz Arthur**:
-   - Před fix: SELECT pro `linked_briefing_item_id='5dde49c1…'` vrátí 2 řádky.
-   - Po repair: vrátí jen 1 řádek (approved `8ac5d27a…`).
-   - Po server fix: další klik z briefingu na Arthur card vrátí `reused: true` + `id=8ac5d27a…`, klient otevře read-only banner.
-E. **Mapa dalších dotčených položek z Karlova přehledu** (viz B5 — znovu shrnout v reportu).
-F. **`tsc --noEmit`** — clean.
-G. **Unified diff** — všech změněných souborů (server fn + DeliberationRoom) + migration SQL + repair SQL.
+| Soubor | Typ změny |
+|---|---|
+| Migrace: trigger `did_team_delib_autoderive_status` | přepsat na 2-podpis logiku |
+| Insert: data repair falešných podpisů | UPDATE NULL |
+| `supabase/functions/karel-team-deliberation-signoff/index.ts` | odstranit `signer='karel'` cestu |
+| `supabase/functions/karel-team-deliberation-iterate/index.ts` | **NOVÁ** — iterativní program update |
+| `supabase/functions/karel-live-session-feedback/index.ts` | **NOVÁ** — in-session Karel reakce |
+| `supabase/functions/karel-pantry-flush-to-drive/index.ts` | **NOVÁ** — noční propis |
+| `supabase/functions/karel-part-session-prepare/index.ts` | odstranit `first_draft` z hint payloadu |
+| Migrace: tabulka `did_pantry_packages` | **NOVÁ** |
+| Migrace: sloupec `did_team_deliberations.program_draft jsonb` | **NOVÝ** |
+| Migrace: sloupec `did_team_deliberations.interrogation_complete bool` | **NOVÝ** (pro post-session) |
+| Migrace: cron pro `karel-pantry-flush-to-drive` v 04:00 (přes insert tool) | **NOVÝ** |
+| `src/components/did/DeliberationRoom.tsx` | iterativní program + 2 tlačítka + read-only po podpisu |
+| `src/components/did/DidDailyBriefingPanel.tsx` | skrýt proposed když existuje approved plan |
+| `src/components/did/DidDailySessionPlan.tsx` | text + tlačítko „Spustit sezení" + odstranit first_draft hint |
+| `src/components/did/DidLiveSessionPanel.tsx` | program checklist + uploady + live record + Karlovy karty + Ukončit sezení |
+| `src/components/did/DidPostSessionInterrogation.tsx` | napojit jako jediný vstup pro Odeslat k zápisu |
+
+## Část 4 — Co se NEZMĚNÍ (mimo scope)
+
+- **Sezení s Karlem** (Karel-led `karel_part_session`) — explicitně až v dalším passu.
+- `KarelPartSessionBanner` — nesahám.
+- Briefing AI generace (`karel-did-daily-briefing`) — produkuje proposed_session, to je správně, jen ho UI přestane ukazovat duplicitně.
+- Existující Drive queue (`did_pending_drive_writes`) — Spižírna je nová vrstva NAD ní (Spížírna vyrobí balík → flush ho zařadí do queue → queue ho fyzicky pošle).
+
+## Část 5 — Pořadí implementace + důkaz
+
+1. Migrace trigger + repair podpisů + nové sloupce/tabulka.
+2. Backend: 3 nové edge fn + úprava signoff + úprava part-session-prepare.
+3. Frontend: DeliberationRoom (iterativní + 2 tlačítka) → DailyBriefingPanel (skrýt duplicitu) → DailySessionPlan (Spustit sezení) → LiveSessionPanel (uploady + checklist + Karel karty + Ukončit) → PostSessionInterrogation (Spižírna handoff).
+4. Cron 04:00 pro pantry flush.
+5. **Real-app proof přes browser tool**:
+   - (a) Porada bez podpisů → blocker, 2 tlačítka přejmenovaná, žádné Karlovo tlačítko.
+   - (b) Hanka napíše podnět → program se přepíše + Karlův komentář.
+   - (c) Hanka podepíše → její sekce read-only, hlavička „Schválily: Hanička", Káťa stále edituje.
+   - (d) Káťa podepíše → status approved, plan_markdown přepsán, `Dnes` ukazuje „Spustit sezení", briefing duplicita zmizí.
+   - (e) Live room: program checklist, upload bar, Karlova karta s polem na odpověď.
+   - (f) Ukončit sezení → Karel se ptá → Odeslat k zápisu → balík v `did_pantry_packages`.
+
