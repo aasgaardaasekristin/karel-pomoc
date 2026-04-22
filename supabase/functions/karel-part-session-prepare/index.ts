@@ -34,11 +34,6 @@ function pragueTodayISO(): string {
   return d.toISOString().slice(0, 10);
 }
 
-function workspaceId(partName: string, dateISO: string): string {
-  const safe = partName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-  return `kps_${safe}_${dateISO}`;
-}
-
 async function generateProgram(partName: string, briefingHint: any): Promise<string> {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   if (!apiKey) {
@@ -133,15 +128,20 @@ serve(async (req) => {
     const briefingHint = body.briefing_proposed_session || null;
 
     const today = pragueTodayISO();
-    const wsId = workspaceId(partName, today);
+    const dayStart = `${today}T00:00:00.000Z`;
+    const dayEnd = `${today}T23:59:59.999Z`;
 
-    // 1) Idempotent lookup
+    // 1) Idempotent lookup — match by sub_mode + part_name + day window.
+    // (workspace_id je UUID, takže nemůžeme použít deterministický string.
+    //  Místo toho dedupe-ujeme přes (sub_mode, part_name, started_at::date).)
     const existing = await sb
       .from("did_threads")
-      .select("*")
-      .eq("workspace_type", "session")
-      .eq("workspace_id", wsId)
-      .order("last_activity_at", { ascending: false })
+      .select("id, started_at")
+      .eq("sub_mode", "karel_part_session")
+      .ilike("part_name", partName)
+      .gte("started_at", dayStart)
+      .lte("started_at", dayEnd)
+      .order("started_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
@@ -168,7 +168,8 @@ serve(async (req) => {
 
     const opener = `🎲 **${threadLabel}**\n\nVítej v dnešní herně. Připravil jsem pro nás program — můžeme jím jít po pořádku, nebo si vybrat. Nic není povinné.\n\n---\n\n${program}`;
 
-    // 4) Insert thread
+    // 4) Insert thread (workspace_type/_id nepoužíváme — UUID by neumělo
+    //    deterministický string. Idempotenci hlídáme přes lookup výše.)
     const insertPayload: any = {
       part_name: partName,
       sub_mode: "karel_part_session",
@@ -178,8 +179,6 @@ serve(async (req) => {
       is_processed: false,
       thread_label: threadLabel,
       thread_emoji: "🎲",
-      workspace_type: "session",
-      workspace_id: wsId,
     };
     if (userId) insertPayload.user_id = userId;
 
@@ -190,21 +189,11 @@ serve(async (req) => {
       .single();
 
     if (insErr) {
-      // Race: another concurrent click won. Re-lookup.
-      if ((insErr as any).code === "23505") {
-        const { data: race } = await sb
-          .from("did_threads")
-          .select("id")
-          .eq("workspace_type", "session")
-          .eq("workspace_id", wsId)
-          .maybeSingle();
-        if (race?.id) return jsonRes({ thread_id: race.id, created: false });
-      }
       console.error("[part-session-prepare] insert error:", insErr);
       return jsonRes({ error: insErr.message }, 500);
     }
 
-    console.log(`[part-session-prepare] created room ${created.id} for ${partName} (${wsId})`);
+    console.log(`[part-session-prepare] created room ${created.id} for ${partName} (date=${today})`);
     return jsonRes({ thread_id: created.id, created: true });
   } catch (e) {
     console.error("[part-session-prepare] fatal:", e);
