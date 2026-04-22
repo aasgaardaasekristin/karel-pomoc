@@ -487,6 +487,50 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     [briefing, navigate, onOpenDeliberation, openingItemId],
   );
 
+  /**
+   * 2026-04-22 — Klik na "Herna Karel + [část]".
+   *
+   * Otevře / vytvoří dnešní dedikované did_threads vlákno
+   * (sub_mode=karel_part_session, workspace_id=kps_<part>_<date>) přes
+   * edge funkci `karel-part-session-prepare`. Idempotentní — druhý klik
+   * ten samý den vrací totéž thread_id. Pak naviguje přes existující
+   * `?workspace_thread=<id>` deep-link do Chat.tsx.
+   */
+  const openKarelPartSessionRoom = useCallback(
+    async (s: ProposedSession) => {
+      const itemKey = `kps::${s.part_name}`;
+      if (openingItemId === itemKey) return;
+      setOpeningItemId(itemKey);
+      try {
+        const { data, error } = await (supabase as any).functions.invoke(
+          "karel-part-session-prepare",
+          {
+            body: {
+              part_name: s.part_name,
+              briefing_proposed_session: {
+                why_today: s.why_today,
+                first_draft: s.first_draft,
+                duration_min: s.duration_min,
+                led_by: s.led_by,
+              },
+            },
+          },
+        );
+        if (error) throw error;
+        const threadId = (data as any)?.thread_id;
+        if (!threadId) throw new Error("Herna nebyla vytvořena.");
+        toast.success(`🎲 Herna s ${s.part_name} otevřena.`);
+        navigate(`/chat?workspace_thread=${threadId}`);
+      } catch (e: any) {
+        console.error("[DidDailyBriefingPanel] openKarelPartSessionRoom failed:", e);
+        toast.error(e?.message || "Nepodařilo se otevřít hernu.");
+      } finally {
+        setOpeningItemId(null);
+      }
+    },
+    [navigate, openingItemId],
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-10">
@@ -630,6 +674,32 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             <p className="text-[11px] text-primary/70 italic">
               Otevřít plán sezení →
             </p>
+          </button>
+
+          {/* 2026-04-22 — Karel + část room ("herna") CTA.
+              Sekundární akce vedle plánu porady. Otevírá dnešní dedikované
+              did_threads vlákno (sub_mode=karel_part_session) idempotentně
+              přes karel-part-session-prepare. */}
+          <button
+            type="button"
+            disabled={openingItemId === `kps::${p.proposed_session.part_name}`}
+            onClick={() => openKarelPartSessionRoom(p.proposed_session!)}
+            className="mt-2 w-full text-left p-2.5 rounded-lg border border-accent/25 bg-accent/5 hover:bg-accent/10 transition-colors flex items-center gap-2.5 cursor-pointer disabled:opacity-60"
+          >
+            <span className="text-base leading-none">🎲</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[12px] uppercase tracking-wider text-accent-foreground/70 font-medium">
+                Herna Karel + {p.proposed_session.part_name}
+              </div>
+              <div className="text-[12px] text-foreground/70 leading-snug">
+                Otevřít dnešní pracovní room s částí (60 min, hry).
+              </div>
+            </div>
+            {openingItemId === `kps::${p.proposed_session.part_name}` ? (
+              <Loader2 className="w-4 h-4 text-accent animate-spin shrink-0" />
+            ) : (
+              <ArrowRight className="w-4 h-4 text-accent/60 shrink-0" />
+            )}
           </button>
         </>
       )}

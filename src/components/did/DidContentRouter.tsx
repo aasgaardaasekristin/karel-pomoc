@@ -29,6 +29,7 @@ import DidPartIdentifier from "@/components/did/DidPartIdentifier";
 import DidKidsThemeEditor from "@/components/did/DidKidsThemeEditor";
 import DidActionButtons from "@/components/did/DidActionButtons";
 import QuickNoteDialog from "@/components/did/QuickNoteDialog";
+import KarelPartSessionBanner from "@/components/did/KarelPartSessionBanner";
 import ChatInputArea from "@/components/chat/ChatInputArea";
 import AudioRecordButton from "@/components/AudioRecordButton";
 import ChatMessage from "@/components/ChatMessage";
@@ -726,7 +727,15 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
               />
             </div>
           )}
-          {/* Compact crisis hint — non-narrative, points back to command card */}
+          {/* 2026-04-22 — Karel + část room banner. Vykresluje se uvnitř
+              standardního cast shellu (žádný nový layout), ale jasně odliší
+              dnešní hernu od běžného terapeutického vlákna. */}
+          {activeThread && activeThread.subMode === "karel_part_session" && (
+            <KarelPartSessionBanner
+              partName={activeThread.partName}
+              dateLabel={new Date(activeThread.startedAt || Date.now()).toLocaleDateString("cs-CZ", { day: "numeric", month: "long" })}
+            />
+          )}
           {activeCrisisBanner && didSubMode === "cast" && (
             <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-2 flex items-center gap-2 text-xs">
               <span className="text-destructive font-bold">⚠ AKTIVNÍ KRIZE</span>
