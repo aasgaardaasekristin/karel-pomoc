@@ -436,7 +436,10 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
             <Target className="w-3.5 h-3.5 text-primary" />
-            Plán sezení na dnes
+            Sezení s Karlem
+            <span className="text-[0.625rem] text-muted-foreground/70 font-normal ml-1">
+              · vykonatelné po schválení porady
+            </span>
           </h4>
           <div className="flex items-center gap-1.5">
             {!generating && !compact && (
@@ -556,9 +559,16 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
         )}
 
         {plans.length === 0 && !generating && (
-          <p className="text-[0.6875rem] text-muted-foreground">
-            Automatický plán se generuje v 6:00. Můžeš ho vygenerovat i ručně.
-          </p>
+          <div className="rounded-md border border-dashed border-border/50 bg-background/30 p-3">
+            <p className="text-[0.6875rem] text-muted-foreground leading-relaxed">
+              Dnes zatím není žádné schválené sezení.
+              <br />
+              <span className="text-muted-foreground/70">
+                Karlův návrh sezení vzniká v <strong>Společné poradě týmu</strong> (návrh → otázky → podpisy).
+                Po schválení se zde objeví vykonatelná karta s programem a vstupem do připravené místnosti.
+              </span>
+            </p>
+          </div>
         )}
 
         {/* ═══ PENDING PLANS ═══ */}
