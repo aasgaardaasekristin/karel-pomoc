@@ -510,7 +510,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
               {!isReadOnly && (
                 <section className="rounded-lg border border-dashed border-border/60 p-3 space-y-2">
                   <div className="flex items-center gap-1.5">
-                    {(["hanka", "kata", "karel"] as const).map((who) => (
+                    {(["hanka", "kata"] as const).map((who) => (
                       <Button
                         key={who}
                         size="sm"
@@ -518,7 +518,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                         className="h-6 px-2 text-[10px]"
                         onClick={() => setChatAuthor(who)}
                       >
-                        {who === "hanka" ? "Hanička" : who === "kata" ? "Káťa" : "Karel"}
+                        {who === "hanka" ? "Hanička" : "Káťa"}
                       </Button>
                     ))}
                   </div>
