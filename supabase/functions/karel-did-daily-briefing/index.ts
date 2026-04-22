@@ -409,9 +409,29 @@ async function generateBriefing(
 ): Promise<{ payload: any; durationMs: number }> {
   const start = Date.now();
 
+  // ── PANTRY B SECTION (yesterday→today implications) ──────────────
+  const pbEntries = (context.pantry_b_entries ?? []) as any[];
+  const approvedDelibs = (context.approved_deliberations ?? []) as any[];
+  const formatPantryBLine = (e: any) => {
+    const part = e.related_part_name ? ` [${e.related_part_name}]` : "";
+    const ther = e.related_therapist ? ` (${e.related_therapist === "hanka" ? "Hanička" : "Káťa"})` : "";
+    return `- [${e.entry_kind}/${e.source_kind}]${part}${ther} ${String(e.summary || "").slice(0, 220)}`;
+  };
+  const pantryBSection = pbEntries.length > 0
+    ? `═══ SPIŽÍRNA B — VČEREJŠÍ IMPLIKACE PRO DNEŠEK ═══\nTo jsou věci, které z včerejších vláken / porad / sezení přímo plynou pro dnešní rozhodování. Použij je v greeting, last_3_days a hlavně v decisions a ask_*. NEIGNORUJ je.\n${pbEntries.slice(0, 30).map(formatPantryBLine).join("\n")}\n\n`
+    : "";
+  const approvedDelibsSection = approvedDelibs.length > 0
+    ? `═══ NEDÁVNO PODEPSANÉ PORADY (posledních 48h) ═══\n${approvedDelibs.map((d: any) => {
+        const ks = d.karel_synthesis as any;
+        const next = ks?.next_step ? ` → další krok: ${ks.next_step}` : "";
+        const subj = (d.subject_parts || []).join(", ");
+        return `- "${d.title}" (${d.deliberation_type}${subj ? `, ${subj}` : ""})${next}`;
+      }).join("\n")}\nTyto porady JSOU UZAVŘENÉ — neopakuj je jako otevřené decisions. Použij je jako pozadí pro dnešní rozhodnutí.\n\n`
+    : "";
+
   const userPrompt = `KONTEXT PRO BRIEFING (${context.today}):
 
-${context.pantry_a_summary ? `═══ SPIŽÍRNA A — RANNÍ PRACOVNÍ ZÁSOBA ═══\n${context.pantry_a_summary}\n\n` : ""}AKTIVNÍ KRIZE (${context.crises.length}):
+${context.pantry_a_summary ? `═══ SPIŽÍRNA A — RANNÍ PRACOVNÍ ZÁSOBA ═══\n${context.pantry_a_summary}\n\n` : ""}${pantryBSection}${approvedDelibsSection}AKTIVNÍ KRIZE (${context.crises.length}):
 ${context.crises.map((c: any) => `- ${c.part_name} | severity: ${c.severity} | fáze: ${c.phase} | dní aktivní: ${c.days_active || "?"} | trigger: ${c.trigger_description?.slice(0, 120) || "—"}`).join("\n") || "(žádné)"}
 
 POZOROVÁNÍ ZA POSLEDNÍ 3 DNY (${context.recent_observations.length}):
