@@ -253,7 +253,14 @@ Deno.serve(async (req: Request) => {
         selected_part: part || "(neurčeno)",
         therapist,
         session_format: sessionFormat,
-        status: "planned",
+        // PLAN-STATUS TRUTH FIX (2026-04-22):
+        // Bridge MUSÍ vkládat plán ve stavu, který Pracovna v `Dnes` skutečně
+        // renderuje jako vykonatelný. DidDailySessionPlan.tsx filtruje
+        // pendingPlans = status ∈ {"generated","in_progress"}. Cokoliv jiného
+        // (planned, approved, …) zmizí z UI a tým si myslí, že schválení nic
+        // neudělalo. Schválení nese porada (did_team_deliberations.status =
+        // 'approved'), plán zůstává v `generated` = připravený k zahájení.
+        status: "generated",
         urgency_score: updated.priority === "crisis" ? 100 : 70,
         urgency_breakdown: {
           source: "team_deliberation",
