@@ -424,12 +424,13 @@ async function generateBriefing(
     ? `═══ SPIŽÍRNA B — VČEREJŠÍ IMPLIKACE PRO DNEŠEK ═══\nTo jsou věci, které z včerejších vláken / porad / sezení přímo plynou pro dnešní rozhodování. Použij je v greeting, last_3_days a hlavně v decisions a ask_*. NEIGNORUJ je.\n${pbEntries.slice(0, 30).map(formatPantryBLine).join("\n")}\n\n`
     : "";
   const approvedDelibsSection = approvedDelibs.length > 0
-    ? `═══ NEDÁVNO PODEPSANÉ PORADY (posledních 48h) ═══\n${approvedDelibs.map((d: any) => {
+    ? `═══ NEDÁVNO PODEPSANÉ PORADY (posledních 48h) — ZÁVAZNÉ POZADÍ ═══\n${approvedDelibs.map((d: any) => {
         const ks = d.karel_synthesis as any;
         const next = ks?.next_step ? ` → další krok: ${ks.next_step}` : "";
+        const summary = d.final_summary ? ` | shrnutí: ${String(d.final_summary).slice(0, 160)}` : "";
         const subj = (d.subject_parts || []).join(", ");
-        return `- "${d.title}" (${d.deliberation_type}${subj ? `, ${subj}` : ""})${next}`;
-      }).join("\n")}\nTyto porady JSOU UZAVŘENÉ — neopakuj je jako otevřené decisions. Použij je jako pozadí pro dnešní rozhodnutí.\n\n`
+        return `- "${d.title}" (${d.deliberation_type}${subj ? `, ${subj}` : ""})${next}${summary}`;
+      }).join("\n")}\n\n⚠ Tyto porady JSOU UZAVŘENÉ. Pravidla:\n  1) NIKDY pro tyto subject_parts/téma nezakládej nové decisions se stejným nebo téměř stejným titulkem.\n  2) Pokud dnes existuje aktivní krize na těchto částech, navaž na poradu (zmiň "navazujeme na podepsanou poradu '<title>'") místo nového rozhodnutí.\n  3) V proposed_session.first_draft a why_today VYUŽIJ závěr porady — neopakuj, co tým už schválil.\n\n`
     : "";
 
   const userPrompt = `KONTEXT PRO BRIEFING (${context.today}):
