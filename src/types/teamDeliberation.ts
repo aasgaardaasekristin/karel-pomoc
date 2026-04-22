@@ -186,7 +186,7 @@ export function partitionDashboardDeliberations(
   };
   const open = list.filter(
     (d) =>
-      (d.status === "active" || d.status === "awaiting_signoff") &&
+      (d.status === "active" || d.status === "awaiting_signoff" || d.status === "approved") &&
       !isTestDeliberation(d)
   );
   const sorted = [...open].sort((a, b) => {
