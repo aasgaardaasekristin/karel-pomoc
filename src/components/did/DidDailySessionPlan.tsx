@@ -928,11 +928,11 @@ const PlanCard = ({
           ) : prepInProgress ? (
             <Badge className="text-[10px] h-5 px-1.5 bg-amber-500/15 text-amber-700 border border-amber-500/30">
               <Users className="mr-0.5 h-2.5 w-2.5" />
-              Příprava ({prepProgress?.signed ?? 0}/3 podpisů)
+              Příprava ({prepProgress?.signed ?? 0}/{prepProgress?.total ?? 2} podpisů)
             </Badge>
           ) : (
             <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/40 text-amber-700">
-              <Lock className="mr-0.5 h-2.5 w-2.5" /> Bez přípravy
+              <Lock className="mr-0.5 h-2.5 w-2.5" /> Bez schválené přípravy
             </Badge>
           )
         )}
@@ -943,6 +943,25 @@ const PlanCard = ({
           </Button>
         </div>
       </div>
+
+      {/* ═══ GATE BLOCKER STRIP — viditelná pravda, proč Zahájit nejde ═══
+           Renderuje se POUZE když je prep gate aktivní (Pracovna), plán je
+           naplánovaný (status=generated) a NENÍ schválený poradou. Hanka tak
+           okamžitě vidí, co chybí, a nemusí hádat z disabled tlačítka. */}
+      {prepGateEnabled && plan.status === "generated" && !isArchived && !prepLoading && !prepApproved && (
+        <div className="mb-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5">
+          <p className="text-[0.625rem] leading-4 text-amber-800 dark:text-amber-300">
+            <Lock className="mr-1 inline h-2.5 w-2.5 -mt-px" />
+            <strong>Zahájit nelze bez schválené týmové přípravy.</strong>{" "}
+            {prepInProgress
+              ? <>Porada už běží — chybí {prepProgress?.missing
+                  ?.filter(m => m !== "karel")
+                  .map(m => m === "hanka" ? "Hanička" : "Káťa")
+                  .join(" + ") || "podpis"}.</>
+              : <>Otevřete přípravnou místnost (Karel ↔ Hanička ↔ Káťa). Karel se podepíše automaticky, jakmile podepíše Hanička i Káťa.</>}
+          </p>
+        </div>
+      )}
 
       {/* ═══ ACTION BUTTONS ═══ */}
       <div className="flex flex-wrap items-center gap-1 mb-1.5">
@@ -961,7 +980,7 @@ const PlanCard = ({
                 className="h-6 px-2 text-[10px]"
               >
                 <Users className="mr-0.5 h-2.5 w-2.5" /> Otevřít přípravu
-                {prepProgress && ` (${prepProgress.signed}/3)`}
+                {prepProgress && ` (${prepProgress.signed}/${prepProgress.total})`}
               </Button>
             )}
             {prepGateEnabled && !prepLoading && !prepRoom && (
