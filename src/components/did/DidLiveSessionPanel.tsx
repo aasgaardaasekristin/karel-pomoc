@@ -14,6 +14,8 @@ import { useImageUpload } from "@/hooks/useImageUpload";
 import { Progress } from "@/components/ui/progress";
 import RichMarkdown from "@/components/ui/RichMarkdown";
 import DidPostSessionInterrogation, { type InterrogationAnswer } from "./DidPostSessionInterrogation";
+import LiveProgramChecklist from "./LiveProgramChecklist";
+import KarelInSessionCards, { type KarelHintTrigger } from "./KarelInSessionCards";
 
 type Message = { role: "user" | "assistant"; content: string };
 
