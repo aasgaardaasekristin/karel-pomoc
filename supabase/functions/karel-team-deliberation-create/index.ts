@@ -322,10 +322,12 @@ Deno.serve(async (req: Request) => {
         targetPart.charAt(0).toUpperCase() + targetPart.slice(1).toLowerCase(),
       ]));
 
+      // crisis_events je single-tenant (žádný user_id sloupec) — filtrovat
+      // jen na part_name a phase. Předchozí .eq("user_id", userId) zde tiše
+      // vracel 0 řádků a zcela rozbíjel anti-amnesia guard (Arthur 22.4. duplicita).
       const { data: openCrisis } = await admin
         .from("crisis_events")
         .select("id, part_name, phase")
-        .eq("user_id", userId)
         .neq("phase", "closed")
         .in("part_name", partVariants)
         .limit(1)
