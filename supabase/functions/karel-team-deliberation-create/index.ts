@@ -302,6 +302,63 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ── ANTI-AMNÉZIE GUARD ──
+    // Druhá vrstva idempotence: i bez sdíleného linked_briefing_item_id nesmí
+    // vzniknout NOVÁ crisis porada pro stejný subject_part, dokud existuje:
+    //   (a) APPROVED crisis porada pro tutéž část za posledních 14 dní, A ZÁROVEŇ
+    //   (b) otevřený crisis_event (phase != 'closed') pro tu část.
+    // To přesně řeší případ "Arthur 22.4. duplicita 0cb6ce87" — briefing vygeneroval
+    // nový item s novým UUID pro téma, kde už 19.4. tým schválil 8ac5d27a, a žádná
+    // další eskalace mezitím nepřišla.
+    if (type === "crisis" && subjectParts.length > 0) {
+      const sinceISO = new Date(Date.now() - 14 * 86400000).toISOString();
+      const targetPart = subjectParts[0];
+
+      // case-insensitive overlap match na subject_parts (ARTHUR vs Arthur)
+      const partVariants = Array.from(new Set([
+        targetPart,
+        targetPart.toLowerCase(),
+        targetPart.toUpperCase(),
+        targetPart.charAt(0).toUpperCase() + targetPart.slice(1).toLowerCase(),
+      ]));
+
+      const { data: openCrisis } = await admin
+        .from("crisis_events")
+        .select("id, part_name, phase")
+        .eq("user_id", userId)
+        .neq("phase", "closed")
+        .in("part_name", partVariants)
+        .limit(1)
+        .maybeSingle();
+
+      if (openCrisis) {
+        const { data: existingApproved } = await admin
+          .from("did_team_deliberations")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("deliberation_type", "crisis")
+          .eq("status", "approved")
+          .overlaps("subject_parts", partVariants)
+          .gte("updated_at", sinceISO)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existingApproved) {
+          console.log(`[delib-create] ANTI-AMNÉZIE: blokuji novou crisis poradu pro ${targetPart} — existuje approved ${existingApproved.id} z ${existingApproved.updated_at}, otevřená crisis_event ${openCrisis.id}.`);
+          return new Response(JSON.stringify({
+            deliberation: existingApproved,
+            reused: true,
+            read_only: true,
+            anti_amnesia_guard: true,
+            reason: `Pro ${targetPart} existuje schválená krizová porada „${existingApproved.title}" (${existingApproved.updated_at?.slice(0,10)}) a krize stále běží. Navazujte na ni, nezakládejte novou.`,
+          }), {
+            status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+    }
+
     // ── OBSAH ── pokud je prefill, použij ho (briefing už dodal AI obsah).
     // Jinak fallback: dogenerovat ad-hoc přes AI gateway (legacy path).
     let aiContent: any;
