@@ -1001,8 +1001,23 @@ ${report}${reflectionText}`;
               )}
             </button>
             {planExpanded && (
-              <div className="px-3 pb-3 pt-0 max-h-72 overflow-y-auto border-t border-primary/15">
-                <RichMarkdown compact>{contextBrief}</RichMarkdown>
+              <div className="px-3 pb-3 pt-0 max-h-80 overflow-y-auto border-t border-primary/15">
+                <LiveProgramChecklist
+                  planMarkdown={contextBrief}
+                  storageKey={`live_program_${planId ?? "ad-hoc"}`}
+                  onItemToggle={(it) =>
+                    pushHintTrigger(
+                      `Bod programu ${it.done ? "označen jako HOTOVÝ" : "vrácen do běhu"}: „${it.text.slice(0, 200)}"`,
+                      "note",
+                    )
+                  }
+                  onObservationSubmit={(it) =>
+                    pushHintTrigger(
+                      `Pozorování k bodu „${it.text.slice(0, 120)}":\n${it.observation.slice(0, 600)}`,
+                      "note",
+                    )
+                  }
+                />
               </div>
             )}
           </div>
