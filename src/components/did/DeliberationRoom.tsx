@@ -508,6 +508,18 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
               <span className="text-muted-foreground ml-1">
                 podpisy {sp.signed}/{sp.total}
               </span>
+              {/* THERAPIST-LED 2-PODPIS — dynamický badge "Schválily: …" */}
+              {(hankaLocked || kataLocked) && (
+                <span className="ml-2 inline-flex items-center gap-1 text-emerald-700">
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span className="text-[10px] font-medium">
+                    Schválily:{" "}
+                    {[hankaLocked ? "Hanička" : null, kataLocked ? "Káťa" : null]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </span>
+                </span>
+              )}
             </DialogDescription>
           )}
         </DialogHeader>
