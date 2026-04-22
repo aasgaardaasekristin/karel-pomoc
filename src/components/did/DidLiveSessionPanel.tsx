@@ -181,6 +181,8 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
 
     const updatedMessages = [...messages, { role: "user" as const, content: userMessage }];
     setMessages(updatedMessages);
+    // Karel proaktivní reakce na nový input terapeutky
+    pushHintTrigger(userMessage, "note");
     setIsLoading(true);
 
     let assistantContent = "";
