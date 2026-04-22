@@ -76,11 +76,13 @@ async function scoreSessionCandidates(supabase: any): Promise<SessionCandidate[]
     // PROPOSAL-TO-DNES TRUTH PASS: kanonická tabulka částí je did_part_registry,
     // pole part_name (ne `name`). Předchozí volání `did_parts` tiše failovalo a
     // tím pádem scorer vždy vracel 0 kandidátů → briefing nikdy nenavrhl sezení.
-    const { data: part } = await supabase
+    // Použít limit(1) místo maybeSingle() — registr může mít víc řádků (per user, case).
+    const { data: parts } = await supabase
       .from("did_part_registry")
       .select("id, part_name")
       .ilike("part_name", c.part_name)
-      .maybeSingle();
+      .limit(1);
+    const part = parts?.[0];
     if (!part) continue;
     const cand = ensure(part.id, part.part_name);
     cand.score += 3;
@@ -784,12 +786,12 @@ Deno.serve(async (req) => {
     // 4) Resolve part_id pro proposed_session (kanonická tabulka did_part_registry)
     let proposedPartId: string | null = null;
     if (payload.proposed_session?.part_name) {
-      const { data: part } = await supabase
+      const { data: parts } = await supabase
         .from("did_part_registry")
         .select("id")
         .ilike("part_name", payload.proposed_session.part_name)
-        .maybeSingle();
-      proposedPartId = part?.id || null;
+        .limit(1);
+      proposedPartId = parts?.[0]?.id || null;
     }
 
     // 5) Označit staré briefingy pro dnešek jako stale
