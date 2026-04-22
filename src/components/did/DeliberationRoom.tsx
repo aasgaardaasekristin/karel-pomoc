@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import {
@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import RichMarkdown from "@/components/ui/RichMarkdown";
-import { Loader2, CheckCircle2, Send, ArrowRight, Users, Brain, AlertTriangle } from "lucide-react";
+import { Loader2, CheckCircle2, Send, ArrowRight, Users, Brain, AlertTriangle, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useTeamDeliberations } from "@/hooks/useTeamDeliberations";
 import {
@@ -21,6 +21,7 @@ import {
   type TeamDeliberation,
   type DeliberationQuestion,
   type KarelSynthesis,
+  type AgendaBlock,
 } from "@/types/teamDeliberation";
 
 interface Props {
