@@ -999,18 +999,14 @@ const PlanCard = ({
                  krizovém kontextu (krize ≠ vyloučení Karlova vlastního sezení).
                  Klik volá `karel-part-session-prepare` (idempotentní) a deep-linkuje
                  do `/chat?workspace_thread=<id>`. */}
-            {/* C0 SESSION-TYPE TRUTH SEPARATION (2026-04-22):
-                 "Vstup do herny" má smysl POUZE pro karel-led plán.
-                 Therapist-led plán dítě v herně nepotřebuje — vede ho fyzicky
-                 Hanka / Káťa, herna by byla matoucí druhá místnost. */}
-            {prepGateEnabled && prepApproved && sessionModality === "karel_led" && (
+            {prepGateEnabled && prepApproved && (
               <Button
                 variant="default"
                 size="sm"
                 onClick={onOpenPartRoom}
                 disabled={openingPartRoom}
                 className="h-6 px-2 text-[10px]"
-                title={`Otevřít Karel-led hernu s ${plan.selected_part}`}
+                title={`Otevřít hernu s ${plan.selected_part}`}
               >
                 {openingPartRoom ? (
                   <Loader2 className="mr-0.5 h-2.5 w-2.5 animate-spin" />
