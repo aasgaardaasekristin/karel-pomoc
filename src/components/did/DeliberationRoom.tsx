@@ -567,54 +567,78 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 <RichMarkdown compact>{d.karel_proposed_plan ?? "(zatím bez návrhu)"}</RichMarkdown>
               </section>
 
-              {/* SLICE 3 — Agenda / minutáž (zejména pro session_plan) */}
-              {Array.isArray((d as any).agenda_outline) && (d as any).agenda_outline.length > 0 && (
-                <section className="rounded-lg border border-border/60 bg-card/40 p-3">
-                  <h4 className="text-[11px] font-semibold text-foreground mb-2">
-                    Osnova / minutáž
-                  </h4>
-                  <ol className="space-y-1.5">
-                    {((d as any).agenda_outline as Array<{block:string;minutes?:number|null;detail?:string|null}>).map((b, i) => (
-                      <li key={i} className="text-[11px] flex gap-2">
-                        <span className="font-semibold text-primary shrink-0">
-                          {i + 1}.
-                          {typeof b.minutes === "number" && b.minutes > 0 ? ` ${b.minutes}′` : ""}
-                        </span>
-                        <span className="flex-1">
-                          <span className="font-medium text-foreground">{b.block}</span>
-                          {b.detail && (
-                            <span className="block text-foreground/75 mt-0.5">{b.detail}</span>
-                          )}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                </section>
+              {/* THERAPIST-LED TRUTH PASS — Živý program (program_draft).
+                  Pro session_plan nahrazuje statickou agendu + Karlovu syntézu.
+                  Karel sem dopisuje po každé odpovědi/podnětu terapeutek. */}
+              {d.deliberation_type === "session_plan" && (
+                <LiveProgramDraftPanel
+                  d={d}
+                  iterating={iterating}
+                  lastIterateComment={lastIterateComment}
+                />
               )}
 
-              {/* Otázky pro Haničku */}
-              <section className="rounded-lg border border-border/60 p-3">
-                <h4 className="text-[11px] font-semibold mb-2 text-foreground">
+              {/* SLICE 3 — Statická Agenda / minutáž — POUZE pro non-session_plan
+                  typy (krize, supervize, …), kde iterativní program_draft nemá smysl. */}
+              {d.deliberation_type !== "session_plan" &&
+                Array.isArray((d as any).agenda_outline) &&
+                (d as any).agenda_outline.length > 0 && (
+                  <section className="rounded-lg border border-border/60 bg-card/40 p-3">
+                    <h4 className="text-[11px] font-semibold text-foreground mb-2">
+                      Osnova / minutáž
+                    </h4>
+                    <ol className="space-y-1.5">
+                      {((d as any).agenda_outline as Array<{block:string;minutes?:number|null;detail?:string|null}>).map((b, i) => (
+                        <li key={i} className="text-[11px] flex gap-2">
+                          <span className="font-semibold text-primary shrink-0">
+                            {i + 1}.
+                            {typeof b.minutes === "number" && b.minutes > 0 ? ` ${b.minutes}′` : ""}
+                          </span>
+                          <span className="flex-1">
+                            <span className="font-medium text-foreground">{b.block}</span>
+                            {b.detail && (
+                              <span className="block text-foreground/75 mt-0.5">{b.detail}</span>
+                            )}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+              )}
+
+              {/* Otázky pro Haničku — read-only po jejím podpisu (Káťa stále edituje). */}
+              <section className={`rounded-lg border p-3 ${hankaLocked ? "border-emerald-500/30 bg-emerald-500/5" : "border-border/60"}`}>
+                <h4 className="text-[11px] font-semibold mb-2 text-foreground flex items-center gap-1.5">
                   Pro Haničku
+                  {hankaLocked && (
+                    <span className="text-[9px] text-emerald-700 inline-flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> uzavřeno podpisem
+                    </span>
+                  )}
                 </h4>
                 <QuestionList
                   questions={d.questions_for_hanka ?? []}
                   who="hanka"
                   onAnswer={(idx, ans) => handleAnswer("hanka", idx, ans)}
-                  readOnly={isReadOnly}
+                  readOnly={isReadOnly || hankaLocked}
                 />
               </section>
 
-              {/* Otázky pro Káťu */}
-              <section className="rounded-lg border border-border/60 p-3">
-                <h4 className="text-[11px] font-semibold mb-2 text-foreground">
+              {/* Otázky pro Káťu — read-only po jejím podpisu (Hanka stále edituje). */}
+              <section className={`rounded-lg border p-3 ${kataLocked ? "border-emerald-500/30 bg-emerald-500/5" : "border-border/60"}`}>
+                <h4 className="text-[11px] font-semibold mb-2 text-foreground flex items-center gap-1.5">
                   Pro Káťu
+                  {kataLocked && (
+                    <span className="text-[9px] text-emerald-700 inline-flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> uzavřeno podpisem
+                    </span>
+                  )}
                 </h4>
                 <QuestionList
                   questions={d.questions_for_kata ?? []}
                   who="kata"
                   onAnswer={(idx, ans) => handleAnswer("kata", idx, ans)}
-                  readOnly={isReadOnly}
+                  readOnly={isReadOnly || kataLocked}
                 />
               </section>
 
