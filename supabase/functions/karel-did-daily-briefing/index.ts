@@ -73,13 +73,16 @@ async function scoreSessionCandidates(supabase: any): Promise<SessionCandidate[]
     .not("phase", "in", '("closed","CLOSED")');
 
   for (const c of crises || []) {
+    // PROPOSAL-TO-DNES TRUTH PASS: kanonická tabulka částí je did_part_registry,
+    // pole part_name (ne `name`). Předchozí volání `did_parts` tiše failovalo a
+    // tím pádem scorer vždy vracel 0 kandidátů → briefing nikdy nenavrhl sezení.
     const { data: part } = await supabase
-      .from("did_parts")
-      .select("id, name")
-      .eq("name", c.part_name)
+      .from("did_part_registry")
+      .select("id, part_name")
+      .ilike("part_name", c.part_name)
       .maybeSingle();
     if (!part) continue;
-    const cand = ensure(part.id, part.name);
+    const cand = ensure(part.id, part.part_name);
     cand.score += 3;
     cand.reasons.push(`aktivní krize (${c.severity || "?"}, fáze ${c.phase || "?"})`);
     if ((c.indicator_safety ?? 5) <= 2) {
@@ -103,9 +106,9 @@ async function scoreSessionCandidates(supabase: any): Promise<SessionCandidate[]
   }
   for (const [part_id, count] of obsCounts) {
     if (count >= 2) {
-      const { data: part } = await supabase.from("did_parts").select("id, name").eq("id", part_id).maybeSingle();
+      const { data: part } = await supabase.from("did_part_registry").select("id, part_name").eq("id", part_id).maybeSingle();
       if (!part) continue;
-      const cand = ensure(part.id, part.name);
+      const cand = ensure(part.id, part.part_name);
       cand.score += Math.min(count, 4);
       cand.reasons.push(`${count} signálů za 3 dny`);
     }
@@ -119,9 +122,9 @@ async function scoreSessionCandidates(supabase: any): Promise<SessionCandidate[]
 
   for (const p of pending || []) {
     if (!p.part_id) continue;
-    const { data: part } = await supabase.from("did_parts").select("id, name").eq("id", p.part_id).maybeSingle();
+    const { data: part } = await supabase.from("did_part_registry").select("id, part_name").eq("id", p.part_id).maybeSingle();
     if (!part) continue;
-    const cand = ensure(part.id, part.name);
+    const cand = ensure(part.id, part.part_name);
     cand.score += 1;
     cand.reasons.push("nedořešená otázka");
   }
@@ -168,9 +171,9 @@ async function gatherContext(supabase: any) {
   ]);
 
   const { data: parts } = await supabase
-    .from("did_parts")
-    .select("id, name");
-  const partsById = new Map((parts || []).map((p: any) => [p.id, p.name]));
+    .from("did_part_registry")
+    .select("id, part_name");
+  const partsById = new Map((parts || []).map((p: any) => [p.id, p.part_name]));
 
   // ═══ HOURGLASS: SPIŽÍRNA A READER (briefing) ═══
   // Reálný konzument composed morning view-modelu. Briefing už netahá vše
@@ -777,13 +780,13 @@ Deno.serve(async (req) => {
       } as ProposedSessionItem;
     }
 
-    // 4) Resolve part_id pro proposed_session
+    // 4) Resolve part_id pro proposed_session (kanonická tabulka did_part_registry)
     let proposedPartId: string | null = null;
     if (payload.proposed_session?.part_name) {
       const { data: part } = await supabase
-        .from("did_parts")
+        .from("did_part_registry")
         .select("id")
-        .ilike("name", payload.proposed_session.part_name)
+        .ilike("part_name", payload.proposed_session.part_name)
         .maybeSingle();
       proposedPartId = part?.id || null;
     }
