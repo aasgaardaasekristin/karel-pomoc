@@ -26,6 +26,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 import { selectPantryA, summarizePantryAForPrompt, type PantryASnapshot } from "../_shared/pantryA.ts";
+import { readUnprocessedPantryB, markPantryBProcessed } from "../_shared/pantryB.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -198,6 +199,44 @@ async function gatherContext(supabase: any) {
     console.warn("[briefing] Pantry A load failed (non-fatal):", pErr);
   }
 
+  // ═══ PANTRY B READER (briefing) ═══
+  // Sběr nezpracovaných implikací z včerejška + dnešního rána.
+  // Zdroje: signoff/synthesis (porady), did-meeting finalize, apply-analysis,
+  // post-chat writebacky. Bez tohoto kroku Karel nevidí, co včera ve vláknech /
+  // poradách / sezeních vyplynulo, a briefing zní jako kdyby den začínal odznova.
+  let pantryBEntries: any[] = [];
+  let approvedDeliberations: any[] = [];
+  try {
+    const userIdForB = pantryA?.sources?.user_id
+      // Fallback k libovolnému user_id z did_daily_context (stejný pattern jako Pantry A výše).
+      ?? null;
+    let userIdResolved: string | null = userIdForB;
+    if (!userIdResolved) {
+      const { data: anyCtxRow } = await supabase
+        .from("did_daily_context")
+        .select("user_id")
+        .order("context_date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      userIdResolved = anyCtxRow?.user_id ?? null;
+    }
+    if (userIdResolved) {
+      pantryBEntries = await readUnprocessedPantryB(supabase, userIdResolved);
+      const { data: approved } = await supabase
+        .from("did_team_deliberations")
+        .select("id, title, deliberation_type, subject_parts, final_summary, karel_synthesis, updated_at")
+        .eq("user_id", userIdResolved)
+        .eq("status", "approved")
+        .gte("updated_at", `${daysAgoISO(2)}T00:00:00Z`)
+        .order("updated_at", { ascending: false })
+        .limit(10);
+      approvedDeliberations = approved ?? [];
+      console.log(`[briefing] Pantry B loaded: entries=${pantryBEntries.length}, approved_delibs=${approvedDeliberations.length}`);
+    }
+  } catch (bErr) {
+    console.warn("[briefing] Pantry B / approved deliberations load failed (non-fatal):", bErr);
+  }
+
   return {
     today: pragueDayISO(),
     crises: crisesRes.data || [],
@@ -216,6 +255,8 @@ async function gatherContext(supabase: any) {
     })),
     pantry_a: pantryA,
     pantry_a_summary: pantryASummary,
+    pantry_b_entries: pantryBEntries,
+    approved_deliberations: approvedDeliberations,
   };
 }
 
