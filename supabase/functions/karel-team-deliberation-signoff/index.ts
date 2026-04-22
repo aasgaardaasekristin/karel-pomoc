@@ -44,7 +44,11 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const deliberationId = String(body?.deliberation_id ?? "");
     const signer = String(body?.signer ?? "");
-    if (!deliberationId || !["hanka", "kata", "karel"].includes(signer)) {
+    // 2 PODPISY TRUTH PASS (2026-04-22):
+    //   Karel není podepisující strana — schválení = 2 podpisy (Hanička + Káťa).
+    //   Karlův timestamp se nastavuje automaticky v DB triggeru jako audit log.
+    //   Klient si Karlův podpis nikdy nesmí vyžadovat.
+    if (!deliberationId || !["hanka", "kata"].includes(signer)) {
       return new Response(JSON.stringify({ error: "bad input" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -65,59 +69,21 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // GATE: pro typ `crisis` smí Karel podepsat JEN pokud existuje
-    // explicitní karel_synthesis (viz karel-team-deliberation-synthesize).
-    // Kontrola PŘED updatem, aby se trigger autoderive_status nespouštěl
-    // s falešným karel_signed_at, který bychom museli rollbackovat.
+    // 2 PODPISY TRUTH PASS (2026-04-22):
+    //   Krizový synthesis-required gate dříve platil pro `signer === "karel"`.
+    //   Karel se teď nepodepisuje ručně — autopodpis dělá DB trigger po
+    //   2 terapeutských podpisech. Pro krizovou poradu vyžadujeme Karlovu
+    //   syntézu předtím, než Hanička/Káťa mohou ten poslední podpis vložit.
     if (
-      signer === "karel" &&
       row.deliberation_type === "crisis" &&
       !row.karel_synthesis
     ) {
-      return new Response(JSON.stringify({
-        error: "synthesis_required",
-        message: "Karel nemůže podepsat krizovou poradu, dokud neproběhne syntéza odpovědí terapeutek. Spusť nejdřív „Spustit Karlovu syntézu“.",
-      }), {
-        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (signer === "karel" && row.deliberation_type === "crisis") {
-      const subjectPart = (row.subject_parts ?? [])[0] ?? null;
-      let crisisEventId: string | null = row.linked_crisis_event_id ?? null;
-      if (!crisisEventId && subjectPart) {
-        const { data: openEv } = await admin
-          .from("crisis_events")
-          .select("id")
-          .eq("part_name", subjectPart)
-          .is("closed_at", null)
-          .order("opened_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (openEv?.id) crisisEventId = openEv.id;
-      }
-
-      let crisisAlertId: string | null = null;
-      if (subjectPart) {
-        const { data: openAlert } = await admin
-          .from("crisis_alerts")
-          .select("id")
-          .eq("part_name", subjectPart)
-          .in("status", ["ACTIVE", "ACKNOWLEDGED", "active", "acknowledged"])
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (openAlert?.id) crisisAlertId = openAlert.id;
-      }
-
-      if (!crisisEventId || !crisisAlertId) {
+      const otherSigned = signer === "hanka" ? !!row.kata_signed_at : !!row.hanka_signed_at;
+      if (otherSigned) {
+        // Tento podpis by uzavřel poradu bez Karlovy syntézy — blokujeme.
         return new Response(JSON.stringify({
-          error: "crisis_linkage_required",
-          message: `Karel nemůže uzavřít krizovou poradu bez navázaného crisis_event a crisis_alert pro část \"${subjectPart ?? "(neurčeno)"}\".`,
-          missing: {
-            crisis_event_id: !crisisEventId,
-            crisis_alert_id: !crisisAlertId,
-          },
+          error: "synthesis_required",
+          message: "Krizová porada nemůže být uzavřena bez Karlovy syntézy odpovědí. Spusť nejdřív „Spustit Karlovu syntézu".",
         }), {
           status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -128,25 +94,9 @@ Deno.serve(async (req: Request) => {
     const patch: Record<string, any> = {};
     if (signer === "hanka" && !row.hanka_signed_at) patch.hanka_signed_at = nowIso;
     if (signer === "kata" && !row.kata_signed_at) patch.kata_signed_at = nowIso;
-    if (signer === "karel" && !row.karel_signed_at) patch.karel_signed_at = nowIso;
-
-    // SESSION PREP SIGNOFF FIX (2026-04-21):
-    // Pro `session_plan` je třetí ruční Karlův podpis architektonicky špatně.
-    // Workflow je: Hanička + Káťa podepíší → plán je připravený k zahájení.
-    // Karel se v tomhle typu porady podepisuje AUTOMATICKY na serveru,
-    // jakmile máme oba terapeutické podpisy. Pro `crisis` zůstává Karlův
-    // podpis ruční, protože vyžaduje syntézu.
-    if (
-      row.deliberation_type === "session_plan" &&
-      !row.karel_signed_at &&
-      signer !== "karel"
-    ) {
-      const hankaWillBeSigned = !!row.hanka_signed_at || signer === "hanka";
-      const kataWillBeSigned = !!row.kata_signed_at || signer === "kata";
-      if (hankaWillBeSigned && kataWillBeSigned) {
-        patch.karel_signed_at = nowIso;
-      }
-    }
+    // karel_signed_at se nastavuje VÝHRADNĚ DB triggerem
+    // `did_team_delib_autoderive_status` jako audit timestamp v okamžiku
+    // dvojnásobného podpisu. Klient sem Karla nikdy neposílá.
 
     if (Object.keys(patch).length === 0) {
       return new Response(JSON.stringify({ deliberation: row, note: "already signed" }), {
