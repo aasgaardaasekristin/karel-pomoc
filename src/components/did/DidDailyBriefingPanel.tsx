@@ -721,7 +721,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       {hasProposed && p.proposed_session && proposedAlreadyApproved && (
         <>
           <NarrativeDivider />
-          <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-emerald-600" />}>
+          <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary" />}>
             Dnešní sezení je schválené
           </SectionHead>
           <p className="mt-2 text-[12px] text-muted-foreground italic">
