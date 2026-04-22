@@ -1,0 +1,1 @@
+UPDATE did_team_deliberations SET hanka_signed_at = NULL, kata_signed_at = NULL, karel_signed_at = NULL, status = 'active' WHERE id = 'c6732a13-1862-43c7-9151-e7cf6200f2fa';
