@@ -297,7 +297,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
 
   if (!deliberationId) return null;
 
-  const handleSign = async (who: "hanka" | "kata" | "karel") => {
+  const handleSign = async (who: "hanka" | "kata") => {
     if (!d) return;
     setSigning(who);
     try {
@@ -308,7 +308,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
       } else if (res?.deliberation?.status === "approved") {
         toast.success("Porada schválena.");
       } else {
-        toast.success(`Podpis ${who === "hanka" ? "Hanička" : who === "kata" ? "Káťa" : "Karel"} zapsán.`);
+        toast.success(`Stvrzeno podpisem: ${who === "hanka" ? "Hanička" : "Káťa"}.`);
       }
     } catch (e: any) {
       toast.error(e?.message ?? "Podpis selhal.");
