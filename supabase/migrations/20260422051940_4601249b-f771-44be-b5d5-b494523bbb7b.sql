@@ -1,0 +1,1 @@
+DELETE FROM did_team_deliberations WHERE title = 'test' AND created_at > now() - interval '5 minutes';
