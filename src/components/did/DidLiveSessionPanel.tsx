@@ -1543,6 +1543,39 @@ ${report}${interrogationBlock}${reflectionText}`;
               </div>
             </div>
           )}
+          {/* Karlovy in-session karty — uvnitř scroll oblasti, aby NIKDY nemohly vytlačit input mimo viewport. */}
+          {hintTriggers.length > 0 && (
+            <div className="rounded-md border border-border/60 bg-card/40 backdrop-blur-sm px-2.5 py-2">
+              <KarelInSessionCards
+                partName={activePart}
+                therapistName={therapistName}
+                triggers={hintTriggers}
+                onAnswerHint={(text) => {
+                  setInput((prev) => (prev ? `${prev}\n\n${text}` : text));
+                  textareaRef.current?.focus();
+                }}
+                onCompleteBlock={(blockIndex) => {
+                  try {
+                    const key = `live_program_${planId ?? "ad-hoc"}`;
+                    const raw = window.localStorage.getItem(key);
+                    if (raw) {
+                      const arr = JSON.parse(raw) as Array<{ done: boolean }>;
+                      if (Array.isArray(arr) && arr[blockIndex]) {
+                        arr[blockIndex].done = true;
+                        window.localStorage.setItem(key, JSON.stringify(arr));
+                        setPlanExpanded(false);
+                        setTimeout(() => setPlanExpanded(true), 80);
+                      }
+                    }
+                    toast.success(`Bod #${blockIndex + 1} hotový.`);
+                    setActiveBlock(null);
+                  } catch (e) {
+                    console.warn("complete block failed:", e);
+                  }
+                }}
+              />
+            </div>
+          )}
         </div>
       </ScrollArea>
 
