@@ -461,9 +461,9 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
   // rodičovské wrappery (Pracovna / DidContentRouter mají max-h-[22rem]).
   // Bez tohoto by byl input live sezení vytlačen pod fold a nešlo by k němu doscrollovat.
   if (currentLivePlan) {
-    return (
-      // z-[200] musí přebít Radix Dialog (z-50) — live sezení může startovat
-      // z poradního dialogu (DeliberationRoom) a nesmí zůstat pod jeho overlayem.
+    // Portal na document.body — obchází jakýkoli `transform`/`overflow` rodičovského
+    // Radix Dialogu (DeliberationRoom), pod kterým by jinak overlay mohl uvíznout.
+    return createPortal(
       <div className="fixed inset-0 z-[200] bg-background flex flex-col">
         <div className="relative flex-1 min-h-0 overflow-hidden bg-background">
           <DidLiveSessionPanel
@@ -475,7 +475,8 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
             onBack={() => setActiveLivePlanId(null)}
           />
         </div>
-      </div>
+      </div>,
+      document.body,
     );
   }
 
