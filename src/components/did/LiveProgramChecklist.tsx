@@ -116,7 +116,25 @@ const LiveProgramChecklist = ({
   onBlockArtifactsChange,
 }: Props) => {
   const parsed = useMemo(() => parseProgramBullets(planMarkdown), [planMarkdown]);
-  const planSignature = useMemo(() => JSON.stringify(parsed), [parsed]);
+  // ── STABLE signature ──
+  // Dříve: JSON.stringify(parsed) → drobná změna markdownu (re-fetch, whitespace,
+  // emoji v plánu) měnila podpis a Hany ZTRATILA splněné body. Nově použijeme
+  // jen počet bodů + prvních 40 znaků každého bodu (lower-cased, bez interpunkce).
+  // To přežije drobné re-fetch artefakty, ale zachytí změnu programu.
+  const planSignature = useMemo(
+    () =>
+      JSON.stringify(
+        parsed.map(t =>
+          t
+            .toLowerCase()
+            .replace(/[^a-zá-ž0-9 ]/gi, "")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 40),
+        ),
+      ),
+    [parsed],
+  );
   const metaKey = `${storageKey}::meta`;
 
   const initialItems: ProgramItem[] = useMemo(() => {
