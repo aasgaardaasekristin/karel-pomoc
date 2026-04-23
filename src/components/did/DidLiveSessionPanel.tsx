@@ -1367,9 +1367,9 @@ ${report}${interrogationBlock}${reflectionText}`;
                     )
                   }
                   onActivateBlock={(block) => {
-                    pushActivateBlock(block);
-                    setPlanExpanded(false);
-                    toast.info(`Karel vyrábí obsah pro bod #${block.index + 1}…`);
+                    // ── Spustit bod = otevři dedikovaný pracovní prostor bodu ──
+                    setActiveBlock(block);
+                    setActiveBlockWorkspace(block);
                   }}
                   onRequestArtefact={(block, kind) => {
                     setActiveBlock(block);
