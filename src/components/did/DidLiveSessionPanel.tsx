@@ -131,7 +131,7 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
   // Default = collapsed. Na malých výškách (888×744) by rozbalený plán
   // společně s tool-stripem a hint kartami vytlačil input mimo viewport
   // a uživatelka by ho fyzicky neměla kam doscrollovat.
-  const [planExpanded, setPlanExpanded] = useState(false);
+  const [planExpanded, setPlanExpanded] = useState(true);
   // Quick-note dialog — sběr poznámek během sezení (zařadí se do toku jako 📝).
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
@@ -274,21 +274,13 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
     "vyčerpaná", "nadějná", "úzkostná", "překvapená",
   ];
 
-  // Auto-greet
-  useEffect(() => {
-    if (messages.length === 0) {
-      const greeting = `${therapistName === "Káťa" ? "Káťo" : "Hani"}, jsem tu s tebou na živém sezení s **${partName}**. 🎯
-
-Piš mi, co ${partName} říká nebo dělá, a já ti v reálném čase poradím jak reagovat. Můžeš také:
-- 🎙️ **Nahrát audio** — analyzuji tón, emoce, switching
-- 📷 **Vyfotit obrázek** — kresbu, výraz, situaci — okamžitě zanalyzuji
-
-${contextBrief ? `📋 *Mám nastudovaný kontext – vím, kde jsme naposledy skončili.*` : ""}
-
-*Začni kdykoliv – jsem připravený.*`;
-      setMessages([{ role: "assistant", content: greeting }]);
-    }
-  }, []);
+  // Auto-greet ZAKÁZÁN (2026-04-23):
+  //  Generický uvítací odstavec ("Hani, jsem tu s tebou...") zabíral celý
+  //  hlavní obraz a tlačil pryč to, co Hana skutečně potřebuje vidět:
+  //  schválený plán bod po bodu. Místo toho startujeme s prázdnou historií
+  //  hlavního chatu a hlavním obsahem se stává LiveProgramChecklist.
+  //  Hlavní chat zůstává jako fallback dole pro volné poznámky a komunikaci
+  //  mimo konkrétní bod programu.
 
   // Scroll to bottom
   useEffect(() => {
