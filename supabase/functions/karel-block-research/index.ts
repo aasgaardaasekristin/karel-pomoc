@@ -279,6 +279,11 @@ async function structureWithAI(
                 items: { type: "string" },
                 description: "3-5 otázek pro terapeutku během / po aktivitě (česky, krátce).",
               },
+              planned_steps: {
+                type: "array",
+                items: { type: "string" },
+                description: "JEN PRO ASOCIAČNÍ EXPERIMENT: přesně 8 konkrétních stimulačních slov vázaných k tématu bodu programu (mix neutrálních a afektivních, na míru části a věku). Pro ostatní metody nech prázdné.",
+              },
             },
             required: [
               "method_label",
