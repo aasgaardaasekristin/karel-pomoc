@@ -340,7 +340,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
         .eq("id", plan.id);
 
       setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, status: "in_progress" } : p));
-      setLiveSessionActive(true);
+      setActiveLivePlanId(plan.id);
       toast.success(`Sezení s ${plan.selected_part} zahájeno`);
     } catch (e: any) {
       toast.error("Nepodařilo se zahájit sezení");
@@ -402,7 +402,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
         .update({ status: "generated", completed_at: null, updated_at: new Date().toISOString() })
         .eq("id", plan.id);
       setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, status: "generated", completed_at: null } : p));
-      setLiveSessionActive(false);
+      setActiveLivePlanId((current) => (current === plan.id ? null : current));
       toast.success("Stav vrácen na Naplánováno");
     } catch (e: any) {
       toast.error("Nepodařilo se změnit stav");
@@ -626,7 +626,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
             onMarkDone={() => markDone(plan.id)}
             onDelete={() => deletePlan(plan.id)}
             onRegenerate={() => handlePartSelected(plan.selected_part)}
-            onOpenLive={() => setLiveSessionActive(true)}
+            onOpenLive={() => setActiveLivePlanId(plan.id)}
             prevSession={plan.id === firstPendingPlan?.id ? prevSession : null}
             compact={compact}
             onOpenPrepRoom={onOpenPrepRoom}
