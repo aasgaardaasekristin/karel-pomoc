@@ -327,14 +327,14 @@ const BRIEFING_TOOL = {
             kata_involvement: { type: "string", description: "Jednou větou, zda dnes přizvat Káťu a za jakých okolností." },
             agenda_outline: {
               type: "array",
-              description: "Strukturovaná minutáž sezení — 4 až 6 kroků. Každý krok MUSÍ být ŽIVÝ a HRAVÝ — pojmenuj konkrétní terapeutický nástroj z arzenálu (asociační test, Rorschach lite, aktivní imaginace, kresba „Jak je dnes uvnitř", grounding 5-4-3-2-1, atd.). NE generické bloky typu „úvod / práce / uzávěr".",
+              description: "Strukturovana minutaz sezeni — 4 az 6 kroku. Kazdy krok MUSI byt ZIVY a HRAVY — pojmenuj konkretni terapeuticky nastroj z arzenalu (asociacni test, Rorschach lite, aktivni imaginace, kresba dne, grounding 5-4-3-2-1, mandala, atd.). NE genericke bloky typu uvod/prace/uzaver.",
               items: {
                 type: "object",
                 properties: {
-                  block: { type: "string", description: "Konkrétní hravý název kroku, např. „Asociační otevření — 8 slov o domově" nebo „Mandala dne s reflexí středu". Žádná abstraktní slova jako „práce s emocemi"." },
-                  minutes: { type: "number", description: "Doporučená doba v minutách." },
-                  detail: { type: "string", description: "3-5 vět co se v bloku konkrétně děje: pomůcky (remote — chat, hlas, kresba do screenu, foto), Karlův prompt nebo otázka, čeho si v reakci části všímat. Hravý jazyk, ne klinický." },
-                  tool_id: { type: "string", description: "ID nástroje z toolboxu (wat, barvy_dnes, rorschach_lite, tat_lite, active_imagination, safe_place, what_if, world_building, tri_dvere, deset_let, skala_telo, grounding_5_4_3_2_1, kresba_dnes, mandala, rukopis_vzorek). Volitelné, pokud blok kombinuje více nástrojů." },
+                  block: { type: "string", description: "Konkretni hravy nazev kroku, napr. 'Asociacni otevreni — 8 slov o domove' nebo 'Mandala dne s reflexi stredu'. Zadna abstraktni slova typu 'prace s emocemi'." },
+                  minutes: { type: "number", description: "Doporucena doba v minutach." },
+                  detail: { type: "string", description: "3-5 vet co se v bloku konkretne deje: pomucky (remote — chat, hlas, kresba do screenu, foto), Karluv prompt nebo otazka, ceho si v reakci casti vsimat. Hravy jazyk, ne klinicky." },
+                  tool_id: { type: "string", description: "ID nastroje z toolboxu (wat, barvy_dnes, rorschach_lite, tat_lite, active_imagination, safe_place, what_if, world_building, tri_dvere, deset_let, skala_telo, grounding_5_4_3_2_1, kresba_dnes, mandala, rukopis_vzorek). Volitelne, pokud blok kombinuje vice nastroju." },
                 },
                 required: ["block", "detail"],
                 additionalProperties: false,
@@ -344,14 +344,14 @@ const BRIEFING_TOOL = {
             },
             playful_hooks: {
               type: "array",
-              description: "2-4 konkrétní hravé háčky, které Karel uvnitř sezení rozjede, pokud je čas/prostor: nečekaná otázka, asociace, mini-hra. Každý hook 1 věta.",
+              description: "2-4 konkretni hrave hacky, ktere Karel uvnitr sezeni rozjede, pokud je cas/prostor: necekana otazka, asociace, mini-hra. Kazdy hook 1 veta.",
               items: { type: "string" },
               minItems: 0,
               maxItems: 4,
             },
             materials_needed: {
               type: "array",
-              description: "Co si Karel připraví PŘED sezením (obrázky pro Rorschach lite, sada slov pro WAT, scéna pro TAT lite). Vše digitální — žádné fyzické pomůcky.",
+              description: "Co si Karel pripravi PRED sezenim (obrazky pro Rorschach lite, sada slov pro WAT, scena pro TAT lite). Vse digitalni — zadne fyzicke pomucky.",
               items: { type: "string" },
               maxItems: 6,
             },
