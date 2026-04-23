@@ -114,6 +114,15 @@ const BlockDiagnosticChat = ({
   const autoStartedRef = useRef(false);
 
   useEffect(() => {
+    autoStartedRef.current = false;
+    setDraft("");
+    setLastError(null);
+    setMissingArtifacts([]);
+    setCloseMsg(null);
+    setProtocolState(null);
+  }, [blockIndex, blockText, blockDetail]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     try { window.localStorage.setItem(turnsKey, JSON.stringify(turns)); } catch {}
     onTurnsChange?.(turns);
