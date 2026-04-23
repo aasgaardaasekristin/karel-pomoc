@@ -104,7 +104,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
   const [prefDetail, setPrefDetail] = useState("");
 
   // Live session state
-  const [liveSessionActive, setLiveSessionActive] = useState(false);
+  const [activeLivePlanId, setActiveLivePlanId] = useState<string | null>(null);
   const [openingSessionThread, setOpeningSessionThread] = useState(false);
 
   // Today key (Prague TZ) — used as filter and for "stale" guard
@@ -140,6 +140,20 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
 
   useEffect(() => { loadTodayPlans(); }, [loadTodayPlans, refreshTrigger]);
 
+  useEffect(() => {
+    const channel = (supabase as any)
+      .channel(`did_daily_session_plans_${todayPragueKey}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "did_daily_session_plans", filter: `plan_date=eq.${todayPragueKey}` },
+        () => { void loadTodayPlans(); },
+      )
+      .subscribe();
+    return () => {
+      (supabase as any).removeChannel(channel);
+    };
+  }, [loadTodayPlans, todayPragueKey]);
+
   // ── SPUSTIT-SEZENI EVENT LISTENER (2026-04-23) ──
   // DeliberationRoom (porada „Návrh sezení k poradě") emituje
   // `karel:start-live-session` v okamžiku, kdy terapeutka klikne "Spustit
@@ -155,7 +169,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
       try {
         await loadTodayPlans();
       } catch {/* refresh failure shouldn't block UI flip */}
-      setLiveSessionActive(true);
+      setActiveLivePlanId(detail.planId ?? null);
       // Pokud event přišel s konkrétním planId a my ho v aktuálním plans
       // nemáme (race condition), počkáme jeden tick a refresh zopakujeme.
       if (detail.planId) {
@@ -326,7 +340,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
         .eq("id", plan.id);
 
       setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, status: "in_progress" } : p));
-      setLiveSessionActive(true);
+      setActiveLivePlanId(plan.id);
       toast.success(`Sezení s ${plan.selected_part} zahájeno`);
     } catch (e: any) {
       toast.error("Nepodařilo se zahájit sezení");
@@ -388,7 +402,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
         .update({ status: "generated", completed_at: null, updated_at: new Date().toISOString() })
         .eq("id", plan.id);
       setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, status: "generated", completed_at: null } : p));
-      setLiveSessionActive(false);
+      setActiveLivePlanId((current) => (current === plan.id ? null : current));
       toast.success("Stav vrácen na Naplánováno");
     } catch (e: any) {
       toast.error("Nepodařilo se změnit stav");
@@ -396,9 +410,13 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
   }, []);
 
   // ═══ LIVE SESSION END HANDLER ═══
+  const currentLivePlan = (activeLivePlanId
+    ? plans.find((p) => p.id === activeLivePlanId) ?? null
+    : null);
+
   const handleLiveSessionEnd = useCallback(async (summary: string) => {
-    setLiveSessionActive(false);
-    const plan = firstPendingPlan;
+    const plan = currentLivePlan;
+    setActiveLivePlanId(null);
     if (!plan) return;
 
     try {
@@ -425,7 +443,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
     }
 
     await endSession(plan);
-  }, [firstPendingPlan, endSession]);
+  }, [currentLivePlan, endSession]);
 
   if (loading) {
     return (
@@ -438,16 +456,16 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
   }
 
   // ═══ LIVE SESSION ACTIVE → show DidLiveSessionPanel ═══
-  if (liveSessionActive && firstPendingPlan) {
+  if (currentLivePlan) {
     return (
       <div className="mb-4 rounded-lg border border-border/70 bg-card/38 backdrop-blur-sm overflow-hidden" style={{ minHeight: "60vh" }}>
         <DidLiveSessionPanel
-          partName={firstPendingPlan.selected_part}
-          therapistName={firstPendingPlan.session_lead === "kata" ? "Káťa" : "Hanka"}
-          contextBrief={firstPendingPlan.plan_markdown}
-          planId={firstPendingPlan.id}
+          partName={currentLivePlan.selected_part}
+          therapistName={currentLivePlan.session_lead === "kata" ? "Káťa" : "Hanka"}
+          contextBrief={currentLivePlan.plan_markdown}
+          planId={currentLivePlan.id}
           onEnd={handleLiveSessionEnd}
-          onBack={() => setLiveSessionActive(false)}
+          onBack={() => setActiveLivePlanId(null)}
         />
       </div>
     );
@@ -608,7 +626,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
             onMarkDone={() => markDone(plan.id)}
             onDelete={() => deletePlan(plan.id)}
             onRegenerate={() => handlePartSelected(plan.selected_part)}
-            onOpenLive={() => setLiveSessionActive(true)}
+            onOpenLive={() => setActiveLivePlanId(plan.id)}
             prevSession={plan.id === firstPendingPlan?.id ? prevSession : null}
             compact={compact}
             onOpenPrepRoom={onOpenPrepRoom}
