@@ -51,6 +51,7 @@ function parseProgramBullets(md: string): string[] {
   const lines = md.split(/\r?\n/);
   const bullets: string[] = [];
   let inProgramSection = false;
+  let bulletBlockStarted = false;
 
   // Aktivace POUZE v programové sekci — jinak bychom nasáli i otázky,
   // původní návrhy nebo jiné bullet seznamy v markdownu.
@@ -62,6 +63,7 @@ function parseProgramBullets(md: string): string[] {
 
     if (sectionRe.test(line)) {
       inProgramSection = true;
+      bulletBlockStarted = false;
       continue;
     }
 
@@ -80,7 +82,10 @@ function parseProgramBullets(md: string): string[] {
         .replace(/__/g, "")
         .replace(/\s+/g, " ")
         .trim();
-      if (text.length >= 6) bullets.push(text);
+      if (text.length >= 6) {
+        bullets.push(text);
+        bulletBlockStarted = true;
+      }
       continue;
     }
 
@@ -90,7 +95,12 @@ function parseProgramBullets(md: string): string[] {
       continue;
     }
 
-    if (line === "") continue;
+    if (line === "") {
+      if (bulletBlockStarted) break;
+      continue;
+    }
+
+    if (bulletBlockStarted) break;
   }
 
   // Když parser nic nezachytil, zkus globálně všechny bullets v dokumentu.
