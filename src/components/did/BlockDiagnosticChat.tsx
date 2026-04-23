@@ -56,6 +56,7 @@ interface Props {
   partName: string;
   therapistName: string;
   storageKey: string;
+  sessionId?: string;
   research?: BlockResearch | null;
   isResearchLoading?: boolean;
   onLoadResearch?: () => void;
@@ -72,6 +73,7 @@ const BlockDiagnosticChat = ({
   partName,
   therapistName,
   storageKey,
+  sessionId,
   research,
   isResearchLoading,
   onLoadResearch,
@@ -141,6 +143,7 @@ const BlockDiagnosticChat = ({
           body: {
             part_name: partName,
             therapist_name: therapistName,
+            session_id: sessionId,
             program_block: { index: blockIndex, text: blockText, detail: blockDetail },
             research: research ?? null,
             turns: existingTurns.map((t) => ({ from: t.from, text: t.text, ts: t.ts })),
@@ -176,7 +179,7 @@ const BlockDiagnosticChat = ({
         setIsThinking(false);
       }
     },
-    [partName, therapistName, blockIndex, blockText, blockDetail, research, protocolState],
+    [partName, therapistName, sessionId, blockIndex, blockText, blockDetail, research, protocolState],
   );
 
   // Auto-start setup briefing jakmile je k dispozici research
