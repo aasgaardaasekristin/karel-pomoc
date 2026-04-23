@@ -1489,6 +1489,7 @@ ${report}${interrogationBlock}${reflectionText}`;
             {planExpanded && (
               <div className="px-3 pb-3 pt-0 max-h-64 overflow-y-auto border-t border-primary/15">
                 <LiveProgramChecklist
+                  key={`${planId ?? "ad-hoc"}-${planRefreshTick}`}
                   planMarkdown={contextBrief}
                   storageKey={`live_program_${planId ?? "ad-hoc"}`}
                   partName={partName}
