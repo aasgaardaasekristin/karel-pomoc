@@ -108,7 +108,7 @@ function detectMethodHints(text: string): {
   isNarrative: boolean;
 } {
   const t = text.toLowerCase();
-  const isDrawing = /(nakresl|kresb|kresl[íi]|namaluj|portr[ée]t|strom|postav[ay]|tělov[áa] mapa|telova mapa|t[ěe]lov[áa] mapa|mandala)/.test(t);
+  const isDrawing = /(nakresl|kresb|kresl[íi]|namaluj|portr[ée]t|strom|postav[ay]|tělov[áa] mapa|telova mapa|t[ěe]lov[áa] mapa|barevn[áa] mapa|mapa těla|mapa tela|mandala)/.test(t);
   const isAssociation = /(asocia[čc]n|asociac|slovn[íi] hr|prvn[íi] n[áa]pad)/.test(t);
   const isPlay = /(figurk|loutk|hra s|hr[áa]me|sandtray|pískoviš|piskov)/.test(t);
   const isNarrative = /(p[řr]íb[ěe]h|narrativ|narativ|příběh|vyprav)/.test(t);

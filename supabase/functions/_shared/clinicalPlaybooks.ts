@@ -597,7 +597,7 @@ export function detectPlaybook(blockText: string): Playbook | null {
   if (/(bezpe[čc]n[éeéeé]\s*m[íi]sto|safe\s*place|vizualizac|kotven[íi])/.test(t)) {
     return playbook_safe_place;
   }
-  if (/(t[ěe]lov[áa]\s*map|body\s*map|somat|kde\s+to\s+v\s+t[ěe]le)/.test(t)) {
+  if (/(t[ěe]lov[áa]\s*map|body\s*map|somat|barevn[áa]\s*map|mapa\s+t[ěe]la|kde\s+to\s+v\s+t[ěe]le)/.test(t)) {
     return playbook_body_map_somatic;
   }
   if (/(asocia[čc]n|asociac|slovn[íi] hr|prvn[íi] n[áa]pad|napadne|\b\d+\s*slov\b)/.test(t)) {
