@@ -456,17 +456,22 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
   }
 
   // ═══ LIVE SESSION ACTIVE → show DidLiveSessionPanel ═══
+  // Renderujeme jako fixed-overlay přes celý viewport, abychom obešli capped
+  // rodičovské wrappery (Pracovna / DidContentRouter mají max-h-[22rem]).
+  // Bez tohoto by byl input live sezení vytlačen pod fold a nešlo by k němu doscrollovat.
   if (currentLivePlan) {
     return (
-      <div className="mb-4 rounded-lg border border-border/70 bg-card/38 backdrop-blur-sm overflow-hidden" style={{ minHeight: "60vh" }}>
-        <DidLiveSessionPanel
-          partName={currentLivePlan.selected_part}
-          therapistName={currentLivePlan.session_lead === "kata" ? "Káťa" : "Hanka"}
-          contextBrief={currentLivePlan.plan_markdown}
-          planId={currentLivePlan.id}
-          onEnd={handleLiveSessionEnd}
-          onBack={() => setActiveLivePlanId(null)}
-        />
+      <div className="fixed inset-0 z-50 bg-background flex flex-col">
+        <div className="relative flex-1 min-h-0 overflow-hidden bg-card/38 backdrop-blur-sm">
+          <DidLiveSessionPanel
+            partName={currentLivePlan.selected_part}
+            therapistName={currentLivePlan.session_lead === "kata" ? "Káťa" : "Hanka"}
+            contextBrief={currentLivePlan.plan_markdown}
+            planId={currentLivePlan.id}
+            onEnd={handleLiveSessionEnd}
+            onBack={() => setActiveLivePlanId(null)}
+          />
+        </div>
       </div>
     );
   }
