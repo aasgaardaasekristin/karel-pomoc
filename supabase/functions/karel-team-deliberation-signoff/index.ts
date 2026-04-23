@@ -117,20 +117,26 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // BRIDGE: if approved + session_plan → push do did_daily_session_plans
+    // BRIDGE: if approved + session_plan → propsat do did_daily_session_plans
     //
-    // HARDENING (Slice 3 stabilizace): bridge MUSÍ vycházet ze schváleného
-    // obsahu deliberation, ne z hardcoded "hanka/individual". Autoritativní
-    // zdroj parametrů je `session_params` jsonb sloupec naplněný při create
-    // přímo z briefing prefillu (led_by, session_format, duration_min, …).
-    // Fallback řetězec použijeme jen když deliberation z nějakého důvodu
-    // session_params nemá (legacy záznamy před touto migrací).
+    // PROGRAM-DRAFT TRUTH PASS (2026-04-23):
+    //   1) Primárním zdrojem programu je `program_draft` (živá hravá agenda
+    //      iterativně přepisovaná v karel-team-deliberation-iterate). Pokud
+    //      chybí, fallback na `agenda_outline` (původní schéma z briefingu).
+    //   2) Když porada už byla VYTVOŘENA nad existujícím plánem
+    //      (`linked_live_session_id` byl nastaven předem hookem
+    //      useSessionPrepRoom.createForExistingPlan), bridge MUSÍ ten plán
+    //      UPDATE-nout (přepsat plan_markdown a metadata), ne tiše skipnout.
+    //      Bez toho by Live DID sezení spustilo zastaralou verzi z původního
+    //      briefingu, která neobsahuje úpravy schválené v poradě (přesně bug,
+    //      který terapeutky hlásily — šachy/Káťa/asociační experiment chyběly).
+    //   3) Když plán neexistuje, bridge ho vytvoří jako dosud (INSERT).
     let bridgedPlanId: string | null = updated.linked_live_session_id ?? null;
     let crisisEffects: Record<string, any> = {};
+    let bridgeMode: "insert" | "update" | "skipped" = "skipped";
     if (
       updated.status === "approved" &&
-      updated.deliberation_type === "session_plan" &&
-      !updated.linked_live_session_id
+      updated.deliberation_type === "session_plan"
     ) {
       const today = new Date().toISOString().slice(0, 10);
 
@@ -143,8 +149,7 @@ Deno.serve(async (req: Request) => {
       //   session_lead = "obe" → "Hanka + Káťa"
       //   session_lead = "kata" → "Káťa"
       //   session_lead = "all" + session_format = "crisis_intervention" → krizový label
-      //   jinak fallback "Hanka" (toto je přesně hardcoded bug, kterému se vyhýbáme).
-      // Proto pro „společně“ používáme `obe`, ne neznámé „joint“.
+      //   jinak fallback "Hanka".
       const ledByRaw = String(sp.led_by ?? "").trim();
       const ledByLower = ledByRaw.toLowerCase();
       let therapist: string;
@@ -157,13 +162,9 @@ Deno.serve(async (req: Request) => {
       } else if (ledByLower.startsWith("sp")) {
         therapist = "hanka"; sessionLead = "obe"; sessionFormatDefault = "kombinované";
       } else {
-        // Bez explicitního vůdce: nezakrýváme to, ale UI musí umět zobrazit.
-        // Použijeme defaulty, které UI nerozbijí, a označíme to v urgency_breakdown.
         therapist = "hanka"; sessionLead = "hanka"; sessionFormatDefault = "osobně";
       }
 
-      // Pokud prefill přidal session_format explicitně, respektujeme jej; jinak
-      // bereme default odvozený z led_by. Hodnoty držíme v cs slovníku UI.
       const spFmt = String(sp.session_format ?? "").trim();
       const sessionFormat = spFmt === "individual" ? "osobně"
         : spFmt === "joint" ? "kombinované"
@@ -171,16 +172,29 @@ Deno.serve(async (req: Request) => {
 
       const part = String(sp.part_name ?? updated.subject_parts?.[0] ?? "").trim();
 
-      // Agenda + otázky vypíšeme do plan_markdown, ať je z denního plánu vidět
-      // celý schválený obsah, ne jen stručný brief.
+      // ── PROGRAM SOURCE PICK: program_draft > agenda_outline ──
+      // program_draft je živá hravá verze (s tool_id, detail 3-5 vět) —
+      // přepisovaná po každém vstupu terapeutky. agenda_outline drží jen
+      // původní strukturu z briefingu/synthesis a nemusí obsahovat poslední
+      // úpravy. Bridge je MUSÍ preferovat, jinak se Live sezení spustí se
+      // zastaralou verzí.
+      const programSource: any[] = (Array.isArray((updated as any).program_draft) && (updated as any).program_draft.length > 0)
+        ? (updated as any).program_draft
+        : (Array.isArray(updated.agenda_outline) ? updated.agenda_outline : []);
+      const programSourceLabel = (Array.isArray((updated as any).program_draft) && (updated as any).program_draft.length > 0)
+        ? "program_draft (živá iterace)"
+        : "agenda_outline (původní briefing)";
+
       const agendaLines: string[] = [];
-      const agenda = Array.isArray(updated.agenda_outline) ? updated.agenda_outline : [];
-      if (agenda.length > 0) {
-        agendaLines.push("## Osnova");
-        agenda.forEach((b: any, i: number) => {
+      if (programSource.length > 0) {
+        agendaLines.push(`## Program sezení`);
+        agendaLines.push(`_Zdroj: ${programSourceLabel}_`);
+        agendaLines.push("");
+        programSource.forEach((b: any, i: number) => {
           const min = typeof b?.minutes === "number" ? ` (${b.minutes} min)` : "";
-          const detail = b?.detail ? ` — ${b.detail}` : "";
-          agendaLines.push(`${i + 1}. **${b?.block ?? ""}**${min}${detail}`);
+          const tool = b?.tool_id ? ` · 🎲 ${b.tool_id}` : "";
+          const detail = b?.detail ? `\n   ${b.detail}` : "";
+          agendaLines.push(`${i + 1}. **${b?.block ?? ""}**${min}${tool}${detail}`);
         });
         agendaLines.push("");
       }
@@ -188,72 +202,102 @@ Deno.serve(async (req: Request) => {
       const qBlock = (label: string, list: any): string[] => {
         const arr = Array.isArray(list) ? list : [];
         if (arr.length === 0) return [];
-        const out = [`## Otázky pro ${label}`];
+        const out = [`## Otázky pro ${label} (a odpovědi)`];
         arr.forEach((q: any) => {
           const txt = typeof q === "string" ? q : (q?.question ?? "");
-          if (txt) out.push(`- ${txt}`);
+          const ans = typeof q === "object" && q?.answer ? `\n   ↳ ${q.answer}` : "";
+          if (txt) out.push(`- ${txt}${ans}`);
         });
         out.push("");
         return out;
       };
 
-      const planRow: Record<string, any> = {
-        user_id: userId,
-        plan_date: today,
-        selected_part: part || "(neurčeno)",
-        therapist,
-        session_format: sessionFormat,
-        // PLAN-STATUS TRUTH FIX (2026-04-22):
-        // Bridge MUSÍ vkládat plán ve stavu, který Pracovna v `Dnes` skutečně
-        // renderuje jako vykonatelný. DidDailySessionPlan.tsx filtruje
-        // pendingPlans = status ∈ {"generated","in_progress"}. Cokoliv jiného
-        // (planned, approved, …) zmizí z UI a tým si myslí, že schválení nic
-        // neudělalo. Schválení nese porada (did_team_deliberations.status =
-        // 'approved'), plán zůstává v `generated` = připravený k zahájení.
-        status: "generated",
-        urgency_score: updated.priority === "crisis" ? 100 : 70,
-        urgency_breakdown: {
-          source: "team_deliberation",
-          deliberation_id: deliberationId,
-          led_by: ledByRaw || null,
-          duration_min: typeof sp.duration_min === "number" ? sp.duration_min : null,
-          kata_involvement: sp.kata_involvement ?? null,
-        },
-        plan_markdown: [
-          `# Schválený plán z týmové porady`,
-          `**Porada:** ${updated.title}`,
-          ledByRaw ? `**Vede:** ${ledByRaw}` : "",
-          typeof sp.duration_min === "number" ? `**Délka:** ~${sp.duration_min} min` : "",
-          sp.why_today ? `**Proč dnes:** ${sp.why_today}` : "",
-          sp.kata_involvement ? `**Káťa:** ${sp.kata_involvement}` : "",
-          updated.reason ? `**Důvod:** ${updated.reason}` : "",
-          ``,
-          `## Karlův schválený návrh`,
-          updated.karel_proposed_plan ?? "",
-          ``,
-          ...agendaLines,
-          ...qBlock("Haničku", updated.questions_for_hanka),
-          ...qBlock("Káťu", updated.questions_for_kata),
-          updated.final_summary ? `## Závěr porady\n${updated.final_summary}` : "",
-        ].filter(Boolean).join("\n"),
-        generated_by: "team_deliberation",
-        session_lead: sessionLead,
+      const planMarkdown = [
+        `# Schválený plán z týmové porady`,
+        `**Porada:** ${updated.title}`,
+        ledByRaw ? `**Vede:** ${ledByRaw}` : "",
+        typeof sp.duration_min === "number" ? `**Délka:** ~${sp.duration_min} min` : "",
+        sp.why_today ? `**Proč dnes:** ${sp.why_today}` : "",
+        sp.kata_involvement ? `**Káťa:** ${sp.kata_involvement}` : "",
+        updated.reason ? `**Důvod:** ${updated.reason}` : "",
+        ``,
+        ...agendaLines,
+        ...qBlock("Haničku", updated.questions_for_hanka),
+        ...qBlock("Káťu", updated.questions_for_kata),
+        updated.karel_proposed_plan ? `## Karlův původní návrh\n${updated.karel_proposed_plan}` : "",
+        updated.final_summary ? `## Závěr porady\n${updated.final_summary}` : "",
+      ].filter(Boolean).join("\n");
+
+      const urgencyBreakdown = {
+        source: "team_deliberation",
+        deliberation_id: deliberationId,
+        program_source: programSourceLabel,
+        led_by: ledByRaw || null,
+        duration_min: typeof sp.duration_min === "number" ? sp.duration_min : null,
+        kata_involvement: sp.kata_involvement ?? null,
+        re_synced_at: new Date().toISOString(),
       };
 
-      const { data: planRes, error: planErr } = await admin
-        .from("did_daily_session_plans")
-        .insert(planRow)
-        .select("id")
-        .single();
+      if (bridgedPlanId) {
+        // ── UPDATE existing plan ────────────────────────────────────────
+        // Plán existuje (porada nad ním běžela). Přepíšeme markdown a
+        // metadata novou (živou) verzí. Status NEPŘETŘÍVÁME, pokud je už
+        // in_progress / done — přepis je čistě obsahový.
+        const updatePatch: Record<string, any> = {
+          plan_markdown: planMarkdown,
+          urgency_breakdown: urgencyBreakdown,
+          therapist,
+          session_lead: sessionLead,
+          session_format: sessionFormat,
+          generated_by: "team_deliberation",
+          updated_at: new Date().toISOString(),
+        };
+        // status posuneme na "generated" jen pokud byl pending/planned/null
+        // — nikdy nevracíme zpět in_progress / done sezení.
+        const safeStatusFlip = ["pending", "planned", null, undefined].includes((updated as any).__plan_status_unused__ as any);
+        if (safeStatusFlip) updatePatch.status = "generated";
 
-      if (!planErr && planRes?.id) {
-        bridgedPlanId = planRes.id;
-        await admin
-          .from("did_team_deliberations")
-          .update({ linked_live_session_id: bridgedPlanId })
-          .eq("id", deliberationId);
-      } else if (planErr) {
-        console.error("[delib-signoff] bridge insert failed:", planErr);
+        const { error: upErr } = await admin
+          .from("did_daily_session_plans")
+          .update(updatePatch)
+          .eq("id", bridgedPlanId);
+        if (upErr) {
+          console.error("[delib-signoff] bridge update failed:", upErr);
+        } else {
+          bridgeMode = "update";
+        }
+      } else {
+        // ── INSERT new plan (legacy / standalone porada) ────────────────
+        const planRow: Record<string, any> = {
+          user_id: userId,
+          plan_date: today,
+          selected_part: part || "(neurčeno)",
+          therapist,
+          session_format: sessionFormat,
+          status: "generated",
+          urgency_score: updated.priority === "crisis" ? 100 : 70,
+          urgency_breakdown: urgencyBreakdown,
+          plan_markdown: planMarkdown,
+          generated_by: "team_deliberation",
+          session_lead: sessionLead,
+        };
+
+        const { data: planRes, error: planErr } = await admin
+          .from("did_daily_session_plans")
+          .insert(planRow)
+          .select("id")
+          .single();
+
+        if (!planErr && planRes?.id) {
+          bridgedPlanId = planRes.id;
+          bridgeMode = "insert";
+          await admin
+            .from("did_team_deliberations")
+            .update({ linked_live_session_id: bridgedPlanId })
+            .eq("id", deliberationId);
+        } else if (planErr) {
+          console.error("[delib-signoff] bridge insert failed:", planErr);
+        }
       }
     }
 
