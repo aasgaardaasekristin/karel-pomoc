@@ -166,7 +166,7 @@ export const playbook_draw_a_person_machover: Playbook = {
     therapist_position: `z boku, ne přímo nad dítětem, mlčky pozoruj`,
     child_position: `u stolu, papír před sebou`,
     what_to_say_first:
-      'Řekni přesně: »Tundrupku, nakresli mi prosím postavu. Kohokoliv, kdo tě napadne. Není to o tom, jestli to bude hezké.` Pak mlčky pozoruj, NEzasahuj.'`,
+      "Řekni přesně: »Tundrupku, nakresli mi prosím postavu. Kohokoliv, kdo tě napadne. Není to o tom, jestli to bude hezké.` Pak mlčky pozoruj, NEzasahuj.'`,
     what_NOT_to_say: [
       `Nedávej nápovědu (např. Můžeš nakreslit chlapce.)`,
       `Nekomentuj průběh (např. Hezké vlasy.)`,
@@ -240,7 +240,7 @@ export const playbook_tree_test_koch: Playbook = {
     therapist_position: `z boku, mlčky pozoruj`,
     child_position: `u stolu`,
     what_to_say_first:
-      'Řekni přesně: »Nakresli mi nějaký strom. Jakýkoli strom, který tě napadne.` Pak mlčky pozoruj.'`,
+      "Řekni přesně: »Nakresli mi nějaký strom. Jakýkoli strom, který tě napadne.` Pak mlčky pozoruj.'`,
     what_NOT_to_say: [
       `Nespecifikuj druh ani roční období`,
       `Nehodnoť, neopravuj`,
@@ -342,7 +342,7 @@ export const playbook_kfd_burns: Playbook = {
     therapist_position: `z boku`,
     child_position: `u stolu`,
     what_to_say_first:
-      'Řekni přesně: »Nakresli mi prosím svou rodinu, jak něco dělá. Ne jako fotku — ať se vidí, že každý něco dělá.`'`,
+      "Řekni přesně: »Nakresli mi prosím svou rodinu, jak něco dělá. Ne jako fotku — ať se vidí, že každý něco dělá.«",
     what_NOT_to_say: [`Nespecifikuj kdo do rodiny patří`, `Nenavrhuj činnosti`],
     measurements_required: [
       `kdo je nakreslen (a kdo chybí)`,
@@ -393,7 +393,7 @@ export const playbook_narrative_cat: Playbook = {
     therapist_position: `naproti, klidně`,
     child_position: `pohodlně`,
     what_to_say_first:
-      'Řekni přesně: »Vymysli mi prosím příběh. Příběh musí mít začátek, něco se stane, a konec. Mluv pomalu, abych ti stihla zapsat.`'`,
+      "Řekni přesně: »Vymysli mi prosím příběh. Příběh musí mít začátek, něco se stane, a konec. Mluv pomalu, abych ti stihla zapsat.«",
     what_NOT_to_say: [`Nenavrhuj zápletku`, `Nepřerušuj`],
     measurements_required: [
       `hlavní postava (kdo, věk, pohlaví)`,
@@ -444,7 +444,7 @@ export const playbook_sandtray_lowenfeld: Playbook = {
     therapist_position: `z boku, na úrovni dítěte`,
     child_position: `u podložky`,
     what_to_say_first:
-      'Řekni přesně: »Tady máš různé figurky. Postav si svůj svět — jakýkoliv. Já budu jen pozorovat.`'`,
+      "Řekni přesně: »Tady máš různé figurky. Postav si svůj svět — jakýkoliv. Já budu jen pozorovat.«",
     what_NOT_to_say: [`Nenavrhuj scénu`, `Nehodnoť výběr figurek`],
     measurements_required: [
       `první vybraná figurka`,
@@ -495,7 +495,7 @@ export const playbook_body_map_somatic: Playbook = {
     therapist_position: `vedle, podpůrně`,
     child_position: `u stolu`,
     what_to_say_first:
-      'Řekni přesně: »Tady je obrys postavy. Vybarvi prosím barvami místa, kde něco cítíš. Dej barvu, jakou si vybereš — třeba červenou, kde to bolí, modrou kde je klid…`'`,
+      "Řekni přesně: »Tady je obrys postavy. Vybarvi prosím barvami místa, kde něco cítíš. Dej barvu, jakou si vybereš — třeba červenou, kde to bolí, modrou kde je klid…«",
     what_NOT_to_say: [`Nediktuj barvy ani významy`],
     measurements_required: [
       `barva → tělesná oblast`,
@@ -541,7 +541,7 @@ export const playbook_safe_place: Playbook = {
     therapist_position: `klidně vedle nebo naproti`,
     child_position: `pohodlně, oči otevřené nebo zavřené (jak chce dítě)`,
     what_to_say_first:
-      'Řekni klidně, pomalu: »Představ si místo, kde se cítíš úplně v bezpečí. Může být skutečné nebo vymyšlené. Až ho budeš mít, řekni mi o něm.`'`,
+      "Řekni klidně, pomalu: »Představ si místo, kde se cítíš úplně v bezpečí. Může být skutečné nebo vymyšlené. Až ho budeš mít, řekni mi o něm.«",
     what_NOT_to_say: [`Nenavrhuj místo`, `Nepospíchej`],
     measurements_required: [
       `popis místa (verbatim)`,
