@@ -77,7 +77,7 @@ export const playbook_association_experiment_jung: Playbook = {
     therapist_position: `naproti dítěti, oční kontakt, ne příliš blízko`,
     child_position: `pohodlně, nohy na zemi, ruce volně`,
     what_to_say_first:
-      'Řekni přesně: »Tundrupku, budeme spolu hrát hru se slovy. Já ti řeknu jedno slovo a ty mi hned řekni první slovo, které tě napadne. Nemusíš o tom přemýšlet, není správná ani špatná odpověď. Začínáme?`'`,
+      "Řekni přesně: »Tundrupku, budeme spolu hrát hru se slovy. Já ti řeknu jedno slovo a ty mi hned řekni první slovo, které tě napadne. Nemusíš o tom přemýšlet, není správná ani špatná odpověď. Začínáme?«",
     what_NOT_to_say: [
       `Nepokládej navádějící otázky (např. A co rodina?)`,
       `Nehodnoť odpovědi (např. Hezky., Aha to je zajímavé.)`,
