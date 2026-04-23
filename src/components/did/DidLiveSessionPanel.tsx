@@ -24,7 +24,7 @@ import { Progress } from "@/components/ui/progress";
 import DidPostSessionInterrogation, { type InterrogationAnswer } from "./DidPostSessionInterrogation";
 import LiveProgramChecklist from "./LiveProgramChecklist";
 import KarelInSessionCards, { type KarelHintTrigger } from "./KarelInSessionCards";
-import BlockDiagnosticChat from "./BlockDiagnosticChat";
+import BlockDiagnosticChat, { type BlockResearch } from "./BlockDiagnosticChat";
 
 type Message = {
   role: "user" | "assistant";
@@ -188,6 +188,32 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
     detail?: string;
   } | null>(null);
   const [planRefreshTick, setPlanRefreshTick] = useState(0);
+  const [researchByIdx, setResearchByIdx] = useState<Record<number, BlockResearch | null>>({});
+  const [researchLoadingIdx, setResearchLoadingIdx] = useState<Record<number, boolean>>({});
+
+  const loadBlockResearch = useCallback(
+    async (idx: number, blockText: string, blockDetail?: string, depth: "light" | "deep" = "deep") => {
+      if (researchByIdx[idx] !== undefined || researchLoadingIdx[idx]) return;
+      setResearchLoadingIdx((prev) => ({ ...prev, [idx]: true }));
+      try {
+        const { data, error } = await (supabase as any).functions.invoke("karel-block-research", {
+          body: {
+            part_name: partName,
+            program_block: { index: idx, text: blockText, detail: blockDetail },
+            depth,
+          },
+        });
+        if (error) throw error;
+        setResearchByIdx((prev) => ({ ...prev, [idx]: (data as BlockResearch) ?? null }));
+      } catch (e) {
+        console.warn("[DidLiveSessionPanel] block research failed:", e);
+        setResearchByIdx((prev) => ({ ...prev, [idx]: null }));
+      } finally {
+        setResearchLoadingIdx((prev) => ({ ...prev, [idx]: false }));
+      }
+    },
+    [partName, researchByIdx, researchLoadingIdx],
+  );
 
   // Per-block research cache (do localStorage Karel ukládá expected_artifacts).
   // Pro completion gate stačí číst přímo z localStorage při ukončování.
@@ -1355,6 +1381,9 @@ ${report}${interrogationBlock}${reflectionText}`;
               therapistName={therapistName}
               storageKey={`live_program_${planId ?? "ad-hoc"}`}
               sessionId={planId}
+              research={researchByIdx[block.index] ?? null}
+              isResearchLoading={!!researchLoadingIdx[block.index]}
+              onLoadResearch={() => loadBlockResearch(block.index, block.text, block.detail, "deep")}
               showBrief={false}
               onMarkDone={() => {
                 // Označit bod jako hotový v checklistu (LS) a zavřít workspace
@@ -1498,6 +1527,7 @@ ${report}${interrogationBlock}${reflectionText}`;
                     )
                   }
                   onActivateBlock={(block) => {
+                    void loadBlockResearch(block.index, block.text, block.detail, "deep");
                     // ── Spustit bod = otevři dedikovaný pracovní prostor bodu ──
                     setActiveBlock(block);
                     setActiveBlockWorkspace(block);
