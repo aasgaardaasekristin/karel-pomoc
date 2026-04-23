@@ -289,7 +289,22 @@ Deno.serve(async (req: Request) => {
     // pokud nejsme v setup a nejsme v traumě a máme další stimul → AI ho MUSÍ použít
     let phaseDirective = "";
     if (trigger === "start" || (state.phase === "setup" && turns.length === 0)) {
-      phaseDirective = "FÁZE = SETUP. Tvoje JEDINÁ úloha v tomto turnu: vysvětlit terapeutce KOMPLETNÍ pre-session setup z playbooku (pomůcky, pozice, co PŘESNĚ říct dítěti, co NEsmí říkat, co MUSÍ POVINNĚ ZAZNAMENÁVAT každý turn — latence, verbatim, afekt, neverbální). NEDÁVÁŠ ŽÁDNÝ STIMUL. Konči otázkou: „Rozumíš všemu? Když ano, dej mi vědět a začneme.\".";
+      phaseDirective = `FÁZE = SETUP pro KONKRÉTNÍ bod #${blockNum}: "${blockText}".
+
+POVINNÁ STRUKTURA setupu (cca 8–14 řádků, ne víc):
+1) **Cíl tohoto konkrétního bodu** (1 věta): proč ho děláme PRÁVĚ TEĎ s ${partName} a co od něj klinicky čekáme. NEPřepisuj cíl z jiné metody. Cíl MUSÍ vycházet z přesného textu bodu výše.
+2) **Pomůcky na míru** — konkrétní pro tento bod (papír, tužka/pastelky, sdílená obrazovka, hračka, audio…). Pokud je to kresba imaginární postavy (např. "strážce", "ochránce", "monstrum"), POVOL barevné pastelky/fixy — nejde o standardní DAP test, kde se používá jen tužka.
+3) **Pozice a prostředí** (1 věta).
+4) **Doslovná instrukce ${partName}** v uvozovkách — MUSÍ obsahovat klíčová slova z textu bodu (např. když bod říká "strážce spánku, který ho v noci ochrání před lékem", instrukce musí mluvit o strážci, spánku a léku, ne o "postavě" obecně).
+5) **Co terapeutka NEsmí** dělat (1–2 body specifické pro tento bod).
+6) **Co POVINNĚ zaznamenat** každý turn: latence (s), verbatim, afekt, neverbální. Plus 2–3 specifická pozorování pro tento bod (např. u kresby strážce: jaké barvy zvolí, kam strážce umístí, co o něm spontánně řekne, zda nakreslí i ohrožení).
+
+ZÁKAZY:
+- NEPřepisuj setup z předchozího bodu programu (žádné "asociační hra", žádné "kresba postavy podle Machover", pokud to není opravdu tato metoda).
+- Pokud playbook níže neodpovídá tématu bodu, IGNORUJ jeho doslovnou instrukci a vyrob NOVOU na míru bodu — playbook ber jen jako rámcovou inspiraci pro to, co měřit.
+- ŽÁDNÝ stimulus, žádná otázka pro ${partName} v tomto turnu.
+
+Konči přesně otázkou: „Rozumíš všemu, ${therapistAddr}? Když ano, dej mi vědět a začneme."`;
       state.phase = "setup";
     } else if (state.phase === "trauma_pause") {
       phaseDirective = `FÁZE = TRAUMA_PAUSE. Detekované trauma signály: ${state.red_flags_seen.join(", ")}.
