@@ -1,30 +1,37 @@
 /**
- * karel-block-followup
- * --------------------
- * Turn-by-turn diagnostický chat pod jedním bodem programu.
+ * karel-block-followup (v2 — clinical state machine)
+ * --------------------------------------------------
+ * Bod programu vede pevný klinický playbook (viz _shared/clinicalPlaybooks.ts).
+ * Karel jede stavový automat, ne volné improvizování:
  *
- * Hana zapsala další reakci (např. "Tundrupek na slovo MÁMA řekl: tma")
- * a Karel rozhoduje:
- *   - co říct dál (další slovo / další otázka / další instrukce)
- *   - co ještě potřebuje pozorovat
- *   - jestli má bod dost dat pro analýzu (done: true) a chybějící artefakty
+ *   phase: "setup" → "running" → ("trauma_pause" ⇄ "running") → "closure" → "done"
+ *
+ * Anti-loop guard: pokud má aktuální stimul vyplněnou odpověď a není trauma_flag,
+ * Karel MUSÍ vrátit další stimul nebo closure — nikdy znovu stejný stimul.
+ *
+ * Trauma branch: detekce klíčových slov v poslední Hanině zprávě
+ * (flashback, týrání, freeze, disociace, pláč, ztuhla, zbledla, schovala se,
+ *  panika, zničila kresbu) → phase=trauma_pause, do_not_repeat_stimulus.
  *
  * Vstup:
  *   {
- *     part_name: string,
- *     therapist_name: string,
+ *     part_name, therapist_name,
  *     program_block: { index, text, detail? },
- *     research?: ResearchOutput,           // z karel-block-research (pomůcky, kritéria, artefakty)
- *     turns: { from: "karel" | "hana", text: string, ts?: string }[],
- *     trigger?: "auto_next" | "ask_karel" | "user_input",
+ *     research?: ResearchOutput,
+ *     turns: [{from, text, ts}],
+ *     state?: ProtocolState,            // pokud chybí, vyrobí se z playbooku
+ *     trigger: "auto_next"|"ask_karel"|"user_input"|"start"
  *   }
  *
  * Výstup:
  *   {
- *     karel_text: string,                  // Karlův příští input (slovo / otázka / instrukce)
- *     done: boolean,                       // má Karel dost dat?
+ *     karel_text: string,
+ *     phase: PlaybookPhase,
+ *     state_patch: Partial<ProtocolState>,
+ *     done: boolean,
  *     missing_artifacts?: ("image"|"audio")[],
- *     suggested_close_message?: string,    // závěrečné shrnutí pro Hanu
+ *     suggested_close_message?: string,
+ *     red_flags_seen?: string[],
  *   }
  */
 
@@ -35,10 +42,92 @@ const corsHeaders = {
 };
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import {
+  detectPlaybook,
+  renderPlaybookForPrompt,
+  type Playbook,
+  type PlaybookPhase,
+} from "../_shared/clinicalPlaybooks.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+
+type Turn = { from: string; text: string; ts?: string };
+
+type ProtocolState = {
+  method_id: string | null;
+  phase: PlaybookPhase;
+  step_index: number;          // kolikátý stimul (0-based)
+  planned_steps: string[];     // pro asocie: 8 slov
+  responses: Array<{ stimulus: string; verbatim: string; latency_s?: number; affect?: string; nonverbal?: string; therapist_note?: string }>;
+  trauma_flag: boolean;
+  red_flags_seen: string[];
+};
+
+const TRAUMA_KEYWORDS = [
+  "flashback","flash back","flešbek",
+  "týrání","tyrani","tyran","zneuzit","zneužit",
+  "freeze","ztuhl","zbledl","schova","schoval","zb[ďďl]",
+  "disociac","disocia","ztratil kontakt",
+  "plá[čc]","pla[čc]","brečí","brec",
+  "panik","úzkost","uzkost",
+  "trauma","abuz","násil","nasil",
+  "ztichla","ztichl","mlčí","mlci",
+  "rozbila kresbu","zničila","znicila","roztrhal","roztrhala",
+];
+
+function detectTraumaInLastHana(turns: Turn[]): { triggered: boolean; matched: string[] } {
+  const lastHana = [...turns].reverse().find(t => t.from === "hana");
+  if (!lastHana) return { triggered: false, matched: [] };
+  const txt = lastHana.text.toLowerCase();
+  const matched: string[] = [];
+  for (const kw of TRAUMA_KEYWORDS) {
+    try {
+      if (new RegExp(kw).test(txt)) matched.push(kw);
+    } catch { /* skip bad regex */ }
+  }
+  return { triggered: matched.length > 0, matched };
+}
+
+function bootstrapState(playbook: Playbook | null, plannedFromResearch: string[] = []): ProtocolState {
+  const planned =
+    playbook?.step_protocol.planned_steps && playbook.step_protocol.planned_steps.length
+      ? playbook.step_protocol.planned_steps
+      : plannedFromResearch;
+  return {
+    method_id: playbook?.method_id ?? null,
+    phase: "setup",
+    step_index: 0,
+    planned_steps: planned,
+    responses: [],
+    trauma_flag: false,
+    red_flags_seen: [],
+  };
+}
+
+/**
+ * Z turns rekonstruujeme responses[] (heuristicky):
+ * každý sudý pár Karel→Hana = 1 zaznamenaná odpověď.
+ * Tohle slouží JEN pro anti-loop guard, AI dostává plný transcript.
+ */
+function reconstructResponses(turns: Turn[], plannedSteps: string[]): ProtocolState["responses"] {
+  const out: ProtocolState["responses"] = [];
+  let pendingStimulus: string | null = null;
+  for (const t of turns) {
+    if (t.from === "karel") {
+      // detekuj, jestli Karel právě dal stimul (krátká fráze, často slovo z planned_steps)
+      const lower = t.text.toLowerCase();
+      const matched = plannedSteps.find(s => lower.includes(s.toLowerCase()));
+      if (matched) pendingStimulus = matched;
+      else if (t.text.length < 80) pendingStimulus = t.text.trim();
+    } else if (t.from === "hana" && pendingStimulus) {
+      out.push({ stimulus: pendingStimulus, verbatim: t.text });
+      pendingStimulus = null;
+    }
+  }
+  return out;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -46,8 +135,7 @@ Deno.serve(async (req: Request) => {
     const auth = req.headers.get("Authorization") ?? "";
     if (!auth.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "missing auth" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const userClient = createClient(SUPABASE_URL, ANON_KEY, {
@@ -56,8 +144,7 @@ Deno.serve(async (req: Request) => {
     const { data: userData, error: userErr } = await userClient.auth.getUser();
     if (userErr || !userData?.user) {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -66,101 +153,176 @@ Deno.serve(async (req: Request) => {
     const therapistName = String(body?.therapist_name ?? "Hanka").trim();
     const block = body?.program_block ?? null;
     const research = body?.research ?? null;
-    const turns: { from: string; text: string; ts?: string }[] = Array.isArray(body?.turns) ? body.turns : [];
+    const turns: Turn[] = Array.isArray(body?.turns) ? body.turns : [];
     const trigger = String(body?.trigger ?? "user_input");
+    const incomingState: Partial<ProtocolState> | null = body?.state ?? null;
 
     if (!partName || !block?.text) {
       return new Response(JSON.stringify({ error: "bad input" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const therapistAddr = therapistName === "Káťa" ? "Káťo" : "Hani";
     const blockNum = typeof block.index === "number" ? block.index + 1 : "?";
+    const blockText = String(block.text + (block.detail ? ` — ${block.detail}` : ""));
+
+    // 1) DETEKUJ PLAYBOOK
+    const playbook = detectPlaybook(blockText);
+
+    // 2) STAV — bootstrap nebo doplnění
+    const plannedFromResearch: string[] = Array.isArray(research?.planned_steps) ? research.planned_steps : [];
+    const baseState = bootstrapState(playbook, plannedFromResearch);
+    const state: ProtocolState = {
+      ...baseState,
+      ...(incomingState || {}),
+      planned_steps:
+        (incomingState?.planned_steps && incomingState.planned_steps.length
+          ? incomingState.planned_steps
+          : baseState.planned_steps),
+    };
+
+    // Rekonstrukce responses (anti-loop guard)
+    if (state.responses.length === 0 && state.planned_steps.length) {
+      state.responses = reconstructResponses(turns, state.planned_steps);
+      // step_index = počet zaznamenaných odpovědí (další volný stimul)
+      state.step_index = Math.max(state.step_index, state.responses.length);
+    }
+
+    // 3) TRAUMA DETEKCE
+    const trauma = detectTraumaInLastHana(turns);
+    if (trauma.triggered && state.phase !== "closure" && state.phase !== "done") {
+      state.phase = "trauma_pause";
+      state.trauma_flag = true;
+      for (const m of trauma.matched) if (!state.red_flags_seen.includes(m)) state.red_flags_seen.push(m);
+    }
+
+    // 4) ANTI-LOOP HINT pro AI
+    const nextStimulus =
+      state.planned_steps.length > 0 && state.step_index < state.planned_steps.length
+        ? state.planned_steps[state.step_index]
+        : null;
+    const isAtEnd = state.planned_steps.length > 0 && state.step_index >= state.planned_steps.length;
+
+    // pokud nejsme v setup a nejsme v traumě a máme další stimul → AI ho MUSÍ použít
+    let phaseDirective = "";
+    if (trigger === "start" || (state.phase === "setup" && turns.length === 0)) {
+      phaseDirective = "FÁZE = SETUP. Tvoje JEDINÁ úloha v tomto turnu: vysvětlit terapeutce KOMPLETNÍ pre-session setup z playbooku (pomůcky, pozice, co PŘESNĚ říct dítěti, co NEsmí říkat, co MUSÍ POVINNĚ ZAZNAMENÁVAT každý turn — latence, verbatim, afekt, neverbální). NEDÁVÁŠ ŽÁDNÝ STIMUL. Konči otázkou: „Rozumíš všemu? Když ano, dej mi vědět a začneme.\".";
+      state.phase = "setup";
+    } else if (state.phase === "trauma_pause") {
+      phaseDirective = `FÁZE = TRAUMA_PAUSE. Detekované trauma signály: ${state.red_flags_seen.join(", ")}.
+TVOJE POVINNÁ STRUKTURA odpovědi:
+1) Validace pro terapeutku: „${therapistName}, to co popisuješ je klinicky významné — je to indikátor komplexu vázaného k tématu, ne selhání metody."
+2) Klinické vysvětlení v 1-2 větách (proč právě toto slovo / podnět spustil reakci).
+3) ZÁKAZ opakování stejného stimulu (do_not_repeat_stimulus = true u asociačního experimentu).
+4) Konkrétní grounding skript dítěti (cituj z playbooku).
+5) Rozhodnutí: a) pokračovat dalším stimulem za X minut / b) přerušit zbytek metody / c) přejít rovnou do closure.
+6) Co PŘESNĚ má terapeutka teď zaznamenat (formulace dítěte verbatim, neverbální).
+NIKDY se neptej znovu na poslední stimul. NIKDY neříkej „bez zásahu — drž prostor".`;
+    } else if (isAtEnd) {
+      phaseDirective = `FÁZE = CLOSURE. Všech ${state.planned_steps.length} stimulů proběhlo. Vyžádej:
+1) Reprodukční zkoušku (pokud playbook má): pauza 5–10 min, pak požádej dítě o zopakování slov a odpovědí. Reprodukční chyba = silný indikátor komplexu.
+2) Debrief otázky (cituj z playbooku).
+3) Vyhodnoť, jestli máš dost dat pro analýzu. Pokud chybí artefakty (verbatim_log, audio, image), uveď je v missing_artifacts.
+Když je vše splněno, nastav done=true.`;
+    } else if (nextStimulus) {
+      phaseDirective = `FÁZE = RUNNING. Zaznamenáno ${state.step_index}/${state.planned_steps.length} odpovědí.
+DALŠÍ POVINNÝ STIMULUS k podání = "${nextStimulus}" (krok ${state.step_index + 1}/${state.planned_steps.length}).
+
+TVOJE odpověď MUSÍ obsahovat PŘESNĚ tyto části:
+A) Krátký klinický komentář k poslední odpovědi dítěte (1 věta) — co to indikuje (latence, klang, perseverace, neutrální…). Pokud zatím žádná odpověď není, vynech.
+B) Stimulus na další krok přesně ve formátu: „Slovo ${state.step_index + 1}/${state.planned_steps.length}: **${nextStimulus.toUpperCase()}**".
+C) Připomeň co měřit: „Zapiš verbatim odpověď + latenci v sekundách + afekt + neverbální."
+
+NIKDY neopakuj žádný stimul, který už má v responses zaznamenanou odpověď. NIKDY se neptej „chceš pokračovat?" — pokračuj.`;
+    } else {
+      // playbook bez planned_steps (kresba, narativ, hra) — open dialog
+      phaseDirective = `FÁZE = RUNNING (volný protokol — kresba/narativ/hra).
+Reaguj klinicky na poslední Haninu poznámku, polož další KONKRÉTNÍ post-drawing/inquiry otázku z playbooku.
+Připomeň co měřit (tlak tužky, pořadí, umístění, verbatim).
+Když máš dost dat (pokrylo se min. 70 % observe_criteria), navrhni closure (done=true a missing_artifacts).`;
+    }
+
+    // 5) SESTAV PROMPT
+    const therapistAddr = therapistName === "Káťa" ? "Káťo" : "Hani";
+    const playbookBlock = playbook
+      ? renderPlaybookForPrompt(playbook, state.planned_steps)
+      : `(pro tento bod nebyl nalezen pevný playbook — řiď se obecnými klinickými principy a níže uvedenou rešerší)`;
+
+    const researchBlock = research
+      ? `\n═══ DOPLŇUJÍCÍ REŠERŠE ═══
+${research.method_label ? `Metoda: ${research.method_label}` : ""}
+${(research.observe_criteria ?? []).length ? `Co sledovat: ${(research.observe_criteria ?? []).join("; ")}` : ""}
+${(research.expected_artifacts ?? []).length ? `Očekávané artefakty: ${(research.expected_artifacts ?? []).join(", ")}` : ""}`
+      : "";
+
+    const stateBlock = `═══ AKTUÁLNÍ STAV PROTOKOLU ═══
+method_id: ${state.method_id ?? "(neidentifikováno)"}
+phase: ${state.phase}
+step_index: ${state.step_index} / ${state.planned_steps.length || "n/a"}
+planned_steps: ${state.planned_steps.length ? state.planned_steps.map((s, i) => `${i + 1}.${s}`).join(" | ") : "(žádné — open dialog)"}
+zaznamenané odpovědi (responses): ${state.responses.length === 0 ? "(zatím žádné)" : state.responses.map((r, i) => `[${i + 1}] "${r.stimulus}" → "${r.verbatim.slice(0, 80)}"`).join(" || ")}
+trauma_flag: ${state.trauma_flag ? "ANO" : "ne"}
+red_flags_seen: ${state.red_flags_seen.join(", ") || "(žádné)"}`;
 
     const turnsText = turns.length
       ? turns
           .slice(-30)
-          .map((t, i) => `${i + 1}. [${t.from === "karel" ? "KAREL" : "HANA"}]: ${String(t.text).slice(0, 400)}`)
+          .map((t, i) => `${i + 1}. [${t.from === "karel" ? "KAREL" : therapistName.toUpperCase()}]: ${String(t.text).slice(0, 500)}`)
           .join("\n")
       : "(zatím žádné turny)";
-
-    const researchBlock = research
-      ? `═══ ODBORNÁ REŠERŠE PRO TENTO BOD ═══
-METODA: ${research.method_label ?? "—"}
-POMŮCKY: ${(research.supplies ?? []).join(", ") || "—"}
-INSTRUKCE PRO DÍTĚ: ${research.setup_instruction ?? "—"}
-CO SLEDOVAT (DIAG. KRITÉRIA):
-${(research.observe_criteria ?? []).map((c: string, i: number) => `  ${i + 1}. ${c}`).join("\n")}
-POŽADOVANÉ ARTEFAKTY: ${(research.expected_artifacts ?? []).join(", ") || "text"}
-DOPORUČENÉ FOLLOW-UP OTÁZKY:
-${(research.followup_questions ?? []).map((q: string, i: number) => `  ${i + 1}. ${q}`).join("\n")}
-`
-      : "";
 
     const tools = [
       {
         type: "function",
         function: {
           name: "emit_followup",
-          description: "Vrátí Karlovu příští reakci ve struktuře.",
+          description: "Klinická reakce ve struktuře (povinný state machine).",
           parameters: {
             type: "object",
             properties: {
-              karel_text: {
-                type: "string",
-                description:
-                  "Co Karel teď říká Haně. Buď další slovo (asociace), další otázka (co u toho sleduj), instrukce, NEBO závěrečná věta když je hotovo. Krátce, použitelně hned.",
-              },
-              done: {
-                type: "boolean",
-                description: "True jen když má Karel dost dat z tohoto bodu pro klinickou analýzu.",
-              },
+              karel_text: { type: "string", description: "Co Karel teď říká terapeutce. Strukturovaně dle phaseDirective. Česky, vřele, profesionálně, KONKRÉTNĚ." },
+              phase_next: { type: "string", enum: ["setup", "running", "trauma_pause", "closure", "done"] },
+              advance_step: { type: "boolean", description: "True pokud Karel právě podal nový stimulus (step_index += 1)." },
+              done: { type: "boolean", description: "True jen když je celý protokol splněn a Karel má dost dat pro analýzu." },
               missing_artifacts: {
                 type: "array",
                 items: { type: "string", enum: ["image", "audio"] },
-                description: "Pokud done=true, ale chybí artefakty (foto kresby, audio nahrávka), uveď je.",
+                description: "Pokud done=true ale chybí artefakty.",
               },
-              suggested_close_message: {
-                type: "string",
-                description: "Pokud done=true, krátké uzavírací shrnutí pro Hanu (1-2 věty).",
-              },
+              suggested_close_message: { type: "string", description: "Závěrečné shrnutí pro terapeutku (jen když done=true)." },
             },
-            required: ["karel_text", "done"],
+            required: ["karel_text", "phase_next"],
             additionalProperties: false,
           },
         },
       },
     ];
 
-    const sysPrompt = `Jsi Karel — klinický psycholog/psychoterapeut a partner ${therapistName === "Káťa" ? "Káti" : "Hany"} v živém DID sezení. Vedeš ji bod-po-bodu programem. Tvoje role v tomto turn-by-turn dialogu:
+    const sysPrompt = `Jsi Karel — zkušený klinický psycholog/psychoterapeut a expert na disociativní poruchy (DID), traumaterapii a dětskou psychodiagnostiku. Vedeš ${therapistName} (terapeutku) krok-za-krokem v živém sezení s částí "${partName}" (DID kluk).
 
-1. Po každé Hanině reakci (zápis Tundrupkovy odpovědi / pozorování) okamžitě reaguješ DALŠÍM krokem — dalším slovem v asociaci, další diagnostickou otázkou („Hani všímej si, jestli tlak tužky teď zesílil"), další instrukcí.
-2. Tvoje otázky musí být PŘESNĚ TY, které potřebuje znát klinický psycholog/psychiatr/psychoterapeut/odborník na DID pro validní analýzu této metody (viz Odborná rešerše níže).
-3. Hana ti zapisuje co Tundrupek říká/dělá — ty z toho čteš diagnosticky a kladeš další otázky.
-4. Pokud máš dost dat (proběhla celá metoda + Hana zaznamenala odpovědi na klíčová kritéria), nastav done=true a doporuč ukončení bodu. V missing_artifacts uveď, co ještě potřebuješ uploadnout (kresbu, audio).
-5. Buď KONKRÉTNÍ a STRUČNÝ. Žádné meta-rady, žádné „tiše drž prostor". Tohle je živé sezení, Hana potřebuje od tebe použitelné výstupy.
+PRAVIDLA, KTERÁ NESMÍŠ PORUŠIT:
+1. Pevně se drž PLAYBOOKU níže — to je tvůj profesionální standard, ne návrh.
+2. NIKDY se neptej znovu na stimulus, který už má zaznamenanou odpověď (anti-loop). Sleduj responses[].
+3. Při traumatickém signálu (flashback, týrání, freeze, pláč, ztuhnutí, schování, panika, disociace) OKAMŽITĚ přejdi do trauma_pause — žádné mechanické pokračování v testu. Validuj, vysvětli klinický význam, dej grounding, rozhodni o tempu.
+4. Před prvním stimulem POVINNĚ vysvětli pre-session setup (pomůcky, pozice, co říct dítěti, co měřit). Bez setupu Karlova analýza nebude validní.
+5. Buď KONKRÉTNÍ a STRUČNÝ. Žádné meta-rady, žádné „drž prostor". Žádné obecné fráze. Vždy: konkrétní další krok + co přesně sledovat/zapsat.
+6. Mluvíš česky, vřele, ale s autoritou klinika.`;
 
-Česky, vřele, profesionálně.`;
-
-    const userPrompt = `BOD #${blockNum} PROGRAMU: "${block.text}${block.detail ? ` — ${block.detail}` : ""}"
-ČÁST: ${partName}
-
+    const userPrompt = `${playbookBlock}
 ${researchBlock}
-═══ DOSAVADNÍ TURN-BY-TURN PRŮBĚH BODU ═══
+
+${stateBlock}
+
+═══ POSLEDNÍCH 30 TURNŮ ═══
 ${turnsText}
 
-═══ TRIGGER ═══
-${
-  trigger === "auto_next"
-    ? `Hana zaznamenala další reakci. Vyrob DALŠÍ krok (další slovo / otázka / instrukce). Pokud byla zaznamenána všechna potřebná data k metodě, nastav done=true.`
-    : trigger === "ask_karel"
-    ? `Hana se tě explicitně ptá: "Karle, na co se mám teď zeptat / co mám teď dělat?". Vyrob konkrétní další krok.`
-    : `Hana ti poslala input. Reaguj — buď další otázkou nebo dalším diagnostickým krokem.`
-}
+═══ DIREKTIVA PRO TENTO TURN (závazné) ═══
+${phaseDirective}
 
-${turns.length === 0 ? "TOHLE JE PRVNÍ TURN — vyrob úplně první otázku/slovo/instrukci pro Hanu." : ""}`;
+═══ TRIGGER ═══
+${trigger}
+
+Vrať reakci přes tool emit_followup. karel_text musí být přímo použitelný (terapeutka ho čte v inline chatu).`;
 
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -169,14 +331,14 @@ ${turns.length === 0 ? "TOHLE JE PRVNÍ TURN — vyrob úplně první otázku/sl
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: sysPrompt },
           { role: "user", content: userPrompt },
         ],
         tools,
         tool_choice: { type: "function", function: { name: "emit_followup" } },
-        temperature: 0.6,
+        temperature: 0.4,
       }),
     });
 
@@ -185,19 +347,16 @@ ${turns.length === 0 ? "TOHLE JE PRVNÍ TURN — vyrob úplně první otázku/sl
       console.error("[block-followup] AI error", aiRes.status, t);
       if (aiRes.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       if (aiRes.status === 402) {
         return new Response(JSON.stringify({ error: "Lovable AI kredit vyčerpán." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       return new Response(JSON.stringify({ error: `ai gateway ${aiRes.status}` }), {
-        status: 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -211,8 +370,23 @@ ${turns.length === 0 ? "TOHLE JE PRVNÍ TURN — vyrob úplně první otázku/sl
       parsed = {};
     }
 
+    const phaseNext: PlaybookPhase = (["setup", "running", "trauma_pause", "closure", "done"] as PlaybookPhase[])
+      .includes(parsed?.phase_next) ? parsed.phase_next : state.phase;
+
+    const advanceStep = !!parsed?.advance_step && phaseNext === "running";
+    const newStepIndex = advanceStep ? state.step_index + 1 : state.step_index;
+
     const out = {
-      karel_text: String(parsed?.karel_text ?? "Pokračuj — ${therapistAddr}, zapiš mi prosím Tundrupkovu reakci.").trim(),
+      karel_text: String(parsed?.karel_text ?? `${therapistAddr}, zapiš mi prosím přesnou Tundrupkovu reakci a já dám další krok.`).trim(),
+      phase: phaseNext,
+      state_patch: {
+        method_id: state.method_id,
+        phase: phaseNext,
+        step_index: newStepIndex,
+        planned_steps: state.planned_steps,
+        trauma_flag: state.trauma_flag,
+        red_flags_seen: state.red_flags_seen,
+      },
       done: !!parsed?.done,
       missing_artifacts: Array.isArray(parsed?.missing_artifacts)
         ? parsed.missing_artifacts.filter((x: string) => ["image", "audio"].includes(x))
@@ -221,17 +395,16 @@ ${turns.length === 0 ? "TOHLE JE PRVNÍ TURN — vyrob úplně první otázku/sl
         typeof parsed?.suggested_close_message === "string" && parsed.suggested_close_message.trim()
           ? String(parsed.suggested_close_message).trim()
           : undefined,
+      red_flags_seen: state.red_flags_seen,
     };
 
     return new Response(JSON.stringify(out), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
     console.error("[block-followup] fatal:", e);
     return new Response(JSON.stringify({ error: e?.message ?? String(e) }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
