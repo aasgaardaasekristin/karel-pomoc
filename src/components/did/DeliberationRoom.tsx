@@ -46,6 +46,73 @@ interface LiveSessionPlanRow {
   urgency_breakdown?: Record<string, unknown> | null;
 }
 
+type LiveProgramBlock = {
+  block?: string | null;
+  minutes?: number | null;
+  detail?: string | null;
+};
+
+type LiveDeliberationSource = Pick<
+  TeamDeliberation,
+  "title" | "reason" | "agenda_outline" | "final_summary"
+> & {
+  program_draft?: LiveProgramBlock[] | null;
+  session_params?: Record<string, unknown> | null;
+};
+
+function buildApprovedLivePlanMarkdown(source: LiveDeliberationSource | null | undefined) {
+  if (!source) return "";
+
+  const sessionParams =
+    source.session_params && typeof source.session_params === "object"
+      ? (source.session_params as Record<string, unknown>)
+      : {};
+
+  const ledBy = typeof sessionParams.led_by === "string" ? sessionParams.led_by.trim() : "";
+  const duration = typeof sessionParams.duration_min === "number" ? sessionParams.duration_min : null;
+  const whyToday = typeof sessionParams.why_today === "string" ? sessionParams.why_today.trim() : "";
+  const kataInvolvement =
+    typeof sessionParams.kata_involvement === "string" ? sessionParams.kata_involvement.trim() : "";
+
+  const programBlocks: LiveProgramBlock[] =
+    Array.isArray(source.program_draft) && source.program_draft.length > 0
+      ? source.program_draft
+      : Array.isArray(source.agenda_outline)
+        ? source.agenda_outline
+        : [];
+
+  const lines: string[] = [
+    "# Schválený plán z týmové porady",
+    source.title ? `**Porada:** ${source.title}` : "",
+    ledBy ? `**Vede:** ${ledBy}` : "",
+    duration ? `**Délka:** ~${duration} min` : "",
+    whyToday ? `**Proč dnes:** ${whyToday}` : "",
+    kataInvolvement ? `**Káťa:** ${kataInvolvement}` : "",
+    source.reason ? `**Důvod:** ${source.reason}` : "",
+    "",
+  ];
+
+  if (programBlocks.length > 0) {
+    lines.push("## Program sezení", "");
+    programBlocks.forEach((block, index) => {
+      const title = String(block?.block ?? "").trim();
+      if (!title) return;
+      const minutes = typeof block?.minutes === "number" && block.minutes > 0 ? ` (${block.minutes} min)` : "";
+      lines.push(`${index + 1}. **${title}**${minutes}`);
+      if (typeof block?.detail === "string" && block.detail.trim()) {
+        lines.push(`   ${block.detail.trim()}`);
+      }
+      lines.push("");
+    });
+  }
+
+  if (source.final_summary?.trim()) {
+    lines.push("## Závěr porady", source.final_summary.trim());
+  }
+
+  return lines.filter(Boolean).join("\n");
+}
+
 function areAllQuestionsAnswered(questions: DeliberationQuestion[] = []) {
   return questions.length > 0 && questions.every((q) => !!q.answer?.trim());
 }
@@ -497,16 +564,45 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
     if (!planId || startingLive) return;
     setStartingLive(true);
     try {
-      const { error: statusErr } = await (supabase as any)
-        .from("did_daily_session_plans")
-        .update({ status: "in_progress", updated_at: new Date().toISOString() })
-        .eq("id", planId)
-        .select("id")
-        .single();
+      const nowIso = new Date().toISOString();
+      const [{ error: statusErr }, deliberationRes] = await Promise.all([
+        (supabase as any)
+          .from("did_daily_session_plans")
+          .update({ status: "in_progress", updated_at: nowIso })
+          .eq("id", planId)
+          .select("id")
+          .single(),
+        deliberationId
+          ? (supabase as any)
+              .from("did_team_deliberations")
+              .select("title, reason, agenda_outline, final_summary, program_draft, session_params")
+              .eq("id", deliberationId)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+
       if (statusErr) {
         console.error("[DeliberationRoom] startLiveSession status update failed:", statusErr);
         toast.error("Nepodařilo se zahájit sezení (DB update).");
         return;
+      }
+
+      const authoritativeMarkdown = buildApprovedLivePlanMarkdown(
+        (deliberationRes?.data as LiveDeliberationSource | null) ?? ((d as any) as LiveDeliberationSource | null),
+      );
+
+      if (authoritativeMarkdown) {
+        const { error: syncErr } = await (supabase as any)
+          .from("did_daily_session_plans")
+          .update({
+            plan_markdown: authoritativeMarkdown,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", planId);
+
+        if (syncErr) {
+          console.warn("[DeliberationRoom] failed to resync live plan markdown:", syncErr);
+        }
       }
 
       const { data: planRow, error: fetchErr } = await (supabase as any)
@@ -521,7 +617,10 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
         return;
       }
 
-      setLivePlan(planRow as LiveSessionPlanRow);
+      setLivePlan({
+        ...(planRow as LiveSessionPlanRow),
+        plan_markdown: authoritativeMarkdown || planRow.plan_markdown,
+      });
       toast.success("Sezení zahájeno.");
     } finally {
       setStartingLive(false);
