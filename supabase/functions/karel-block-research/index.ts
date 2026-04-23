@@ -51,8 +51,40 @@ import { detectPlaybook, type Playbook } from "../_shared/clinicalPlaybooks.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY") ?? "";
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+
+/**
+ * Cache-first lookup do karel_method_library.
+ * Pokud existuje manuál pro daný method_key (= playbook.method_id),
+ * vrátí zkrácený manuál_md jako kontext do strukturace + zaznamená usage.
+ */
+async function loadCachedManual(method_key: string): Promise<{ manual_md: string; tags: string[]; library_id: string } | null> {
+  try {
+    const sb = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+    const { data, error } = await sb
+      .from("karel_method_library")
+      .select("id, manual_md, tags, usage_count")
+      .eq("method_key", method_key)
+      .in("status", ["seed", "active"])
+      .maybeSingle();
+    if (error || !data) return null;
+    // best-effort usage update
+    sb.from("karel_method_library")
+      .update({ usage_count: (data.usage_count ?? 0) + 1, last_used_at: new Date().toISOString() })
+      .eq("id", data.id)
+      .then(() => {}, () => {});
+    return {
+      manual_md: String(data.manual_md ?? "").slice(0, 4000),
+      tags: Array.isArray(data.tags) ? data.tags : [],
+      library_id: data.id,
+    };
+  } catch (e) {
+    console.warn("[block-research] loadCachedManual failed:", e);
+    return null;
+  }
+}
 
 type ResearchOutput = {
   method_label: string;
