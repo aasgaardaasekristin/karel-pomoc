@@ -187,6 +187,7 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
     text: string;
     detail?: string;
   } | null>(null);
+  const [planRefreshTick, setPlanRefreshTick] = useState(0);
 
   // Per-block research cache (do localStorage Karel ukládá expected_artifacts).
   // Pro completion gate stačí číst přímo z localStorage při ukončování.
@@ -1316,8 +1317,9 @@ ${report}${interrogationBlock}${reflectionText}`;
 
         {/* Scrollovatelný střed = celý pracovní prostor bodu */}
         <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4">
+          <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 pb-8">
             <BlockDiagnosticChat
+              key={`${planId ?? "ad-hoc"}-${block.index}-${planRefreshTick}`}
               blockIndex={block.index}
               blockText={block.text}
               blockDetail={block.detail}
@@ -1341,6 +1343,7 @@ ${report}${interrogationBlock}${reflectionText}`;
                   console.warn("mark block done failed:", e);
                 }
                 toast.success(`Bod #${block.index + 1} hotový.`);
+                setPlanRefreshTick((v) => v + 1);
                 setActiveBlockWorkspace(null);
                 setActiveBlock(null);
               }}
@@ -1355,71 +1358,44 @@ ${report}${interrogationBlock}${reflectionText}`;
               }}
             />
 
-            {/* Lišta příloh přímo pod chatem bodu (foto/audio) */}
-            <div className="mt-4 rounded-md border border-border/60 bg-card/40 px-3 py-2 space-y-2">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                Přílohy k tomuto bodu
+            <div className="mt-3 flex items-center justify-between gap-2 flex-wrap rounded-md border border-border/60 bg-card/30 px-3 py-2">
+              <p className="text-[11px] text-muted-foreground">
+                Po uzavření bodu se v plánu označí jako splněný.
               </p>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button variant="outline" size="sm" onClick={imageUpload.openFilePicker} className="gap-1.5 h-8 text-xs">
-                  <Camera className="w-3.5 h-3.5" /> Fotka / kresba
-                </Button>
-                <input
-                  ref={imageUpload.fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  multiple
-                  onChange={imageUpload.handleFileChange}
-                  className="hidden"
-                />
-                {recorder.state === "idle" && (
-                  <Button variant="outline" size="sm" onClick={recorder.startRecording} className="gap-1.5 h-8 text-xs">
-                    <Mic className="w-3.5 h-3.5" /> Nahrát audio
-                  </Button>
-                )}
-                {recorder.state === "recording" && (
-                  <div className="flex items-center gap-2 bg-destructive/5 rounded-lg px-3 py-1.5">
-                    <div className="w-2 h-2 rounded-full bg-destructive animate-pulse shrink-0" />
-                    <span className="text-xs font-medium text-destructive tabular-nums">
-                      {formatDuration(recorder.duration)} / {formatDuration(recorder.maxDuration)}
-                    </span>
-                    <Button variant="ghost" size="sm" onClick={recorder.stopRecording} className="h-7 w-7 p-0">
-                      <Square className="w-3 h-3" />
-                    </Button>
-                  </div>
-                )}
-                {recorder.state === "recorded" && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {recorder.audioUrl && <audio src={recorder.audioUrl} controls className="h-8 max-w-[11.25rem]" />}
-                    <Button size="sm" onClick={handleAudioSegmentAnalysis} disabled={isAudioAnalyzing} className="h-8 text-xs gap-1.5">
-                      {isAudioAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                      Analyzovat
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={recorder.discardRecording} className="h-8 text-xs">
-                      Zahodit
-                    </Button>
-                  </div>
-                )}
-              </div>
-              {imageUpload.pendingImages.length > 0 && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  {imageUpload.pendingImages.map((img, i) => (
-                    <div key={i} className="relative group">
-                      <img src={img.dataUrl} alt={img.name} className="h-16 w-16 object-cover rounded-md border border-border" />
-                      <button
-                        onClick={() => imageUpload.removeImage(i)}
-                        className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                  <Button size="sm" onClick={handleImageAnalysis} disabled={isImageAnalyzing} className="h-8 text-xs gap-1.5">
-                    {isImageAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                    Analyzovat obrázek
-                  </Button>
-                </div>
-              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs gap-1.5"
+                onClick={() => {
+                  try {
+                    const key = `live_program_${planId ?? "ad-hoc"}`;
+                    const raw = window.localStorage.getItem(key);
+                    if (!raw) {
+                      setActiveBlockWorkspace(null);
+                      setActiveBlock(null);
+                      return;
+                    }
+                    const arr = JSON.parse(raw) as Array<{ text?: string }>;
+                    const nextIndex = block.index + 1;
+                    if (Array.isArray(arr) && arr[nextIndex]) {
+                      const nextText = typeof arr[nextIndex].text === "string" ? arr[nextIndex].text : `Bod #${nextIndex + 1}`;
+                      const sepIdx = nextText.indexOf(" — ");
+                      const nextBlock = sepIdx > 0
+                        ? { index: nextIndex, text: nextText.slice(0, sepIdx).trim(), detail: nextText.slice(sepIdx + 3).trim() }
+                        : { index: nextIndex, text: nextText };
+                      setActiveBlock(nextBlock);
+                      setActiveBlockWorkspace(nextBlock);
+                      return;
+                    }
+                  } catch (e) {
+                    console.warn("next block navigation failed:", e);
+                  }
+                  setActiveBlockWorkspace(null);
+                  setActiveBlock(null);
+                }}
+              >
+                Další bod
+              </Button>
             </div>
           </div>
         </div>
@@ -1513,6 +1489,7 @@ ${report}${interrogationBlock}${reflectionText}`;
             {planExpanded && (
               <div className="px-3 pb-3 pt-0 max-h-64 overflow-y-auto border-t border-primary/15">
                 <LiveProgramChecklist
+                  key={`${planId ?? "ad-hoc"}-${planRefreshTick}`}
                   planMarkdown={contextBrief}
                   storageKey={`live_program_${planId ?? "ad-hoc"}`}
                   partName={partName}

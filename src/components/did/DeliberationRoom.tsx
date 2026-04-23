@@ -81,14 +81,20 @@ function buildApprovedLivePlanMarkdown(source: LiveDeliberationSource | null | u
         ? source.agenda_outline
         : [];
 
+  const normalizedReason = [whyToday, kataInvolvement ? `(Káťa: ${kataInvolvement})` : ""]
+    .filter(Boolean)
+    .join(" — ")
+    .trim();
+
+  const fallbackReason = typeof source.reason === "string" ? source.reason.trim() : "";
+  const finalReason = normalizedReason || fallbackReason;
+
   const lines: string[] = [
     "# Schválený plán z týmové porady",
     source.title ? `**Porada:** ${source.title}` : "",
     ledBy ? `**Vede:** ${ledBy}` : "",
     duration ? `**Délka:** ~${duration} min` : "",
-    whyToday ? `**Proč dnes:** ${whyToday}` : "",
-    kataInvolvement ? `**Káťa:** ${kataInvolvement}` : "",
-    source.reason ? `**Důvod:** ${source.reason}` : "",
+    finalReason ? `**Důvod dnešního sezení:** ${finalReason}` : "",
     "",
   ];
 

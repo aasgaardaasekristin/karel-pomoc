@@ -274,11 +274,16 @@ const LiveProgramChecklist = ({
                 <div className="flex-1 min-w-0">
                   <p
                     className={`text-[12px] leading-snug ${
-                      item.done ? "line-through text-muted-foreground" : "text-foreground"
+                      item.done ? "text-muted-foreground" : "text-foreground"
                     }`}
                   >
                     {item.text}
                   </p>
+                  {item.done && (
+                    <p className="text-[10px] font-medium text-primary mt-1">
+                      Bod je splněný.
+                    </p>
+                  )}
                   {item.observation && !isExp && (
                     <p className="text-[10px] text-muted-foreground italic mt-0.5 line-clamp-2">
                       📝 {item.observation}

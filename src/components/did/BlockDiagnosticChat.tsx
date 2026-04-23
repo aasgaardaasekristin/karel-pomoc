@@ -229,7 +229,7 @@ const BlockDiagnosticChat = ({
   };
 
   return (
-    <div className="rounded-md border border-primary/20 bg-card/50 px-2.5 py-2 space-y-2">
+    <div className="rounded-md border border-primary/20 bg-card/50 px-2.5 py-2 space-y-2 min-h-0">
       {/* ── Brief: pomůcky, instrukce, kritéria ── */}
       <div className="rounded-sm border border-amber-500/30 bg-amber-50/40 dark:bg-amber-950/10">
         <button
@@ -313,7 +313,7 @@ const BlockDiagnosticChat = ({
       {/* ── Turn log: Karel ↔ Hana ── */}
       <div
         ref={logRef}
-        className="max-h-56 overflow-y-auto rounded-sm border border-border/50 bg-background/40 px-2 py-1.5 space-y-1.5"
+        className="min-h-0 overflow-y-auto rounded-sm border border-border/50 bg-background/40 px-2 py-1.5 space-y-1.5 max-h-[min(40vh,24rem)]"
       >
         {turns.length === 0 ? (
           <div className="text-center py-3">
@@ -418,7 +418,7 @@ const BlockDiagnosticChat = ({
       )}
 
       {/* ── Tlačítka per-bod artefakty ── */}
-      <div className="flex items-center gap-1.5 flex-wrap">
+      <div className="flex items-center gap-1.5 flex-wrap border-t border-border/40 pt-2">
         <Button
           size="sm"
           variant="outline"
