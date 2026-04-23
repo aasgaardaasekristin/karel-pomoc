@@ -1494,7 +1494,43 @@ ${report}${interrogationBlock}${reflectionText}`;
       <ScrollArea className="flex-1 min-h-[14rem] px-2 sm:px-4" ref={scrollRef}>
         <div className="max-w-3xl mx-auto py-4 space-y-3">
           {messages.map((msg, i) => (
-            <ChatMessage key={i} message={msg} />
+            <div key={i} className="space-y-1">
+              <ChatMessage message={msg} />
+              {/* ── Meta-řádek pod uživatelskou zprávou: přijato / chyba / bod ── */}
+              {msg.role === "user" && (msg.acceptedAt || msg.failed || msg.attachedBlockIndex !== undefined) && (
+                <div className="flex flex-wrap items-center gap-1.5 pl-2 text-[10px]">
+                  {msg.attachedBlockIndex !== undefined && (
+                    <Badge variant="outline" className="h-4 text-[9px] gap-0.5 border-primary/30 text-primary">
+                      <Link2 className="w-2.5 h-2.5" />
+                      bod #{msg.attachedBlockIndex + 1}
+                    </Badge>
+                  )}
+                  {msg.acceptedAt && !msg.failed && (
+                    <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+                      ✓ Karel přijal · uloženo {msg.acceptedAt}
+                    </span>
+                  )}
+                  {msg.failed && (
+                    <>
+                      <span className="text-destructive font-medium flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" />
+                        Karel neodpověděl{msg.errorMsg ? ` (${msg.errorMsg})` : ""}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-5 px-1.5 text-[10px] gap-1 border-destructive/40 text-destructive hover:bg-destructive/10"
+                        onClick={() => msg.ts && retryUserMessage(msg.ts)}
+                        disabled={isLoading}
+                      >
+                        <RefreshCw className="w-2.5 h-2.5" />
+                        Zkusit znovu
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           ))}
           {isLoading && messages[messages.length - 1]?.role === "user" && (
             <div className="flex justify-start">
