@@ -1579,48 +1579,8 @@ ${report}${interrogationBlock}${reflectionText}`;
         </div>
       </ScrollArea>
 
-      {/* DEPRECATED-PLACEHOLDER */}
-
-      {/* ── Karlovy in-session karty (proaktivní reakce na vstupy) ── */}
-      {hintTriggers.length > 0 && (
-        <div className="border-t border-border bg-card/30 backdrop-blur-sm shrink-0">
-          <div className="max-w-3xl mx-auto px-3 sm:px-4 py-2 max-h-[10rem] overflow-y-auto">
-            <KarelInSessionCards
-              partName={activePart}
-              therapistName={therapistName}
-              triggers={hintTriggers}
-              onAnswerHint={(text) => {
-                setInput((prev) => (prev ? `${prev}\n\n${text}` : text));
-                textareaRef.current?.focus();
-              }}
-              onCompleteBlock={(blockIndex) => {
-                // Najdi v localStorage stav checklistu, označ bod jako done
-                try {
-                  const key = `live_program_${planId ?? "ad-hoc"}`;
-                  const raw = window.localStorage.getItem(key);
-                  if (raw) {
-                    const arr = JSON.parse(raw) as Array<{ done: boolean }>;
-                    if (Array.isArray(arr) && arr[blockIndex]) {
-                      arr[blockIndex].done = true;
-                      window.localStorage.setItem(key, JSON.stringify(arr));
-                      // donutíme remount checklist tím, že krátce sbalíme/rozbalíme
-                      setPlanExpanded(false);
-                      setTimeout(() => setPlanExpanded(true), 80);
-                    }
-                  }
-                  toast.success(`Bod #${blockIndex + 1} hotový.`);
-                  setActiveBlock(null);
-                } catch (e) {
-                  console.warn("complete block failed:", e);
-                }
-              }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Input */}
-      <div className="border-t border-border bg-card/50 backdrop-blur-sm">
+      {/* Input — sticky shrink-0 dno panelu, vzdy viditelne bez ohledu na obsah nahore */}
+      <div className="shrink-0 border-t border-border bg-card/50 backdrop-blur-sm">
         <div className="max-w-3xl mx-auto px-3 sm:px-4 py-3 space-y-2">
           {/* ── Orientační lišta: kam vlastně píšu + výběr bodu programu ── */}
           <div className="flex flex-wrap items-center gap-2">
