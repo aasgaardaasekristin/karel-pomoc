@@ -1028,18 +1028,38 @@ const PlanCard = ({
                 Připravit s týmem
               </Button>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onStartSession}
-              disabled={startBlockedByPrep}
-              title={startBlockedByPrep
-                ? "Nejdřív tým musí v přípravné místnosti podepsat plán."
-                : undefined}
-              className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-50"
-            >
-              <Play className="mr-0.5 h-2.5 w-2.5" /> Zahájit
-            </Button>
+            {/* SPUSTIT-SEZENI MIGRACE (2026-04-23):
+                Když je porada schválená, Spustit sezení žije VÝHRADNĚ v ní
+                (DeliberationRoom má dedikované tlačítko, které propíše živý
+                program a otevře LIVE panel). Zde tlačítko „Zahájit" v té
+                situaci skrýváme, místo něj nabídneme „Otevřít poradu →
+                spustit", aby Hanka neměla dvě konfliktní akce.
+                Když porada NEEXISTUJE (legacy plán bez prep gatu) nebo gate
+                není aktivní, zachováváme staré chování s tlačítkem Zahájit. */}
+            {prepGateEnabled && prepApproved && prepRoom ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onOpenPrepRoom?.(prepRoom.id)}
+                className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10"
+                title="Otevři poradu — spuštění sezení je tam (po podpisech)."
+              >
+                <Play className="mr-0.5 h-2.5 w-2.5" /> Otevřít poradu → spustit
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onStartSession}
+                disabled={startBlockedByPrep}
+                title={startBlockedByPrep
+                  ? "Nejdřív tým musí v přípravné místnosti podepsat plán."
+                  : undefined}
+                className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-50"
+              >
+                <Play className="mr-0.5 h-2.5 w-2.5" /> Zahájit
+              </Button>
+            )}
             {/* 2026-04-22 — KAREL+ČÁST HERNA: vstup do připravené místnosti.
                  Renderuje se jen když je plán schválený poradou (prepApproved).
                  KAREL+ČÁST IN DNES TRUTH PASS (2026-04-22): odstraněn gating
