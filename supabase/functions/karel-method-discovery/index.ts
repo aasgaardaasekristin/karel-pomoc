@@ -239,6 +239,7 @@ serve(async (req) => {
     // Ulož jako 'proposed', přeskoč duplicity
     const saved: any[] = [];
     const skipped: any[] = [];
+    const savedManuals: any[] = [];
     for (const m of allDiscovered) {
       const { data: dup } = await supabase
         .from("karel_method_library")
@@ -261,7 +262,77 @@ serve(async (req) => {
         contraindications:
           "Před první aplikací zkontrolovat. ⚠️ EPILEPSIE — žádná dechová cvičení.",
       });
-      if (!error) saved.push(m.method_key);
+      if (!error) {
+        saved.push(m.method_key);
+        savedManuals.push(m);
+      }
+    }
+
+    // ═══ DRIVE EXPORT: zapiš nové metody do Spižírny → flush je propíše ═══
+    // Cesta: KARTOTEKA_DID/00_CENTRUM/07_Knihovna/NOVE_METODY_<YYYY-MM-DD>
+    let driveExported = false;
+    if (savedManuals.length > 0) {
+      try {
+        // Najdi user_id (DID systém má jednoho hlavního ownera)
+        const { data: owner } = await supabase
+          .from("did_part_registry")
+          .select("user_id")
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        const ownerId = owner?.user_id;
+        if (ownerId) {
+          const dateStr = new Date().toISOString().slice(0, 10);
+          const driveTarget = `KARTOTEKA_DID/00_CENTRUM/07_Knihovna/NOVE_METODY_${dateStr}`;
+          const headerLines = [
+            `# 📚 Nové metody objevené ${dateStr}`,
+            ``,
+            `Karel tento týden rozšířil knihovnu o **${savedManuals.length}** nových metod/technik.`,
+            `Metody jsou ve stavu *proposed* — než je nasadím v sezení, projděte si manuál.`,
+            ``,
+            `---`,
+            ``,
+          ];
+          const sections = savedManuals.map((m, i) => {
+            const sourcesText = (m.sources && m.sources.length)
+              ? `\n**Zdroje:** ${m.sources.join("; ")}`
+              : "";
+            const tagsText = (m.tags && m.tags.length)
+              ? `\n**Tagy:** ${m.tags.join(", ")}`
+              : "";
+            return [
+              `## ${i + 1}. ${m.title}`,
+              `**Kategorie:** ${m.category}  `,
+              `**method_key:** \`${m.method_key}\`${sourcesText}${tagsText}`,
+              ``,
+              m.manual_md,
+              ``,
+              `---`,
+              ``,
+            ].join("\n");
+          });
+          const fullContent = headerLines.join("\n") + sections.join("\n");
+
+          const { error: pantryErr } = await supabase
+            .from("did_pantry_packages")
+            .insert({
+              user_id: ownerId,
+              package_type: "method_discovery_weekly",
+              content_md: fullContent,
+              drive_target_path: driveTarget,
+              status: "pending_drive",
+              metadata: {
+                discovered_count: savedManuals.length,
+                method_keys: saved,
+                week_of: dateStr,
+              },
+            });
+          if (!pantryErr) driveExported = true;
+          else console.error("[discovery] pantry insert failed:", pantryErr);
+        }
+      } catch (e) {
+        console.error("[discovery] drive export failed:", e);
+      }
     }
 
     return new Response(
@@ -271,6 +342,7 @@ serve(async (req) => {
           discovered: allDiscovered.length,
           saved: saved.length,
           skipped: skipped.length,
+          drive_exported: driveExported,
         },
         saved,
         skipped,
