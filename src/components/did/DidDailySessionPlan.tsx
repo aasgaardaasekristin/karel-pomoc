@@ -140,6 +140,32 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
 
   useEffect(() => { loadTodayPlans(); }, [loadTodayPlans, refreshTrigger]);
 
+  // ── SPUSTIT-SEZENI EVENT LISTENER (2026-04-23) ──
+  // DeliberationRoom (porada „Návrh sezení k poradě") emituje
+  // `karel:start-live-session` v okamžiku, kdy terapeutka klikne "Spustit
+  // sezení". Tato karta (Pracovna → Dnes) musí na to reagovat:
+  //   1) refresh plánů (status už je in_progress díky DB updatu v Deliberation Room),
+  //   2) přepnout `liveSessionActive=true`, aby se otevřel DidLiveSessionPanel.
+  // Pokud event nese `planId` a plán mezi dnešními neexistuje (např. uživatel
+  // je na jiné záložce), refresh ho dotáhne, a další render už trefí
+  // `firstPendingPlan` (status='in_progress' splňuje filter).
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const detail = (e as CustomEvent<{ planId?: string }>).detail || {};
+      try {
+        await loadTodayPlans();
+      } catch {/* refresh failure shouldn't block UI flip */}
+      setLiveSessionActive(true);
+      // Pokud event přišel s konkrétním planId a my ho v aktuálním plans
+      // nemáme (race condition), počkáme jeden tick a refresh zopakujeme.
+      if (detail.planId) {
+        setTimeout(() => { loadTodayPlans(); }, 600);
+      }
+    };
+    window.addEventListener("karel:start-live-session", handler as EventListener);
+    return () => window.removeEventListener("karel:start-live-session", handler as EventListener);
+  }, [loadTodayPlans]);
+
   // Load previous session for first pending plan
   useEffect(() => {
     const plan = firstPendingPlan;
