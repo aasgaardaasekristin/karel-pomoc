@@ -47,6 +47,7 @@ const corsHeaders = {
 };
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { detectPlaybook, type Playbook } from "../_shared/clinicalPlaybooks.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -55,13 +56,15 @@ const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
 type ResearchOutput = {
   method_label: string;
+  method_id?: string;            // pevný playbook id, pokud detekováno
   supplies: string[];
   setup_instruction: string;
   observe_criteria: string[];
   expected_artifacts: ("image" | "audio" | "text")[];
   followup_questions: string[];
+  planned_steps?: string[];      // pro asoc. experiment: 8 konkrétních slov
   citations?: string[];
-  source: "perplexity" | "fallback" | "ai-only";
+  source: "perplexity" | "fallback" | "ai-only" | "playbook";
 };
 
 function detectMethodHints(text: string): {
@@ -206,7 +209,7 @@ async function callPerplexity(prompt: string): Promise<{ content: string; citati
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "sonar",
+        model: "sonar-pro",
         messages: [
           {
             role: "system",
@@ -276,6 +279,11 @@ async function structureWithAI(
                 items: { type: "string" },
                 description: "3-5 otázek pro terapeutku během / po aktivitě (česky, krátce).",
               },
+              planned_steps: {
+                type: "array",
+                items: { type: "string" },
+                description: "JEN PRO ASOCIAČNÍ EXPERIMENT: přesně 8 konkrétních stimulačních slov vázaných k tématu bodu programu (mix neutrálních a afektivních, na míru části a věku). Pro ostatní metody nech prázdné.",
+              },
             },
             required: [
               "method_label",
@@ -297,15 +305,15 @@ async function structureWithAI(
 ${perplexityRaw ? `ODBORNÁ REŠERŠE Z PERPLEXITY:\n${perplexityRaw}\n` : ""}
 
 Tvůj úkol: Vrať mi přesné odborné parametry pro tuto diagnostickou aktivitu tak, jak je potřebuje znát klinický psycholog/psychoterapeut/odborník na DID. Konkrétně:
-1. method_label — odborný název metody
-2. supplies — KONKRÉTNÍ pomůcky (typ tužky, formát papíru, hračky atd.)
-3. setup_instruction — PŘESNÁ věta, kterou má terapeutka říct dítěti, + jak rozmístit pomůcky
-4. observe_criteria — 5-8 KONKRÉTNÍCH diagnostických bodů, co u toho sledovat (odkud začíná kreslit, umístění, tlak tužky, latence odpovědí, neverbální signály...)
-5. expected_artifacts — co bude Karel potřebovat ke kvalitní analýze (image / audio / text)
-6. followup_questions — 3-5 otázek pro terapeutku během/po aktivitě, ať Karel získá přesně to, co potřebuje k validní analýze
+1. method_label — odborný název metody (cituj manuál: Jung asoc., Machover DAP, Koch Baumtest, Buck HTP, Burns KFD, CAT/TAT, Lowenfeld sandtray, somatic body map…)
+2. supplies — KONKRÉTNÍ pomůcky (typ tužky HB, formát papíru A4 nelinkovaný, stopky, audio nahrávač atd.)
+3. setup_instruction — PŘESNÁ věta, kterou má terapeutka říct dítěti, + jak rozmístit pomůcky + co sama NEsmí
+4. observe_criteria — 6-10 KONKRÉTNÍCH diagnostických bodů (latence v sekundách, verbatim, afekt, pořadí kreslení, umístění, tlak tužky, vegetativní reakce, vynechané části, perseverace, klang…)
+5. expected_artifacts — co Karel potřebuje k validní analýze (image / audio / text)
+6. followup_questions — 3-5 otázek pro terapeutku během/po aktivitě
+7. planned_steps — JEN POKUD JDE O ASOCIAČNÍ EXPERIMENT: vrať PŘESNĚ 8 konkrétních stimulačních slov vázaných na téma bodu programu (mix neutrálních a afektivních, na míru části "${partName}"${partAge ? ` věk ${partAge}` : ""}). Pro ostatní metody nech prázdné nebo vynech.
 
-Žádné obecné fráze. Je-li to kresebný test, uveď přesné parametry (HB tužka, A4 nelinkovaný apod.).
-Je-li to asociační hra, uveď co sledovat v reakcích.`;
+Žádné obecné fráze. Cituj reálný klinický manuál (Machover, Koch, Buck, Burns, Jung Word Association, Bellak CAT, Lowenfeld World Technique).`;
 
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -314,12 +322,12 @@ Je-li to asociační hra, uveď co sledovat v reakcích.`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-pro",
         messages: [
           {
             role: "system",
             content:
-              "Jsi klinický psycholog. Strukturuj odborná data do požadovaného JSON přes tool call emit_block_research.",
+              "Jsi klinický psycholog s expertízou v dětské psychodiagnostice (Machover, Koch, Buck, Jung, CAT, sandtray, somatic). Strukturuj odborná data do požadovaného JSON přes tool call emit_block_research. Buď přesný, cituj reálné manuály, žádné obecné fráze.",
           },
           { role: "user", content: userPrompt },
         ],
@@ -346,6 +354,7 @@ Je-li to asociační hra, uveď co sledovat v reakcích.`;
         ? args.expected_artifacts.filter((x: string) => ["image", "audio", "text"].includes(x))
         : ["text"],
       followup_questions: Array.isArray(args.followup_questions) ? args.followup_questions.map(String) : [],
+      planned_steps: Array.isArray(args.planned_steps) ? args.planned_steps.map(String).slice(0, 16) : undefined,
       source: perplexityRaw ? "perplexity" : "ai-only",
     };
   } catch (e) {
@@ -390,22 +399,31 @@ Deno.serve(async (req: Request) => {
 
     const blockText = String(block.text + (block.detail ? ` — ${block.detail}` : "")).slice(0, 600);
 
-    // 1) Perplexity rešerše (jen u depth=deep nebo když je to evidentně diagnostický test)
+    // 0) DETEKCE PEVNÉHO PLAYBOOKU — pokud existuje, je to autoritativní zdroj
+    const playbook: Playbook | null = detectPlaybook(blockText);
+
+    // 1) Perplexity rešerše — vždy cílená na konkrétní manuál (pokud máme playbook)
     let perplexity: { content: string; citations: string[] } | null = null;
     const hints = detectMethodHints(blockText);
-    const isDiagnostic = hints.isDrawing || hints.isAssociation || hints.isPlay || hints.isNarrative;
+    const isDiagnostic = hints.isDrawing || hints.isAssociation || hints.isPlay || hints.isNarrative || !!playbook;
     if (depth === "deep" || isDiagnostic) {
-      const ppPrompt = `Jaké jsou přesné odborné parametry pro tuto diagnostickou aktivitu s dítětem (${partAge ? `věk ${partAge}` : "věk nezveřejněn"})?
+      const manualHint = playbook
+        ? `Vycházíme z manuálu: ${playbook.method_label}. Zdroje: ${playbook.source_refs.join("; ")}.`
+        : "Identifikuj typ projektivní/diagnostické metody a cituj manuál.";
+      const ppPrompt = `Klinický psycholog — dětská psychodiagnostika. ${manualHint}
 
-"${blockText}"
+Bod programu: "${blockText}"
+Část: ${partName}${partAge ? ` (věk ${partAge})` : ""}
 
-Odpověz česky a stručně:
-1) Konkrétní pomůcky (typ tužky, papíru, hraček).
-2) Přesná instrukce, kterou má terapeut říct dítěti.
-3) Diagnostická kritéria — co sledovat během aktivity (např. odkud začíná kreslit, umístění na papíru, tlak tužky, vývojová úroveň, latence odpovědí, neverbální signály).
-4) Jaké artefakty pro validní klinickou analýzu (foto kresby, audio, video, zápis odpovědí).
+Odpověz česky a velmi konkrétně:
+1) Přesné pomůcky dle manuálu (typ tužky HB, formát A4, stopky, audio, figurky…).
+2) Doslovná instrukce dítěti dle manuálu.
+3) Co terapeutka MUSÍ povinně zaznamenávat každý turn (verbatim, latence v sekundách, afekt, neverbální).
+4) Diagnostická kritéria a red flags (perseverace, klang, prodloužená latence, vegetativní reakce, vynechané části, izolace postavy…).
+5) Trauma response — co dělat, když dítě reaguje flashbackem / pláčem / freeze. Citovat trauma-informed přístup.
+6) Jaké artefakty pro validní analýzu (foto, audio, verbatim log).
 
-Cituj odbornou literaturu, kde je to relevantní (Machover, Koch, Buck, projektivní techniky, ICD-11, odborné články).`;
+Cituj reálné manuály (Machover 1949, Koch 1949, Buck 1948, Burns 1970, Jung 1906, Bellak CAT 1949, Lowenfeld 1979, Levine SE).`;
 
       perplexity = await callPerplexity(ppPrompt);
     }
@@ -417,10 +435,22 @@ Cituj odbornou literaturu, kde je to relevantní (Machover, Koch, Buck, projekti
     if (structured) {
       result = {
         ...structured,
+        method_id: playbook?.method_id ?? structured.method_id,
         citations: perplexity?.citations,
+        // přepiš expected_artifacts z playbooku, pokud existuje (přesnější)
+        expected_artifacts: playbook
+          ? Array.from(new Set([
+              ...structured.expected_artifacts,
+              ...playbook.required_artifacts.filter(a => a === "image" || a === "audio" || a === "text") as ("image"|"audio"|"text")[],
+            ]))
+          : structured.expected_artifacts,
+        source: playbook ? "playbook" : structured.source,
       };
     } else {
-      result = buildFallback(blockText, partName, partAge);
+      const fb = buildFallback(blockText, partName, partAge);
+      result = playbook
+        ? { ...fb, method_id: playbook.method_id, method_label: playbook.method_label, source: "playbook" }
+        : fb;
     }
 
     return new Response(JSON.stringify(result), {
