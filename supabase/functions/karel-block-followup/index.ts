@@ -252,18 +252,26 @@ Deno.serve(async (req: Request) => {
     const playbook = detectPlaybook(blockText);
 
     // 2) STAV — bootstrap nebo doplnění
-    const plannedFromResearch: string[] = Array.isArray(research?.planned_steps) ? research.planned_steps : [];
+    // ── HARD GUARD (2026-04-23): planned_steps z research přijmeme JEN tehdy,
+    // když detekovaný playbook je sequence_words (asociační experiment).
+    // Bez této pojistky AI v karel-block-research občas vrátí 8 slov i pro
+    // šachy / kresbu / hru → followup pak spustí asociační režim místo
+    // skutečné metody bodu. Stejně tak ignorujeme planned_steps z incomingState,
+    // pokud bod NENÍ sequence_words (state mohl prosáknout z předchozího bodu).
+    const playbookIsSequence = playbook?.step_protocol.kind === "sequence_words";
+    const plannedFromResearchRaw: string[] = Array.isArray(research?.planned_steps) ? research.planned_steps : [];
+    const plannedFromResearch = playbookIsSequence ? plannedFromResearchRaw : [];
     const baseState = bootstrapState(playbook, plannedFromResearch);
+    const incomingPlanned = (incomingState?.planned_steps && incomingState.planned_steps.length && playbookIsSequence)
+      ? incomingState.planned_steps
+      : null;
     const state: ProtocolState = {
       ...baseState,
       ...(incomingState || {}),
-      planned_steps:
-        (incomingState?.planned_steps && incomingState.planned_steps.length
-          ? incomingState.planned_steps
-          : baseState.planned_steps),
+      planned_steps: incomingPlanned ?? baseState.planned_steps,
     };
 
-    // Rekonstrukce responses (anti-loop guard)
+    // Rekonstrukce responses (anti-loop guard) — jen pokud máme reálné stimuly
     if (state.responses.length === 0 && state.planned_steps.length) {
       state.responses = reconstructResponses(turns, state.planned_steps);
       // step_index = počet zaznamenaných odpovědí (další volný stimul)

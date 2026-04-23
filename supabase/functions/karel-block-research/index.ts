@@ -472,10 +472,18 @@ Cituj reálné manuály (Machover 1949, Koch 1949, Buck 1948, Burns 1970, Jung 1
       : (perplexity?.content ?? null);
     const structured = await structureWithAI(blockText, partName, partAge, knowledgeContext);
 
+    // ── HARD GUARD (2026-04-23): planned_steps SMÍ vrátit jen tehdy, když
+    // bod programu skutečně je asociační experiment. Gemini má tendenci
+    // vyplnit pole 8 slovy i u úplně jiných metod (šachy, kresba…), což
+    // pak v karel-block-followup spustí asociační režim místo plánované
+    // metody. Tady to vynutíme.
+    const allowPlannedSteps = hints.isAssociation || playbook?.method_id === "association_experiment_jung";
+
     let result: ResearchOutput;
     if (structured) {
       result = {
         ...structured,
+        planned_steps: allowPlannedSteps ? structured.planned_steps : undefined,
         method_id: playbook?.method_id ?? structured.method_id,
         supplies: playbook?.pre_session_setup.supplies ?? structured.supplies,
         setup_instruction: playbook?.pre_session_setup.what_to_say_first ?? structured.setup_instruction,
