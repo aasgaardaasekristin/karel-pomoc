@@ -176,6 +176,17 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
   // chatu typu "napiš mi ty slova" mohly být přesměrovány na produce endpoint.
   const [activeBlock, setActiveBlock] = useState<{ index: number; text: string; detail?: string } | null>(null);
 
+  // ── BLOCK WORKSPACE MODE (2026-04-23 hard reset) ──
+  // Když je nastaven, celá obrazovka se přepne do dedikovaného pracovního
+  // prostoru jednoho bodu programu (Karlův brief, instrukce, pomůcky, přílohy
+  // a per-bod chat). Hana tak vidí JEN to, co k danému bodu potřebuje.
+  // null = výchozí "plan_overview" obraz (seznam bodů schváleného plánu).
+  const [activeBlockWorkspace, setActiveBlockWorkspace] = useState<{
+    index: number;
+    text: string;
+    detail?: string;
+  } | null>(null);
+
   // Per-block research cache (do localStorage Karel ukládá expected_artifacts).
   // Pro completion gate stačí číst přímo z localStorage při ukončování.
   const checkMissingArtifacts = useCallback((): { blockIndex: number; blockText: string; missing: ("image" | "audio")[] }[] => {
