@@ -51,8 +51,40 @@ import { detectPlaybook, type Playbook } from "../_shared/clinicalPlaybooks.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY") ?? "";
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+
+/**
+ * Cache-first lookup do karel_method_library.
+ * Pokud existuje manuál pro daný method_key (= playbook.method_id),
+ * vrátí zkrácený manuál_md jako kontext do strukturace + zaznamená usage.
+ */
+async function loadCachedManual(method_key: string): Promise<{ manual_md: string; tags: string[]; library_id: string } | null> {
+  try {
+    const sb = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+    const { data, error } = await sb
+      .from("karel_method_library")
+      .select("id, manual_md, tags, usage_count")
+      .eq("method_key", method_key)
+      .in("status", ["seed", "active"])
+      .maybeSingle();
+    if (error || !data) return null;
+    // best-effort usage update
+    sb.from("karel_method_library")
+      .update({ usage_count: (data.usage_count ?? 0) + 1, last_used_at: new Date().toISOString() })
+      .eq("id", data.id)
+      .then(() => {}, () => {});
+    return {
+      manual_md: String(data.manual_md ?? "").slice(0, 4000),
+      tags: Array.isArray(data.tags) ? data.tags : [],
+      library_id: data.id,
+    };
+  } catch (e) {
+    console.warn("[block-research] loadCachedManual failed:", e);
+    return null;
+  }
+}
 
 type ResearchOutput = {
   method_label: string;
@@ -402,11 +434,17 @@ Deno.serve(async (req: Request) => {
     // 0) DETEKCE PEVNÉHO PLAYBOOKU — pokud existuje, je to autoritativní zdroj
     const playbook: Playbook | null = detectPlaybook(blockText);
 
-    // 1) Perplexity rešerše — vždy cílená na konkrétní manuál (pokud máme playbook)
+    // 0b) CACHE-FIRST: pokud máme playbook id, podívej se do knihovny
+    let cachedManual: { manual_md: string; tags: string[]; library_id: string } | null = null;
+    if (playbook?.method_id) {
+      cachedManual = await loadCachedManual(playbook.method_id);
+    }
+
+    // 1) Perplexity rešerše — POUZE pokud nemáme cache hit
     let perplexity: { content: string; citations: string[] } | null = null;
     const hints = detectMethodHints(blockText);
     const isDiagnostic = hints.isDrawing || hints.isAssociation || hints.isPlay || hints.isNarrative || !!playbook;
-    if (depth === "deep" || isDiagnostic) {
+    if (!cachedManual && (depth === "deep" || isDiagnostic)) {
       const manualHint = playbook
         ? `Vycházíme z manuálu: ${playbook.method_label}. Zdroje: ${playbook.source_refs.join("; ")}.`
         : "Identifikuj typ projektivní/diagnostické metody a cituj manuál.";
@@ -428,8 +466,11 @@ Cituj reálné manuály (Machover 1949, Koch 1949, Buck 1948, Burns 1970, Jung 1
       perplexity = await callPerplexity(ppPrompt);
     }
 
-    // 2) Strukturace přes Lovable AI (vždy)
-    const structured = await structureWithAI(blockText, partName, partAge, perplexity?.content ?? null);
+    // 2) Strukturace přes Lovable AI — kontext = cached manuál NEBO Perplexity
+    const knowledgeContext = cachedManual?.manual_md
+      ? `MANUÁL Z KNIHOVNY (karel_method_library, method_key=${playbook?.method_id}):\n${cachedManual.manual_md}`
+      : (perplexity?.content ?? null);
+    const structured = await structureWithAI(blockText, partName, partAge, knowledgeContext);
 
     let result: ResearchOutput;
     if (structured) {
@@ -444,7 +485,7 @@ Cituj reálné manuály (Machover 1949, Koch 1949, Buck 1948, Burns 1970, Jung 1
               ...playbook.required_artifacts.filter(a => a === "image" || a === "audio" || a === "text") as ("image"|"audio"|"text")[],
             ]))
           : structured.expected_artifacts,
-        source: playbook ? "playbook" : structured.source,
+        source: cachedManual ? "playbook" : (playbook ? "playbook" : structured.source),
       };
     } else {
       const fb = buildFallback(blockText, partName, partAge);
@@ -452,6 +493,9 @@ Cituj reálné manuály (Machover 1949, Koch 1949, Buck 1948, Burns 1970, Jung 1
         ? { ...fb, method_id: playbook.method_id, method_label: playbook.method_label, source: "playbook" }
         : fb;
     }
+
+    // anotuj zdroj kontextu pro debug v UI
+    (result as any).from_library = !!cachedManual;
 
     return new Response(JSON.stringify(result), {
       status: 200,

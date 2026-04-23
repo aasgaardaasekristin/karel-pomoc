@@ -77,7 +77,7 @@ export const playbook_association_experiment_jung: Playbook = {
     therapist_position: `naproti dítěti, oční kontakt, ne příliš blízko`,
     child_position: `pohodlně, nohy na zemi, ruce volně`,
     what_to_say_first:
-      'Řekni přesně: »Tundrupku, budeme spolu hrát hru se slovy. Já ti řeknu jedno slovo a ty mi hned řekni první slovo, které tě napadne. Nemusíš o tom přemýšlet, není správná ani špatná odpověď. Začínáme?`'`,
+      "Řekni přesně: »Tundrupku, budeme spolu hrát hru se slovy. Já ti řeknu jedno slovo a ty mi hned řekni první slovo, které tě napadne. Nemusíš o tom přemýšlet, není správná ani špatná odpověď. Začínáme?«",
     what_NOT_to_say: [
       `Nepokládej navádějící otázky (např. A co rodina?)`,
       `Nehodnoť odpovědi (např. Hezky., Aha to je zajímavé.)`,
@@ -96,7 +96,7 @@ export const playbook_association_experiment_jung: Playbook = {
     // planned_steps doplňuje dynamicky karel-live-session-produce na míru bodu programu
     planned_steps: undefined,
     instruction:
-      `Řekni přesně jedno slovo, klidně, neutrálním tónem. Spusť stopky. Doslovně zapiš první odpověď dítěte. Zaznamenej latenci a afekt. Pokud dítě mlčí > 30 s, zapiš »odmlka 30+ s` a přejdi k dalšímu slovu BEZ opakování.``,
+      "Řekni přesně jedno slovo, klidně, neutrálním tónem. Spusť stopky. Doslovně zapiš první odpověď dítěte. Zaznamenej latenci a afekt. Pokud dítě mlčí > 30 s, zapiš »odmlka 30+ s« a přejdi k dalšímu slovu BEZ opakování.",
     what_to_record: [
       "verbatim",
       "latency_seconds",
@@ -123,18 +123,18 @@ export const playbook_association_experiment_jung: Playbook = {
     ],
     immediate_actions: [
       `PŘERUŠ sekvenci slov — žádný další stimul`,
-      `Validuj nález terapeutce (»to co popisuješ je klinicky významné, je to indikátor komplexu vázaného k tématu, NE selhání`)``,
+      "Validuj nález terapeutce (»to co popisuješ je klinicky významné, je to indikátor komplexu vázaného k tématu, NE selhání)",
       `Dej terapeutce přesný grounding skript pro dítě`,
       `Rozhodni: pokračovat / zvolnit / zcela přerušit (a proč)`,
       `Vyžaduj zápis přesné formulace dítěte + neverbální projevy`,
     ],
     do_not_repeat_stimulus: true,
     grounding_script:
-      'Přečti dítěti klidně: »Tundrupku, jsi tady se mnou, jsme v bezpečí. Zhluboka se nadechni se mnou — nádech, výdech. Pojmenuj mi tři věci, které vidíš v místnosti.` Počkej na odpovědi, oceň, pak pauza min. 3 minuty.'`,
+      "Přečti dítěti klidně: »Tundrupku, jsi tady se mnou, jsme v bezpečí. Zhluboka se nadechni se mnou — nádech, výdech. Pojmenuj mi tři věci, které vidíš v místnosti. Počkej na odpovědi, oceň, pak pauza min. 3 minuty.",
   },
   closure_protocol: {
     reproduction_check:
-      `Po dokončení 8 slov a pauze 5–10 min požádej dítě: »Vzpomeneš si, jaká slova jsme říkali? A co jsi na ně odpovídal?` Zapiš, která slova/odpovědi si nepamatuje (reprodukční chyba = silný indikátor komplexu).``,
+      "Po dokončení 8 slov a pauze 5–10 min požádej dítě: »Vzpomeneš si, jaká slova jsme říkali? A co jsi na ně odpovídal? Zapiš, která slova/odpovědi si nepamatuje (reprodukční chyba = silný indikátor komplexu).\"",
     debrief_questions: [
       `Jak ti to šlo?`,
       `Bylo nějaké slovo, u kterého ti bylo divně?`,
@@ -166,8 +166,8 @@ export const playbook_draw_a_person_machover: Playbook = {
     therapist_position: `z boku, ne přímo nad dítětem, mlčky pozoruj`,
     child_position: `u stolu, papír před sebou`,
     what_to_say_first:
-      'Řekni přesně: »Tundrupku, nakresli mi prosím postavu. Kohokoliv, kdo tě napadne. Není to o tom, jestli to bude hezké.` Pak mlčky pozoruj, NEzasahuj.'`,
-    what_NOT_to_say: [
+      "Řekni přesně: »Tundrupku, nakresli mi prosím postavu. Kohokoliv, kdo tě napadne. Není to o tom, jestli to bude hezké.` Pak mlčky pozoruj, NEzasahuj.'`,
+    "\"\\"\\\"what_NOT_to_say: [\\\"\\"\""
       `Nedávej nápovědu (např. Můžeš nakreslit chlapce.)`,
       `Nekomentuj průběh (např. Hezké vlasy.)`,
       `Neopravuj (např. Chybí ti uši.)`,
@@ -209,7 +209,7 @@ export const playbook_draw_a_person_machover: Playbook = {
     signs: [`pláč při určité části`, `ztuhnutí ruky`, `verbalizace traumatu`, `dramatické zničení kresby`],
     immediate_actions: [
       `Zastav inquiry, neptej se dál`,
-      `Validuj (»to je důležitý vjem`)``,
+      "Validuj (»to je důležitý vjem)",
       "Grounding",
       `Rozhodni o pokračování`,
     ],
@@ -240,7 +240,7 @@ export const playbook_tree_test_koch: Playbook = {
     therapist_position: `z boku, mlčky pozoruj`,
     child_position: `u stolu`,
     what_to_say_first:
-      'Řekni přesně: »Nakresli mi nějaký strom. Jakýkoli strom, který tě napadne.` Pak mlčky pozoruj.'`,
+      "Řekni přesně: »Nakresli mi nějaký strom. Jakýkoli strom, který tě napadne.` Pak mlčky pozoruj.'`,
     what_NOT_to_say: [
       `Nespecifikuj druh ani roční období`,
       `Nehodnoť, neopravuj`,
@@ -259,13 +259,13 @@ export const playbook_tree_test_koch: Playbook = {
   step_protocol: {
     kind: "drawing_phases",
     instruction:
-      `Fáze 1: nech kreslit. Fáze 2: post-drawing — »kolik je tomu stromu let? jak se mu daří? co se mu stalo?`. Doslovný zápis.``,
+      `Fáze 1: nech kreslit. Fáze 2: post-drawing — »kolik je tomu stromu let? jak se mu daří? co se mu stalo?`. Doslovný zápis.",
     what_to_record: ["drawing_order", "placement", "size", "pressure", "tree_parts", "post_inquiry_verbatim"],
     red_flags: [
       `dutiny v kmeni (často trauma marker)`,
       `uschlé větve, opadané listí`,
       `extrémně malý strom v rohu`,
-      `verbalizace traumatu (»tenhle strom někdo zlomil`)``,
+      "verbalizace traumatu (»tenhle strom někdo zlomil)",
     ],
   },
   trauma_response_protocol: {
@@ -295,7 +295,7 @@ export const playbook_htp_buck: Playbook = {
     therapist_position: `z boku`,
     child_position: `u stolu`,
     what_to_say_first:
-      'Postupně dej tři instrukce s pauzou: »Nakresli mi dům.` → po dokončení nový papír → »Nakresli mi strom.` → »Nakresli mi člověka.` Mezi nimi krátká pauza.'`,
+      "Postupně dej tři instrukce s pauzou: »Nakresli mi dům.` → po dokončení nový papír → »Nakresli mi strom.` → »Nakresli mi člověka. Mezi nimi krátká pauza.",
     what_NOT_to_say: [`Nespecifikuj typ`, `Nehodnoť`],
     measurements_required: [
       `pořadí všech tří kreseb`,
@@ -305,7 +305,7 @@ export const playbook_htp_buck: Playbook = {
   step_protocol: {
     kind: "drawing_phases",
     instruction:
-      `Po každé kresbě post-drawing inquiry: dům — »kdo tam bydlí, je tam šťastný?`, strom — »jak se mu daří?`, postava — »kdo to je, co dělá, cítí?`. Doslovně zapiš.``,
+      `Po každé kresbě post-drawing inquiry: dům — »kdo tam bydlí, je tam šťastný?`, strom — »jak se mu daří?`, postava — »kdo to je, co dělá, cítí?`. Doslovně zapiš.",
     what_to_record: ["per_drawing_full_set"],
     red_flags: [
       `okna bez skla / zamřížovaná`,
@@ -342,7 +342,7 @@ export const playbook_kfd_burns: Playbook = {
     therapist_position: `z boku`,
     child_position: `u stolu`,
     what_to_say_first:
-      'Řekni přesně: »Nakresli mi prosím svou rodinu, jak něco dělá. Ne jako fotku — ať se vidí, že každý něco dělá.`'`,
+      "Řekni přesně: »Nakresli mi prosím svou rodinu, jak něco dělá. Ne jako fotku — ať se vidí, že každý něco dělá.«",
     what_NOT_to_say: [`Nespecifikuj kdo do rodiny patří`, `Nenavrhuj činnosti`],
     measurements_required: [
       `kdo je nakreslen (a kdo chybí)`,
@@ -393,7 +393,7 @@ export const playbook_narrative_cat: Playbook = {
     therapist_position: `naproti, klidně`,
     child_position: `pohodlně`,
     what_to_say_first:
-      'Řekni přesně: »Vymysli mi prosím příběh. Příběh musí mít začátek, něco se stane, a konec. Mluv pomalu, abych ti stihla zapsat.`'`,
+      "Řekni přesně: »Vymysli mi prosím příběh. Příběh musí mít začátek, něco se stane, a konec. Mluv pomalu, abych ti stihla zapsat.«",
     what_NOT_to_say: [`Nenavrhuj zápletku`, `Nepřerušuj`],
     measurements_required: [
       `hlavní postava (kdo, věk, pohlaví)`,
@@ -408,7 +408,7 @@ export const playbook_narrative_cat: Playbook = {
   step_protocol: {
     kind: "narrative",
     instruction:
-      `Doslovně zapiš nebo nahraj. Pokud dítě skončí příliš brzy, jednou se zeptej: »A co bylo dál?` Jinak nezasahuj.``,
+      `Doslovně zapiš nebo nahraj. Pokud dítě skončí příliš brzy, jednou se zeptej: »A co bylo dál?` Jinak nezasahuj.",
     what_to_record: ["full_verbatim_story", "pauses", "affect_changes"],
     red_flags: [
       `katastrofický konec bez záchrany`,
@@ -444,7 +444,7 @@ export const playbook_sandtray_lowenfeld: Playbook = {
     therapist_position: `z boku, na úrovni dítěte`,
     child_position: `u podložky`,
     what_to_say_first:
-      'Řekni přesně: »Tady máš různé figurky. Postav si svůj svět — jakýkoliv. Já budu jen pozorovat.`'`,
+      "Řekni přesně: »Tady máš různé figurky. Postav si svůj svět — jakýkoliv. Já budu jen pozorovat.«",
     what_NOT_to_say: [`Nenavrhuj scénu`, `Nehodnoť výběr figurek`],
     measurements_required: [
       `první vybraná figurka`,
@@ -459,7 +459,7 @@ export const playbook_sandtray_lowenfeld: Playbook = {
   step_protocol: {
     kind: "play",
     instruction:
-      `Mlčky pozoruj 10–20 min. Zapiš sekvenci akcí. Po dokončení se zeptej: »Můžeš mi povědět, co se v tom světě děje?` Vyfoť výslednou scénu.``,
+      `Mlčky pozoruj 10–20 min. Zapiš sekvenci akcí. Po dokončení se zeptej: »Můžeš mi povědět, co se v tom světě děje?` Vyfoť výslednou scénu.",
     what_to_record: ["sequence_of_actions", "final_scene_photo", "narrative_verbatim"],
     red_flags: [
       `izolovaná malá figurka v rohu`,
@@ -495,7 +495,7 @@ export const playbook_body_map_somatic: Playbook = {
     therapist_position: `vedle, podpůrně`,
     child_position: `u stolu`,
     what_to_say_first:
-      'Řekni přesně: »Tady je obrys postavy. Vybarvi prosím barvami místa, kde něco cítíš. Dej barvu, jakou si vybereš — třeba červenou, kde to bolí, modrou kde je klid…`'`,
+      "Řekni přesně: »Tady je obrys postavy. Vybarvi prosím barvami místa, kde něco cítíš. Dej barvu, jakou si vybereš — třeba červenou, kde to bolí, modrou kde je klid…«",
     what_NOT_to_say: [`Nediktuj barvy ani významy`],
     measurements_required: [
       `barva → tělesná oblast`,
@@ -506,7 +506,7 @@ export const playbook_body_map_somatic: Playbook = {
   step_protocol: {
     kind: "drawing_phases",
     instruction:
-      `Po dokončení projdi spolu mapu — »a tady ta barva znamená co?`. Doslovně zapiš.``,
+      `Po dokončení projdi spolu mapu — »a tady ta barva znamená co?`. Doslovně zapiš.",
     what_to_record: ["color_to_zone_mapping", "verbatim_explanations"],
     red_flags: [
       `černé/červené zóny v genitální oblasti, krku, hrudi (somatický marker traumatu)`,
@@ -541,7 +541,7 @@ export const playbook_safe_place: Playbook = {
     therapist_position: `klidně vedle nebo naproti`,
     child_position: `pohodlně, oči otevřené nebo zavřené (jak chce dítě)`,
     what_to_say_first:
-      'Řekni klidně, pomalu: »Představ si místo, kde se cítíš úplně v bezpečí. Může být skutečné nebo vymyšlené. Až ho budeš mít, řekni mi o něm.`'`,
+      "Řekni klidně, pomalu: »Představ si místo, kde se cítíš úplně v bezpečí. Může být skutečné nebo vymyšlené. Až ho budeš mít, řekni mi o něm.«",
     what_NOT_to_say: [`Nenavrhuj místo`, `Nepospíchej`],
     measurements_required: [
       `popis místa (verbatim)`,
@@ -553,7 +553,7 @@ export const playbook_safe_place: Playbook = {
   step_protocol: {
     kind: "open_dialog",
     instruction:
-      `Pomalé otázky: »Co vidíš? Co slyšíš? Jak to tam voní? Jak se ti tam dýchá?` Žádný spěch.``,
+      `Pomalé otázky: »Co vidíš? Co slyšíš? Jak to tam voní? Jak se ti tam dýchá?` Žádný spěch.",
     what_to_record: ["full_description", "sensory_anchors", "affect"],
     red_flags: [
       `dítě nedokáže najít bezpečné místo (silný marker absence vnitřního bezpečí)`,
