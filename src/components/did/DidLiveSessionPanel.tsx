@@ -1370,8 +1370,8 @@ ${report}${interrogationBlock}${reflectionText}`;
         </div>
 
         {/* Scrollovatelný střed = celý pracovní prostor bodu */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 pb-8">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+          <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 pb-24">
             <BlockDiagnosticChat
               key={`${planId ?? "ad-hoc"}-${block.index}-${planRefreshTick}`}
               blockIndex={block.index}
