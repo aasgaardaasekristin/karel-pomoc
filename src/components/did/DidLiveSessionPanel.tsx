@@ -128,7 +128,10 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
 
   // ── Live Session Room v1 additions (session prep → live) ──
   // Plán panel viditelný hned v živé místnosti, ne jen jako skrytý kontext.
-  const [planExpanded, setPlanExpanded] = useState(true);
+  // Default = collapsed. Na malých výškách (888×744) by rozbalený plán
+  // společně s tool-stripem a hint kartami vytlačil input mimo viewport
+  // a uživatelka by ho fyzicky neměla kam doscrollovat.
+  const [planExpanded, setPlanExpanded] = useState(false);
   // Quick-note dialog — sběr poznámek během sezení (zařadí se do toku jako 📝).
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
