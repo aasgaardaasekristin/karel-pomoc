@@ -291,55 +291,55 @@ const BlockDiagnosticChat = ({
       {showBrief && (
         <div className="rounded-sm border border-border/60 bg-background/70">
           <div className="px-2.5 pb-2 space-y-1.5 text-[11px] text-foreground">
-            {!research && !isResearchLoading && onLoadResearch && (
+            {!effectiveResearch && !effectiveResearchLoading && (
               <div className="flex items-center justify-between gap-2">
                 <p className="text-muted-foreground italic">Karel ještě neprovedl odbornou rešerši.</p>
                 <Button
                   size="sm"
                   variant="outline"
                   className="h-6 text-[10px] gap-1"
-                  onClick={onLoadResearch}
+                  onClick={() => void loadResearch()}
                 >
                   <Sparkles className="w-3 h-3" /> Spustit rešerši
                 </Button>
               </div>
             )}
-            {isResearchLoading && (
+            {effectiveResearchLoading && (
               <div className="flex items-center gap-2 text-muted-foreground italic">
                 <Loader2 className="w-3 h-3 animate-spin" /> Karel dohledává odborná kritéria…
               </div>
             )}
-            {research && (
+            {effectiveResearch && (
               <>
-                {research.method_label && (
+                {effectiveResearch.method_label && (
                   <p>
-                    <span className="font-semibold">Metoda:</span> {research.method_label}
+                    <span className="font-semibold">Metoda:</span> {effectiveResearch.method_label}
                   </p>
                 )}
-                {research.supplies?.length > 0 && (
+                {effectiveResearch.supplies?.length > 0 && (
                   <p>
-                    <span className="font-semibold">Pomůcky:</span> {research.supplies.join(", ")}
+                    <span className="font-semibold">Pomůcky:</span> {effectiveResearch.supplies.join(", ")}
                   </p>
                 )}
-                {research.setup_instruction && (
+                {effectiveResearch.setup_instruction && (
                   <p>
-                    <span className="font-semibold">Instrukce dítěti:</span> „{research.setup_instruction}"
+                    <span className="font-semibold">Instrukce dítěti:</span> „{effectiveResearch.setup_instruction}"
                   </p>
                 )}
-                {research.observe_criteria?.length > 0 && (
+                {effectiveResearch.observe_criteria?.length > 0 && (
                   <div>
                     <p className="font-semibold">Co sledovat:</p>
                     <ul className="list-disc pl-4 space-y-0.5">
-                      {research.observe_criteria.slice(0, 8).map((c, i) => (
+                      {effectiveResearch.observe_criteria.slice(0, 8).map((c, i) => (
                         <li key={i}>{c}</li>
                       ))}
                     </ul>
                   </div>
                 )}
-                {research.expected_artifacts?.length > 0 && (
+                {effectiveResearch.expected_artifacts?.length > 0 && (
                   <p className="text-muted-foreground">
                     <span className="font-semibold">Karel očekává:</span>{" "}
-                    {research.expected_artifacts
+                    {effectiveResearch.expected_artifacts
                       .map((a) => (a === "image" ? "📷 obrázek" : a === "audio" ? "🎙️ audio" : "📝 zápis"))
                       .join(", ")}
                   </p>
