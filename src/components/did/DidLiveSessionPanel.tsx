@@ -202,6 +202,9 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
 - Pokud detekuješ SWITCH (změnu identity/části), označ to tagem [SWITCH:JMÉNO_NOVÉ_ČÁSTI] na konci odpovědi.`;
   }, [partName, activePart, therapistName, contextBrief, switchLog]);
 
+  // Detekce přímé výzvy „napiš mi slova / otázky / nápady" — přesměrujeme na produce
+  const CONTENT_REQUEST_RE = /(napiš|dej|navrhni|vygeneruj|řekni|vyrob)\s+(mi\s+)?(ty\s+)?(slova|asociace|otázky|otazky|nápady|napady|barvy|instrukci|seznam)/i;
+
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
     const userMessage = input.trim();
@@ -209,6 +212,14 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
 
     const updatedMessages = [...messages, { role: "user" as const, content: userMessage }];
     setMessages(updatedMessages);
+
+    // Přímá výzva na produkci obsahu pro aktivní bod → produce endpoint místo karel-chat
+    if (activeBlock && CONTENT_REQUEST_RE.test(userMessage)) {
+      pushActivateBlock(activeBlock, userMessage);
+      toast.info(`Karel vyrábí obsah pro bod #${activeBlock.index + 1}…`);
+      return;
+    }
+
     // Karel proaktivní reakce na nový input terapeutky
     pushHintTrigger(userMessage, "note");
     setIsLoading(true);
