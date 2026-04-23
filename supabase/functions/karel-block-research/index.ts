@@ -305,15 +305,15 @@ async function structureWithAI(
 ${perplexityRaw ? `ODBORNÁ REŠERŠE Z PERPLEXITY:\n${perplexityRaw}\n` : ""}
 
 Tvůj úkol: Vrať mi přesné odborné parametry pro tuto diagnostickou aktivitu tak, jak je potřebuje znát klinický psycholog/psychoterapeut/odborník na DID. Konkrétně:
-1. method_label — odborný název metody
-2. supplies — KONKRÉTNÍ pomůcky (typ tužky, formát papíru, hračky atd.)
-3. setup_instruction — PŘESNÁ věta, kterou má terapeutka říct dítěti, + jak rozmístit pomůcky
-4. observe_criteria — 5-8 KONKRÉTNÍCH diagnostických bodů, co u toho sledovat (odkud začíná kreslit, umístění, tlak tužky, latence odpovědí, neverbální signály...)
-5. expected_artifacts — co bude Karel potřebovat ke kvalitní analýze (image / audio / text)
-6. followup_questions — 3-5 otázek pro terapeutku během/po aktivitě, ať Karel získá přesně to, co potřebuje k validní analýze
+1. method_label — odborný název metody (cituj manuál: Jung asoc., Machover DAP, Koch Baumtest, Buck HTP, Burns KFD, CAT/TAT, Lowenfeld sandtray, somatic body map…)
+2. supplies — KONKRÉTNÍ pomůcky (typ tužky HB, formát papíru A4 nelinkovaný, stopky, audio nahrávač atd.)
+3. setup_instruction — PŘESNÁ věta, kterou má terapeutka říct dítěti, + jak rozmístit pomůcky + co sama NEsmí
+4. observe_criteria — 6-10 KONKRÉTNÍCH diagnostických bodů (latence v sekundách, verbatim, afekt, pořadí kreslení, umístění, tlak tužky, vegetativní reakce, vynechané části, perseverace, klang…)
+5. expected_artifacts — co Karel potřebuje k validní analýze (image / audio / text)
+6. followup_questions — 3-5 otázek pro terapeutku během/po aktivitě
+7. planned_steps — JEN POKUD JDE O ASOCIAČNÍ EXPERIMENT: vrať PŘESNĚ 8 konkrétních stimulačních slov vázaných na téma bodu programu (mix neutrálních a afektivních, na míru části "${partName}"${partAge ? ` věk ${partAge}` : ""}). Pro ostatní metody nech prázdné nebo vynech.
 
-Žádné obecné fráze. Je-li to kresebný test, uveď přesné parametry (HB tužka, A4 nelinkovaný apod.).
-Je-li to asociační hra, uveď co sledovat v reakcích.`;
+Žádné obecné fráze. Cituj reálný klinický manuál (Machover, Koch, Buck, Burns, Jung Word Association, Bellak CAT, Lowenfeld World Technique).`;
 
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -322,12 +322,12 @@ Je-li to asociační hra, uveď co sledovat v reakcích.`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-pro",
         messages: [
           {
             role: "system",
             content:
-              "Jsi klinický psycholog. Strukturuj odborná data do požadovaného JSON přes tool call emit_block_research.",
+              "Jsi klinický psycholog s expertízou v dětské psychodiagnostice (Machover, Koch, Buck, Jung, CAT, sandtray, somatic). Strukturuj odborná data do požadovaného JSON přes tool call emit_block_research. Buď přesný, cituj reálné manuály, žádné obecné fráze.",
           },
           { role: "user", content: userPrompt },
         ],
@@ -354,6 +354,7 @@ Je-li to asociační hra, uveď co sledovat v reakcích.`;
         ? args.expected_artifacts.filter((x: string) => ["image", "audio", "text"].includes(x))
         : ["text"],
       followup_questions: Array.isArray(args.followup_questions) ? args.followup_questions.map(String) : [],
+      planned_steps: Array.isArray(args.planned_steps) ? args.planned_steps.map(String).slice(0, 16) : undefined,
       source: perplexityRaw ? "perplexity" : "ai-only",
     };
   } catch (e) {
