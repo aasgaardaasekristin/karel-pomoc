@@ -24,6 +24,7 @@ import { Progress } from "@/components/ui/progress";
 import DidPostSessionInterrogation, { type InterrogationAnswer } from "./DidPostSessionInterrogation";
 import LiveProgramChecklist from "./LiveProgramChecklist";
 import KarelInSessionCards, { type KarelHintTrigger } from "./KarelInSessionCards";
+import BlockDiagnosticChat from "./BlockDiagnosticChat";
 
 type Message = {
   role: "user" | "assistant";
