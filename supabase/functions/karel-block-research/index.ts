@@ -209,7 +209,7 @@ async function callPerplexity(prompt: string): Promise<{ content: string; citati
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "sonar",
+        model: "sonar-pro",
         messages: [
           {
             role: "system",

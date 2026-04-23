@@ -31,11 +31,13 @@ export type DiagTurn = {
 
 export type BlockResearch = {
   method_label: string;
+  method_id?: string;
   supplies: string[];
   setup_instruction: string;
   observe_criteria: string[];
   expected_artifacts: ("image" | "audio" | "text")[];
   followup_questions: string[];
+  planned_steps?: string[];
   citations?: string[];
   source?: string;
 };
