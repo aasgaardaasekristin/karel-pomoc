@@ -39,7 +39,31 @@ export default function AdminSpravaLauncher({
   const [isReformatting, setIsReformatting] = useState(false);
   const [isCentrumSyncing, setIsCentrumSyncing] = useState(false);
   const [isCleaningTasks, setIsCleaningTasks] = useState(false);
+  const [isJungBootstrapping, setIsJungBootstrapping] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  const runJungBootstrap = useCallback(async () => {
+    setIsJungBootstrapping(true);
+    try {
+      const headers = await getAuthHeaders();
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-jung-original-bootstrap`,
+        { method: "POST", headers, body: JSON.stringify({ force: false }) },
+      );
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) throw new Error(data?.error || "Jung bootstrap selhal");
+      if (data?.skipped) {
+        toast.info(data.message || "Jungova paměť už byla inicializována.");
+      } else {
+        const okCount = (data?.results || []).filter((r: any) => r.ok).length;
+        toast.success(`Jungova paměť: ${okCount}/3 dokumentů zařazeno do Drive fronty.`);
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Jung bootstrap selhal");
+    } finally {
+      setIsJungBootstrapping(false);
+    }
+  }, []);
 
   const runDidBootstrap = useCallback(async () => {
     setIsBootstrapping(true);
