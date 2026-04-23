@@ -126,9 +126,12 @@ const BlockDiagnosticChat = ({
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [turns]);
 
+  const [lastError, setLastError] = useState<string | null>(null);
+
   const callFollowup = useCallback(
-    async (trigger: "auto_next" | "ask_karel" | "user_input", existingTurns: DiagTurn[]) => {
+    async (trigger: "auto_next" | "ask_karel" | "user_input", existingTurns: DiagTurn[]): Promise<boolean> => {
       setIsThinking(true);
+      setLastError(null);
       try {
         const { data, error } = await (supabase as any).functions.invoke("karel-block-followup", {
           body: {
@@ -140,7 +143,13 @@ const BlockDiagnosticChat = ({
             trigger,
           },
         });
-        if (error) throw error;
+        if (error) {
+          console.error("[BlockDiagnosticChat] invoke error:", error);
+          throw new Error(error.message || "invoke failed");
+        }
+        if ((data as any)?.error) {
+          throw new Error(String((data as any).error));
+        }
         const karelText = String((data as any)?.karel_text ?? "").trim();
         if (karelText) {
           const nextTurn: DiagTurn = {
@@ -149,6 +158,8 @@ const BlockDiagnosticChat = ({
             ts: new Date().toISOString(),
           };
           setTurns((prev) => [...prev, nextTurn]);
+        } else {
+          throw new Error("Karel nevrátil žádný text.");
         }
         const done = !!(data as any)?.done;
         const missing: ("image" | "audio")[] = Array.isArray((data as any)?.missing_artifacts)
@@ -159,9 +170,13 @@ const BlockDiagnosticChat = ({
           const cm = (data as any)?.suggested_close_message;
           setCloseMsg(typeof cm === "string" && cm.trim() ? cm.trim() : "Karel má dost dat — můžeš bod uzavřít.");
         }
+        return true;
       } catch (e: any) {
         console.error("[BlockDiagnosticChat] followup failed:", e);
-        toast.error("Karel teď nezvládl reagovat. Zkus znovu.");
+        const msg = e?.message ?? String(e);
+        setLastError(msg);
+        toast.error(`Karel teď nezvládl reagovat: ${msg}`);
+        return false;
       } finally {
         setIsThinking(false);
       }
@@ -169,13 +184,22 @@ const BlockDiagnosticChat = ({
     [partName, therapistName, blockIndex, blockText, blockDetail, research],
   );
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = draft.trim();
     if (!text) return;
-    const next = [...turns, { from: "hana" as const, text, ts: new Date().toISOString() }];
+    // Optimistic: zobraz Hanin turn ihned, vyčisti draft AŽ když volání projde,
+    // aby se zpráva neztratila při chybě.
+    const haniTurn: DiagTurn = { from: "hana", text, ts: new Date().toISOString() };
+    const next = [...turns, haniTurn];
     setTurns(next);
+    const prevDraft = draft;
     setDraft("");
-    void callFollowup("auto_next", next);
+    const ok = await callFollowup("auto_next", next);
+    if (!ok) {
+      // při chybě vrátíme text zpět, ať Hana neztratí svá slova
+      setDraft(prevDraft);
+      setTurns((curr) => curr.filter((t) => t !== haniTurn));
+    }
   };
 
   const handleAskKarel = () => {
@@ -184,6 +208,10 @@ const BlockDiagnosticChat = ({
 
   const handleStartFirstTurn = () => {
     void callFollowup("user_input", turns);
+  };
+
+  const handleRetry = () => {
+    void callFollowup("auto_next", turns);
   };
 
   const addArtifactPlaceholder = (kind: "image" | "audio") => {
@@ -337,15 +365,16 @@ const BlockDiagnosticChat = ({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            // Enter = odeslat, Shift+Enter = nový řádek
+            if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
               handleSend();
             }
           }}
           placeholder={
             turns.length === 0
-              ? "Co Tundrupek řekl / udělal?"
-              : "Zapiš jeho další reakci… (Cmd/Ctrl+Enter odešle)"
+              ? "Co Tundrupek řekl / udělal? (Enter odešle, Shift+Enter = nový řádek)"
+              : "Zapiš jeho další reakci… (Enter odešle)"
           }
           className="min-h-[2.75rem] text-[11px] flex-1"
           disabled={isThinking}
@@ -359,7 +388,7 @@ const BlockDiagnosticChat = ({
             disabled={!draft.trim() || isThinking}
             title="Odeslat reakci, Karel pošle další otázku/slovo"
           >
-            <Send className="w-3 h-3" />
+            {isThinking ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
             Pošli
           </Button>
           <Button
@@ -375,6 +404,18 @@ const BlockDiagnosticChat = ({
           </Button>
         </div>
       </div>
+
+      {/* ── Chybový stav s retry ── */}
+      {lastError && !isThinking && (
+        <div className="rounded-sm border border-destructive/40 bg-destructive/5 px-2 py-1.5 text-[11px] text-destructive flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" /> Karel neodpověděl: {lastError}
+          </span>
+          <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={handleRetry}>
+            Zkus znovu
+          </Button>
+        </div>
+      )}
 
       {/* ── Tlačítka per-bod artefakty ── */}
       <div className="flex items-center gap-1.5 flex-wrap">
