@@ -327,25 +327,38 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
   // Detekce přímé výzvy „napiš mi slova / otázky / nápady" — přesměrujeme na produce
   const CONTENT_REQUEST_RE = /(napiš|dej|navrhni|vygeneruj|řekni|vyrob)\s+(mi\s+)?(ty\s+)?(slova|asociace|otázky|otazky|nápady|napady|barvy|instrukci|seznam)/i;
 
-  const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
-    const userMessage = input.trim();
-    setInput("");
+  // ── Volba bodu programu, ke kterému se další zpráva připojí (dropdown vedle textarey) ──
+  const programBlocks = useMemo(() => parseProgramBulletsLocal(contextBrief ?? ""), [contextBrief]);
+  const [attachToBlockIdx, setAttachToBlockIdx] = useState<number | null>(null);
 
-    const updatedMessages = [...messages, { role: "user" as const, content: userMessage }];
-    setMessages(updatedMessages);
-
-    // Přímá výzva na produkci obsahu pro aktivní bod → produce endpoint místo karel-chat
-    if (activeBlock && CONTENT_REQUEST_RE.test(userMessage)) {
-      pushActivateBlock(activeBlock, userMessage);
-      toast.info(`Karel vyrábí obsah pro bod #${activeBlock.index + 1}…`);
-      return;
+  // ── Pomocná funkce: přidá zápis do localStorage diagnostického logu daného bodu ──
+  // BlockDiagnosticChat čte tento klíč při mountu (`${storageKey}::turns::${idx}`).
+  // Tím Karelovo „připojeno k bodu" reálně dorazí do per-bod chatu i do completion gate.
+  const appendToBlockTurns = useCallback((blockIndex: number, hanaText: string, karelText?: string) => {
+    if (typeof window === "undefined") return;
+    const baseKey = `live_program_${planId ?? "ad-hoc"}`;
+    const turnsKey = `${baseKey}::turns::${blockIndex}`;
+    try {
+      const raw = window.localStorage.getItem(turnsKey);
+      const arr: { from: string; text: string; ts: string }[] = raw ? JSON.parse(raw) : [];
+      const ts = new Date().toISOString();
+      arr.push({ from: "hana", text: hanaText, ts });
+      if (karelText) arr.push({ from: "karel", text: karelText, ts: new Date().toISOString() });
+      window.localStorage.setItem(turnsKey, JSON.stringify(arr));
+    } catch (e) {
+      console.warn("[live] appendToBlockTurns failed:", e);
     }
+  }, [planId]);
 
-    // Karel proaktivní reakce na nový input terapeutky
-    pushHintTrigger(userMessage, "note");
+  // ── Jádro odeslání: streamuje karel-chat odpověď. Vrací true při úspěchu. ──
+  // Klíčové oproti původní verzi: NIKDY nemažeme uživatelskou zprávu z chatu.
+  // Při chybě jen označíme zprávu `failed=true` (UI nabídne „Zkusit znovu").
+  const streamKarelReply = useCallback(async (
+    historyForApi: Message[],
+    userMsgTs: string,
+    blockAttachment?: { index: number; text: string },
+  ): Promise<boolean> => {
     setIsLoading(true);
-
     let assistantContent = "";
     try {
       const headers = await getAuthHeaders();
@@ -355,18 +368,20 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
           method: "POST",
           headers,
           body: JSON.stringify({
-            messages: updatedMessages,
+            messages: historyForApi,
             mode: "supervision",
             didInitialContext: buildContext(),
           }),
         }
       );
-
-      if (!response.ok || !response.body) throw new Error("Chyba");
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      setMessages([...updatedMessages, { role: "assistant", content: "" }]);
+      // Vlož prázdnou Karlovu zprávu — bude se postupně plnit streamem
+      setMessages(prev => [...prev, { role: "assistant", content: "", ts: new Date().toISOString() }]);
 
       while (true) {
         const { done, value } = await reader.read();
@@ -385,7 +400,17 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
             const content = parsed.choices?.[0]?.delta?.content;
             if (content) {
               assistantContent += content;
-              setMessages([...updatedMessages, { role: "assistant", content: assistantContent }]);
+              setMessages(prev => {
+                const next = [...prev];
+                // poslední zpráva je Karel — aktualizuj content
+                for (let i = next.length - 1; i >= 0; i--) {
+                  if (next[i].role === "assistant") {
+                    next[i] = { ...next[i], content: assistantContent };
+                    break;
+                  }
+                }
+                return next;
+              });
             }
           } catch {
             buffer = line + "\n" + buffer;
@@ -394,22 +419,144 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
         }
       }
 
-      // Detect switch in final response
-      if (assistantContent) {
-        const cleaned = detectSwitch(assistantContent);
-        if (cleaned !== assistantContent) {
-          setMessages([...updatedMessages, { role: "assistant", content: cleaned }]);
-        }
+      // Vyčistit case: Karel nic nevrátil → považujeme za chybu (failed badge)
+      if (!assistantContent.trim()) {
+        // Smaž prázdnou Karlovu placeholder zprávu
+        setMessages(prev => {
+          const next = [...prev];
+          if (next.length && next[next.length - 1].role === "assistant" && !next[next.length - 1].content) {
+            next.pop();
+          }
+          return next;
+        });
+        throw new Error("Karel vrátil prázdnou odpověď");
       }
+
+      // Detekce switche
+      const cleaned = detectSwitch(assistantContent);
+      const finalContent = cleaned !== assistantContent ? cleaned : assistantContent;
+      const acceptedAt = new Date().toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" });
+
+      // Označ uživatelskou zprávu jako přijatou + vyčisti případný předchozí failed stav.
+      // Současně dopiš Karlovu finální verzi (po switch cleanup).
+      setMessages(prev => {
+        const next = [...prev];
+        for (let i = next.length - 1; i >= 0; i--) {
+          if (next[i].role === "assistant") {
+            next[i] = { ...next[i], content: finalContent };
+            break;
+          }
+        }
+        for (let i = next.length - 1; i >= 0; i--) {
+          if (next[i].role === "user" && next[i].ts === userMsgTs) {
+            next[i] = { ...next[i], failed: false, errorMsg: undefined, acceptedAt };
+            break;
+          }
+        }
+        return next;
+      });
+
+      // Pokud byla zpráva připojena k bodu programu, zaloguj i Karlovu odpověď
+      // do diagnostického logu daného bodu (ať to přežije remount + completion gate).
+      if (blockAttachment) {
+        appendToBlockTurns(blockAttachment.index, /* hana */ "", finalContent);
+        // Note: hana text byl už zalogován v sendMessage před streamem.
+      }
+
+      // Hint trigger spustíme až PO úspěšném streamu — neblbne pravý sloupec při chybě.
+      // Pošleme jen poslední uživatelský vstup.
+      const lastUserText = historyForApi[historyForApi.length - 1]?.content ?? "";
+      if (lastUserText) pushHintTrigger(lastUserText, "note");
+
+      return true;
     } catch (error) {
-      console.error("DID Live session error:", error);
-      toast.error("Chyba při komunikaci s Karlem");
-      if (!assistantContent) setMessages(messages);
+      console.error("DID Live session stream error:", error);
+      const errMsg = error instanceof Error ? error.message : "Neznámá chyba";
+
+      // ── KLÍČOVÁ OPRAVA: NIKDY nemažeme zprávu Hany ──
+      // Označíme ji `failed=true` a uživatelka má retry tlačítko.
+      setMessages(prev => {
+        const next = [...prev];
+        // Smaž prázdnou Karlovu placeholder zprávu (pokud vznikla)
+        if (next.length && next[next.length - 1].role === "assistant" && !next[next.length - 1].content.trim()) {
+          next.pop();
+        }
+        // Najdi uživatelskou zprávu podle ts a označ failed
+        for (let i = next.length - 1; i >= 0; i--) {
+          if (next[i].role === "user" && next[i].ts === userMsgTs) {
+            next[i] = { ...next[i], failed: true, errorMsg: errMsg, acceptedAt: undefined };
+            break;
+          }
+        }
+        return next;
+      });
+      toast.error(`Karel teď neodpověděl — text máš uložený, klikni „Zkusit znovu". (${errMsg})`);
+      return false;
     } finally {
       setIsLoading(false);
       textareaRef.current?.focus();
     }
+  }, [buildContext, detectSwitch, pushHintTrigger, appendToBlockTurns]);
+
+  const sendMessage = async () => {
+    if (!input.trim() || isLoading) return;
+    const userMessage = input.trim();
+    setInput("");
+
+    // Přímá výzva na produkci obsahu pro aktivní bod → produce endpoint místo karel-chat
+    if (activeBlock && CONTENT_REQUEST_RE.test(userMessage)) {
+      const ts = new Date().toISOString();
+      setMessages(prev => [...prev, { role: "user", content: userMessage, ts, acceptedAt: new Date().toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" }) }]);
+      pushActivateBlock(activeBlock, userMessage);
+      toast.info(`Karel vyrábí obsah pro bod #${activeBlock.index + 1}…`);
+      return;
+    }
+
+    // Atašmán k bodu programu (z dropdownu vedle textarey)
+    const attached = (attachToBlockIdx !== null && programBlocks[attachToBlockIdx])
+      ? { index: attachToBlockIdx, text: programBlocks[attachToBlockIdx] }
+      : undefined;
+
+    const ts = new Date().toISOString();
+    const userObj: Message = {
+      role: "user",
+      content: userMessage,
+      ts,
+      attachedBlockIndex: attached?.index,
+      attachedBlockText: attached?.text,
+    };
+    const updatedMessages: Message[] = [...messages, userObj];
+    setMessages(updatedMessages);
+
+    // Pokud terapeut připojuje zprávu k bodu, hned ji zaloguj do per-bod logu
+    // (i kdyby Karel selhal, asociace zůstane uložená u bodu).
+    if (attached) {
+      appendToBlockTurns(attached.index, userMessage);
+    }
+
+    // Reset výběru bodu po odeslání — terapeut musí explicitně připojit znovu
+    setAttachToBlockIdx(null);
+
+    // Připrav historii pro API (BEZ instrumentačních polí, jen role+content)
+    const apiHistory: Message[] = updatedMessages.map(m => ({ role: m.role, content: m.content }));
+    await streamKarelReply(apiHistory, ts, attached);
   };
+
+  // ── Retry pro neúspěšné zprávy ──
+  // Zprávu Hany ponecháme; jen znovu zavoláme stream s aktuální historií.
+  const retryUserMessage = useCallback(async (msgTs: string) => {
+    if (isLoading) return;
+    const idx = messages.findIndex(m => m.role === "user" && m.ts === msgTs);
+    if (idx < 0) return;
+    // Vyčisti failed flag, aby UI hned přepnulo na „přemýšlí…"
+    setMessages(prev => prev.map((m, i) => i === idx ? { ...m, failed: false, errorMsg: undefined } : m));
+    const apiHistory: Message[] = messages.slice(0, idx + 1).map(m => ({ role: m.role, content: m.content }));
+    const attached = messages[idx].attachedBlockIndex !== undefined && messages[idx].attachedBlockText
+      ? { index: messages[idx].attachedBlockIndex!, text: messages[idx].attachedBlockText! }
+      : undefined;
+    await streamKarelReply(apiHistory, msgTs, attached);
+  }, [messages, isLoading, streamKarelReply]);
+
 
   // Audio segment analysis
   const handleAudioSegmentAnalysis = async () => {
