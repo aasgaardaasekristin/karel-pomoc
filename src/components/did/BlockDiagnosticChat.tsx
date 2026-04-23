@@ -365,15 +365,16 @@ const BlockDiagnosticChat = ({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            // Enter = odeslat, Shift+Enter = nový řádek
+            if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
               handleSend();
             }
           }}
           placeholder={
             turns.length === 0
-              ? "Co Tundrupek řekl / udělal?"
-              : "Zapiš jeho další reakci… (Cmd/Ctrl+Enter odešle)"
+              ? "Co Tundrupek řekl / udělal? (Enter odešle, Shift+Enter = nový řádek)"
+              : "Zapiš jeho další reakci… (Enter odešle)"
           }
           className="min-h-[2.75rem] text-[11px] flex-1"
           disabled={isThinking}
@@ -387,7 +388,7 @@ const BlockDiagnosticChat = ({
             disabled={!draft.trim() || isThinking}
             title="Odeslat reakci, Karel pošle další otázku/slovo"
           >
-            <Send className="w-3 h-3" />
+            {isThinking ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
             Pošli
           </Button>
           <Button
@@ -403,6 +404,18 @@ const BlockDiagnosticChat = ({
           </Button>
         </div>
       </div>
+
+      {/* ── Chybový stav s retry ── */}
+      {lastError && !isThinking && (
+        <div className="rounded-sm border border-destructive/40 bg-destructive/5 px-2 py-1.5 text-[11px] text-destructive flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" /> Karel neodpověděl: {lastError}
+          </span>
+          <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={handleRetry}>
+            Zkus znovu
+          </Button>
+        </div>
+      )}
 
       {/* ── Tlačítka per-bod artefakty ── */}
       <div className="flex items-center gap-1.5 flex-wrap">
