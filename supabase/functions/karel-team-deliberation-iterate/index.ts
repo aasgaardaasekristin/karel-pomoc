@@ -35,6 +35,7 @@ interface AgendaBlock {
   block: string;
   minutes?: number | null;
   detail?: string | null;
+  tool_id?: string | null;
 }
 
 function safeJsonParse(text: string): any {
