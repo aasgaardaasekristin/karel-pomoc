@@ -40,7 +40,7 @@ interface Props {
  * Heuristický parser — vytáhne body z plan_markdown:
  *   - `1. ...`, `1) ...`
  *   - `- ...`, `* ...`
- *   - řádky uvnitř sekcí jako `## Program`, `## Agenda`, `## Plán`
+ *   - řádky uvnitř sekce `## Program sezení`
  *
  * Když zachytíme nadpis nebo prázdný řádek po bullet bloku, seznam ukončíme.
  * Krátké body (<6 znaků) ignorujeme.
@@ -53,9 +53,10 @@ function parseProgramBullets(md: string): string[] {
   let inProgramSection = false;
   let bulletBlockStarted = false;
 
-  // Aktivace POUZE v programové sekci — jinak bychom nasáli i otázky,
-  // původní návrhy nebo jiné bullet seznamy v markdownu.
-  const sectionRe = /^#{1,6}\s+(program sezení|program|agenda|plán sezení|průběh sezení|kroky sezení)/i;
+  // Aktivace POUZE v autoritativní sekci `Program sezení`.
+  // Záměrně nepovolujeme obecné nadpisy jako „Agenda“ nebo „Osnova“, protože
+  // starší markdowny pod nimi nesly původní návrh a pod nimi následovaly otázky.
+  const sectionRe = /^#{1,6}\s+program\s+sezení\s*$/i;
   const bulletRe = /^\s*(?:[-*•]|\d+[.)])\s+(.+)$/;
 
   for (const raw of lines) {
@@ -103,16 +104,7 @@ function parseProgramBullets(md: string): string[] {
     if (bulletBlockStarted) break;
   }
 
-  // Když parser nic nezachytil, zkus globálně všechny bullets v dokumentu.
-  if (bullets.length === 0) {
-    for (const raw of lines) {
-      const m = bulletRe.exec(raw);
-      if (m) {
-        const text = m[1].replace(/\*\*/g, "").trim();
-        if (text.length >= 6) bullets.push(text);
-      }
-    }
-  }
+  // Žádný globální fallback: nechceme nikdy nasát otázky, diskusi ani starou osnovu.
 
   // Zkrať na rozumnou velikost — větší než 12 bodů by terapeutku zahltilo.
   return bullets.slice(0, 12);
