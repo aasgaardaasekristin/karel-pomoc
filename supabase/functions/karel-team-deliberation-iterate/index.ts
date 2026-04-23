@@ -216,9 +216,10 @@ PRAVIDLA STRUKTURY:
 
     const programDraft: AgendaBlock[] = Array.isArray(parsed.program_draft)
       ? parsed.program_draft.slice(0, 8).map((b: any) => ({
-          block: String(b?.block ?? "").slice(0, 120).trim(),
+          block: String(b?.block ?? "").slice(0, 140).trim(),
           minutes: typeof b?.minutes === "number" ? b.minutes : null,
-          detail: b?.detail ? String(b.detail).slice(0, 280) : null,
+          detail: b?.detail ? String(b.detail).slice(0, 380) : null,
+          tool_id: b?.tool_id ? String(b.tool_id).slice(0, 40).trim() : null,
         })).filter((b: AgendaBlock) => b.block.length > 0)
       : [];
     const karelComment = String(parsed.karel_inline_comment ?? "").slice(0, 600);
