@@ -179,7 +179,7 @@ export function summarizeToolboxForPrompt(): string {
   const lines: string[] = [
     "═══ TERAPEUTICKÝ ARZENÁL (vyber 2–4 nástroje pro tento konkrétní program) ═══",
     "Pravidlo: program MUSÍ obsahovat alespoň 2 konkrétní hravé nástroje z tohoto seznamu.",
-    "NE generická slova jako „práce s emocemi", „rozhovor", „reflexe". VŽDY pojmenuj konkrétní nástroj.",
+    "NE genericka slova typu 'prace s emocemi', 'rozhovor', 'reflexe'. VZDY pojmenuj konkretni nastroj.",
     "Vše remote-native (chat / hlas / foto kresby / screen canvas) — NIKDY fyzické pomůcky v ruce terapeuta.",
     "",
   ];
