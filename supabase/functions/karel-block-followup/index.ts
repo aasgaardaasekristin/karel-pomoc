@@ -342,7 +342,6 @@ Když máš dost dat (pokrylo se min. 70 % observe_criteria), navrhni closure (d
     }
 
     // 5) SESTAV PROMPT
-    const therapistAddr = therapistName === "Káťa" ? "Káťo" : "Hani";
     const playbookBlock = playbook
       ? renderPlaybookForPrompt(playbook, state.planned_steps)
       : `(pro tento bod nebyl nalezen pevný playbook — řiď se obecnými klinickými principy a níže uvedenou rešerší)`;
