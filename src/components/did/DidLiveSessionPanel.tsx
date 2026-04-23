@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft, Camera, X, Shuffle, CheckCircle, RotateCcw, FileText, ChevronDown, ChevronUp, StickyNote, DoorClosed } from "lucide-react";
+import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft, Camera, X, Shuffle, CheckCircle, RotateCcw, FileText, ChevronDown, ChevronUp, StickyNote, DoorClosed, AlertTriangle } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -95,6 +95,17 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
     extraNote: string;
   } | null>(null);
 
+  // ── Completion gate (měkká brána) ──
+  // Před analýzou Karel zkontroluje, zda u bodů, kde sám očekával povinné artefakty
+  // (foto kresby / audio nahrávka), terapeutka opravdu něco přiložila. Pokud ne,
+  // zobrazí varování s možností buď ještě doplnit, nebo přesto pokračovat (a chybějící
+  // detaily doptat v post-session interrogation roomu).
+  const [completionGateOpen, setCompletionGateOpen] = useState(false);
+  const [completionGateAction, setCompletionGateAction] = useState<"analyze" | "light_close">("analyze");
+  const [missingArtifactsReport, setMissingArtifactsReport] = useState<
+    { blockIndex: number; blockText: string; missing: ("image" | "audio")[] }[]
+  >([]);
+
   // ── Karel in-session feedback triggers (pravý sloupec) ──
   const [hintTriggers, setHintTriggers] = useState<KarelHintTrigger[]>([]);
   const pushHintTrigger = useCallback(
@@ -112,6 +123,68 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
   // Drží se referenci na poslední aktivovaný bod, aby přímé výzvy v hlavním
   // chatu typu "napiš mi ty slova" mohly být přesměrovány na produce endpoint.
   const [activeBlock, setActiveBlock] = useState<{ index: number; text: string; detail?: string } | null>(null);
+
+  // Per-block research cache (do localStorage Karel ukládá expected_artifacts).
+  // Pro completion gate stačí číst přímo z localStorage při ukončování.
+  const checkMissingArtifacts = useCallback((): { blockIndex: number; blockText: string; missing: ("image" | "audio")[] }[] => {
+    if (typeof window === "undefined") return [];
+    const baseKey = `live_program_${planId ?? "ad-hoc"}`;
+    const result: { blockIndex: number; blockText: string; missing: ("image" | "audio")[] }[] = [];
+    try {
+      const planRaw = window.localStorage.getItem(baseKey);
+      if (!planRaw) return [];
+      const items = JSON.parse(planRaw) as { id: string; text: string; done: boolean }[];
+      if (!Array.isArray(items)) return [];
+      // Iterujeme přes všechny localStorage klíče s research/art/turns prefixem.
+      for (let idx = 0; idx < items.length; idx++) {
+        // Karel research data jsou v paměti komponenty (loadResearch), ne v LS.
+        // Místo toho použijeme heuristiku: pokud byly v BlockDiagnosticChat
+        // přidány turny (tj. bod se reálně rozjel), zkontrolujeme artefakty.
+        const turnsRaw = window.localStorage.getItem(`${baseKey}::turns::${idx}`);
+        if (!turnsRaw) continue;
+        const turns = JSON.parse(turnsRaw) as { from: string; text: string; attachment?: { kind: string } }[];
+        if (!Array.isArray(turns) || turns.length === 0) continue;
+        const artRaw = window.localStorage.getItem(`${baseKey}::art::${idx}`);
+        const arts = artRaw ? (JSON.parse(artRaw) as { kind: string }[]) : [];
+        const hasImage = arts.some(a => a.kind === "image");
+        const hasAudio = arts.some(a => a.kind === "audio");
+        // Heuristika: pokud text bodu obsahuje slova kresb/nakresl/portrét/strom/postav/mapa → očekáváme image
+        const textLc = items[idx].text.toLowerCase();
+        const expectsImage = /(nakresl|kresb|kresl|namaluj|portr|strom|postav|tělov|telov|mandala)/i.test(textLc);
+        const expectsAudio = /(asocia|slovn[íi] hr|příběh|pribeh|narrativ|narativ|hra s|figurk)/i.test(textLc);
+        const missing: ("image" | "audio")[] = [];
+        if (expectsImage && !hasImage) missing.push("image");
+        if (expectsAudio && !hasAudio) missing.push("audio");
+        if (missing.length > 0) {
+          result.push({ blockIndex: idx, blockText: items[idx].text, missing });
+        }
+      }
+    } catch (e) {
+      console.warn("[completion gate] failed to scan artifacts:", e);
+    }
+    return result;
+  }, [planId]);
+
+  const requestCloseFlow = useCallback((action: "analyze" | "light_close") => {
+    if (messages.length < 2) {
+      toast.error("Sezení je prázdné.");
+      return;
+    }
+    const missing = checkMissingArtifacts();
+    setMissingArtifactsReport(missing);
+    setCompletionGateAction(action);
+    if (missing.length > 0) {
+      // Měkká brána — varování s možností doplnit nebo pokračovat.
+      setCompletionGateOpen(true);
+      return;
+    }
+    // Žádné chybějící artefakty → pokračuj rovnou.
+    if (action === "analyze") {
+      setShowInterrogation(true);
+    } else {
+      setHandoffDialogOpen(true);
+    }
+  }, [messages.length, checkMissingArtifacts]);
 
   const pushActivateBlock = useCallback(
     (block: { index: number; text: string; detail?: string }, userRequest?: string) => {
@@ -1027,7 +1100,7 @@ ${report}${interrogationBlock}${reflectionText}`;
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setHandoffDialogOpen(true)}
+              onClick={() => requestCloseFlow("light_close")}
               disabled={isFinishing || isClosingLight || messages.length < 2}
               className="gap-1.5 text-xs h-9"
             >
@@ -1038,7 +1111,7 @@ ${report}${interrogationBlock}${reflectionText}`;
             <Button
               variant="destructive"
               size="sm"
-              onClick={() => setShowInterrogation(true)}
+              onClick={() => requestCloseFlow("analyze")}
               disabled={isFinishing || isClosingLight || messages.length < 2}
               className="gap-1.5 text-xs h-9"
             >
@@ -1442,6 +1515,62 @@ ${report}${interrogationBlock}${reflectionText}`;
             <Button size="sm" onClick={handleLightClose} disabled={isClosingLight} className="gap-1.5">
               {isClosingLight ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DoorClosed className="w-3.5 h-3.5" />}
               Ukončit a uložit přepis
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Completion gate (měkká brána) ── */}
+      <Dialog open={completionGateOpen} onOpenChange={setCompletionGateOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              {completionGateAction === "analyze" ? "Před analýzou — chybí podklady" : "Před ukončením — chybí podklady"}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              U některých bodů jsi spustila diagnostický chat, ale chybí povinný artefakt (kresba / audio).
+              Karel z toho neudělá plnou klinickou analýzu.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {missingArtifactsReport.map((m) => (
+              <div
+                key={m.blockIndex}
+                className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs"
+              >
+                <p className="font-semibold text-foreground mb-1">
+                  Bod #{m.blockIndex + 1}: <span className="font-normal">{m.blockText.slice(0, 90)}</span>
+                </p>
+                <p className="text-amber-700 dark:text-amber-400">
+                  Chybí: {m.missing.map((k) => (k === "image" ? "📷 obrázek/kresba" : "🎙️ audio nahrávka")).join(", ")}
+                </p>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="gap-2 flex-wrap">
+            <Button variant="ghost" size="sm" onClick={() => setCompletionGateOpen(false)}>
+              Zpět doplnit
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                // Měkká brána: pokračuj, doplň chybějící do extra note přes interrogation room.
+                setCompletionGateOpen(false);
+                if (completionGateAction === "analyze") {
+                  // Předáme info o chybějících artefaktech přes setInterrogationPayload jako placeholder note
+                  const note = missingArtifactsReport
+                    .map((m) => `Bod #${m.blockIndex + 1}: chybí ${m.missing.join(", ")}`)
+                    .join("; ");
+                  setInterrogationPayload({ qa: [], extraNote: `[CHYBĚJÍCÍ ARTEFAKTY] ${note}` });
+                  setShowInterrogation(true);
+                } else {
+                  setHandoffDialogOpen(true);
+                }
+              }}
+            >
+              Pokračovat přesto
             </Button>
           </DialogFooter>
         </DialogContent>
