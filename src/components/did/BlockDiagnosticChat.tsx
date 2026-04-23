@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Loader2, Send, Mic, Camera, CheckCircle2, HelpCircle, FlaskConical, Sparkles, AlertCircle } from "lucide-react";
+import { Loader2, Send, Mic, Camera, CheckCircle2, Sparkles, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -64,6 +64,8 @@ interface Props {
   onArtifactsChange?: (artifacts: BlockArtifact[]) => void;
   onRequestArtefact?: (kind: "audio" | "image") => void;
   onMarkDone?: () => void;
+  showBrief?: boolean;
+  onAdvanceToNext?: () => void;
 }
 
 const BlockDiagnosticChat = ({
@@ -81,6 +83,8 @@ const BlockDiagnosticChat = ({
   onArtifactsChange,
   onRequestArtefact,
   onMarkDone,
+  showBrief = true,
+  onAdvanceToNext,
 }: Props) => {
   const turnsKey = `${storageKey}::turns::${blockIndex}`;
   const artKey = `${storageKey}::art::${blockIndex}`;
@@ -103,12 +107,20 @@ const BlockDiagnosticChat = ({
   });
   const [draft, setDraft] = useState("");
   const [isThinking, setIsThinking] = useState(false);
-  const [briefOpen, setBriefOpen] = useState(true);
   const [missingArtifacts, setMissingArtifacts] = useState<("image" | "audio")[]>([]);
   const [closeMsg, setCloseMsg] = useState<string | null>(null);
   const [protocolState, setProtocolState] = useState<any>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const autoStartedRef = useRef(false);
+
+  useEffect(() => {
+    autoStartedRef.current = false;
+    setDraft("");
+    setLastError(null);
+    setMissingArtifacts([]);
+    setCloseMsg(null);
+    setProtocolState(null);
+  }, [blockIndex, blockText, blockDetail]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -231,25 +243,8 @@ const BlockDiagnosticChat = ({
   return (
     <div className="rounded-md border border-primary/20 bg-card/50 px-2.5 py-2 space-y-2 min-h-0">
       {/* ── Brief: pomůcky, instrukce, kritéria ── */}
-      <div className="rounded-sm border border-amber-500/30 bg-amber-50/40 dark:bg-amber-950/10">
-        <button
-          type="button"
-          onClick={() => setBriefOpen((v) => !v)}
-          className="w-full flex items-center justify-between px-2 py-1.5 text-left"
-        >
-          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
-            <FlaskConical className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-            Diagnostický brief
-            {research?.source && (
-              <Badge variant="outline" className="text-[8px] h-3.5 ml-1">
-                {research.source === "perplexity" ? "Perplexity" : research.source === "ai-only" ? "AI" : "fallback"}
-              </Badge>
-            )}
-            {isResearchLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground ml-1" />}
-          </span>
-          <span className="text-[10px] text-muted-foreground">{briefOpen ? "skrýt" : "ukázat"}</span>
-        </button>
-        {briefOpen && (
+      {showBrief && (
+        <div className="rounded-sm border border-border/60 bg-background/70">
           <div className="px-2.5 pb-2 space-y-1.5 text-[11px] text-foreground">
             {!research && !isResearchLoading && onLoadResearch && (
               <div className="flex items-center justify-between gap-2">
@@ -307,8 +302,8 @@ const BlockDiagnosticChat = ({
               </>
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ── Turn log: Karel ↔ Hana ── */}
       <div
@@ -391,17 +386,6 @@ const BlockDiagnosticChat = ({
             {isThinking ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
             Pošli
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-6 text-[10px] gap-1 px-2"
-            onClick={handleAskKarel}
-            disabled={isThinking}
-            title="Karle, na co se mám teď zeptat?"
-          >
-            <HelpCircle className="w-3 h-3" />
-            Zeptej se
-          </Button>
         </div>
       </div>
 
@@ -442,7 +426,7 @@ const BlockDiagnosticChat = ({
             přiloženo: {artifacts.length} {artifacts.length === 1 ? "artefakt" : "artefaktů"}
           </span>
         )}
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
           {closeMsg && onMarkDone && (
             <Button
               size="sm"
@@ -455,6 +439,16 @@ const BlockDiagnosticChat = ({
               title={closeMsg}
             >
               <CheckCircle2 className="w-3 h-3" /> Uzavřít bod
+            </Button>
+          )}
+          {onAdvanceToNext && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 text-[10px] gap-1"
+              onClick={onAdvanceToNext}
+            >
+              Další bod
             </Button>
           )}
         </div>

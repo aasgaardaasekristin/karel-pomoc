@@ -256,7 +256,7 @@ const LiveProgramChecklist = ({
             <div
               key={item.id}
               className={`rounded-md border ${
-                item.done ? "border-primary/30 bg-primary/5" : "border-border/60 bg-card/40"
+                item.done ? "border-accent/40 bg-accent/10" : "border-border/60 bg-card/40"
               } px-2 py-1.5 transition-colors`}
             >
               <div className="flex items-start gap-2">
@@ -266,7 +266,7 @@ const LiveProgramChecklist = ({
                   aria-label={item.done ? "Označit jako nehotový" : "Označit jako hotový"}
                 >
                   {item.done ? (
-                    <CheckCircle2 className="w-4 h-4 text-primary" />
+                    <CheckCircle2 className="w-4 h-4 text-accent" />
                   ) : (
                     <Circle className="w-4 h-4 text-muted-foreground" />
                   )}
@@ -280,7 +280,7 @@ const LiveProgramChecklist = ({
                     {item.text}
                   </p>
                   {item.done && (
-                    <p className="text-[10px] font-medium text-primary mt-1">
+                    <p className="text-[10px] font-medium text-accent mt-1">
                       Bod je splněný.
                     </p>
                   )}
