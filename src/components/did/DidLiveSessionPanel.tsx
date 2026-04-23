@@ -1261,8 +1261,8 @@ ${report}${interrogationBlock}${reflectionText}`;
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      {/* Header */}
+    <div className="absolute inset-0 flex flex-col min-h-0 overflow-hidden">
+      {/* Header — shrink-0; vlastní vnitřní scroll, aby nikdy nevytlačil input mimo viewport */}
       <div className={`px-4 py-3 border-b border-border bg-card/50 transition-colors duration-500 ${switchFlash ? "bg-amber-500/10" : ""}`}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
