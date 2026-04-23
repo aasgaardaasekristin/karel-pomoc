@@ -123,7 +123,7 @@ export const playbook_association_experiment_jung: Playbook = {
     ],
     immediate_actions: [
       `PŘERUŠ sekvenci slov — žádný další stimul`,
-      `Validuj nález terapeutce (»to co popisuješ je klinicky významné, je to indikátor komplexu vázaného k tématu, NE selhání`)``,
+      `Validuj nález terapeutce (»to co popisuješ je klinicky významné, je to indikátor komplexu vázaného k tématu, NE selhání)",
       `Dej terapeutce přesný grounding skript pro dítě`,
       `Rozhodni: pokračovat / zvolnit / zcela přerušit (a proč)`,
       `Vyžaduj zápis přesné formulace dítěte + neverbální projevy`,
@@ -134,7 +134,7 @@ export const playbook_association_experiment_jung: Playbook = {
   },
   closure_protocol: {
     reproduction_check:
-      `Po dokončení 8 slov a pauze 5–10 min požádej dítě: »Vzpomeneš si, jaká slova jsme říkali? A co jsi na ně odpovídal?` Zapiš, která slova/odpovědi si nepamatuje (reprodukční chyba = silný indikátor komplexu).``,
+      `Po dokončení 8 slov a pauze 5–10 min požádej dítě: »Vzpomeneš si, jaká slova jsme říkali? A co jsi na ně odpovídal?` Zapiš, která slova/odpovědi si nepamatuje (reprodukční chyba = silný indikátor komplexu).",
     debrief_questions: [
       `Jak ti to šlo?`,
       `Bylo nějaké slovo, u kterého ti bylo divně?`,
@@ -209,7 +209,7 @@ export const playbook_draw_a_person_machover: Playbook = {
     signs: [`pláč při určité části`, `ztuhnutí ruky`, `verbalizace traumatu`, `dramatické zničení kresby`],
     immediate_actions: [
       `Zastav inquiry, neptej se dál`,
-      `Validuj (»to je důležitý vjem`)``,
+      `Validuj (»to je důležitý vjem)",
       "Grounding",
       `Rozhodni o pokračování`,
     ],
@@ -259,13 +259,13 @@ export const playbook_tree_test_koch: Playbook = {
   step_protocol: {
     kind: "drawing_phases",
     instruction:
-      `Fáze 1: nech kreslit. Fáze 2: post-drawing — »kolik je tomu stromu let? jak se mu daří? co se mu stalo?`. Doslovný zápis.``,
+      `Fáze 1: nech kreslit. Fáze 2: post-drawing — »kolik je tomu stromu let? jak se mu daří? co se mu stalo?`. Doslovný zápis.",
     what_to_record: ["drawing_order", "placement", "size", "pressure", "tree_parts", "post_inquiry_verbatim"],
     red_flags: [
       `dutiny v kmeni (často trauma marker)`,
       `uschlé větve, opadané listí`,
       `extrémně malý strom v rohu`,
-      `verbalizace traumatu (»tenhle strom někdo zlomil`)``,
+      `verbalizace traumatu (»tenhle strom někdo zlomil)",
     ],
   },
   trauma_response_protocol: {
@@ -305,7 +305,7 @@ export const playbook_htp_buck: Playbook = {
   step_protocol: {
     kind: "drawing_phases",
     instruction:
-      `Po každé kresbě post-drawing inquiry: dům — »kdo tam bydlí, je tam šťastný?`, strom — »jak se mu daří?`, postava — »kdo to je, co dělá, cítí?`. Doslovně zapiš.``,
+      `Po každé kresbě post-drawing inquiry: dům — »kdo tam bydlí, je tam šťastný?`, strom — »jak se mu daří?`, postava — »kdo to je, co dělá, cítí?`. Doslovně zapiš.",
     what_to_record: ["per_drawing_full_set"],
     red_flags: [
       `okna bez skla / zamřížovaná`,
@@ -408,7 +408,7 @@ export const playbook_narrative_cat: Playbook = {
   step_protocol: {
     kind: "narrative",
     instruction:
-      `Doslovně zapiš nebo nahraj. Pokud dítě skončí příliš brzy, jednou se zeptej: »A co bylo dál?` Jinak nezasahuj.``,
+      `Doslovně zapiš nebo nahraj. Pokud dítě skončí příliš brzy, jednou se zeptej: »A co bylo dál?` Jinak nezasahuj.",
     what_to_record: ["full_verbatim_story", "pauses", "affect_changes"],
     red_flags: [
       `katastrofický konec bez záchrany`,
@@ -459,7 +459,7 @@ export const playbook_sandtray_lowenfeld: Playbook = {
   step_protocol: {
     kind: "play",
     instruction:
-      `Mlčky pozoruj 10–20 min. Zapiš sekvenci akcí. Po dokončení se zeptej: »Můžeš mi povědět, co se v tom světě děje?` Vyfoť výslednou scénu.``,
+      `Mlčky pozoruj 10–20 min. Zapiš sekvenci akcí. Po dokončení se zeptej: »Můžeš mi povědět, co se v tom světě děje?` Vyfoť výslednou scénu.",
     what_to_record: ["sequence_of_actions", "final_scene_photo", "narrative_verbatim"],
     red_flags: [
       `izolovaná malá figurka v rohu`,
@@ -506,7 +506,7 @@ export const playbook_body_map_somatic: Playbook = {
   step_protocol: {
     kind: "drawing_phases",
     instruction:
-      `Po dokončení projdi spolu mapu — »a tady ta barva znamená co?`. Doslovně zapiš.``,
+      `Po dokončení projdi spolu mapu — »a tady ta barva znamená co?`. Doslovně zapiš.",
     what_to_record: ["color_to_zone_mapping", "verbatim_explanations"],
     red_flags: [
       `černé/červené zóny v genitální oblasti, krku, hrudi (somatický marker traumatu)`,
@@ -553,7 +553,7 @@ export const playbook_safe_place: Playbook = {
   step_protocol: {
     kind: "open_dialog",
     instruction:
-      `Pomalé otázky: »Co vidíš? Co slyšíš? Jak to tam voní? Jak se ti tam dýchá?` Žádný spěch.``,
+      `Pomalé otázky: »Co vidíš? Co slyšíš? Jak to tam voní? Jak se ti tam dýchá?` Žádný spěch.",
     what_to_record: ["full_description", "sensory_anchors", "affect"],
     red_flags: [
       `dítě nedokáže najít bezpečné místo (silný marker absence vnitřního bezpečí)`,
