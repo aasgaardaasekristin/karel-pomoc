@@ -499,7 +499,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
       const { data: planRow, error } = await (supabase as any)
         .from("did_daily_session_plans")
         .update({ status: "in_progress", updated_at: new Date().toISOString() })
-        .eq("id", planId);
+        .eq("id", planId)
         .select("id, selected_part, session_lead, therapist, plan_markdown")
         .single();
       if (error || !planRow) {
@@ -541,7 +541,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
           />
         ) : (
           <>
-        <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b border-border/40">
+            <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b border-border/40">
           <DialogTitle className="flex items-center gap-2 text-base">
             <Users className="w-4 h-4 text-primary" />
             {loading ? "Načítám…" : d?.title ?? "Porada"}
@@ -576,12 +576,12 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
         </DialogHeader>
 
 
-        {loading || !d ? (
-          <div className="flex justify-center py-8 px-6">
-            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <div className="min-h-0 overflow-y-auto overscroll-contain px-6 py-4">
+            {loading || !d ? (
+              <div className="flex justify-center py-8 px-6">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="min-h-0 overflow-y-auto overscroll-contain px-6 py-4">
             <div className="space-y-4">
               {isReadOnly && (
                 <section className="rounded-lg border border-primary/30 bg-primary/5 p-3 flex items-start gap-2">
@@ -758,8 +758,8 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
           </div>
         )}
 
-        {d && (
-          <div className="shrink-0 border-t border-border/60 px-6 py-3 bg-background space-y-2">
+            {d && (
+              <div className="shrink-0 border-t border-border/60 px-6 py-3 bg-background space-y-2">
             {/* THERAPIST-LED 2-PODPIS TRUTH PASS (2026-04-22):
                 Karel není podepisující strana. Schválení = 2 podpisy
                 (Hanička + Káťa). Karlův timestamp je audit log v DB triggeru.
@@ -845,8 +845,8 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 {startingLive ? "Otevírám…" : <>Spustit sezení <ArrowRight className="w-3 h-3 ml-1" /></>}
               </Button>
             )}
-          </div>
-        )}
+              </div>
+            )}
           </>
         )}
       </DialogContent>
