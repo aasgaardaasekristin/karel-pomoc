@@ -1148,6 +1148,9 @@ ${report}${interrogationBlock}${reflectionText}`;
                 <LiveProgramChecklist
                   planMarkdown={contextBrief}
                   storageKey={`live_program_${planId ?? "ad-hoc"}`}
+                  partName={partName}
+                  therapistName={therapistName}
+                  sessionId={planId}
                   onItemToggle={(it) =>
                     pushHintTrigger(
                       `Bod programu ${it.done ? "označen jako HOTOVÝ" : "vrácen do běhu"}: „${it.text.slice(0, 200)}"`,
