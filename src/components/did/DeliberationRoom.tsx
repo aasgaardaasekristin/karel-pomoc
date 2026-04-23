@@ -43,6 +43,7 @@ interface LiveSessionPlanRow {
   session_lead: string | null;
   therapist: string | null;
   plan_markdown: string;
+  urgency_breakdown?: Record<string, unknown> | null;
 }
 
 function areAllQuestionsAnswered(questions: DeliberationQuestion[] = []) {
@@ -496,17 +497,30 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
     if (!planId || startingLive) return;
     setStartingLive(true);
     try {
-      const { data: planRow, error } = await (supabase as any)
+      const { error: statusErr } = await (supabase as any)
         .from("did_daily_session_plans")
         .update({ status: "in_progress", updated_at: new Date().toISOString() })
         .eq("id", planId)
-        .select("id, selected_part, session_lead, therapist, plan_markdown")
+        .select("id")
         .single();
-      if (error || !planRow) {
-        console.error("[DeliberationRoom] startLiveSession status update failed:", error);
+      if (statusErr) {
+        console.error("[DeliberationRoom] startLiveSession status update failed:", statusErr);
         toast.error("Nepodařilo se zahájit sezení (DB update).");
         return;
       }
+
+      const { data: planRow, error: fetchErr } = await (supabase as any)
+        .from("did_daily_session_plans")
+        .select("id, selected_part, session_lead, therapist, plan_markdown, urgency_breakdown")
+        .eq("id", planId)
+        .single();
+
+      if (fetchErr || !planRow) {
+        console.error("[DeliberationRoom] startLiveSession fetch failed:", fetchErr);
+        toast.error("Nepodařilo se načíst aktuální schválený plán.");
+        return;
+      }
+
       setLivePlan(planRow as LiveSessionPlanRow);
       toast.success("Sezení zahájeno.");
     } finally {
