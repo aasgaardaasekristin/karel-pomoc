@@ -55,7 +55,7 @@ function buildPartSection(partName: string, rows: HistoryRow[]): string {
       `# Použité metody na sezeních (posledních ${WINDOW_DAYS} dnů)`,
       `*Snímek ${dateStr} — Karel zatím u **${partName}** nezaznamenal žádnou metodu z knihovny.*`,
       ``,
-      `Jakmile bude první metoda použita a vyhodnocena (`clinical_yield`, `tolerance`), objeví se zde.`,
+      "Jakmile bude první metoda použita a vyhodnocena (`clinical_yield`, `tolerance`), objeví se zde.",
     ].join("\n");
   }
 
