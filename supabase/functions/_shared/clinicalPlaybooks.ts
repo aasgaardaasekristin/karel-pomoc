@@ -134,7 +134,7 @@ export const playbook_association_experiment_jung: Playbook = {
   },
   closure_protocol: {
     reproduction_check:
-      `Po dokončení 8 slov a pauze 5–10 min požádej dítě: »Vzpomeneš si, jaká slova jsme říkali? A co jsi na ně odpovídal?` Zapiš, která slova/odpovědi si nepamatuje (reprodukční chyba = silný indikátor komplexu).",
+      "Po dokončení 8 slov a pauze 5–10 min požádej dítě: »Vzpomeneš si, jaká slova jsme říkali? A co jsi na ně odpovídal? Zapiš, která slova/odpovědi si nepamatuje (reprodukční chyba = silný indikátor komplexu).\"",
     debrief_questions: [
       `Jak ti to šlo?`,
       `Bylo nějaké slovo, u kterého ti bylo divně?`,
@@ -167,7 +167,7 @@ export const playbook_draw_a_person_machover: Playbook = {
     child_position: `u stolu, papír před sebou`,
     what_to_say_first:
       "Řekni přesně: »Tundrupku, nakresli mi prosím postavu. Kohokoliv, kdo tě napadne. Není to o tom, jestli to bude hezké.` Pak mlčky pozoruj, NEzasahuj.'`,
-    what_NOT_to_say: [
+    "\"\\"\\\"what_NOT_to_say: [\\\"\\"\""
       `Nedávej nápovědu (např. Můžeš nakreslit chlapce.)`,
       `Nekomentuj průběh (např. Hezké vlasy.)`,
       `Neopravuj (např. Chybí ti uši.)`,
