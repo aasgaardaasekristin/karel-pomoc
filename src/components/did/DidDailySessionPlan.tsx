@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, ChevronUp, PenLine, MessageSquare, Play, Square, Clock, Trash2, RefreshCw, Plus, Users, Lock, Dices } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -460,9 +461,11 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
   // rodičovské wrappery (Pracovna / DidContentRouter mají max-h-[22rem]).
   // Bez tohoto by byl input live sezení vytlačen pod fold a nešlo by k němu doscrollovat.
   if (currentLivePlan) {
-    return (
-      <div className="fixed inset-0 z-50 bg-background flex flex-col">
-        <div className="relative flex-1 min-h-0 overflow-hidden bg-card/38 backdrop-blur-sm">
+    // Portal na document.body — obchází jakýkoli `transform`/`overflow` rodičovského
+    // Radix Dialogu (DeliberationRoom), pod kterým by jinak overlay mohl uvíznout.
+    return createPortal(
+      <div className="fixed inset-0 z-[200] bg-background flex flex-col">
+        <div className="relative flex-1 min-h-0 overflow-hidden bg-background">
           <DidLiveSessionPanel
             partName={currentLivePlan.selected_part}
             therapistName={currentLivePlan.session_lead === "kata" ? "Káťa" : "Hanka"}
@@ -472,7 +475,8 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
             onBack={() => setActiveLivePlanId(null)}
           />
         </div>
-      </div>
+      </div>,
+      document.body,
     );
   }
 
