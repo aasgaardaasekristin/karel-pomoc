@@ -100,9 +100,37 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
   const pushHintTrigger = useCallback(
     (observation: string, attachmentKind?: KarelHintTrigger["attachmentKind"]) => {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      setHintTriggers(prev => [...prev.slice(-9), { id, observation, attachmentKind: attachmentKind ?? null, programBlock: null }]);
+      setHintTriggers(prev => [
+        ...prev.slice(-9),
+        { id, kind: "observation", observation, attachmentKind: attachmentKind ?? null, programBlock: null },
+      ]);
     },
     [],
+  );
+
+  // ── Aktivace bodu programu: Karel vyrobí konkrétní obsah ──
+  // Drží se referenci na poslední aktivovaný bod, aby přímé výzvy v hlavním
+  // chatu typu "napiš mi ty slova" mohly být přesměrovány na produce endpoint.
+  const [activeBlock, setActiveBlock] = useState<{ index: number; text: string; detail?: string } | null>(null);
+
+  const pushActivateBlock = useCallback(
+    (block: { index: number; text: string; detail?: string }, userRequest?: string) => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      setHintTriggers(prev => [
+        ...prev.slice(-9),
+        {
+          id,
+          kind: "activate_block",
+          observation: `Spuštěn bod #${block.index + 1}: ${block.text.slice(0, 200)}`,
+          attachmentKind: null,
+          programBlock: { index: block.index, text: block.text, detail: block.detail ?? null },
+          planContext: contextBrief?.slice(0, 2000),
+          userRequest,
+        },
+      ]);
+      setActiveBlock(block);
+    },
+    [contextBrief],
   );
 
   const EMOTION_OPTIONS = [
@@ -174,6 +202,9 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
 - Pokud detekuješ SWITCH (změnu identity/části), označ to tagem [SWITCH:JMÉNO_NOVÉ_ČÁSTI] na konci odpovědi.`;
   }, [partName, activePart, therapistName, contextBrief, switchLog]);
 
+  // Detekce přímé výzvy „napiš mi slova / otázky / nápady" — přesměrujeme na produce
+  const CONTENT_REQUEST_RE = /(napiš|dej|navrhni|vygeneruj|řekni|vyrob)\s+(mi\s+)?(ty\s+)?(slova|asociace|otázky|otazky|nápady|napady|barvy|instrukci|seznam)/i;
+
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
     const userMessage = input.trim();
@@ -181,6 +212,14 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
 
     const updatedMessages = [...messages, { role: "user" as const, content: userMessage }];
     setMessages(updatedMessages);
+
+    // Přímá výzva na produkci obsahu pro aktivní bod → produce endpoint místo karel-chat
+    if (activeBlock && CONTENT_REQUEST_RE.test(userMessage)) {
+      pushActivateBlock(activeBlock, userMessage);
+      toast.info(`Karel vyrábí obsah pro bod #${activeBlock.index + 1}…`);
+      return;
+    }
+
     // Karel proaktivní reakce na nový input terapeutky
     pushHintTrigger(userMessage, "note");
     setIsLoading(true);
@@ -1032,7 +1071,7 @@ ${report}${interrogationBlock}${reflectionText}`;
               )}
             </button>
             {planExpanded && (
-              <div className="px-3 pb-3 pt-0 max-h-80 overflow-y-auto border-t border-primary/15">
+              <div className="px-3 pb-3 pt-0 max-h-64 overflow-y-auto border-t border-primary/15">
                 <LiveProgramChecklist
                   planMarkdown={contextBrief}
                   storageKey={`live_program_${planId ?? "ad-hoc"}`}
@@ -1048,6 +1087,21 @@ ${report}${interrogationBlock}${reflectionText}`;
                       "note",
                     )
                   }
+                  onActivateBlock={(block) => {
+                    pushActivateBlock(block);
+                    setPlanExpanded(false);
+                    toast.info(`Karel vyrábí obsah pro bod #${block.index + 1}…`);
+                  }}
+                  onRequestArtefact={(block, kind) => {
+                    setActiveBlock(block);
+                    if (kind === "audio") {
+                      toast.info(`Bod #${block.index + 1}: spouštím nahrávání…`);
+                      recorder.startRecording();
+                    } else {
+                      toast.info(`Bod #${block.index + 1}: vyber fotku.`);
+                      imageUpload.openFilePicker();
+                    }
+                  }}
                 />
               </div>
             )}
@@ -1164,8 +1218,8 @@ ${report}${interrogationBlock}${reflectionText}`;
         )}
       </div>
 
-      {/* Messages */}
-      <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
+      {/* Messages — explicitní min-h chrání před zkolabováním pod kartami */}
+      <ScrollArea className="flex-1 min-h-[14rem] px-2 sm:px-4" ref={scrollRef}>
         <div className="max-w-3xl mx-auto py-4 space-y-3">
           {messages.map((msg, i) => (
             <ChatMessage key={i} message={msg} />
@@ -1182,8 +1236,8 @@ ${report}${interrogationBlock}${reflectionText}`;
 
       {/* ── Karlovy in-session karty (proaktivní reakce na vstupy) ── */}
       {hintTriggers.length > 0 && (
-        <div className="border-t border-border bg-card/30 backdrop-blur-sm">
-          <div className="max-w-3xl mx-auto px-3 sm:px-4 py-2 max-h-[14rem] overflow-y-auto">
+        <div className="border-t border-border bg-card/30 backdrop-blur-sm shrink-0">
+          <div className="max-w-3xl mx-auto px-3 sm:px-4 py-2 max-h-[10rem] overflow-y-auto">
             <KarelInSessionCards
               partName={activePart}
               therapistName={therapistName}
@@ -1191,6 +1245,27 @@ ${report}${interrogationBlock}${reflectionText}`;
               onAnswerHint={(text) => {
                 setInput((prev) => (prev ? `${prev}\n\n${text}` : text));
                 textareaRef.current?.focus();
+              }}
+              onCompleteBlock={(blockIndex) => {
+                // Najdi v localStorage stav checklistu, označ bod jako done
+                try {
+                  const key = `live_program_${planId ?? "ad-hoc"}`;
+                  const raw = window.localStorage.getItem(key);
+                  if (raw) {
+                    const arr = JSON.parse(raw) as Array<{ done: boolean }>;
+                    if (Array.isArray(arr) && arr[blockIndex]) {
+                      arr[blockIndex].done = true;
+                      window.localStorage.setItem(key, JSON.stringify(arr));
+                      // donutíme remount checklist tím, že krátce sbalíme/rozbalíme
+                      setPlanExpanded(false);
+                      setTimeout(() => setPlanExpanded(true), 80);
+                    }
+                  }
+                  toast.success(`Bod #${blockIndex + 1} hotový.`);
+                  setActiveBlock(null);
+                } catch (e) {
+                  console.warn("complete block failed:", e);
+                }
               }}
             />
           </div>

@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
-import { CheckCircle2, Circle, ChevronDown, ChevronRight, ListChecks, NotebookPen } from "lucide-react";
+import { CheckCircle2, Circle, ChevronDown, ChevronRight, ListChecks, NotebookPen, Sparkles, Mic, Camera, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -7,19 +7,15 @@ import { Textarea } from "@/components/ui/textarea";
 /**
  * LiveProgramChecklist
  * --------------------
- * THERAPIST-LED TRUTH PASS (2026-04-22) — Krok 5, levý panel.
+ * THERAPIST-LED LIVE PASS (2026-04-23) — Krok 5, levý panel.
  *
  * Vezme schválený program (z `plan_markdown` / `program_draft`) a ukáže
  * ho jako interaktivní checklist bod-po-bodu. Pro každý bod:
- *   - checkbox „bod hotov"
- *   - rozbalitelné pole „co Hanka pozorovala"
+ *   - 🎯 „Spustit bod"  — Karel vyrobí KONKRÉTNÍ obsah (slova/otázky/instrukci)
+ *   - 🎙️ / 📷 / 📤      — per-bod audio / foto / odeslat artefakt k analýze
+ *   - checkbox „bod hotov" + textarea pozorování
  *
- * Stav je per `planId` perzistován do localStorage, takže přerušení
- * sezení (refresh / drobné resety) nezahodí progres.
- *
- * Když nelze nic naparsovat (plán je hodně volný markdown), vrátíme
- * fallback: jednu položku „Bezformátový program" — uživatel může psát
- * pozorování do hlavního chatu.
+ * Stav je per `planId` perzistován do localStorage.
  */
 
 export type ProgramItem = {
@@ -29,22 +25,23 @@ export type ProgramItem = {
   observation: string;
 };
 
+export type ProgramBlockRef = {
+  index: number;       // 0-based
+  text: string;        // celý text bodu
+  detail?: string;     // případný odsazený detail
+};
+
 interface Props {
   planMarkdown: string;
-  storageKey: string; // typically `live_program_${planId}`
+  storageKey: string;
   onItemToggle?: (item: ProgramItem) => void;
   onObservationSubmit?: (item: ProgramItem) => void;
+  /** Nové: Hanka klikla „Spustit bod" — Karel má vyrobit obsah. */
+  onActivateBlock?: (block: ProgramBlockRef) => void;
+  /** Nové: Hanka chce pro daný bod nahrát/poslat artefakt (audio/foto). */
+  onRequestArtefact?: (block: ProgramBlockRef, kind: "audio" | "image") => void;
 }
 
-/**
- * Heuristický parser — vytáhne body z plan_markdown:
- *   - `1. ...`, `1) ...`
- *   - `- ...`, `* ...`
- *   - řádky uvnitř sekce `## Program sezení`
- *
- * Když zachytíme nadpis nebo prázdný řádek po bullet bloku, seznam ukončíme.
- * Krátké body (<6 znaků) ignorujeme.
- */
 function parseProgramBullets(md: string): string[] {
   if (!md) return [];
 
@@ -53,9 +50,6 @@ function parseProgramBullets(md: string): string[] {
   let inProgramSection = false;
   let bulletBlockStarted = false;
 
-  // Aktivace POUZE v autoritativní sekci `Program sezení`.
-  // Záměrně nepovolujeme obecné nadpisy jako „Agenda“ nebo „Osnova“, protože
-  // starší markdowny pod nimi nesly původní návrh a pod nimi následovaly otázky.
   const sectionRe = /^#{1,6}\s+program\s+sezení\s*$/i;
   const bulletRe = /^\s*(?:[-*•]|\d+[.)])\s+(.+)$/;
 
@@ -72,9 +66,7 @@ function parseProgramBullets(md: string): string[] {
       break;
     }
 
-    if (!inProgramSection) {
-      continue;
-    }
+    if (!inProgramSection) continue;
 
     const m = bulletRe.exec(line);
     if (m) {
@@ -90,7 +82,6 @@ function parseProgramBullets(md: string): string[] {
       continue;
     }
 
-    // Detail programu je v markdownu často na odsazeném dalším řádku.
     if (bullets.length > 0 && /^\s{2,}\S/.test(raw)) {
       bullets[bullets.length - 1] = `${bullets[bullets.length - 1]} — ${line.trim()}`;
       continue;
@@ -104,9 +95,6 @@ function parseProgramBullets(md: string): string[] {
     if (bulletBlockStarted) break;
   }
 
-  // Žádný globální fallback: nechceme nikdy nasát otázky, diskusi ani starou osnovu.
-
-  // Zkrať na rozumnou velikost — větší než 12 bodů by terapeutku zahltilo.
   return bullets.slice(0, 12);
 }
 
@@ -115,6 +103,8 @@ const LiveProgramChecklist = ({
   storageKey,
   onItemToggle,
   onObservationSubmit,
+  onActivateBlock,
+  onRequestArtefact,
 }: Props) => {
   const parsed = useMemo(() => parseProgramBullets(planMarkdown), [planMarkdown]);
 
@@ -143,10 +133,7 @@ const LiveProgramChecklist = ({
       const saved = window.localStorage.getItem(storageKey);
       if (saved) {
         const parsedSaved = JSON.parse(saved) as ProgramItem[];
-        // Když počet bodů odpovídá, použij uložené; jinak začni nanovo.
         if (Array.isArray(parsedSaved) && parsedSaved.length === initialItems.length) {
-          // Texty si vždy bereme z aktuálního planu (mohly se přepsat
-          // schválením), stav (done/observation) ze storage.
           return initialItems.map((it, i) => ({
             ...it,
             done: !!parsedSaved[i]?.done,
@@ -160,12 +147,10 @@ const LiveProgramChecklist = ({
     return initialItems;
   });
 
-  // Když se planMarkdown změní (např. po novém podpisu poradou), reset.
   useEffect(() => {
     setItems(initialItems);
   }, [initialItems]);
 
-  // Persist
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -201,6 +186,19 @@ const LiveProgramChecklist = ({
     setDrafts(d => ({ ...d, [id]: "" }));
   };
 
+  const buildBlockRef = (item: ProgramItem, idx: number): ProgramBlockRef => {
+    // pokud má text " — " separátor (přidaný parserem), oddělíme detail
+    const sepIdx = item.text.indexOf(" — ");
+    if (sepIdx > 0) {
+      return {
+        index: idx,
+        text: item.text.slice(0, sepIdx).trim(),
+        detail: item.text.slice(sepIdx + 3).trim(),
+      };
+    }
+    return { index: idx, text: item.text };
+  };
+
   const doneCount = items.filter(it => it.done).length;
 
   return (
@@ -215,9 +213,11 @@ const LiveProgramChecklist = ({
         </div>
       </div>
 
-      <div className="px-2 py-2 space-y-1.5 max-h-[26rem] overflow-y-auto">
-        {items.map(item => {
+      <div className="px-2 py-2 space-y-1.5 max-h-[24rem] overflow-y-auto">
+        {items.map((item, idx) => {
           const isExp = expandedId === item.id;
+          const isFallback = item.id.startsWith("fallback");
+          const blockRef = buildBlockRef(item, idx);
           return (
             <div
               key={item.id}
@@ -249,6 +249,46 @@ const LiveProgramChecklist = ({
                     <p className="text-[10px] text-muted-foreground italic mt-0.5 line-clamp-2">
                       📝 {item.observation}
                     </p>
+                  )}
+
+                  {/* ── Aktivační lišta: viditelná i bez rozbalení ── */}
+                  {!isFallback && (
+                    <div className="mt-1.5 flex items-center gap-1 flex-wrap">
+                      {onActivateBlock && (
+                        <Button
+                          size="sm"
+                          variant="default"
+                          className="h-6 text-[10px] px-2 gap-1"
+                          onClick={() => onActivateBlock(blockRef)}
+                          title="Karel vyrobí obsah pro tento bod (slova / otázky / instrukci)"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          Spustit bod
+                        </Button>
+                      )}
+                      {onRequestArtefact && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[10px] px-2 gap-1"
+                            onClick={() => onRequestArtefact(blockRef, "audio")}
+                            title="Nahrát audio k tomuto bodu"
+                          >
+                            <Mic className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[10px] px-2 gap-1"
+                            onClick={() => onRequestArtefact(blockRef, "image")}
+                            title="Vyfotit / přidat obrázek k tomuto bodu"
+                          >
+                            <Camera className="w-3 h-3" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
                 <button
