@@ -461,8 +461,10 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
   // Bez tohoto by byl input live sezení vytlačen pod fold a nešlo by k němu doscrollovat.
   if (currentLivePlan) {
     return (
-      <div className="fixed inset-0 z-50 bg-background flex flex-col">
-        <div className="relative flex-1 min-h-0 overflow-hidden bg-card/38 backdrop-blur-sm">
+      // z-[200] musí přebít Radix Dialog (z-50) — live sezení může startovat
+      // z poradního dialogu (DeliberationRoom) a nesmí zůstat pod jeho overlayem.
+      <div className="fixed inset-0 z-[200] bg-background flex flex-col">
+        <div className="relative flex-1 min-h-0 overflow-hidden bg-background">
           <DidLiveSessionPanel
             partName={currentLivePlan.selected_part}
             therapistName={currentLivePlan.session_lead === "kata" ? "Káťa" : "Hanka"}
