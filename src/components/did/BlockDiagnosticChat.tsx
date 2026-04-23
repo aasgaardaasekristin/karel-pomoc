@@ -280,15 +280,26 @@ const BlockDiagnosticChat = ({
     [partName, therapistName, sessionId, blockIndex, blockText, blockDetail, effectiveResearch, protocolState],
   );
 
-  // Auto-start setup briefing jakmile je k dispozici research
+  // Auto-start setup briefing jakmile je k dispozici research.
+  // ── HARD GUARD (2026-04-23): start smí proběhnout PRÁVĚ JEDNOU per
+  // blockSignature. Před tím musí být:
+  //   1. dokončená hydratace localStorage (jinak by start přepsal uložené turny),
+  //   2. žádné existující turny (= bod ještě nezačal),
+  //   3. dostupný research (parent NEBO local) a NIKOLI loading,
+  //   4. žádné běžící AI volání (isThinking).
+  // Jinak by se start spouštěl 2× (jednou pro parent research, podruhé když
+  // local research dorazí → dvě duplicitní úvodní zprávy v chatu).
   useEffect(() => {
+    if (!hydrated) return;
     if (autoStartedRef.current) return;
+    if (isThinking) return;
     if (turns.length > 0) { autoStartedRef.current = true; return; }
-    if (!effectiveResearch || effectiveResearchLoading) return;
+    if (effectiveResearchLoading) return;
+    if (!effectiveResearch) return;
     autoStartedRef.current = true;
     void callFollowup("start", []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveResearch, effectiveResearchLoading]);
+  }, [hydrated, effectiveResearch, effectiveResearchLoading, isThinking, turns.length]);
 
   const handleSend = async () => {
     const text = draft.trim();
