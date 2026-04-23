@@ -147,14 +147,14 @@ serve(async (req) => {
   });
 
   try {
-    // 1) Najdi aktivní části (z registru)
+    // 1) Najdi aktivní části (z registru) — sloupec se jmenuje part_name, status místo active
     const { data: parts, error: partsErr } = await supabase
       .from("did_part_registry")
-      .select("user_id, name")
-      .eq("active", true);
+      .select("user_id, part_name, status")
+      .neq("status", "archived");
     if (partsErr) throw partsErr;
 
-    const partList = (parts ?? []).filter((p) => p.name && p.user_id);
+    const partList = (parts ?? []).filter((p: any) => p.part_name && p.user_id);
     if (partList.length === 0) {
       return new Response(
         JSON.stringify({ ok: true, parts_processed: 0, message: "žádné aktivní části" }),
