@@ -83,7 +83,7 @@ Deno.serve(async (req: Request) => {
         // Tento podpis by uzavřel poradu bez Karlovy syntézy — blokujeme.
         return new Response(JSON.stringify({
           error: "synthesis_required",
-          message: "Krizová porada nemůže být uzavřena bez Karlovy syntézy odpovědí. Spusť nejdřív „Spustit Karlovu syntézu".",
+          message: "Krizová porada nemůže být uzavřena bez Karlovy syntézy odpovědí. Spusť nejdřív tlačítko 'Spustit Karlovu syntézu'.",
         }), {
           status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
