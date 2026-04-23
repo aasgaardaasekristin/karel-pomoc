@@ -96,7 +96,7 @@ export const playbook_association_experiment_jung: Playbook = {
     // planned_steps doplňuje dynamicky karel-live-session-produce na míru bodu programu
     planned_steps: undefined,
     instruction:
-      `Řekni přesně jedno slovo, klidně, neutrálním tónem. Spusť stopky. Doslovně zapiš první odpověď dítěte. Zaznamenej latenci a afekt. Pokud dítě mlčí > 30 s, zapiš »odmlka 30+ s` a přejdi k dalšímu slovu BEZ opakování.``,
+      "Řekni přesně jedno slovo, klidně, neutrálním tónem. Spusť stopky. Doslovně zapiš první odpověď dítěte. Zaznamenej latenci a afekt. Pokud dítě mlčí > 30 s, zapiš »odmlka 30+ s« a přejdi k dalšímu slovu BEZ opakování.",
     what_to_record: [
       "verbatim",
       "latency_seconds",
