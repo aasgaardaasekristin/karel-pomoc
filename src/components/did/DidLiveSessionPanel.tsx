@@ -1582,7 +1582,60 @@ ${report}${interrogationBlock}${reflectionText}`;
 
       {/* Input */}
       <div className="border-t border-border bg-card/50 backdrop-blur-sm">
-        <div className="max-w-3xl mx-auto px-3 sm:px-4 py-3">
+        <div className="max-w-3xl mx-auto px-3 sm:px-4 py-3 space-y-2">
+          {/* ── Orientační lišta: kam vlastně píšu + výběr bodu programu ── */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="outline"
+              className="text-[10px] h-5 gap-1 border-primary/30 text-primary bg-primary/5"
+            >
+              <MessageSquare className="w-2.5 h-2.5" />
+              Hlavní tok sezení — Karel čte VŠE co napíšeš
+            </Badge>
+            {programBlocks.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant={attachToBlockIdx !== null ? "default" : "outline"}
+                    className="h-6 text-[10px] gap-1 px-2"
+                    title="Připojit další zprávu jako asociaci k vybranému bodu programu"
+                  >
+                    <Link2 className="w-3 h-3" />
+                    {attachToBlockIdx !== null
+                      ? `→ bod #${attachToBlockIdx + 1}`
+                      : "Připojit k bodu"}
+                    <ChevronDown className="w-3 h-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="max-w-sm">
+                  <DropdownMenuLabel className="text-[10px] text-muted-foreground">
+                    Další zpráva se zaloguje jako asociace daného bodu
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-xs"
+                    onClick={() => setAttachToBlockIdx(null)}
+                  >
+                    <span className="text-muted-foreground">Žádný bod (jen do hlavního toku)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {programBlocks.map((b, i) => (
+                    <DropdownMenuItem
+                      key={i}
+                      className="text-xs items-start gap-2"
+                      onClick={() => setAttachToBlockIdx(i)}
+                    >
+                      <Badge variant="outline" className="text-[9px] h-4 mt-0.5">
+                        #{i + 1}
+                      </Badge>
+                      <span className="line-clamp-2">{b}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
           <div className="flex gap-2 items-end">
             <Textarea
               ref={textareaRef}
@@ -1594,7 +1647,7 @@ ${report}${interrogationBlock}${reflectionText}`;
                   sendMessage();
                 }
               }}
-              placeholder={`Co ${partName} říká / dělá...`}
+              placeholder={`Sem zapisuj, co ${partName} říká nebo dělá. Karel okamžitě poradí. (Enter odešle, Shift+Enter = nový řádek)`}
               className="flex-1 min-w-0 min-h-[2.75rem] max-h-[7.5rem] resize-none text-sm"
               disabled={isLoading || isFinishing}
             />
@@ -1603,6 +1656,7 @@ ${report}${interrogationBlock}${reflectionText}`;
               onClick={sendMessage}
               disabled={!input.trim() || isLoading || isFinishing}
               className="h-[2.75rem] w-[2.75rem] shrink-0"
+              title="Odeslat (Enter)"
             >
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
