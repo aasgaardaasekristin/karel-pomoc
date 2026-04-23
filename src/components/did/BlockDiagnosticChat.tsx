@@ -104,34 +104,36 @@ const BlockDiagnosticChat = ({
   const [briefOpen, setBriefOpen] = useState(true);
   const [missingArtifacts, setMissingArtifacts] = useState<("image" | "audio")[]>([]);
   const [closeMsg, setCloseMsg] = useState<string | null>(null);
+  const [protocolState, setProtocolState] = useState<any>(null);
   const logRef = useRef<HTMLDivElement>(null);
+  const autoStartedRef = useRef(false);
 
-  // Persist turns + propagate up
   useEffect(() => {
     if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(turnsKey, JSON.stringify(turns));
-    } catch {}
+    try { window.localStorage.setItem(turnsKey, JSON.stringify(turns)); } catch {}
     onTurnsChange?.(turns);
   }, [turns, turnsKey, onTurnsChange]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(artKey, JSON.stringify(artifacts));
-    } catch {}
+    try { window.localStorage.setItem(artKey, JSON.stringify(artifacts)); } catch {}
     onArtifactsChange?.(artifacts);
   }, [artifacts, artKey, onArtifactsChange]);
 
-  // Auto-scroll log to bottom
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [turns]);
 
+  // Auto-load rešerše při prvním otevření bodu (Karel bez manuálu nevyrobí validní setup)
+  useEffect(() => {
+    if (!research && !isResearchLoading && onLoadResearch) onLoadResearch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [lastError, setLastError] = useState<string | null>(null);
 
   const callFollowup = useCallback(
-    async (trigger: "auto_next" | "ask_karel" | "user_input", existingTurns: DiagTurn[]): Promise<boolean> => {
+    async (trigger: "auto_next" | "ask_karel" | "user_input" | "start", existingTurns: DiagTurn[]): Promise<boolean> => {
       setIsThinking(true);
       setLastError(null);
       try {
@@ -142,31 +144,22 @@ const BlockDiagnosticChat = ({
             program_block: { index: blockIndex, text: blockText, detail: blockDetail },
             research: research ?? null,
             turns: existingTurns.map((t) => ({ from: t.from, text: t.text, ts: t.ts })),
+            state: protocolState,
             trigger,
           },
         });
-        if (error) {
-          console.error("[BlockDiagnosticChat] invoke error:", error);
-          throw new Error(error.message || "invoke failed");
-        }
-        if ((data as any)?.error) {
-          throw new Error(String((data as any).error));
-        }
+        if (error) throw new Error(error.message || "invoke failed");
+        if ((data as any)?.error) throw new Error(String((data as any).error));
         const karelText = String((data as any)?.karel_text ?? "").trim();
-        if (karelText) {
-          const nextTurn: DiagTurn = {
-            from: "karel",
-            text: karelText,
-            ts: new Date().toISOString(),
-          };
-          setTurns((prev) => [...prev, nextTurn]);
-        } else {
-          throw new Error("Karel nevrátil žádný text.");
+        if (!karelText) throw new Error("Karel nevrátil žádný text.");
+        const nextTurn: DiagTurn = { from: "karel", text: karelText, ts: new Date().toISOString() };
+        setTurns((prev) => [...prev, nextTurn]);
+        if ((data as any)?.state_patch) {
+          setProtocolState((prev: any) => ({ ...(prev || {}), ...(data as any).state_patch }));
         }
         const done = !!(data as any)?.done;
         const missing: ("image" | "audio")[] = Array.isArray((data as any)?.missing_artifacts)
-          ? (data as any).missing_artifacts
-          : [];
+          ? (data as any).missing_artifacts : [];
         setMissingArtifacts(missing);
         if (done) {
           const cm = (data as any)?.suggested_close_message;
@@ -183,14 +176,22 @@ const BlockDiagnosticChat = ({
         setIsThinking(false);
       }
     },
-    [partName, therapistName, blockIndex, blockText, blockDetail, research],
+    [partName, therapistName, blockIndex, blockText, blockDetail, research, protocolState],
   );
+
+  // Auto-start setup briefing jakmile je k dispozici research
+  useEffect(() => {
+    if (autoStartedRef.current) return;
+    if (turns.length > 0) { autoStartedRef.current = true; return; }
+    if (!research || isResearchLoading) return;
+    autoStartedRef.current = true;
+    void callFollowup("start", []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [research, isResearchLoading]);
 
   const handleSend = async () => {
     const text = draft.trim();
     if (!text) return;
-    // Optimistic: zobraz Hanin turn ihned, vyčisti draft AŽ když volání projde,
-    // aby se zpráva neztratila při chybě.
     const haniTurn: DiagTurn = { from: "hana", text, ts: new Date().toISOString() };
     const next = [...turns, haniTurn];
     setTurns(next);
@@ -198,19 +199,13 @@ const BlockDiagnosticChat = ({
     setDraft("");
     const ok = await callFollowup("auto_next", next);
     if (!ok) {
-      // při chybě vrátíme text zpět, ať Hana neztratí svá slova
       setDraft(prevDraft);
       setTurns((curr) => curr.filter((t) => t !== haniTurn));
     }
   };
 
-  const handleAskKarel = () => {
-    void callFollowup("ask_karel", turns);
-  };
-
-  const handleStartFirstTurn = () => {
-    void callFollowup("user_input", turns);
-  };
+  const handleAskKarel = () => { void callFollowup("ask_karel", turns); };
+  const handleStartFirstTurn = () => { void callFollowup("start", turns); };
 
   const handleRetry = () => {
     void callFollowup("auto_next", turns);
