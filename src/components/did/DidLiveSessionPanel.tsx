@@ -1546,6 +1546,8 @@ ${report}${interrogationBlock}${reflectionText}`;
         </div>
       </ScrollArea>
 
+      {/* DEPRECATED-PLACEHOLDER */}
+
       {/* ── Karlovy in-session karty (proaktivní reakce na vstupy) ── */}
       {hintTriggers.length > 0 && (
         <div className="border-t border-border bg-card/30 backdrop-blur-sm shrink-0">
