@@ -126,9 +126,12 @@ const BlockDiagnosticChat = ({
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [turns]);
 
+  const [lastError, setLastError] = useState<string | null>(null);
+
   const callFollowup = useCallback(
-    async (trigger: "auto_next" | "ask_karel" | "user_input", existingTurns: DiagTurn[]) => {
+    async (trigger: "auto_next" | "ask_karel" | "user_input", existingTurns: DiagTurn[]): Promise<boolean> => {
       setIsThinking(true);
+      setLastError(null);
       try {
         const { data, error } = await (supabase as any).functions.invoke("karel-block-followup", {
           body: {
@@ -140,7 +143,13 @@ const BlockDiagnosticChat = ({
             trigger,
           },
         });
-        if (error) throw error;
+        if (error) {
+          console.error("[BlockDiagnosticChat] invoke error:", error);
+          throw new Error(error.message || "invoke failed");
+        }
+        if ((data as any)?.error) {
+          throw new Error(String((data as any).error));
+        }
         const karelText = String((data as any)?.karel_text ?? "").trim();
         if (karelText) {
           const nextTurn: DiagTurn = {
@@ -149,6 +158,8 @@ const BlockDiagnosticChat = ({
             ts: new Date().toISOString(),
           };
           setTurns((prev) => [...prev, nextTurn]);
+        } else {
+          throw new Error("Karel nevrátil žádný text.");
         }
         const done = !!(data as any)?.done;
         const missing: ("image" | "audio")[] = Array.isArray((data as any)?.missing_artifacts)
@@ -159,9 +170,13 @@ const BlockDiagnosticChat = ({
           const cm = (data as any)?.suggested_close_message;
           setCloseMsg(typeof cm === "string" && cm.trim() ? cm.trim() : "Karel má dost dat — můžeš bod uzavřít.");
         }
+        return true;
       } catch (e: any) {
         console.error("[BlockDiagnosticChat] followup failed:", e);
-        toast.error("Karel teď nezvládl reagovat. Zkus znovu.");
+        const msg = e?.message ?? String(e);
+        setLastError(msg);
+        toast.error(`Karel teď nezvládl reagovat: ${msg}`);
+        return false;
       } finally {
         setIsThinking(false);
       }
@@ -169,13 +184,22 @@ const BlockDiagnosticChat = ({
     [partName, therapistName, blockIndex, blockText, blockDetail, research],
   );
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = draft.trim();
     if (!text) return;
-    const next = [...turns, { from: "hana" as const, text, ts: new Date().toISOString() }];
+    // Optimistic: zobraz Hanin turn ihned, vyčisti draft AŽ když volání projde,
+    // aby se zpráva neztratila při chybě.
+    const haniTurn: DiagTurn = { from: "hana", text, ts: new Date().toISOString() };
+    const next = [...turns, haniTurn];
     setTurns(next);
+    const prevDraft = draft;
     setDraft("");
-    void callFollowup("auto_next", next);
+    const ok = await callFollowup("auto_next", next);
+    if (!ok) {
+      // při chybě vrátíme text zpět, ať Hana neztratí svá slova
+      setDraft(prevDraft);
+      setTurns((curr) => curr.filter((t) => t !== haniTurn));
+    }
   };
 
   const handleAskKarel = () => {
@@ -184,6 +208,10 @@ const BlockDiagnosticChat = ({
 
   const handleStartFirstTurn = () => {
     void callFollowup("user_input", turns);
+  };
+
+  const handleRetry = () => {
+    void callFollowup("auto_next", turns);
   };
 
   const addArtifactPlaceholder = (kind: "image" | "audio") => {
