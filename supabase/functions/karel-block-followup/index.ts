@@ -287,6 +287,7 @@ Deno.serve(async (req: Request) => {
     const isAtEnd = state.planned_steps.length > 0 && state.step_index >= state.planned_steps.length;
 
     // pokud nejsme v setup a nejsme v traumě a máme další stimul → AI ho MUSÍ použít
+    const therapistAddr = therapistName === "Káťa" ? "Káťo" : "Hani";
     let phaseDirective = "";
     if (trigger === "start" || (state.phase === "setup" && turns.length === 0)) {
       phaseDirective = `FÁZE = SETUP pro KONKRÉTNÍ bod #${blockNum}: "${blockText}".
