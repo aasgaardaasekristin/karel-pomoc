@@ -79,9 +79,9 @@ export const playbook_association_experiment_jung: Playbook = {
     what_to_say_first:
       'Řekni přesně: „Tundrupku, budeme spolu hrát hru se slovy. Já ti řeknu jedno slovo a ty mi hned řekni první slovo, které tě napadne. Nemusíš o tom přemýšlet, není správná ani špatná odpověď. Začínáme?"',
     what_NOT_to_say: [
-      "Nepokládej navádějící otázky („A co rodina?")",
-      "Nehodnoť odpovědi („Hezky.", „Aha, to je zajímavé.")",
-      "Neopakuj slovo, pokud mlčí — počkej až 30 s a zapiš pauzu",
+      "Nepokládej navádějící otázky (např. A co rodina?)",
+      "Nehodnoť odpovědi (např. Hezky., Aha to je zajímavé.)",
+      "Neopakuj slovo, pokud mlčí — počkej až 30 s a zapiš pauzu,
       "Nediskutuj odpověď uprostřed — všechno až v debriefu",
     ],
     measurements_required: [
@@ -168,9 +168,9 @@ export const playbook_draw_a_person_machover: Playbook = {
     what_to_say_first:
       'Řekni přesně: „Tundrupku, nakresli mi prosím postavu. Kohokoliv, kdo tě napadne. Není to o tom, jestli to bude hezké." Pak mlčky pozoruj, NEzasahuj.',
     what_NOT_to_say: [
-      "Nedávej nápovědu („Můžeš nakreslit chlapce.")",
-      "Nekomentuj průběh („Hezké vlasy.")",
-      "Neopravuj („Chybí ti uši.")",
+      "Nedávej nápovědu (např. Můžeš nakreslit chlapce.)",
+      "Nekomentuj průběh (např. Hezké vlasy.)",
+      "Neopravuj (např. Chybí ti uši.)",
     ],
     measurements_required: [
       "pořadí kreslení (která část jako první, druhá…)",
@@ -214,7 +214,7 @@ export const playbook_draw_a_person_machover: Playbook = {
       "Rozhodni o pokračování",
     ],
     do_not_repeat_stimulus: false,
-    grounding_script: "Klidně: „Pojď na chvíli k oknu / napij se. Děkuji ti, že jsi mi to ukázal."',
+    grounding_script: "Klidně: Pojď na chvíli k oknu nebo se napij. Děkuji ti, že jsi mi to ukázal.',
   },
   closure_protocol: {
     reproduction_check: null,
@@ -418,7 +418,7 @@ export const playbook_narrative_cat: Playbook = {
     ],
   },
   trauma_response_protocol: {
-    signs: ["pláč", "freeze", "ztráta hlasu", "verbalizace traumatu jako „toho hrdiny"],
+    signs: ["pláč", "freeze", "ztráta hlasu", "verbalizace traumatu jako toho hrdiny],
     immediate_actions: ["okamžitě zastav vyprávění", "validace", "grounding"],
     do_not_repeat_stimulus: false,
     grounding_script: "Klidně přesun do bezpečí.",
@@ -439,7 +439,7 @@ export const playbook_sandtray_lowenfeld: Playbook = {
   method_label: "Hra s figurkami / pískoviště (Lowenfeld World Technique)",
   source_refs: ["Margaret Lowenfeld — The World Technique (1979)"],
   pre_session_setup: {
-    supplies: ["set figurek (lidi, zvířata, vozidla, domy, přírodní objekty, "stinné" figurky)", "podložka / pískoviště", "audio záznam", "fotoaparát"],
+    supplies: ["set figurek (lidi, zvířata, vozidla, domy, přírodní objekty, stinné figurky)", "podložka / pískoviště", "audio záznam", "fotoaparát"],
     room: "klid, dostatek místa",
     therapist_position: "z boku, na úrovni dítěte",
     child_position: "u podložky",
