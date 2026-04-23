@@ -745,6 +745,27 @@ serve(async (req) => {
       systemPrompt += `\n\n═══ DYNAMICKÁ KONTEXTOVÁ CACHE (context-prime) ═══\nToto je tvá aktuální "předsunutá paměť" – plastická mezipaměť vystavěná ze VŠECH zdrojů (Drive, DB, všechna vlákna, internet). Využívej ji pro maximální přítomnost a adaptabilitu.\n\n${contextPrimeCache}`;
     }
 
+    // ═══ JUNG ORIGINAL MEMORY INJECTION ═══
+    try {
+      const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
+      const lastUserText = typeof lastUserMsg?.content === "string"
+        ? lastUserMsg.content
+        : Array.isArray(lastUserMsg?.content)
+          ? lastUserMsg.content.filter((p: any) => p?.type === "text").map((p: any) => p.text).join(" ")
+          : "";
+      const historyText = messages.slice(-6, -1)
+        .map((m: any) => typeof m.content === "string" ? m.content : "")
+        .join("\n");
+      const relevance = classifyJungRelevance(lastUserText, historyText);
+      if (shouldActivateJungOriginal("hana_osobni", "hanicka", relevance)) {
+        console.log(`[hana-chat][jung] activating: matched=[${relevance.matched.join(",")}], score=${relevance.score.toFixed(2)}`);
+        const jungBlock = await buildJungOriginalInjection({ matched: relevance.matched, score: relevance.score });
+        systemPrompt += `\n\n${jungBlock}`;
+      }
+    } catch (jungErr) {
+      console.warn("[hana-chat][jung] injection failed (non-fatal):", jungErr);
+    }
+
     // ═══ STEP 3: Stream response ═══
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
