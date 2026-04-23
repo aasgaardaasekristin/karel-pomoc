@@ -27,6 +27,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 import { selectPantryA, summarizePantryAForPrompt, type PantryASnapshot } from "../_shared/pantryA.ts";
 import { readUnprocessedPantryB, markPantryBProcessed } from "../_shared/pantryB.ts";
+import { summarizeToolboxForPrompt } from "../_shared/therapeuticToolbox.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -326,18 +327,32 @@ const BRIEFING_TOOL = {
             kata_involvement: { type: "string", description: "Jednou větou, zda dnes přizvat Káťu a za jakých okolností." },
             agenda_outline: {
               type: "array",
-              description: "Strukturovaná minutáž sezení — 4 až 6 kroků. Každý krok má krátký název, doporučenou dobu a 1-2 věty co se v něm děje.",
+              description: "Strukturovana minutaz sezeni — 4 az 6 kroku. Kazdy krok MUSI byt ZIVY a HRAVY — pojmenuj konkretni terapeuticky nastroj z arzenalu (asociacni test, Rorschach lite, aktivni imaginace, kresba dne, grounding 5-4-3-2-1, mandala, atd.). NE genericke bloky typu uvod/prace/uzaver.",
               items: {
                 type: "object",
                 properties: {
-                  block: { type: "string", description: "Krátký název kroku, např. 'Úvod a ground-check'." },
-                  minutes: { type: "number", description: "Doporučená doba v minutách." },
-                  detail: { type: "string", description: "1-2 věty co se v bloku konkrétně dělá." },
+                  block: { type: "string", description: "Konkretni hravy nazev kroku, napr. 'Asociacni otevreni — 8 slov o domove' nebo 'Mandala dne s reflexi stredu'. Zadna abstraktni slova typu 'prace s emocemi'." },
+                  minutes: { type: "number", description: "Doporucena doba v minutach." },
+                  detail: { type: "string", description: "3-5 vet co se v bloku konkretne deje: pomucky (remote — chat, hlas, kresba do screenu, foto), Karluv prompt nebo otazka, ceho si v reakci casti vsimat. Hravy jazyk, ne klinicky." },
+                  tool_id: { type: "string", description: "ID nastroje z toolboxu (wat, barvy_dnes, rorschach_lite, tat_lite, active_imagination, safe_place, what_if, world_building, tri_dvere, deset_let, skala_telo, grounding_5_4_3_2_1, kresba_dnes, mandala, rukopis_vzorek). Volitelne, pokud blok kombinuje vice nastroju." },
                 },
-                required: ["block"],
+                required: ["block", "detail"],
                 additionalProperties: false,
               },
               minItems: 3,
+              maxItems: 6,
+            },
+            playful_hooks: {
+              type: "array",
+              description: "2-4 konkretni hrave hacky, ktere Karel uvnitr sezeni rozjede, pokud je cas/prostor: necekana otazka, asociace, mini-hra. Kazdy hook 1 veta.",
+              items: { type: "string" },
+              minItems: 0,
+              maxItems: 4,
+            },
+            materials_needed: {
+              type: "array",
+              description: "Co si Karel pripravi PRED sezenim (obrazky pro Rorschach lite, sada slov pro WAT, scena pro TAT lite). Vse digitalni — zadne fyzicke pomucky.",
+              items: { type: "string" },
               maxItems: 6,
             },
             questions_for_hanka: {
@@ -410,6 +425,14 @@ DNEŠNÍ NAVRŽENÉ SEZENÍ:
 - Vyber nejvhodnějšího kandidáta z poskytnutého seznamu, NEvymýšlej jméno mimo seznam.
 - Uveď: koho, proč právě dnes, kdo povede, první pracovní verze, kdy přizvat Káťu.
 
+PROGRAM SEZENÍ — HRAVOST JE POVINNÁ:
+- agenda_outline NESMÍ být generická („úvod / práce s emocemi / uzávěr"). MUSÍ obsahovat alespoň 2 KONKRÉTNÍ nástroje z TERAPEUTICKÉHO ARZENÁLU (asociační test, Rorschach lite, aktivní imaginace, mandala, kresba dne, „co kdyby", 3 dveře, atd.).
+- Každý blok agenda_outline má hravý název („Asociační otevření — 8 slov o tátovi", ne „úvodní rozhovor"), 3-5 vět detailu a pokud možno tool_id.
+- VŠE remote-native — žádné fyzické pomůcky. Karel pracuje skrz chat, hlas, foto kresby, screen canvas, posílání obrázků (Rorschach lite, TAT lite).
+- playful_hooks: 2-4 konkrétní hravé háčky („Co by řekl tomu obrazu Tundrupkův drak?"), pro spontánnost.
+- materials_needed: digitální příprava (sada slov pro WAT, obrázek skvrny, scéna pro TAT), žádné fyzické věci.
+- Inspirace JUNG: aktivní imaginace, Word Association Test, mandala jako Self-symbolika, dialog s vnitřními postavami.
+
 ROZDĚLENÍ ASKS:
 - Hanička dostává JINÉ otázky než Káťa. Ne stejné body s prohozeným jménem.
 - Hanička je v běžném kontaktu s kluky (každodenní, blízká).
@@ -445,6 +468,8 @@ async function generateBriefing(
       }).join("\n")}\n\n⚠ Tyto porady JSOU UZAVŘENÉ. Pravidla:\n  1) NIKDY pro tyto subject_parts/téma nezakládej nové decisions se stejným nebo téměř stejným titulkem.\n  2) Pokud dnes existuje aktivní krize na těchto částech, navaž na poradu (zmiň "navazujeme na podepsanou poradu '<title>'") místo nového rozhodnutí.\n  3) V proposed_session.first_draft a why_today VYUŽIJ závěr porady — neopakuj, co tým už schválil.\n\n`
     : "";
 
+  const toolboxSection = candidates[0]?.score >= 3 ? `\n\n${summarizeToolboxForPrompt()}\n` : "";
+
   const userPrompt = `KONTEXT PRO BRIEFING (${context.today}):
 
 ${context.pantry_a_summary ? `═══ SPIŽÍRNA A — RANNÍ PRACOVNÍ ZÁSOBA ═══\n${context.pantry_a_summary}\n\n` : ""}${pantryBSection}${approvedDelibsSection}AKTIVNÍ KRIZE (${context.crises.length}):
@@ -464,10 +489,10 @@ ${context.recent_session_plans.map((p: any) => `- ${p.session_date} | ${p.part_n
 
 KANDIDÁTI NA DNEŠNÍ SEZENÍ (skórovací heuristika):
 ${candidates.length > 0 ? candidates.slice(0, 5).map((c) => `- ${c.part_name} (skóre ${c.score}): ${c.reasons.join(", ")}`).join("\n") : "(žádní silní kandidáti — proposed_session může být null)"}
-
+${toolboxSection}
 ÚKOL:
 Vygeneruj strukturovaný briefing pro dnešní poradu týmu. Drž se pravidel z system promptu.
-${candidates[0]?.score >= 3 ? `MUSÍŠ navrhnout sezení — nejvhodnější kandidát je ${candidates[0].part_name}.` : "Pokud žádný kandidát nemá dost silné signály, nech proposed_session null."}`;
+${candidates[0]?.score >= 3 ? `MUSÍŠ navrhnout sezení — nejvhodnější kandidát je ${candidates[0].part_name}. Program (agenda_outline) MUSÍ obsahovat alespoň 2 konkrétní hravé nástroje z arzenálu (uveď jejich tool_id).` : "Pokud žádný kandidát nemá dost silné signály, nech proposed_session null."}`;
 
   const res = await fetch(AI_URL, {
     method: "POST",

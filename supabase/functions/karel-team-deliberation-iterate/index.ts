@@ -24,6 +24,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { summarizeToolboxForPrompt } from "../_shared/therapeuticToolbox.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -34,6 +35,7 @@ interface AgendaBlock {
   block: string;
   minutes?: number | null;
   detail?: string | null;
+  tool_id?: string | null;
 }
 
 function safeJsonParse(text: string): any {
@@ -135,7 +137,7 @@ Deno.serve(async (req: Request) => {
     const subjectPart = (row.subject_parts ?? [])[0] ?? "(neurčeno)";
     const authorLabel = author === "hanka" ? "Hanička" : "Káťa";
 
-    const prompt = `Jsi Karel — vedoucí terapeutického týmu. Pracuješ na živém programu sezení s částí "${subjectPart}".
+    const prompt = `Jsi Karel — vedoucí terapeutického týmu, esence C. G. Junga. Pracuješ na ŽIVÉM, HRAVÉM programu sezení s částí "${subjectPart}".
 
 PŮVODNÍ PRACOVNÍ NÁVRH:
 ${row.karel_proposed_plan ?? "(bez návrhu)"}
@@ -148,25 +150,35 @@ ${currentProgram.length > 0
 NOVÝ VSTUP OD ${authorLabel.toUpperCase()}:
 "${text}"
 
+${summarizeToolboxForPrompt()}
+
 ÚKOL:
 Zapracuj tento vstup do programu. Můžeš:
-- přidat nový bod
-- upravit existující bod (změnit detail / minutáž / pořadí)
+- přidat nový bod (s konkrétním nástrojem z arzenálu — uveď tool_id)
+- upravit existující bod (změnit nástroj, detail, minutáž, pořadí)
+- nahradit generický bod konkrétním hravým nástrojem (např. „úvodní rozhovor" → „Asociační otevření — 8 slov o domově")
 - odstranit bod, pokud ${authorLabel} říká že nedává smysl
 - nechat program beze změny, pokud vstup je jen souhlas / poznámka
+
+PRAVIDLA HRAVOSTI (POVINNÁ):
+- Žádný blok nesmí mít generický název („úvod", „práce s emocemi", „uzávěr"). VŽDY pojmenuj konkrétní nástroj z arzenálu.
+- Program po každé iteraci musí obsahovat alespoň 2 nástroje z arzenálu.
+- Vše REMOTE (chat / hlas / foto kresby / screen canvas / posílání obrázků). NIKDY fyzické pomůcky.
+- detail = 3-5 vět: jakou má Karel připravit pomůcku (digitální), jaký prompt řekne, čeho si všímá v reakci.
 
 Vrať VÝHRADNĚ JSON (bez markdownu, bez fences):
 {
   "program_draft": [
-    { "block": "krátký název kroku (max 80 znaků)", "minutes": 10, "detail": "1-2 věty co se v bloku děje" }
+    { "block": "konkrétní hravý název (max 100 znaků)", "minutes": 10, "detail": "3-5 vět: digitální pomůcka, Karlův prompt, co sledovat", "tool_id": "wat | rorschach_lite | active_imagination | …" }
   ],
-  "karel_inline_comment": "1-2 věty terapeutkám: co konkrétně jsi v programu změnil podle jejich vstupu (buď konkrétní: 'Bod 2 jsem zkrátil na 8 minut a přidal otázku o…')"
+  "karel_inline_comment": "1-2 věty terapeutkám: co konkrétně jsi v programu změnil podle jejich vstupu, a jaký nástroj jsi použil/přesunul."
 }
 
-PRAVIDLA:
+PRAVIDLA STRUKTURY:
 - max 8 bloků celkem
-- každý detail max 240 znaků
-- minutáž volitelná (vynech, pokud nedává smysl)
+- každý detail max 320 znaků
+- tool_id volitelný, ale doporučený
+- minutáž volitelná
 - žádné prázdné bloky`;
 
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -204,9 +216,10 @@ PRAVIDLA:
 
     const programDraft: AgendaBlock[] = Array.isArray(parsed.program_draft)
       ? parsed.program_draft.slice(0, 8).map((b: any) => ({
-          block: String(b?.block ?? "").slice(0, 120).trim(),
+          block: String(b?.block ?? "").slice(0, 140).trim(),
           minutes: typeof b?.minutes === "number" ? b.minutes : null,
-          detail: b?.detail ? String(b.detail).slice(0, 280) : null,
+          detail: b?.detail ? String(b.detail).slice(0, 380) : null,
+          tool_id: b?.tool_id ? String(b.tool_id).slice(0, 40).trim() : null,
         })).filter((b: AgendaBlock) => b.block.length > 0)
       : [];
     const karelComment = String(parsed.karel_inline_comment ?? "").slice(0, 600);
