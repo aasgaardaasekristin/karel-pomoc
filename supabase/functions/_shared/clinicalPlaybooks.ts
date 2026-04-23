@@ -594,14 +594,14 @@ export const ALL_PLAYBOOKS: Playbook[] = [
 export function detectPlaybook(blockText: string): Playbook | null {
   const t = (blockText || "").toLowerCase();
 
-  if (/(asocia[čc]n|asociac|slovn[íi] hr|prvn[íi] n[áa]pad|napadne|\b\d+\s*slov\b)/.test(t)) {
-    return playbook_association_experiment_jung;
-  }
   if (/(bezpe[čc]n[éeéeé]\s*m[íi]sto|safe\s*place|vizualizac|kotven[íi])/.test(t)) {
     return playbook_safe_place;
   }
   if (/(t[ěe]lov[áa]\s*map|body\s*map|somat|kde\s+to\s+v\s+t[ěe]le)/.test(t)) {
     return playbook_body_map_somatic;
+  }
+  if (/(asocia[čc]n|asociac|slovn[íi] hr|prvn[íi] n[áa]pad|napadne|\b\d+\s*slov\b)/.test(t)) {
+    return playbook_association_experiment_jung;
   }
   if (/(figurk|loutk|sandtray|p[íi]skovi[šs]|hra\s+s\s+(figurk|hra[čc]k))/.test(t)) {
     return playbook_sandtray_lowenfeld;

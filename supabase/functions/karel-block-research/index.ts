@@ -477,6 +477,15 @@ Cituj reálné manuály (Machover 1949, Koch 1949, Buck 1948, Burns 1970, Jung 1
       result = {
         ...structured,
         method_id: playbook?.method_id ?? structured.method_id,
+        supplies: playbook?.pre_session_setup.supplies ?? structured.supplies,
+        setup_instruction: playbook?.pre_session_setup.what_to_say_first ?? structured.setup_instruction,
+        observe_criteria: playbook
+          ? Array.from(new Set([
+              ...playbook.pre_session_setup.measurements_required,
+              ...playbook.step_protocol.red_flags,
+            ]))
+          : structured.observe_criteria,
+        followup_questions: playbook?.closure_protocol.debrief_questions ?? structured.followup_questions,
         citations: perplexity?.citations,
         // přepiš expected_artifacts z playbooku, pokud existuje (přesnější)
         expected_artifacts: playbook
@@ -490,7 +499,22 @@ Cituj reálné manuály (Machover 1949, Koch 1949, Buck 1948, Burns 1970, Jung 1
     } else {
       const fb = buildFallback(blockText, partName, partAge);
       result = playbook
-        ? { ...fb, method_id: playbook.method_id, method_label: playbook.method_label, source: "playbook" }
+        ? {
+            ...fb,
+            method_id: playbook.method_id,
+            method_label: playbook.method_label,
+            supplies: playbook.pre_session_setup.supplies,
+            setup_instruction: playbook.pre_session_setup.what_to_say_first,
+            observe_criteria: Array.from(new Set([
+              ...playbook.pre_session_setup.measurements_required,
+              ...playbook.step_protocol.red_flags,
+            ])),
+            expected_artifacts: Array.from(new Set(
+              playbook.required_artifacts.filter(a => a === "image" || a === "audio" || a === "text") as ("image"|"audio"|"text")[],
+            )),
+            followup_questions: playbook.closure_protocol.debrief_questions,
+            source: "playbook",
+          }
         : fb;
     }
 

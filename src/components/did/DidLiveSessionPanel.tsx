@@ -1272,6 +1272,34 @@ ${report}${interrogationBlock}${reflectionText}`;
   // + per-bod přílohy (foto/audio).
   if (activeBlockWorkspace && !sessionCompleted) {
     const block = activeBlockWorkspace;
+    const moveToNextBlock = () => {
+      try {
+        const key = `live_program_${planId ?? "ad-hoc"}`;
+        const raw = window.localStorage.getItem(key);
+        if (!raw) {
+          setActiveBlockWorkspace(null);
+          setActiveBlock(null);
+          return;
+        }
+        const arr = JSON.parse(raw) as Array<{ text?: string }>;
+        const nextIndex = block.index + 1;
+        if (Array.isArray(arr) && arr[nextIndex]) {
+          const nextText = typeof arr[nextIndex].text === "string" ? arr[nextIndex].text : `Bod #${nextIndex + 1}`;
+          const sepIdx = nextText.indexOf(" — ");
+          const nextBlock = sepIdx > 0
+            ? { index: nextIndex, text: nextText.slice(0, sepIdx).trim(), detail: nextText.slice(sepIdx + 3).trim() }
+            : { index: nextIndex, text: nextText };
+          setActiveBlock(nextBlock);
+          setActiveBlockWorkspace(nextBlock);
+          return;
+        }
+      } catch (e) {
+        console.warn("next block navigation failed:", e);
+      }
+      setActiveBlockWorkspace(null);
+      setActiveBlock(null);
+    };
+
     return (
       <div className="h-full w-full flex flex-col min-h-0 overflow-hidden bg-background">
         {/* Sticky header bodu */}
@@ -1327,6 +1355,7 @@ ${report}${interrogationBlock}${reflectionText}`;
               therapistName={therapistName}
               storageKey={`live_program_${planId ?? "ad-hoc"}`}
               sessionId={planId}
+              showBrief={false}
               onMarkDone={() => {
                 // Označit bod jako hotový v checklistu (LS) a zavřít workspace
                 try {
@@ -1347,6 +1376,7 @@ ${report}${interrogationBlock}${reflectionText}`;
                 setActiveBlockWorkspace(null);
                 setActiveBlock(null);
               }}
+              onAdvanceToNext={moveToNextBlock}
               onRequestArtefact={(kind) => {
                 if (kind === "audio") {
                   toast.info(`Bod #${block.index + 1}: spouštím nahrávání…`);
@@ -1357,46 +1387,6 @@ ${report}${interrogationBlock}${reflectionText}`;
                 }
               }}
             />
-
-            <div className="mt-3 flex items-center justify-between gap-2 flex-wrap rounded-md border border-border/60 bg-card/30 px-3 py-2">
-              <p className="text-[11px] text-muted-foreground">
-                Po uzavření bodu se v plánu označí jako splněný.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 text-xs gap-1.5"
-                onClick={() => {
-                  try {
-                    const key = `live_program_${planId ?? "ad-hoc"}`;
-                    const raw = window.localStorage.getItem(key);
-                    if (!raw) {
-                      setActiveBlockWorkspace(null);
-                      setActiveBlock(null);
-                      return;
-                    }
-                    const arr = JSON.parse(raw) as Array<{ text?: string }>;
-                    const nextIndex = block.index + 1;
-                    if (Array.isArray(arr) && arr[nextIndex]) {
-                      const nextText = typeof arr[nextIndex].text === "string" ? arr[nextIndex].text : `Bod #${nextIndex + 1}`;
-                      const sepIdx = nextText.indexOf(" — ");
-                      const nextBlock = sepIdx > 0
-                        ? { index: nextIndex, text: nextText.slice(0, sepIdx).trim(), detail: nextText.slice(sepIdx + 3).trim() }
-                        : { index: nextIndex, text: nextText };
-                      setActiveBlock(nextBlock);
-                      setActiveBlockWorkspace(nextBlock);
-                      return;
-                    }
-                  } catch (e) {
-                    console.warn("next block navigation failed:", e);
-                  }
-                  setActiveBlockWorkspace(null);
-                  setActiveBlock(null);
-                }}
-              >
-                Další bod
-              </Button>
-            </div>
           </div>
         </div>
       </div>
