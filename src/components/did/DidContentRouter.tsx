@@ -494,23 +494,25 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
 
     return (
       <ErrorBoundary fallbackTitle="Live session panel selhal">
-        <DidLiveSessionPanel
-          partName={didLiveSession.partName}
-          therapistName={didLiveSession.therapistName}
-          contextBrief={didLivePartContext || didContextPrime.primeCache || didInitialContext || undefined}
-          onEnd={(summary) => {
-            toast.success("DID sezení zpracováno");
-            setDidLiveSession(null);
-            setDidLiveSessionReady(false);
-            setDidLivePartContext("");
-            setDidSubMode("mamka");
-            setDidFlowState("chat");
-            setMessages([{ role: "assistant", content: `Sezení s **${didLiveSession.partName}** dokončeno.\n\n${summary}` }]);
-          }}
-          onBack={() => {
-            setDidLiveSessionReady(false);
-          }}
-        />
+        <div className="relative h-[85vh] min-h-[40rem] rounded-lg border border-border/60 overflow-hidden bg-card/30">
+          <DidLiveSessionPanel
+            partName={didLiveSession.partName}
+            therapistName={didLiveSession.therapistName}
+            contextBrief={didLivePartContext || didContextPrime.primeCache || didInitialContext || undefined}
+            onEnd={(summary) => {
+              toast.success("DID sezení zpracováno");
+              setDidLiveSession(null);
+              setDidLiveSessionReady(false);
+              setDidLivePartContext("");
+              setDidSubMode("mamka");
+              setDidFlowState("chat");
+              setMessages([{ role: "assistant", content: `Sezení s **${didLiveSession.partName}** dokončeno.\n\n${summary}` }]);
+            }}
+            onBack={() => {
+              setDidLiveSessionReady(false);
+            }}
+          />
+        </div>
       </ErrorBoundary>
     );
   }
