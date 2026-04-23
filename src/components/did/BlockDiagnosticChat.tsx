@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { Loader2, Send, Mic, Camera, CheckCircle2, Sparkles, AlertCircle } from "lucide-react";
+import { Loader2, Send, Mic, Camera, CheckCircle2, Sparkles, AlertCircle, Square, Video, Image as ImageIcon, X, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
+import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 
 /**
