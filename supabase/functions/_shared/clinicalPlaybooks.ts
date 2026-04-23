@@ -123,14 +123,14 @@ export const playbook_association_experiment_jung: Playbook = {
     ],
     immediate_actions: [
       `PŘERUŠ sekvenci slov — žádný další stimul`,
-      `Validuj nález terapeutce (»to co popisuješ je klinicky významné, je to indikátor komplexu vázaného k tématu, NE selhání)",
+      "Validuj nález terapeutce (»to co popisuješ je klinicky významné, je to indikátor komplexu vázaného k tématu, NE selhání)",
       `Dej terapeutce přesný grounding skript pro dítě`,
       `Rozhodni: pokračovat / zvolnit / zcela přerušit (a proč)`,
       `Vyžaduj zápis přesné formulace dítěte + neverbální projevy`,
     ],
     do_not_repeat_stimulus: true,
     grounding_script:
-      'Přečti dítěti klidně: »Tundrupku, jsi tady se mnou, jsme v bezpečí. Zhluboka se nadechni se mnou — nádech, výdech. Pojmenuj mi tři věci, které vidíš v místnosti.` Počkej na odpovědi, oceň, pak pauza min. 3 minuty.'`,
+      "Přečti dítěti klidně: »Tundrupku, jsi tady se mnou, jsme v bezpečí. Zhluboka se nadechni se mnou — nádech, výdech. Pojmenuj mi tři věci, které vidíš v místnosti. Počkej na odpovědi, oceň, pak pauza min. 3 minuty.",
   },
   closure_protocol: {
     reproduction_check:
@@ -209,7 +209,7 @@ export const playbook_draw_a_person_machover: Playbook = {
     signs: [`pláč při určité části`, `ztuhnutí ruky`, `verbalizace traumatu`, `dramatické zničení kresby`],
     immediate_actions: [
       `Zastav inquiry, neptej se dál`,
-      `Validuj (»to je důležitý vjem)",
+      "Validuj (»to je důležitý vjem)",
       "Grounding",
       `Rozhodni o pokračování`,
     ],
@@ -265,7 +265,7 @@ export const playbook_tree_test_koch: Playbook = {
       `dutiny v kmeni (často trauma marker)`,
       `uschlé větve, opadané listí`,
       `extrémně malý strom v rohu`,
-      `verbalizace traumatu (»tenhle strom někdo zlomil)",
+      "verbalizace traumatu (»tenhle strom někdo zlomil)",
     ],
   },
   trauma_response_protocol: {
@@ -295,7 +295,7 @@ export const playbook_htp_buck: Playbook = {
     therapist_position: `z boku`,
     child_position: `u stolu`,
     what_to_say_first:
-      'Postupně dej tři instrukce s pauzou: »Nakresli mi dům.` → po dokončení nový papír → »Nakresli mi strom.` → »Nakresli mi člověka.` Mezi nimi krátká pauza.'`,
+      "Postupně dej tři instrukce s pauzou: »Nakresli mi dům.` → po dokončení nový papír → »Nakresli mi strom.` → »Nakresli mi člověka. Mezi nimi krátká pauza.",
     what_NOT_to_say: [`Nespecifikuj typ`, `Nehodnoť`],
     measurements_required: [
       `pořadí všech tří kreseb`,
