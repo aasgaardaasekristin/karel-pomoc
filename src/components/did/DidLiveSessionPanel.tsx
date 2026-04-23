@@ -124,6 +124,68 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
   // chatu typu "napiš mi ty slova" mohly být přesměrovány na produce endpoint.
   const [activeBlock, setActiveBlock] = useState<{ index: number; text: string; detail?: string } | null>(null);
 
+  // Per-block research cache (do localStorage Karel ukládá expected_artifacts).
+  // Pro completion gate stačí číst přímo z localStorage při ukončování.
+  const checkMissingArtifacts = useCallback((): { blockIndex: number; blockText: string; missing: ("image" | "audio")[] }[] => {
+    if (typeof window === "undefined") return [];
+    const baseKey = `live_program_${planId ?? "ad-hoc"}`;
+    const result: { blockIndex: number; blockText: string; missing: ("image" | "audio")[] }[] = [];
+    try {
+      const planRaw = window.localStorage.getItem(baseKey);
+      if (!planRaw) return [];
+      const items = JSON.parse(planRaw) as { id: string; text: string; done: boolean }[];
+      if (!Array.isArray(items)) return [];
+      // Iterujeme přes všechny localStorage klíče s research/art/turns prefixem.
+      for (let idx = 0; idx < items.length; idx++) {
+        // Karel research data jsou v paměti komponenty (loadResearch), ne v LS.
+        // Místo toho použijeme heuristiku: pokud byly v BlockDiagnosticChat
+        // přidány turny (tj. bod se reálně rozjel), zkontrolujeme artefakty.
+        const turnsRaw = window.localStorage.getItem(`${baseKey}::turns::${idx}`);
+        if (!turnsRaw) continue;
+        const turns = JSON.parse(turnsRaw) as { from: string; text: string; attachment?: { kind: string } }[];
+        if (!Array.isArray(turns) || turns.length === 0) continue;
+        const artRaw = window.localStorage.getItem(`${baseKey}::art::${idx}`);
+        const arts = artRaw ? (JSON.parse(artRaw) as { kind: string }[]) : [];
+        const hasImage = arts.some(a => a.kind === "image");
+        const hasAudio = arts.some(a => a.kind === "audio");
+        // Heuristika: pokud text bodu obsahuje slova kresb/nakresl/portrét/strom/postav/mapa → očekáváme image
+        const textLc = items[idx].text.toLowerCase();
+        const expectsImage = /(nakresl|kresb|kresl|namaluj|portr|strom|postav|tělov|telov|mandala)/i.test(textLc);
+        const expectsAudio = /(asocia|slovn[íi] hr|příběh|pribeh|narrativ|narativ|hra s|figurk)/i.test(textLc);
+        const missing: ("image" | "audio")[] = [];
+        if (expectsImage && !hasImage) missing.push("image");
+        if (expectsAudio && !hasAudio) missing.push("audio");
+        if (missing.length > 0) {
+          result.push({ blockIndex: idx, blockText: items[idx].text, missing });
+        }
+      }
+    } catch (e) {
+      console.warn("[completion gate] failed to scan artifacts:", e);
+    }
+    return result;
+  }, [planId]);
+
+  const requestCloseFlow = useCallback((action: "analyze" | "light_close") => {
+    if (messages.length < 2) {
+      toast.error("Sezení je prázdné.");
+      return;
+    }
+    const missing = checkMissingArtifacts();
+    setMissingArtifactsReport(missing);
+    setCompletionGateAction(action);
+    if (missing.length > 0) {
+      // Měkká brána — varování s možností doplnit nebo pokračovat.
+      setCompletionGateOpen(true);
+      return;
+    }
+    // Žádné chybějící artefakty → pokračuj rovnou.
+    if (action === "analyze") {
+      setShowInterrogation(true);
+    } else {
+      setHandoffDialogOpen(true);
+    }
+  }, [messages.length, checkMissingArtifacts]);
+
   const pushActivateBlock = useCallback(
     (block: { index: number; text: string; detail?: string }, userRequest?: string) => {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
