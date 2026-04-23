@@ -2300,6 +2300,68 @@ export type Database = {
         }
         Relationships: []
       }
+      did_part_method_history: {
+        Row: {
+          clinical_yield: number | null
+          created_at: string
+          id: string
+          method_key: string
+          method_library_id: string | null
+          next_step_hint: string | null
+          notes_md: string | null
+          part_id: string
+          part_name: string | null
+          session_date: string
+          session_id: string | null
+          tolerance: number | null
+          trauma_marker: boolean
+          updated_at: string
+          variant_used: string | null
+        }
+        Insert: {
+          clinical_yield?: number | null
+          created_at?: string
+          id?: string
+          method_key: string
+          method_library_id?: string | null
+          next_step_hint?: string | null
+          notes_md?: string | null
+          part_id: string
+          part_name?: string | null
+          session_date?: string
+          session_id?: string | null
+          tolerance?: number | null
+          trauma_marker?: boolean
+          updated_at?: string
+          variant_used?: string | null
+        }
+        Update: {
+          clinical_yield?: number | null
+          created_at?: string
+          id?: string
+          method_key?: string
+          method_library_id?: string | null
+          next_step_hint?: string | null
+          notes_md?: string | null
+          part_id?: string
+          part_name?: string | null
+          session_date?: string
+          session_id?: string | null
+          tolerance?: number | null
+          trauma_marker?: boolean
+          updated_at?: string
+          variant_used?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "did_part_method_history_method_library_id_fkey"
+            columns: ["method_library_id"]
+            isOneToOne: false
+            referencedRelation: "karel_method_library"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       did_part_profiles: {
         Row: {
           challenges: Json | null
@@ -3896,6 +3958,63 @@ export type Database = {
           summary?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      karel_method_library: {
+        Row: {
+          age_range: string | null
+          category: string
+          contraindications: string | null
+          created_at: string
+          created_by: string
+          id: string
+          last_used_at: string | null
+          manual_md: string
+          method_key: string
+          sources: Json
+          status: string
+          tags: string[]
+          title: string
+          updated_at: string
+          usage_count: number
+          variants: Json
+        }
+        Insert: {
+          age_range?: string | null
+          category: string
+          contraindications?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          last_used_at?: string | null
+          manual_md: string
+          method_key: string
+          sources?: Json
+          status?: string
+          tags?: string[]
+          title: string
+          updated_at?: string
+          usage_count?: number
+          variants?: Json
+        }
+        Update: {
+          age_range?: string | null
+          category?: string
+          contraindications?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          last_used_at?: string | null
+          manual_md?: string
+          method_key?: string
+          sources?: Json
+          status?: string
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          usage_count?: number
+          variants?: Json
         }
         Relationships: []
       }
