@@ -1664,6 +1664,19 @@ ${report}${interrogationBlock}${reflectionText}`;
       {/* Messages — explicitní min-h chrání před zkolabováním pod kartami */}
       <ScrollArea className="flex-1 min-h-0 px-2 sm:px-4" ref={scrollRef}>
         <div className="max-w-3xl mx-auto py-4 space-y-3">
+          {messages.length === 0 && (
+            <div className="rounded-md border border-dashed border-primary/30 bg-primary/5 px-4 py-6 text-center space-y-2">
+              <Sparkles className="w-5 h-5 text-primary mx-auto" />
+              <p className="text-xs text-foreground font-medium">
+                Nahoře vidíš schválený plán bod po bodu.
+              </p>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                U každého bodu klikni <span className="font-semibold text-primary">🎯 Spustit bod</span> a otevře se pracovní prostor toho bodu — Karlův návod, pomůcky, instrukce, přílohy a chat krok po kroku.
+                <br />
+                Tady dole zůstává hlavní tok pro volné poznámky mimo konkrétní bod.
+              </p>
+            </div>
+          )}
           {messages.map((msg, i) => (
             <div key={i} className="space-y-1">
               <ChatMessage message={msg} />
