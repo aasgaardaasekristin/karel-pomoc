@@ -188,6 +188,8 @@ export default function AdminSpravaLauncher({
       isCleaningTasks={isCleaningTasks}
       onRefreshMemory={onRefreshMemory}
       isRefreshingMemory={isRefreshingMemory}
+      onJungBootstrap={runJungBootstrap}
+      isJungBootstrapping={isJungBootstrapping}
       refreshTrigger={refreshTrigger}
     />
   );
