@@ -528,6 +528,7 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify({
       deliberation: { ...updated, linked_live_session_id: bridgedPlanId },
       bridged_plan_id: bridgedPlanId,
+      bridge_mode: bridgeMode,
       crisis_effects: crisisEffects,
     }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
