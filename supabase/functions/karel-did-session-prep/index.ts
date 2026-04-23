@@ -416,7 +416,8 @@ POSLEDNÍ REPORTY:
 ${cycleSummaries || "(žádné)"}
 
 ODBORNÉ ZDROJE Z INTERNETU:
-${perplexity || "(nedostupné)"}`;
+${perplexity || "(nedostupné)"}
+${methodHistoryBlock}`;
 
     // Stream via Lovable AI
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
