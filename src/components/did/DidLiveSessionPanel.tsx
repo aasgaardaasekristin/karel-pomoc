@@ -1100,7 +1100,7 @@ ${report}${interrogationBlock}${reflectionText}`;
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setHandoffDialogOpen(true)}
+              onClick={() => requestCloseFlow("light_close")}
               disabled={isFinishing || isClosingLight || messages.length < 2}
               className="gap-1.5 text-xs h-9"
             >
@@ -1111,7 +1111,7 @@ ${report}${interrogationBlock}${reflectionText}`;
             <Button
               variant="destructive"
               size="sm"
-              onClick={() => setShowInterrogation(true)}
+              onClick={() => requestCloseFlow("analyze")}
               disabled={isFinishing || isClosingLight || messages.length < 2}
               className="gap-1.5 text-xs h-9"
             >
