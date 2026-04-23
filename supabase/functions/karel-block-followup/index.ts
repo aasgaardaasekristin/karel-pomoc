@@ -278,7 +278,8 @@ Deno.serve(async (req: Request) => {
       for (const m of trauma.matched) if (!state.red_flags_seen.includes(m)) state.red_flags_seen.push(m);
     }
 
-    // 4) ANTI-LOOP HINT pro AI
+    // 3b) ANTI-REPETITION + LEARNING (per-part historie metod, 14 dní)
+    const partHistory = await loadPartMethodHistory(partName);
     const nextStimulus =
       state.planned_steps.length > 0 && state.step_index < state.planned_steps.length
         ? state.planned_steps[state.step_index]
