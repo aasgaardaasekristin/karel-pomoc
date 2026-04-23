@@ -104,7 +104,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { data: updated, error: updErr } = await admin
+    const { data: updatedRow, error: updErr } = await admin
       .from("did_team_deliberations")
       .update(patch)
       .eq("id", deliberationId)
@@ -113,6 +113,26 @@ Deno.serve(async (req: Request) => {
 
     if (updErr) {
       return new Response(JSON.stringify({ error: updErr.message }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // CRITICAL BUGFIX (2026-04-23):
+    // `did_team_delib_autoderive_status` může změnit status na `approved`
+    // až v triggeru během UPDATE. Řádek vrácený přímo z `.update().select()`
+    // nemusí spolehlivě obsahovat finální post-trigger stav, takže bridge do
+    // `did_daily_session_plans` občas vůbec neproběhl a Live DID potom četlo
+    // starý plan_markdown. Proto po podpisu vždy načteme autoritativní finální
+    // podobu porady z DB a až z ní odvozujeme bridge i response.
+    const { data: updated, error: refreshedErr } = await admin
+      .from("did_team_deliberations")
+      .select("*")
+      .eq("id", deliberationId)
+      .eq("user_id", userId)
+      .single();
+
+    if (refreshedErr || !updated) {
+      return new Response(JSON.stringify({ error: refreshedErr?.message || "failed to reload deliberation" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
