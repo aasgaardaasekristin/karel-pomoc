@@ -471,11 +471,51 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
     }
   };
 
-  const goToLiveSession = () => {
+  const [startingLive, setStartingLive] = useState(false);
+  /**
+   * SPUSTIT SEZENÍ TRUTH PASS (2026-04-23):
+   *   Toto tlačítko je nyní jediným spouštěčem živého DID sezení v Pracovně.
+   *   - Předchozí navigace `/?did=live-session&daily_plan_id=…` byla mrtvá
+   *     (parametr nikde nebyl parsován).
+   *   - Místo toho:
+   *     1) ověříme, že existuje plán (`bridgedPlanId` nebo `linked_live_session_id`),
+   *     2) přepneme jeho status na `in_progress` v `did_daily_session_plans`,
+   *     3) vyemitujeme globální DOM event `karel:start-live-session`, který
+   *        DidDailySessionPlan zachytí a otevře `DidLiveSessionPanel`,
+   *     4) zavřeme dialog porady.
+   *   Plán už obsahuje aktuální (živou) verzi programu díky novému bridge
+   *   v karel-team-deliberation-signoff (program_draft → plan_markdown).
+   */
+  const goToLiveSession = async () => {
     const planId = bridgedPlanId ?? d?.linked_live_session_id;
-    if (!planId) return;
-    navigate(`/?did=live-session&daily_plan_id=${planId}`);
-    onClose();
+    if (!planId || startingLive) return;
+    setStartingLive(true);
+    try {
+      const { error } = await (supabase as any)
+        .from("did_daily_session_plans")
+        .update({ status: "in_progress", updated_at: new Date().toISOString() })
+        .eq("id", planId);
+      if (error) {
+        console.error("[DeliberationRoom] startLiveSession status update failed:", error);
+        toast.error("Nepodařilo se zahájit sezení (DB update).");
+        return;
+      }
+      // Globální signál pro Pracovnu, aby otevřela LIVE panel s tímto plánem.
+      // DidDailySessionPlan (tab Dnes) ho poslouchá a přepne `liveSessionActive`.
+      try {
+        window.dispatchEvent(new CustomEvent("karel:start-live-session", {
+          detail: { planId },
+        }));
+      } catch {/* SSR / non-browser kontexty ignorujeme */}
+      toast.success("Sezení zahájeno. Otevírám živou místnost…");
+      onClose();
+      // Pojistka: pokud uživatel není fyzicky v záložce „Dnes" (např. otevřel
+      // poradu z jiného tabu), navedeme ho na hlavní pracovnu, kde Live panel
+      // okamžitě převezme řízení.
+      try { navigate("/chat"); } catch {/* ignore */}
+    } finally {
+      setStartingLive(false);
+    }
   };
 
   const sp = d ? signoffProgress(d) : { signed: 0, total: 2, missing: [] };
@@ -786,9 +826,12 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 size="sm"
                 className="w-full h-8 text-[11px]"
                 onClick={goToLiveSession}
-                disabled={!bridgedPlanId && !d.linked_live_session_id}
+                disabled={(!bridgedPlanId && !d.linked_live_session_id) || startingLive}
               >
-                Spustit sezení <ArrowRight className="w-3 h-3 ml-1" />
+                {startingLive ? (
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                ) : null}
+                {startingLive ? "Otevírám…" : <>Spustit sezení <ArrowRight className="w-3 h-3 ml-1" /></>}
               </Button>
             )}
           </div>
