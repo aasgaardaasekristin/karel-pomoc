@@ -187,6 +187,7 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
     text: string;
     detail?: string;
   } | null>(null);
+  const [planRefreshTick, setPlanRefreshTick] = useState(0);
 
   // Per-block research cache (do localStorage Karel ukládá expected_artifacts).
   // Pro completion gate stačí číst přímo z localStorage při ukončování.
