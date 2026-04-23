@@ -461,11 +461,18 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
   // rodičovské wrappery (Pracovna / DidContentRouter mají max-h-[22rem]).
   // Bez tohoto by byl input live sezení vytlačen pod fold a nešlo by k němu doscrollovat.
   if (currentLivePlan) {
-    // Portal na document.body — obchází jakýkoli `transform`/`overflow` rodičovského
-    // Radix Dialogu (DeliberationRoom), pod kterým by jinak overlay mohl uvíznout.
+    // LIVE SEZENÍ — fullscreen overlay přes portál na document.body.
+    // Důvody:
+    //  1) Obchází `max-h-[22rem]` wrappery v DidDashboard / DidContentRouter,
+    //     které by jinak panel zmáčkly do nečitelného boxu.
+    //  2) Obchází Radix Dialog (DeliberationRoom) — odkud se sezení často spouští.
+    //
+    // KRITICKÉ (oprava 2026-04-23): wrapper MUSÍ mít `relative`, protože vnitřek
+    // `DidLiveSessionPanel` se renderuje jako `absolute inset-0`. Bez `relative`
+    // se panel "vypařil" mimo flow a uživatelka viděla jen prázdné tmavé pozadí.
     return createPortal(
-      <div className="fixed inset-0 z-[200] bg-background flex flex-col">
-        <div className="relative flex-1 min-h-0 overflow-hidden bg-background">
+      <div className="fixed inset-0 z-[200] bg-background">
+        <div className="relative w-full h-full overflow-hidden">
           <DidLiveSessionPanel
             partName={currentLivePlan.selected_part}
             therapistName={currentLivePlan.session_lead === "kata" ? "Káťa" : "Hanka"}
