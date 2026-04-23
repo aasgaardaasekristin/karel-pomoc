@@ -47,6 +47,7 @@ const corsHeaders = {
 };
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { detectPlaybook, type Playbook } from "../_shared/clinicalPlaybooks.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -55,13 +56,15 @@ const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
 type ResearchOutput = {
   method_label: string;
+  method_id?: string;            // pevný playbook id, pokud detekováno
   supplies: string[];
   setup_instruction: string;
   observe_criteria: string[];
   expected_artifacts: ("image" | "audio" | "text")[];
   followup_questions: string[];
+  planned_steps?: string[];      // pro asoc. experiment: 8 konkrétních slov
   citations?: string[];
-  source: "perplexity" | "fallback" | "ai-only";
+  source: "perplexity" | "fallback" | "ai-only" | "playbook";
 };
 
 function detectMethodHints(text: string): {
