@@ -20,6 +20,47 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
+function buildApprovedSessionPlanMarkdown(updated: Record<string, any>) {
+  const sp = updated.session_params && typeof updated.session_params === "object"
+    ? updated.session_params as Record<string, any>
+    : {};
+
+  const ledByRaw = String(sp.led_by ?? "").trim();
+  const programSource: any[] = Array.isArray(updated.program_draft) && updated.program_draft.length > 0
+    ? updated.program_draft
+    : Array.isArray(updated.agenda_outline)
+      ? updated.agenda_outline
+      : [];
+
+  const agendaLines: string[] = [];
+  if (programSource.length > 0) {
+    agendaLines.push("## Program sezení", "");
+    programSource.forEach((b: any, i: number) => {
+      const label = String(b?.block ?? "").trim();
+      if (!label) return;
+      const min = typeof b?.minutes === "number" && b.minutes > 0 ? ` (${b.minutes} min)` : "";
+      agendaLines.push(`${i + 1}. **${label}**${min}`);
+      if (typeof b?.detail === "string" && b.detail.trim()) {
+        agendaLines.push(`   ${b.detail.trim()}`);
+      }
+      agendaLines.push("");
+    });
+  }
+
+  return [
+    `# Schválený plán z týmové porady`,
+    `**Porada:** ${updated.title}`,
+    ledByRaw ? `**Vede:** ${ledByRaw}` : "",
+    typeof sp.duration_min === "number" ? `**Délka:** ~${sp.duration_min} min` : "",
+    sp.why_today ? `**Proč dnes:** ${sp.why_today}` : "",
+    sp.kata_involvement ? `**Káťa:** ${sp.kata_involvement}` : "",
+    updated.reason ? `**Důvod:** ${updated.reason}` : "",
+    "",
+    ...agendaLines,
+    updated.final_summary ? `## Závěr porady\n${updated.final_summary}` : "",
+  ].filter(Boolean).join("\n");
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -204,33 +245,7 @@ Deno.serve(async (req: Request) => {
       const programSourceLabel = (Array.isArray((updated as any).program_draft) && (updated as any).program_draft.length > 0)
         ? "program_draft (živá iterace)"
         : "agenda_outline (původní briefing)";
-
-      const agendaLines: string[] = [];
-      if (programSource.length > 0) {
-        agendaLines.push(`## Program sezení`);
-        agendaLines.push(`_Zdroj: ${programSourceLabel}_`);
-        agendaLines.push("");
-        programSource.forEach((b: any, i: number) => {
-          const min = typeof b?.minutes === "number" ? ` (${b.minutes} min)` : "";
-          const tool = b?.tool_id ? ` · 🎲 ${b.tool_id}` : "";
-          const detail = b?.detail ? `\n   ${b.detail}` : "";
-          agendaLines.push(`${i + 1}. **${b?.block ?? ""}**${min}${tool}${detail}`);
-        });
-        agendaLines.push("");
-      }
-
-      const planMarkdown = [
-        `# Schválený plán z týmové porady`,
-        `**Porada:** ${updated.title}`,
-        ledByRaw ? `**Vede:** ${ledByRaw}` : "",
-        typeof sp.duration_min === "number" ? `**Délka:** ~${sp.duration_min} min` : "",
-        sp.why_today ? `**Proč dnes:** ${sp.why_today}` : "",
-        sp.kata_involvement ? `**Káťa:** ${sp.kata_involvement}` : "",
-        updated.reason ? `**Důvod:** ${updated.reason}` : "",
-        ``,
-        ...agendaLines,
-        updated.final_summary ? `## Závěr porady\n${updated.final_summary}` : "",
-      ].filter(Boolean).join("\n");
+      const planMarkdown = buildApprovedSessionPlanMarkdown(updated as Record<string, any>);
 
       const urgencyBreakdown = {
         source: "team_deliberation",
