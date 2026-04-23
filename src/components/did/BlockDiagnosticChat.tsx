@@ -110,6 +110,40 @@ const BlockDiagnosticChat = ({
   const logRef = useRef<HTMLDivElement>(null);
   const autoStartedRef = useRef(false);
 
+  // ── REAL ARTIFACT CAPTURE (2026-04-23 hard fix) ──
+  // Předchozí verze jen vytvořila „falešný" placeholder a nic neuploadovala.
+  // Teď máme:
+  //   - skutečný audio recorder (MediaRecorder, max 5 min)
+  //   - file picker pro obrázky (camera + galerie / drag&drop)
+  //   - file picker pro video
+  //   - okamžitou analýzu přes karel-analyze-file / karel-audio-analysis
+  //     → Karel hned napíše, co vidí/slyší (krátce, jako průvodce v real-time)
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordStartRef = useRef<number>(0);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [isAnalyzingArtifact, setIsAnalyzingArtifact] = useState(false);
+
+  const stopRecordingTimer = () => {
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      stopRecordingTimer();
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        try { mediaRecorderRef.current.stop(); } catch {}
+      }
+    };
+  }, []);
+
   useEffect(() => {
     setHydrated(false);
     if (typeof window !== "undefined") {
