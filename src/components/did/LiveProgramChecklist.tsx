@@ -1,8 +1,9 @@
-import { useMemo, useState, useEffect } from "react";
-import { CheckCircle2, Circle, ChevronDown, ChevronRight, ListChecks, NotebookPen, Sparkles, Mic, Camera, Send } from "lucide-react";
+import { useMemo, useState, useEffect, useCallback } from "react";
+import { CheckCircle2, Circle, ChevronDown, ChevronRight, ListChecks, Sparkles, Mic, Camera } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { supabase } from "@/integrations/supabase/client";
+import BlockDiagnosticChat, { type BlockResearch, type DiagTurn, type BlockArtifact } from "./BlockDiagnosticChat";
 
 /**
  * LiveProgramChecklist
