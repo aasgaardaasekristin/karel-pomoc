@@ -116,6 +116,8 @@ const LiveProgramChecklist = ({
   onBlockArtifactsChange,
 }: Props) => {
   const parsed = useMemo(() => parseProgramBullets(planMarkdown), [planMarkdown]);
+  const planSignature = useMemo(() => JSON.stringify(parsed), [parsed]);
+  const metaKey = `${storageKey}::meta`;
 
   const initialItems: ProgramItem[] = useMemo(() => {
     if (parsed.length === 0) {
@@ -139,8 +141,9 @@ const LiveProgramChecklist = ({
   const [items, setItems] = useState<ProgramItem[]>(() => {
     if (typeof window === "undefined") return initialItems;
     try {
+      const storedSignature = window.localStorage.getItem(metaKey);
       const saved = window.localStorage.getItem(storageKey);
-      if (saved) {
+      if (saved && storedSignature === planSignature) {
         const parsedSaved = JSON.parse(saved) as ProgramItem[];
         if (Array.isArray(parsedSaved) && parsedSaved.length === initialItems.length) {
           return initialItems.map((it, i) => ({
@@ -157,17 +160,41 @@ const LiveProgramChecklist = ({
   });
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      setItems(initialItems);
+      return;
+    }
+
+    try {
+      const storedSignature = window.localStorage.getItem(metaKey);
+      const saved = window.localStorage.getItem(storageKey);
+      if (saved && storedSignature === planSignature) {
+        const parsedSaved = JSON.parse(saved) as ProgramItem[];
+        if (Array.isArray(parsedSaved) && parsedSaved.length === initialItems.length) {
+          setItems(initialItems.map((it, i) => ({
+            ...it,
+            done: !!parsedSaved[i]?.done,
+            observation: parsedSaved[i]?.observation ?? "",
+          })));
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     setItems(initialItems);
-  }, [initialItems]);
+  }, [initialItems, metaKey, planSignature, storageKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
+      window.localStorage.setItem(metaKey, planSignature);
       window.localStorage.setItem(storageKey, JSON.stringify(items));
     } catch {
       // quota — ignore
     }
-  }, [items, storageKey]);
+  }, [items, metaKey, planSignature, storageKey]);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [researchByIdx, setResearchByIdx] = useState<Record<number, BlockResearch | null>>({});
@@ -197,9 +224,9 @@ const LiveProgramChecklist = ({
     [researchByIdx, researchLoadingIdx, partName],
   );
 
-  const toggleDone = (id: string) => {
+  const setDoneState = (id: string, done: boolean) => {
     setItems(prev => {
-      const next = prev.map(it => (it.id === id ? { ...it, done: !it.done } : it));
+      const next = prev.map(it => (it.id === id ? { ...it, done } : it));
       const changed = next.find(it => it.id === id);
       if (changed && onItemToggle) onItemToggle(changed);
       return next;
@@ -261,7 +288,7 @@ const LiveProgramChecklist = ({
             >
               <div className="flex items-start gap-2">
                 <button
-                  onClick={() => toggleDone(item.id)}
+                  onClick={() => setDoneState(item.id, !item.done)}
                   className="shrink-0 mt-0.5"
                   aria-label={item.done ? "Označit jako nehotový" : "Označit jako hotový"}
                 >
@@ -357,7 +384,7 @@ const LiveProgramChecklist = ({
                     }}
                     onArtifactsChange={arts => onBlockArtifactsChange?.(idx, arts)}
                     onRequestArtefact={kind => onRequestArtefact?.(blockRef, kind)}
-                    onMarkDone={() => toggleDone(item.id)}
+                    onMarkDone={() => setDoneState(item.id, true)}
                   />
                 </div>
               )}

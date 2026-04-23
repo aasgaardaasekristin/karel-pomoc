@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Loader2, Send, Mic, Camera, CheckCircle2, Sparkles, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -86,65 +86,116 @@ const BlockDiagnosticChat = ({
   showBrief = true,
   onAdvanceToNext,
 }: Props) => {
+  const persistenceVersion = "live-block-v2";
   const turnsKey = `${storageKey}::turns::${blockIndex}`;
   const artKey = `${storageKey}::art::${blockIndex}`;
+  const metaKey = `${storageKey}::meta::${blockIndex}`;
+  const blockSignature = useMemo(
+    () => JSON.stringify({ version: persistenceVersion, text: blockText.trim(), detail: (blockDetail ?? "").trim() }),
+    [blockText, blockDetail],
+  );
 
-  const [turns, setTurns] = useState<DiagTurn[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const raw = window.localStorage.getItem(turnsKey);
-      if (raw) return JSON.parse(raw) as DiagTurn[];
-    } catch {}
-    return [];
-  });
-  const [artifacts, setArtifacts] = useState<BlockArtifact[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const raw = window.localStorage.getItem(artKey);
-      if (raw) return JSON.parse(raw) as BlockArtifact[];
-    } catch {}
-    return [];
-  });
+  const [turns, setTurns] = useState<DiagTurn[]>([]);
+  const [artifacts, setArtifacts] = useState<BlockArtifact[]>([]);
   const [draft, setDraft] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [missingArtifacts, setMissingArtifacts] = useState<("image" | "audio")[]>([]);
   const [closeMsg, setCloseMsg] = useState<string | null>(null);
   const [protocolState, setProtocolState] = useState<any>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
+  const [localResearch, setLocalResearch] = useState<BlockResearch | null>(null);
+  const [localResearchLoading, setLocalResearchLoading] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   const autoStartedRef = useRef(false);
 
   useEffect(() => {
+    setHydrated(false);
+    if (typeof window !== "undefined") {
+      try {
+        const storedSignature = window.localStorage.getItem(metaKey);
+        const shouldReuseStoredData = storedSignature === blockSignature;
+        const turnsRaw = shouldReuseStoredData ? window.localStorage.getItem(turnsKey) : null;
+        const artRaw = shouldReuseStoredData ? window.localStorage.getItem(artKey) : null;
+
+        if (!shouldReuseStoredData) {
+          window.localStorage.removeItem(turnsKey);
+          window.localStorage.removeItem(artKey);
+        }
+
+        window.localStorage.setItem(metaKey, blockSignature);
+        setTurns(turnsRaw ? (JSON.parse(turnsRaw) as DiagTurn[]) : []);
+        setArtifacts(artRaw ? (JSON.parse(artRaw) as BlockArtifact[]) : []);
+      } catch {
+        setTurns([]);
+        setArtifacts([]);
+      }
+    }
+
     autoStartedRef.current = false;
     setDraft("");
     setLastError(null);
     setMissingArtifacts([]);
     setCloseMsg(null);
     setProtocolState(null);
-  }, [blockIndex, blockText, blockDetail]);
+    setLocalResearch(null);
+    setLocalResearchLoading(false);
+    setHydrated(true);
+  }, [artKey, blockIndex, blockSignature, metaKey, turnsKey]);
 
   useEffect(() => {
+    if (!hydrated) return;
     if (typeof window === "undefined") return;
     try { window.localStorage.setItem(turnsKey, JSON.stringify(turns)); } catch {}
     onTurnsChange?.(turns);
-  }, [turns, turnsKey, onTurnsChange]);
+  }, [hydrated, turns, turnsKey, onTurnsChange]);
 
   useEffect(() => {
+    if (!hydrated) return;
     if (typeof window === "undefined") return;
     try { window.localStorage.setItem(artKey, JSON.stringify(artifacts)); } catch {}
     onArtifactsChange?.(artifacts);
-  }, [artifacts, artKey, onArtifactsChange]);
+  }, [hydrated, artifacts, artKey, onArtifactsChange]);
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [turns]);
 
-  // Auto-load rešerše při prvním otevření bodu (Karel bez manuálu nevyrobí validní setup)
-  useEffect(() => {
-    if (!research && !isResearchLoading && onLoadResearch) onLoadResearch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const effectiveResearch = research ?? localResearch;
+  const effectiveResearchLoading = !!isResearchLoading || localResearchLoading;
 
-  const [lastError, setLastError] = useState<string | null>(null);
+  const loadResearch = useCallback(async () => {
+    if (effectiveResearch || effectiveResearchLoading) return;
+    if (onLoadResearch) {
+      onLoadResearch();
+      return;
+    }
+
+    setLocalResearchLoading(true);
+    try {
+      const { data, error } = await (supabase as any).functions.invoke("karel-block-research", {
+        body: {
+          part_name: partName,
+          program_block: { index: blockIndex, text: blockText, detail: blockDetail },
+          depth: "deep",
+        },
+      });
+      if (error) throw error;
+      setLocalResearch((data as BlockResearch) ?? null);
+    } catch (e) {
+      console.error("[BlockDiagnosticChat] research failed:", e);
+      toast.error("Nepodařilo se načíst instrukce pro tento bod.");
+      setLocalResearch(null);
+    } finally {
+      setLocalResearchLoading(false);
+    }
+  }, [effectiveResearch, effectiveResearchLoading, onLoadResearch, partName, blockIndex, blockText, blockDetail]);
+
+  useEffect(() => {
+    if (!effectiveResearch && !effectiveResearchLoading) {
+      void loadResearch();
+    }
+  }, [effectiveResearch, effectiveResearchLoading, loadResearch]);
 
   const callFollowup = useCallback(
     async (trigger: "auto_next" | "ask_karel" | "user_input" | "start", existingTurns: DiagTurn[]): Promise<boolean> => {
@@ -157,7 +208,7 @@ const BlockDiagnosticChat = ({
             therapist_name: therapistName,
             session_id: sessionId,
             program_block: { index: blockIndex, text: blockText, detail: blockDetail },
-            research: research ?? null,
+            research: effectiveResearch ?? null,
             turns: existingTurns.map((t) => ({ from: t.from, text: t.text, ts: t.ts })),
             state: protocolState,
             trigger,
@@ -191,18 +242,18 @@ const BlockDiagnosticChat = ({
         setIsThinking(false);
       }
     },
-    [partName, therapistName, sessionId, blockIndex, blockText, blockDetail, research, protocolState],
+    [partName, therapistName, sessionId, blockIndex, blockText, blockDetail, effectiveResearch, protocolState],
   );
 
   // Auto-start setup briefing jakmile je k dispozici research
   useEffect(() => {
     if (autoStartedRef.current) return;
     if (turns.length > 0) { autoStartedRef.current = true; return; }
-    if (!research || isResearchLoading) return;
+    if (!effectiveResearch || effectiveResearchLoading) return;
     autoStartedRef.current = true;
     void callFollowup("start", []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [research, isResearchLoading]);
+  }, [effectiveResearch, effectiveResearchLoading]);
 
   const handleSend = async () => {
     const text = draft.trim();
@@ -246,55 +297,55 @@ const BlockDiagnosticChat = ({
       {showBrief && (
         <div className="rounded-sm border border-border/60 bg-background/70">
           <div className="px-2.5 pb-2 space-y-1.5 text-[11px] text-foreground">
-            {!research && !isResearchLoading && onLoadResearch && (
+            {!effectiveResearch && !effectiveResearchLoading && (
               <div className="flex items-center justify-between gap-2">
                 <p className="text-muted-foreground italic">Karel ještě neprovedl odbornou rešerši.</p>
                 <Button
                   size="sm"
                   variant="outline"
                   className="h-6 text-[10px] gap-1"
-                  onClick={onLoadResearch}
+                  onClick={() => void loadResearch()}
                 >
                   <Sparkles className="w-3 h-3" /> Spustit rešerši
                 </Button>
               </div>
             )}
-            {isResearchLoading && (
+            {effectiveResearchLoading && (
               <div className="flex items-center gap-2 text-muted-foreground italic">
                 <Loader2 className="w-3 h-3 animate-spin" /> Karel dohledává odborná kritéria…
               </div>
             )}
-            {research && (
+            {effectiveResearch && (
               <>
-                {research.method_label && (
+                {effectiveResearch.method_label && (
                   <p>
-                    <span className="font-semibold">Metoda:</span> {research.method_label}
+                    <span className="font-semibold">Metoda:</span> {effectiveResearch.method_label}
                   </p>
                 )}
-                {research.supplies?.length > 0 && (
+                {effectiveResearch.supplies?.length > 0 && (
                   <p>
-                    <span className="font-semibold">Pomůcky:</span> {research.supplies.join(", ")}
+                    <span className="font-semibold">Pomůcky:</span> {effectiveResearch.supplies.join(", ")}
                   </p>
                 )}
-                {research.setup_instruction && (
+                {effectiveResearch.setup_instruction && (
                   <p>
-                    <span className="font-semibold">Instrukce dítěti:</span> „{research.setup_instruction}"
+                    <span className="font-semibold">Instrukce dítěti:</span> „{effectiveResearch.setup_instruction}"
                   </p>
                 )}
-                {research.observe_criteria?.length > 0 && (
+                {effectiveResearch.observe_criteria?.length > 0 && (
                   <div>
                     <p className="font-semibold">Co sledovat:</p>
                     <ul className="list-disc pl-4 space-y-0.5">
-                      {research.observe_criteria.slice(0, 8).map((c, i) => (
+                      {effectiveResearch.observe_criteria.slice(0, 8).map((c, i) => (
                         <li key={i}>{c}</li>
                       ))}
                     </ul>
                   </div>
                 )}
-                {research.expected_artifacts?.length > 0 && (
+                {effectiveResearch.expected_artifacts?.length > 0 && (
                   <p className="text-muted-foreground">
                     <span className="font-semibold">Karel očekává:</span>{" "}
-                    {research.expected_artifacts
+                    {effectiveResearch.expected_artifacts
                       .map((a) => (a === "image" ? "📷 obrázek" : a === "audio" ? "🎙️ audio" : "📝 zápis"))
                       .join(", ")}
                   </p>
