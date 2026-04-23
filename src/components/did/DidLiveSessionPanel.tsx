@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft, Camera, X, Shuffle, CheckCircle, RotateCcw, FileText, ChevronDown, ChevronUp, StickyNote, DoorClosed } from "lucide-react";
+import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft, Camera, X, Shuffle, CheckCircle, RotateCcw, FileText, ChevronDown, ChevronUp, StickyNote, DoorClosed, AlertTriangle } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -1515,6 +1515,62 @@ ${report}${interrogationBlock}${reflectionText}`;
             <Button size="sm" onClick={handleLightClose} disabled={isClosingLight} className="gap-1.5">
               {isClosingLight ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DoorClosed className="w-3.5 h-3.5" />}
               Ukončit a uložit přepis
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Completion gate (měkká brána) ── */}
+      <Dialog open={completionGateOpen} onOpenChange={setCompletionGateOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              {completionGateAction === "analyze" ? "Před analýzou — chybí podklady" : "Před ukončením — chybí podklady"}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              U některých bodů jsi spustila diagnostický chat, ale chybí povinný artefakt (kresba / audio).
+              Karel z toho neudělá plnou klinickou analýzu.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {missingArtifactsReport.map((m) => (
+              <div
+                key={m.blockIndex}
+                className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs"
+              >
+                <p className="font-semibold text-foreground mb-1">
+                  Bod #{m.blockIndex + 1}: <span className="font-normal">{m.blockText.slice(0, 90)}</span>
+                </p>
+                <p className="text-amber-700 dark:text-amber-400">
+                  Chybí: {m.missing.map((k) => (k === "image" ? "📷 obrázek/kresba" : "🎙️ audio nahrávka")).join(", ")}
+                </p>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="gap-2 flex-wrap">
+            <Button variant="ghost" size="sm" onClick={() => setCompletionGateOpen(false)}>
+              Zpět doplnit
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                // Měkká brána: pokračuj, doplň chybějící do extra note přes interrogation room.
+                setCompletionGateOpen(false);
+                if (completionGateAction === "analyze") {
+                  // Předáme info o chybějících artefaktech přes setInterrogationPayload jako placeholder note
+                  const note = missingArtifactsReport
+                    .map((m) => `Bod #${m.blockIndex + 1}: chybí ${m.missing.join(", ")}`)
+                    .join("; ");
+                  setInterrogationPayload({ qa: [], extraNote: `[CHYBĚJÍCÍ ARTEFAKTY] ${note}` });
+                  setShowInterrogation(true);
+                } else {
+                  setHandoffDialogOpen(true);
+                }
+              }}
+            >
+              Pokračovat přesto
             </Button>
           </DialogFooter>
         </DialogContent>
