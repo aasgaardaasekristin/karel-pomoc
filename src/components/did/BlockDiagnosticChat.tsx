@@ -312,19 +312,251 @@ const BlockDiagnosticChat = ({
     void callFollowup("auto_next", turns);
   };
 
-  const addArtifactPlaceholder = (kind: "image" | "audio") => {
-    // přidáme placeholder do turns (Hana později uploaduje skutečný soubor přes nadřazený panel)
-    const label = kind === "image" ? "📷 Foto/kresba k tomuto bodu" : "🎙️ Audio k tomuto bodu";
-    const turn: DiagTurn = {
-      from: "hana",
-      text: `${label} (přiloženo)`,
-      ts: new Date().toISOString(),
-      attachment: { kind, label },
-    };
-    setTurns((prev) => [...prev, turn]);
-    setArtifacts((prev) => [...prev, { kind, label, ts: new Date().toISOString() }]);
-    onRequestArtefact?.(kind);
+  // ── REAL ARTIFACT ANALYSIS ──
+  // Vezme blob/obrázek, pošle Karlovi a hned přidá jeho stručnou reakci
+  // (max ~5 řádků) do per-bod logu. Karel se chová jako průvodce stojící
+  // vedle Hany — řekne, co vidí na kresbě, na co se má zeptat, kam směřovat.
+  const analyzeArtifactWithKarel = useCallback(
+    async (
+      kind: "image" | "audio" | "video",
+      payload: { dataUrl?: string; audioBase64?: string; fileName: string; mimeType: string },
+    ) => {
+      setIsAnalyzingArtifact(true);
+      const ts = new Date().toISOString();
+      const label =
+        kind === "image"
+          ? `📷 Obrázek/kresba: ${payload.fileName}`
+          : kind === "video"
+          ? `🎞️ Video: ${payload.fileName}`
+          : `🎙️ Audio nahrávka (${payload.fileName})`;
+
+      // 1) Hned přidáme zprávu Hany do per-bod logu (důkaz, že to dorazilo)
+      const hanaTurn: DiagTurn = {
+        from: "hana",
+        text: `${label} — posílám Karlovi`,
+        ts,
+        attachment: { kind: kind === "video" ? "image" : kind, label },
+      };
+      setTurns((prev) => [...prev, hanaTurn]);
+      setArtifacts((prev) => [
+        ...prev,
+        { kind: kind === "video" ? "image" : kind, label, ts },
+      ]);
+      onRequestArtefact?.(kind === "video" ? "image" : kind);
+
+      try {
+        const lastTurnsContext = turns
+          .slice(-6)
+          .map((t) => `${t.from === "karel" ? "K" : "H"}: ${t.text}`)
+          .join("\n");
+
+        const briefingPrompt = `Jsi Karel, průvodce ${therapistName} v živém DID sezení s částí ${partName}.
+Aktuální bod programu: "${blockText}${blockDetail ? " — " + blockDetail : ""}".
+${lastTurnsContext ? `Poslední výměny v tomto bodě:\n${lastTurnsContext}\n` : ""}
+${therapistName} právě poslala ${
+          kind === "image" ? "obrázek/kresbu" : kind === "video" ? "video" : "audio nahrávku"
+        } z tohoto bodu.
+
+Reaguj OKAMŽITĚ a STRUČNĚ (max 5 řádků):
+🎯 Co vidím/slyším (1-2 konkrétní pozorování)
+👉 Na co se ${therapistName} má teď zeptat ${partName} (přesná otázka)
+⚠️ Pokud zachytíš signál (úzkost, switch, regrese) — jednou větou
+NEPIŠ dlouhé analýzy. Jsi průvodce v reálném čase, ne soudce.`;
+
+        const headers = await getAuthHeaders();
+        let karelText = "";
+
+        if (kind === "image" || kind === "video") {
+          const res = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-analyze-file`,
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                attachments: [
+                  {
+                    dataUrl: payload.dataUrl,
+                    name: payload.fileName,
+                    category: kind === "video" ? "video" : "image",
+                    type: payload.mimeType,
+                    size: 0,
+                  },
+                ],
+                mode: "childcare",
+                chatContext: lastTurnsContext,
+                userPrompt: briefingPrompt,
+              }),
+            },
+          );
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          karelText = String(data?.analysis ?? "").trim();
+        } else {
+          const res = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-audio-analysis`,
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                audioBase64: payload.audioBase64,
+                mode: "did-live-session",
+                chatContext: lastTurnsContext,
+                clientName: partName,
+                extraContext: briefingPrompt,
+              }),
+            },
+          );
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          karelText = String(data?.analysis ?? "").trim();
+        }
+
+        if (!karelText) throw new Error("Karel vrátil prázdnou reakci");
+
+        const karelTurn: DiagTurn = {
+          from: "karel",
+          text: karelText,
+          ts: new Date().toISOString(),
+        };
+        setTurns((prev) => [...prev, karelTurn]);
+        toast.success("Karel zareagoval na přílohu.");
+      } catch (e: any) {
+        const msg = e?.message ?? String(e);
+        console.error("[BlockDiagnosticChat] artifact analysis failed:", e);
+        toast.error(`Karel teď přílohu nezpracoval: ${msg}`);
+        setTurns((prev) => [
+          ...prev,
+          {
+            from: "karel",
+            text: `⚠️ Přílohu jsem teď nezpracoval (${msg}). Zkus prosím znovu, nebo mi popiš, co na ní je.`,
+            ts: new Date().toISOString(),
+          },
+        ]);
+      } finally {
+        setIsAnalyzingArtifact(false);
+      }
+    },
+    [turns, therapistName, partName, blockText, blockDetail, onRequestArtefact],
+  );
+
+  const handleImageFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    Array.from(files).forEach((file) => {
+      if (!/^image\//.test(file.type)) {
+        toast.error(`${file.name} není obrázek.`);
+        return;
+      }
+      if (file.size > 8 * 1024 * 1024) {
+        toast.error(`${file.name} je větší než 8 MB.`);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        void analyzeArtifactWithKarel("image", {
+          dataUrl,
+          fileName: file.name,
+          mimeType: file.type || "image/jpeg",
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+    if (imageInputRef.current) imageInputRef.current.value = "";
   };
+
+  const handleVideoFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    if (!/^video\//.test(file.type)) {
+      toast.error(`${file.name} není video.`);
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      toast.error(`${file.name} je větší než 25 MB.`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      void analyzeArtifactWithKarel("video", {
+        dataUrl,
+        fileName: file.name,
+        mimeType: file.type || "video/mp4",
+      });
+    };
+    reader.readAsDataURL(file);
+    if (videoInputRef.current) videoInputRef.current.value = "";
+  };
+
+  const startAudioRecording = async () => {
+    if (isRecording) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(
+        stream,
+        MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? { mimeType: "audio/webm;codecs=opus" }
+          : { mimeType: "audio/webm" },
+      );
+      mediaRecorderRef.current = mr;
+      audioChunksRef.current = [];
+      recordStartRef.current = Date.now();
+      setRecordSeconds(0);
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      mr.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        stopRecordingTimer();
+        setIsRecording(false);
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        if (blob.size === 0) {
+          toast.error("Nahrávka je prázdná.");
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          const base64 = dataUrl.split(",")[1];
+          if (!base64) {
+            toast.error("Audio se nepodařilo zakódovat.");
+            return;
+          }
+          const fileName = `audio-${new Date()
+            .toISOString()
+            .slice(11, 19)
+            .replace(/:/g, "-")}.webm`;
+          void analyzeArtifactWithKarel("audio", {
+            audioBase64: base64,
+            fileName,
+            mimeType: "audio/webm",
+          });
+        };
+        reader.readAsDataURL(blob);
+      };
+      mr.start(250);
+      setIsRecording(true);
+      recordTimerRef.current = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - recordStartRef.current) / 1000);
+        setRecordSeconds(elapsed);
+        if (elapsed >= 300) {
+          toast.info("Limit 5 minut — nahrávání zastaveno.");
+          try { mr.stop(); } catch {}
+        }
+      }, 500);
+      toast.info("🎙️ Nahrávám…");
+    } catch (e) {
+      console.error("Mic access failed:", e);
+      toast.error("Nelze získat přístup k mikrofonu.");
+    }
+  };
+
+  const stopAudioRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
 
   return (
     <div className="rounded-md border border-primary/20 bg-card/50 px-2.5 py-2 space-y-2 min-h-0">
