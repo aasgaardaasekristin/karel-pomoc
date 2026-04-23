@@ -86,11 +86,12 @@ const BlockDiagnosticChat = ({
   showBrief = true,
   onAdvanceToNext,
 }: Props) => {
+  const persistenceVersion = "live-block-v2";
   const turnsKey = `${storageKey}::turns::${blockIndex}`;
   const artKey = `${storageKey}::art::${blockIndex}`;
   const metaKey = `${storageKey}::meta::${blockIndex}`;
   const blockSignature = useMemo(
-    () => JSON.stringify({ text: blockText.trim(), detail: (blockDetail ?? "").trim() }),
+    () => JSON.stringify({ version: persistenceVersion, text: blockText.trim(), detail: (blockDetail ?? "").trim() }),
     [blockText, blockDetail],
   );
 
