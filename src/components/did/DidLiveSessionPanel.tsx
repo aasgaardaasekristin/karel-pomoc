@@ -100,9 +100,37 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
   const pushHintTrigger = useCallback(
     (observation: string, attachmentKind?: KarelHintTrigger["attachmentKind"]) => {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      setHintTriggers(prev => [...prev.slice(-9), { id, observation, attachmentKind: attachmentKind ?? null, programBlock: null }]);
+      setHintTriggers(prev => [
+        ...prev.slice(-9),
+        { id, kind: "observation", observation, attachmentKind: attachmentKind ?? null, programBlock: null },
+      ]);
     },
     [],
+  );
+
+  // ── Aktivace bodu programu: Karel vyrobí konkrétní obsah ──
+  // Drží se referenci na poslední aktivovaný bod, aby přímé výzvy v hlavním
+  // chatu typu "napiš mi ty slova" mohly být přesměrovány na produce endpoint.
+  const [activeBlock, setActiveBlock] = useState<{ index: number; text: string; detail?: string } | null>(null);
+
+  const pushActivateBlock = useCallback(
+    (block: { index: number; text: string; detail?: string }, userRequest?: string) => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      setHintTriggers(prev => [
+        ...prev.slice(-9),
+        {
+          id,
+          kind: "activate_block",
+          observation: `Spuštěn bod #${block.index + 1}: ${block.text.slice(0, 200)}`,
+          attachmentKind: null,
+          programBlock: { index: block.index, text: block.text, detail: block.detail ?? null },
+          planContext: contextBrief?.slice(0, 2000),
+          userRequest,
+        },
+      ]);
+      setActiveBlock(block);
+    },
+    [contextBrief],
   );
 
   const EMOTION_OPTIONS = [
