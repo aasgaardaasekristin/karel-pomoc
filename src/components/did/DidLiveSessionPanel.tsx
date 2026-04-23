@@ -95,6 +95,17 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
     extraNote: string;
   } | null>(null);
 
+  // ── Completion gate (měkká brána) ──
+  // Před analýzou Karel zkontroluje, zda u bodů, kde sám očekával povinné artefakty
+  // (foto kresby / audio nahrávka), terapeutka opravdu něco přiložila. Pokud ne,
+  // zobrazí varování s možností buď ještě doplnit, nebo přesto pokračovat (a chybějící
+  // detaily doptat v post-session interrogation roomu).
+  const [completionGateOpen, setCompletionGateOpen] = useState(false);
+  const [completionGateAction, setCompletionGateAction] = useState<"analyze" | "light_close">("analyze");
+  const [missingArtifactsReport, setMissingArtifactsReport] = useState<
+    { blockIndex: number; blockText: string; missing: ("image" | "audio")[] }[]
+  >([]);
+
   // ── Karel in-session feedback triggers (pravý sloupec) ──
   const [hintTriggers, setHintTriggers] = useState<KarelHintTrigger[]>([]);
   const pushHintTrigger = useCallback(
