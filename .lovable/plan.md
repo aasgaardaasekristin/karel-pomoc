@@ -1,90 +1,127 @@
 
+# Oprava live sezení: pole není „odříznuté screenshotem“, ale skutečně se k němu nejde doscrollovat
 
-# Oprava: Kam terapeut zapisuje, co část říká, a jak Karel potvrdí přijetí
+## Co je skutečný problém
 
-## Co teď nefunguje (diagnóza)
+Podle kódu jsou tam teď dva layout bugy zároveň:
 
-V živém sezení existují **dvě různá vstupní pole** a uživatelka nedostává žádnou zpětnou vazbu, do kterého má psát:
+### 1. Live sezení je v některých vstupech zavřené do nízkého kontejneru
+V `DidContentRouter.tsx` a `DidDashboard.tsx` je `DidDailySessionPlan` obalené v:
 
-1. **Hlavní chat dole** (`DidLiveSessionPanel`) — supervizní rada Karla pro terapeutku ("co říct", "na co pozor").
-2. **Per-bod diagnostický chat** (`BlockDiagnosticChat`, ukrytý pod šipkou ▶ u každého bodu programu) — strukturovaný log toho, co Tundrupek říká/dělá pro daný bod. **Toto je správné místo** pro asociace, ale je schované.
-
-**Aktuální chyba v `DidLiveSessionPanel.sendMessage` (řádek 358):**
-```ts
-if (!assistantContent) setMessages(messages); // ← smaže i uživatelskou zprávu
+```tsx
+<div className="max-h-[22rem] overflow-auto pr-1">
 ```
-Pokud volání `karel-chat` selže (timeout, síť, rate-limit), kód **rolluje stav zpět na messages PŘED přidáním uživatelské zprávy** — text Hany tedy zmizí, jako by ho nikdy nenapsala. Žádné jasné upozornění, žádný retry. To přesně odpovídá tomu, co Hanka popisuje: „po kliknutí na odeslání se můj text vymazal a je to jako bych do něj vůbec nepsal".
 
-**Druhý problém:** ani když to projde, hlavní chat `DidLiveSessionPanel` **neukládá** asociace do žádné struktury, kterou by Karel později četl jako „seznam reakcí Tundrupka". Karel jen reaguje supervizní radou a zapomíná. Nikde nevidíš „přijato → uloženo k bodu X".
+Když `DidDailySessionPlan` přepne do `currentLivePlan`, vyrenderuje už celý `DidLiveSessionPanel`, ale pořád uvnitř tohoto omezeného boxu. To znamená: live sezení se snaží zobrazit „celou místnost“ uvnitř 22rem výšky.
 
----
+### 2. Uvnitř `DidLiveSessionPanel` nemá overflow správného vlastníka
+V `DidLiveSessionPanel.tsx` jsou mimo hlavní scroll tyto bloky:
+- header,
+- rozbalený plán,
+- lišta Poznámka / Fotka / Nahrávat,
+- hint karty `KarelInSessionCards`,
+- input dole.
 
-## Co opravím
+Zároveň messages část má:
 
-### 1. Hlavní chat: nikdy nesmazat text terapeutky (kritická oprava)
+```tsx
+<ScrollArea className="flex-1 min-h-[14rem] ...">
+```
 
-V `DidLiveSessionPanel.sendMessage`:
-- Při chybě **ponechat** uživatelskou zprávu v chatu se značkou `⚠️ Karel neodpověděl — klikni „Zkusit znovu"`.
-- Vrátit text do `input` boxu jako fallback, aby se neztratil ani při zavření okna.
-- Přidat zřetelný toast `Karel teď neodpověděl — text máš uložený, zkus znovu`.
-- Přidat tlačítko **„Zkusit znovu"** přímo u poslední uživatelské zprávy.
+To je problém, protože:
+- `min-h-[14rem]` brání smrštění,
+- nad i pod ní jsou další `shrink-0` bloky,
+- rodičovský dialog/container má `overflow-hidden`,
+- výsledkem je, že spodní input fyzicky vypadne pod viewport a není kam scrollovat.
 
-### 2. Hlavní chat: viditelné potvrzení „PŘIJATO"
+To přesně odpovídá tomu, co popisuješ: ne že bys něco uřízla screenshotem, ale scroll owner je špatně navržený.
 
-Když terapeutka napíše do hlavního chatu (a Karel odpoví):
-- Pod její zprávou se zobrazí malý štítek: **`✓ Karel přijal — uloženo do toku sezení (HH:MM)`**.
-- Karel ve své odpovědi musí **doslovně odcitovat** první asociaci/větu Tundrupka („Slyším: *‚...'* — to je důležité, protože…"). Tím Hana vizuálně vidí, že obsah dorazil.
+## Co upravím
 
-### 3. Nové tlačítko „📥 Zařadit jako asociaci k bodu" v hlavním chatu
+### A. Opravím vstupní kontejnery, aby live sezení nebylo zavřené v `max-h-[22rem]`
+Změním render v:
+- `src/components/did/DidContentRouter.tsx`
+- `src/components/did/DidDashboard.tsx`
 
-Vedle textarey hlavního chatu přidám malé select-tlačítko: **`Připojit k bodu programu ▾`** (rozbalí seznam aktivních bodů z LiveProgramChecklist). Když Hana vybere bod a odešle, zpráva se:
-- objeví v hlavním chatu jako normálně,
-- **zároveň zaloguje** do `BlockDiagnosticChat::turns::{idx}` jako `from: "hana"` turn,
-- Karel reaguje cíleně k tomu bodu (ne obecnou supervizí).
+Tak, aby:
+- omezení `max-h-[22rem] overflow-auto` platilo jen pro seznam/plány,
+- ale když se otevře skutečné live sezení, renderovalo se mimo tento capped box.
 
-Tím odpadá nutnost rozbalovat skrytý per-bod chat — Hana zapisuje na jednom místě a Karel sám rozdělí.
+Prakticky: `DidDailySessionPlan` dostane full-height prostor jen v live režimu.
 
-### 4. Vizuální orientace: jasné popisky, kam se píše
+### B. Přestavím `DidLiveSessionPanel` na správný „3-zónový“ layout
+V `src/components/did/DidLiveSessionPanel.tsx` upravím strukturu na:
 
-Dnes uživatelka nevidí rozdíl mezi tím, kam píše. Přidám:
-- Hlavní textarea: placeholder **„Sem zapisuj, co Tundrupek říká nebo dělá. Karel okamžitě poradí. (Enter odešle)"**
-- Nad textareou minimální chip: **`💬 Hlavní tok sezení — Karel čte VŠE co napíšeš`**
-- Tlačítko `📥 Zařadit k bodu ▾` (viz bod 3) hned vedle.
+```text
+[sticky header]
+[scrollovatelný střed]
+[sticky input dole]
+```
 
-### 5. Opravím tichý dropdown side-effect
+Konkrétně:
+- root: `h-full min-h-0 flex flex-col overflow-hidden`
+- header: `shrink-0`
+- střední oblast: jediný vlastník scrollu, `flex-1 min-h-0 overflow-hidden`
+- input dole: `shrink-0 sticky/bottom-safe`
 
-Současně `pushHintTrigger(userMessage, "note")` (řádek 297) spouští druhé paralelní volání `karel-live-session-feedback` v pravém sloupci. Když oba endpointy selžou současně, uživatelka vidí jen prázdno. Změním:
-- Hint trigger se spustí **jen po úspěšné odpovědi** z `karel-chat` (přesun za stream).
-- Při chybě hlavního chatu se hint trigger nespustí vůbec → žádný matoucí prázdný stav v pravém sloupci.
+### C. Zruším blokování layoutu přes `min-h-[14rem]`
+Messages scroll z:
+```tsx
+flex-1 min-h-[14rem]
+```
+na:
+```tsx
+flex-1 min-h-0
+```
 
----
+Tím se oblast zpráv může zmenšit podle reálného prostoru a input zůstane vidět.
 
-## Kam tedy MÁ Hana psát asociace (po opravě)
+### D. Přesunu hint karty do scrollovatelného středu
+`KarelInSessionCards` teď sedí mezi messages a inputem jako samostatný nescrollující blok. Přesunu je do stejné scroll oblasti jako zprávy, aby už nevytlačovaly input pod spodní hranu.
 
-**Vždy do hlavního chatu dole** („Sem zapisuj, co Tundrupek říká..."). Nemusí už hledat skryté per-bod chaty.
+### E. Zmenším „požrání výšky“ nahoře
+Aby byl layout stabilní i na 888×744:
+- `planExpanded` nastavím defaultně na `false`,
+- rozbalený plán ponechám scrollovatelný uvnitř sebe,
+- horní tool-strip zůstane kompaktní,
+- greeting zpráva může zůstat, ale už nebude schopná vytlačit input mimo obraz.
 
-Pokud chce přiřadit asociaci ke konkrétnímu bodu programu (např. bod #3 „slovní asociace"), použije nové tlačítko **`📥 Zařadit k bodu ▾`** vedle textarey → vybere bod → Karel zápis automaticky uloží i do diagnostického logu daného bodu, takže se objeví v denní analýze, v kartě části (sekce M – metody), i v Drive exportu.
+### F. Přidám tvrdou jistotu, že input je vždy vidět
+Po mountu live panelu:
+- focus do textarea,
+- scroll do spodní části aktivní scroll oblasti,
+- při příchodu nových hint karet se nebude měnit pozice inputu.
 
----
+## Soubory k úpravě
 
-## Technické detaily
+1. `src/components/did/DidLiveSessionPanel.tsx`
+   - přestavba layoutu,
+   - odstranění `min-h-[14rem]`,
+   - přesun hint karet do scroll středu,
+   - sticky input dole,
+   - defaultně sbalený plán.
 
-**Soubory:**
-- `src/components/did/DidLiveSessionPanel.tsx` — `sendMessage`: odstranit rollback, přidat retry stav, přidat dropdown „Připojit k bodu", přidat `acceptedAt` badge.
-- `src/components/did/KarelInSessionCards.tsx` — zachovat (pravý sloupec funguje korektně).
-- `src/components/did/LiveProgramChecklist.tsx` — vystavit list bodů přes prop pro dropdown v hlavním panelu (lift state nebo callback `getCurrentBlocks()`).
-- `src/components/did/BlockDiagnosticChat.tsx` — beze změn; jen zapisujeme do jeho `localStorage` klíče `${storageKey}::turns::${idx}` zvenku.
-- `supabase/functions/karel-chat/index.ts` (resp. supervision prompt) — doplnit povinnost: *„v první větě odpovědi doslovně odcituj klíčové slovo/asociaci, kterou ti terapeutka právě sdělila — tím potvrdíš příjem"*.
+2. `src/components/did/DidContentRouter.tsx`
+   - zrušit `max-h-[22rem]` wrapper pro live režim.
 
-**Žádné DB migrace, žádné nové edge funkce.** Jen UI guard + prompt tweak.
+3. `src/components/did/DidDashboard.tsx`
+   - stejné oddělení list režimu vs live režimu.
 
----
+Volitelně zkontroluji i:
+4. `src/components/did/DidDailySessionPlan.tsx`
+   - zda není vhodné explicitně rozlišit compact list vs full live render už přímo zde.
 
-## Akceptační kritéria
+## Jak poznám, že je oprava hotová
 
-1. Když Karel selže, text Hany **zůstane viditelný** v chatu i v inputu, s tlačítkem „Zkusit znovu".
-2. Pod každou odeslanou zprávou Hany svítí `✓ přijato HH:MM`.
-3. Karel v první větě své odpovědi cituje to, co Hana napsala.
-4. Tlačítko `📥 Zařadit k bodu ▾` zaloguje asociaci do per-bod logu (ověříme v `BlockDiagnosticChat` po znovuotevření bodu).
-5. Žádné tiché mizení textu za žádných okolností.
+Na viewportu 888×744 musí platit:
 
+1. Po otevření live sezení je **textové pole dole viditelné hned**.
+2. Pokud je nahoře dlouhý obsah, **scrolluje se střed**, ne celý panel naslepo.
+3. Hint karty ani rozbalený plán už **nevytlačí input mimo obraz**.
+4. Stejně to funguje:
+   - v live sezení otevřeném z „Dnes“,
+   - i v live sezení otevřeném z poradního dialogu.
+5. Terapeutka nemusí „hádat“, kde psát; input je fyzicky pořád na očích.
+
+## Bez backend změn
+Tahle oprava je čistě UI/layout. Bez migrací, bez změn databáze, bez změn backend funkcí.
