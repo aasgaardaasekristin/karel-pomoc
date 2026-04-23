@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +15,7 @@ import RichMarkdown from "@/components/ui/RichMarkdown";
 import { Loader2, CheckCircle2, Send, ArrowRight, Users, Brain, AlertTriangle, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useTeamDeliberations } from "@/hooks/useTeamDeliberations";
+import DidLiveSessionPanel from "./DidLiveSessionPanel";
 import {
   signoffProgress,
   type TeamDeliberation,
@@ -36,6 +36,14 @@ const TYPE_LABEL: Record<string, string> = {
   followup_review: "Vyhodnocení sezení",
   supervision: "Supervize",
 };
+
+interface LiveSessionPlanRow {
+  id: string;
+  selected_part: string;
+  session_lead: string | null;
+  therapist: string | null;
+  plan_markdown: string;
+}
 
 function areAllQuestionsAnswered(questions: DeliberationQuestion[] = []) {
   return questions.length > 0 && questions.every((q) => !!q.answer?.trim());
@@ -332,7 +340,6 @@ function KarelSynthesisBlock({
 }
 
 const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
-  const navigate = useNavigate();
   const { sign, synthesize, answerQuestion, postMessage, iterateProgram, reload, items } = useTeamDeliberations(0);
   const [d, setD] = useState<TeamDeliberation | null>(null);
   const [loading, setLoading] = useState(true);
@@ -346,6 +353,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
   const [lastIterateComment, setLastIterateComment] = useState<string | null>(null);
   const lastIterateInputRef = useRef<string>("");
   const [startingLive, setStartingLive] = useState(false);
+  const [livePlan, setLivePlan] = useState<LiveSessionPlanRow | null>(null);
 
   useEffect(() => {
     const found = items.find((x) => x.id === deliberationId) ?? null;
@@ -474,45 +482,33 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
 
   /**
    * SPUSTIT SEZENÍ TRUTH PASS (2026-04-23):
-   *   Toto tlačítko je nyní jediným spouštěčem živého DID sezení v Pracovně.
-   *   - Předchozí navigace `/?did=live-session&daily_plan_id=…` byla mrtvá
-   *     (parametr nikde nebyl parsován).
-   *   - Místo toho:
-   *     1) ověříme, že existuje plán (`bridgedPlanId` nebo `linked_live_session_id`),
-   *     2) přepneme jeho status na `in_progress` v `did_daily_session_plans`,
-   *     3) vyemitujeme globální DOM event `karel:start-live-session`, který
-   *        DidDailySessionPlan zachytí a otevře `DidLiveSessionPanel`,
-   *     4) zavřeme dialog porady.
-   *   Plán už obsahuje aktuální (živou) verzi programu díky novému bridge
-   *   v karel-team-deliberation-signoff (program_draft → plan_markdown).
+   *   Live DID sezení se musí otevřít PŘÍMO UVNITŘ této schválené porady,
+   *   nikoliv přepnutím na kartu Dnes. Proto tady:
+   *     1) vezmeme přesně navázaný `did_daily_session_plans.id`,
+   *     2) přepneme tento KONKRÉTNÍ plán do `in_progress`,
+   *     3) z DB ihned načteme jeho aktuální markdown,
+   *     4) v tom samém dialogu přerenderujeme `DidLiveSessionPanel`.
+   *   Tím se odstraní race condition s `firstPendingPlan`, kvůli které se
+   *   někdy otevíral starší plán z karty Dnes místo právě schváleného programu.
    */
   const goToLiveSession = async () => {
     const planId = bridgedPlanId ?? d?.linked_live_session_id;
     if (!planId || startingLive) return;
     setStartingLive(true);
     try {
-      const { error } = await (supabase as any)
+      const { data: planRow, error } = await (supabase as any)
         .from("did_daily_session_plans")
         .update({ status: "in_progress", updated_at: new Date().toISOString() })
         .eq("id", planId);
-      if (error) {
+        .select("id, selected_part, session_lead, therapist, plan_markdown")
+        .single();
+      if (error || !planRow) {
         console.error("[DeliberationRoom] startLiveSession status update failed:", error);
         toast.error("Nepodařilo se zahájit sezení (DB update).");
         return;
       }
-      // Globální signál pro Pracovnu, aby otevřela LIVE panel s tímto plánem.
-      // DidDailySessionPlan (tab Dnes) ho poslouchá a přepne `liveSessionActive`.
-      try {
-        window.dispatchEvent(new CustomEvent("karel:start-live-session", {
-          detail: { planId },
-        }));
-      } catch {/* SSR / non-browser kontexty ignorujeme */}
-      toast.success("Sezení zahájeno. Otevírám živou místnost…");
-      onClose();
-      // Pojistka: pokud uživatel není fyzicky v záložce „Dnes" (např. otevřel
-      // poradu z jiného tabu), navedeme ho na hlavní pracovnu, kde Live panel
-      // okamžitě převezme řízení.
-      try { navigate("/chat"); } catch {/* ignore */}
+      setLivePlan(planRow as LiveSessionPlanRow);
+      toast.success("Sezení zahájeno.");
     } finally {
       setStartingLive(false);
     }
@@ -530,6 +526,21 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
       <DialogContent
         className="max-w-3xl w-[calc(100vw-2rem)] h-[90vh] sm:h-auto sm:max-h-[90vh] p-0 gap-0 overflow-hidden !grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] sm:!flex sm:!flex-col"
       >
+        {livePlan ? (
+          <DidLiveSessionPanel
+            partName={livePlan.selected_part}
+            therapistName={livePlan.session_lead === "kata" ? "Káťa" : "Hanka"}
+            contextBrief={livePlan.plan_markdown}
+            planId={livePlan.id}
+            onBack={() => setLivePlan(null)}
+            onEnd={() => {
+              void reload();
+              setLivePlan(null);
+              onClose();
+            }}
+          />
+        ) : (
+          <>
         <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b border-border/40">
           <DialogTitle className="flex items-center gap-2 text-base">
             <Users className="w-4 h-4 text-primary" />
@@ -835,6 +846,8 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
               </Button>
             )}
           </div>
+        )}
+          </>
         )}
       </DialogContent>
     </Dialog>
