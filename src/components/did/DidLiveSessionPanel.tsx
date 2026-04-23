@@ -25,12 +25,53 @@ import DidPostSessionInterrogation, { type InterrogationAnswer } from "./DidPost
 import LiveProgramChecklist from "./LiveProgramChecklist";
 import KarelInSessionCards, { type KarelHintTrigger } from "./KarelInSessionCards";
 
-type Message = { role: "user" | "assistant"; content: string };
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+  // ── instrumentace pro „terapeut musí vědět, že to dorazilo" (2026-04-23) ──
+  ts?: string;                 // ISO timestamp odeslání / přijetí
+  failed?: boolean;            // true = volání karel-chat selhalo, máme retry tlačítko
+  errorMsg?: string;           // detail chyby (pro toast/UI)
+  acceptedAt?: string;         // HH:MM kdy Karel odpověděl (badge ✓ přijato)
+  attachedBlockIndex?: number; // pokud terapeut připojil zprávu k bodu programu
+  attachedBlockText?: string;  // krátký label bodu pro UI
+};
 
 const formatDuration = (seconds: number) => {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
+};
+
+// Lokální parser bodů programu — kopírujeme stejnou logiku jako v LiveProgramChecklist,
+// abychom v hlavním panelu mohli nabídnout dropdown „Připojit k bodu" bez lift-upu state.
+const parseProgramBulletsLocal = (md: string): string[] => {
+  if (!md) return [];
+  const lines = md.split(/\r?\n/);
+  const bullets: string[] = [];
+  let inSection = false;
+  let started = false;
+  const sectionRe = /^#{1,6}\s+program\s+sezení\s*$/i;
+  const bulletRe = /^\s*(?:[-*•]|\d+[.)])\s+(.+)$/;
+  for (const raw of lines) {
+    const line = raw.replace(/\u00A0/g, " ").trimEnd();
+    if (sectionRe.test(line)) { inSection = true; started = false; continue; }
+    if (inSection && /^#{1,6}\s+/.test(line) && !sectionRe.test(line)) break;
+    if (!inSection) continue;
+    const m = bulletRe.exec(line);
+    if (m) {
+      const t = m[1].replace(/\*\*/g, "").replace(/__/g, "").replace(/\s+/g, " ").trim();
+      if (t.length >= 6) { bullets.push(t); started = true; }
+      continue;
+    }
+    if (bullets.length > 0 && /^\s{2,}\S/.test(raw)) {
+      bullets[bullets.length - 1] = `${bullets[bullets.length - 1]} — ${line.trim()}`;
+      continue;
+    }
+    if (line === "") { if (started) break; continue; }
+    if (started) break;
+  }
+  return bullets.slice(0, 12);
 };
 
 interface DidLiveSessionPanelProps {
