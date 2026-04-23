@@ -51,7 +51,89 @@ import {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+
+/** Nahlédnutí do nedávné historie metody u dané části (anti-repetition + promising). */
+async function loadPartMethodHistory(partName: string): Promise<{
+  banned: Array<{ method_key: string; variant_used: string; session_date: string }>;
+  struggling: string[];
+  promising: Array<{ method_key: string; hint: string | null }>;
+}> {
+  if (!partName) return { banned: [], struggling: [], promising: [] };
+  try {
+    const sb = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+    const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const { data, error } = await sb
+      .from("did_part_method_history")
+      .select("method_key, variant_used, session_date, clinical_yield, tolerance, trauma_marker, next_step_hint")
+      .eq("part_id", partName)
+      .gte("session_date", cutoff)
+      .order("session_date", { ascending: false })
+      .limit(40);
+    if (error || !data) return { banned: [], struggling: [], promising: [] };
+    return {
+      banned: data.map((r: any) => ({
+        method_key: r.method_key,
+        variant_used: r.variant_used ?? "(žádná konkrétní varianta)",
+        session_date: r.session_date,
+      })),
+      struggling: Array.from(new Set(data.filter((r: any) => (r.tolerance ?? 5) < 2 || r.trauma_marker).map((r: any) => r.method_key))),
+      promising: data.filter((r: any) => (r.clinical_yield ?? 0) >= 4).map((r: any) => ({ method_key: r.method_key, hint: r.next_step_hint })),
+    };
+  } catch (e) {
+    console.warn("[block-followup] history load failed:", e);
+    return { banned: [], struggling: [], promising: [] };
+  }
+}
+
+/** Po uzavření bodu zaloguj historii pro learning. */
+async function logMethodHistory(payload: {
+  partName: string;
+  method_key: string;
+  variant_used?: string;
+  session_id?: string;
+  responses_count: number;
+  trauma_flag: boolean;
+  red_flags: string[];
+  step_total: number;
+}): Promise<void> {
+  try {
+    const sb = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+    // heuristický odhad clinical_yield (1-5) a tolerance (1-5)
+    const completionRatio = payload.step_total > 0 ? Math.min(1, payload.responses_count / payload.step_total) : 1;
+    const tolerance = Math.max(1, Math.min(5, Math.round(5 - (payload.trauma_flag ? 2.5 : 0) - (payload.red_flags.length * 0.5))));
+    const clinical_yield = Math.max(1, Math.min(5, Math.round(2 + completionRatio * 2 + (payload.responses_count > 0 ? 1 : 0))));
+
+    const { data: lib } = await sb
+      .from("karel_method_library")
+      .select("id")
+      .eq("method_key", payload.method_key)
+      .maybeSingle();
+
+    await sb.from("did_part_method_history").insert({
+      part_id: payload.partName,
+      part_name: payload.partName,
+      method_key: payload.method_key,
+      method_library_id: lib?.id ?? null,
+      variant_used: payload.variant_used ?? null,
+      session_id: payload.session_id ?? null,
+      clinical_yield,
+      tolerance,
+      trauma_marker: payload.trauma_flag,
+      notes_md: payload.red_flags.length
+        ? `Red flags: ${payload.red_flags.join(", ")}. Responses: ${payload.responses_count}/${payload.step_total}.`
+        : `Responses: ${payload.responses_count}/${payload.step_total}.`,
+      next_step_hint: payload.trauma_flag
+        ? "U této části byla metoda emočně náročná — příště zvolit jemnější variantu / jinou modalitu."
+        : completionRatio >= 0.8
+        ? "Metoda byla dobře tolerována a poskytla data — možno opakovat jiné varianty stimulů."
+        : "Metoda se nedokončila — příště zvážit jinou metodu nebo kratší formu.",
+    });
+  } catch (e) {
+    console.warn("[block-followup] logMethodHistory failed:", e);
+  }
+}
 
 type Turn = { from: string; text: string; ts?: string };
 
