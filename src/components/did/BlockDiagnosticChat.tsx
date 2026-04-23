@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Loader2, Send, Mic, Camera, CheckCircle2, Sparkles, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -88,39 +88,56 @@ const BlockDiagnosticChat = ({
 }: Props) => {
   const turnsKey = `${storageKey}::turns::${blockIndex}`;
   const artKey = `${storageKey}::art::${blockIndex}`;
+  const metaKey = `${storageKey}::meta::${blockIndex}`;
+  const blockSignature = useMemo(
+    () => JSON.stringify({ text: blockText.trim(), detail: (blockDetail ?? "").trim() }),
+    [blockText, blockDetail],
+  );
 
-  const [turns, setTurns] = useState<DiagTurn[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const raw = window.localStorage.getItem(turnsKey);
-      if (raw) return JSON.parse(raw) as DiagTurn[];
-    } catch {}
-    return [];
-  });
-  const [artifacts, setArtifacts] = useState<BlockArtifact[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const raw = window.localStorage.getItem(artKey);
-      if (raw) return JSON.parse(raw) as BlockArtifact[];
-    } catch {}
-    return [];
-  });
+  const [turns, setTurns] = useState<DiagTurn[]>([]);
+  const [artifacts, setArtifacts] = useState<BlockArtifact[]>([]);
   const [draft, setDraft] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [missingArtifacts, setMissingArtifacts] = useState<("image" | "audio")[]>([]);
   const [closeMsg, setCloseMsg] = useState<string | null>(null);
   const [protocolState, setProtocolState] = useState<any>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
+  const [localResearch, setLocalResearch] = useState<BlockResearch | null>(null);
+  const [localResearchLoading, setLocalResearchLoading] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   const autoStartedRef = useRef(false);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const storedSignature = window.localStorage.getItem(metaKey);
+        const shouldReuseStoredData = storedSignature === blockSignature;
+        const turnsRaw = shouldReuseStoredData ? window.localStorage.getItem(turnsKey) : null;
+        const artRaw = shouldReuseStoredData ? window.localStorage.getItem(artKey) : null;
+
+        if (!shouldReuseStoredData) {
+          window.localStorage.removeItem(turnsKey);
+          window.localStorage.removeItem(artKey);
+        }
+
+        window.localStorage.setItem(metaKey, blockSignature);
+        setTurns(turnsRaw ? (JSON.parse(turnsRaw) as DiagTurn[]) : []);
+        setArtifacts(artRaw ? (JSON.parse(artRaw) as BlockArtifact[]) : []);
+      } catch {
+        setTurns([]);
+        setArtifacts([]);
+      }
+    }
+
     autoStartedRef.current = false;
     setDraft("");
     setLastError(null);
     setMissingArtifacts([]);
     setCloseMsg(null);
     setProtocolState(null);
-  }, [blockIndex, blockText, blockDetail]);
+    setLocalResearch(null);
+    setLocalResearchLoading(false);
+  }, [artKey, blockIndex, blockSignature, metaKey, turnsKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -138,13 +155,41 @@ const BlockDiagnosticChat = ({
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [turns]);
 
-  // Auto-load rešerše při prvním otevření bodu (Karel bez manuálu nevyrobí validní setup)
-  useEffect(() => {
-    if (!research && !isResearchLoading && onLoadResearch) onLoadResearch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const effectiveResearch = research ?? localResearch;
+  const effectiveResearchLoading = !!isResearchLoading || localResearchLoading;
 
-  const [lastError, setLastError] = useState<string | null>(null);
+  const loadResearch = useCallback(async () => {
+    if (effectiveResearch || effectiveResearchLoading) return;
+    if (onLoadResearch) {
+      onLoadResearch();
+      return;
+    }
+
+    setLocalResearchLoading(true);
+    try {
+      const { data, error } = await (supabase as any).functions.invoke("karel-block-research", {
+        body: {
+          part_name: partName,
+          program_block: { index: blockIndex, text: blockText, detail: blockDetail },
+          depth: "deep",
+        },
+      });
+      if (error) throw error;
+      setLocalResearch((data as BlockResearch) ?? null);
+    } catch (e) {
+      console.error("[BlockDiagnosticChat] research failed:", e);
+      toast.error("Nepodařilo se načíst instrukce pro tento bod.");
+      setLocalResearch(null);
+    } finally {
+      setLocalResearchLoading(false);
+    }
+  }, [effectiveResearch, effectiveResearchLoading, onLoadResearch, partName, blockIndex, blockText, blockDetail]);
+
+  useEffect(() => {
+    if (!effectiveResearch && !effectiveResearchLoading) {
+      void loadResearch();
+    }
+  }, [effectiveResearch, effectiveResearchLoading, loadResearch]);
 
   const callFollowup = useCallback(
     async (trigger: "auto_next" | "ask_karel" | "user_input" | "start", existingTurns: DiagTurn[]): Promise<boolean> => {
