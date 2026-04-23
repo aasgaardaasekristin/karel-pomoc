@@ -239,6 +239,18 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // ── RUNTIME LOCK (THERAPIST-LED TRUTH PASS) ──
+    // Pro session_plan typu už syntézu provádí karel-team-deliberation-iterate
+    // + signoff bridge. Tato funkce zde MUSÍ skončit 410, ne jen komentářem.
+    if (row.deliberation_type === "session_plan") {
+      return new Response(JSON.stringify({
+        error: "deprecated_for_session_plan",
+        message: "Pro session_plan používej karel-team-deliberation-iterate + signoff. Synthesize zůstává jen pro crisis.",
+      }), {
+        status: 410, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // GATE PRAVIDLO PRO SYNTÉZU:
     //   - typ `crisis`: VŠECHNY otázky Haničky i Káti musí mít odpověď.
     //                   Diskusní log je bonus, ale nestačí sám o sobě.
