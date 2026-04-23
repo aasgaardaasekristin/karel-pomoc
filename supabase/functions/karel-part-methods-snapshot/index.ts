@@ -73,8 +73,8 @@ function buildPartSection(partName: string, rows: HistoryRow[]): string {
   lines.push(`*Snímek ${dateStr} — celkem ${rows.length} záznamů, ${byMethod.size} unikátních metod.*`);
   lines.push(``);
   lines.push(
-    `> Karel toto pole používá k anti-repetition guardu (14 dní zákaz stejné kombinace) ` +
-      `a k povinné variaci. Hodnoty `yield`/`tolerance` jsou klinické (1 = nízká, 5 = vysoká).`,
+    "> Karel toto pole používá k anti-repetition guardu (14 dní zákaz stejné kombinace) " +
+      "a k povinné variaci. Hodnoty `yield`/`tolerance` jsou klinické (1 = nízká, 5 = vysoká).",
   );
   lines.push(``);
 
