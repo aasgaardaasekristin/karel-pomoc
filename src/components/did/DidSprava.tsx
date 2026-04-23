@@ -372,7 +372,7 @@ const DidSprava = ({
         {activeTab === "live" && (
           <div className="space-y-3">
             {livePlan ? (
-              <div className="min-h-[400px]">
+              <div className="relative h-[80vh] min-h-[36rem] rounded-lg border border-border/60 overflow-hidden bg-card/30">
                 <DidLiveSessionPanel
                   partName={livePlan.partName}
                   therapistName={livePlan.therapistName}

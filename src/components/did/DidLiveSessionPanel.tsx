@@ -128,7 +128,10 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
 
   // ── Live Session Room v1 additions (session prep → live) ──
   // Plán panel viditelný hned v živé místnosti, ne jen jako skrytý kontext.
-  const [planExpanded, setPlanExpanded] = useState(true);
+  // Default = collapsed. Na malých výškách (888×744) by rozbalený plán
+  // společně s tool-stripem a hint kartami vytlačil input mimo viewport
+  // a uživatelka by ho fyzicky neměla kam doscrollovat.
+  const [planExpanded, setPlanExpanded] = useState(false);
   // Quick-note dialog — sběr poznámek během sezení (zařadí se do toku jako 📝).
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
@@ -1258,9 +1261,9 @@ ${report}${interrogationBlock}${reflectionText}`;
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      {/* Header */}
-      <div className={`px-4 py-3 border-b border-border bg-card/50 transition-colors duration-500 ${switchFlash ? "bg-amber-500/10" : ""}`}>
+    <div className="absolute inset-0 flex flex-col min-h-0 overflow-hidden">
+      {/* Header — shrink-0; vlastní vnitřní scroll, aby nikdy nevytlačil input mimo viewport */}
+      <div className={`shrink-0 px-4 py-3 border-b border-border bg-card/50 transition-colors duration-500 max-h-[45vh] overflow-y-auto ${switchFlash ? "bg-amber-500/10" : ""}`}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <Button variant="ghost" size="icon" onClick={onBack} className="h-8 w-8 shrink-0">
@@ -1492,7 +1495,7 @@ ${report}${interrogationBlock}${reflectionText}`;
       </div>
 
       {/* Messages — explicitní min-h chrání před zkolabováním pod kartami */}
-      <ScrollArea className="flex-1 min-h-[14rem] px-2 sm:px-4" ref={scrollRef}>
+      <ScrollArea className="flex-1 min-h-0 px-2 sm:px-4" ref={scrollRef}>
         <div className="max-w-3xl mx-auto py-4 space-y-3">
           {messages.map((msg, i) => (
             <div key={i} className="space-y-1">
@@ -1540,49 +1543,44 @@ ${report}${interrogationBlock}${reflectionText}`;
               </div>
             </div>
           )}
+          {/* Karlovy in-session karty — uvnitř scroll oblasti, aby NIKDY nemohly vytlačit input mimo viewport. */}
+          {hintTriggers.length > 0 && (
+            <div className="rounded-md border border-border/60 bg-card/40 backdrop-blur-sm px-2.5 py-2">
+              <KarelInSessionCards
+                partName={activePart}
+                therapistName={therapistName}
+                triggers={hintTriggers}
+                onAnswerHint={(text) => {
+                  setInput((prev) => (prev ? `${prev}\n\n${text}` : text));
+                  textareaRef.current?.focus();
+                }}
+                onCompleteBlock={(blockIndex) => {
+                  try {
+                    const key = `live_program_${planId ?? "ad-hoc"}`;
+                    const raw = window.localStorage.getItem(key);
+                    if (raw) {
+                      const arr = JSON.parse(raw) as Array<{ done: boolean }>;
+                      if (Array.isArray(arr) && arr[blockIndex]) {
+                        arr[blockIndex].done = true;
+                        window.localStorage.setItem(key, JSON.stringify(arr));
+                        setPlanExpanded(false);
+                        setTimeout(() => setPlanExpanded(true), 80);
+                      }
+                    }
+                    toast.success(`Bod #${blockIndex + 1} hotový.`);
+                    setActiveBlock(null);
+                  } catch (e) {
+                    console.warn("complete block failed:", e);
+                  }
+                }}
+              />
+            </div>
+          )}
         </div>
       </ScrollArea>
 
-      {/* ── Karlovy in-session karty (proaktivní reakce na vstupy) ── */}
-      {hintTriggers.length > 0 && (
-        <div className="border-t border-border bg-card/30 backdrop-blur-sm shrink-0">
-          <div className="max-w-3xl mx-auto px-3 sm:px-4 py-2 max-h-[10rem] overflow-y-auto">
-            <KarelInSessionCards
-              partName={activePart}
-              therapistName={therapistName}
-              triggers={hintTriggers}
-              onAnswerHint={(text) => {
-                setInput((prev) => (prev ? `${prev}\n\n${text}` : text));
-                textareaRef.current?.focus();
-              }}
-              onCompleteBlock={(blockIndex) => {
-                // Najdi v localStorage stav checklistu, označ bod jako done
-                try {
-                  const key = `live_program_${planId ?? "ad-hoc"}`;
-                  const raw = window.localStorage.getItem(key);
-                  if (raw) {
-                    const arr = JSON.parse(raw) as Array<{ done: boolean }>;
-                    if (Array.isArray(arr) && arr[blockIndex]) {
-                      arr[blockIndex].done = true;
-                      window.localStorage.setItem(key, JSON.stringify(arr));
-                      // donutíme remount checklist tím, že krátce sbalíme/rozbalíme
-                      setPlanExpanded(false);
-                      setTimeout(() => setPlanExpanded(true), 80);
-                    }
-                  }
-                  toast.success(`Bod #${blockIndex + 1} hotový.`);
-                  setActiveBlock(null);
-                } catch (e) {
-                  console.warn("complete block failed:", e);
-                }
-              }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Input */}
-      <div className="border-t border-border bg-card/50 backdrop-blur-sm">
+      {/* Input — sticky shrink-0 dno panelu, vzdy viditelne bez ohledu na obsah nahore */}
+      <div className="shrink-0 border-t border-border bg-card/50 backdrop-blur-sm">
         <div className="max-w-3xl mx-auto px-3 sm:px-4 py-3 space-y-2">
           {/* ── Orientační lišta: kam vlastně píšu + výběr bodu programu ── */}
           <div className="flex flex-wrap items-center gap-2">
