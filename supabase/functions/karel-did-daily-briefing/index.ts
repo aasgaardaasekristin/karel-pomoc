@@ -425,6 +425,14 @@ DNEŠNÍ NAVRŽENÉ SEZENÍ:
 - Vyber nejvhodnějšího kandidáta z poskytnutého seznamu, NEvymýšlej jméno mimo seznam.
 - Uveď: koho, proč právě dnes, kdo povede, první pracovní verze, kdy přizvat Káťu.
 
+PROGRAM SEZENÍ — HRAVOST JE POVINNÁ:
+- agenda_outline NESMÍ být generická („úvod / práce s emocemi / uzávěr"). MUSÍ obsahovat alespoň 2 KONKRÉTNÍ nástroje z TERAPEUTICKÉHO ARZENÁLU (asociační test, Rorschach lite, aktivní imaginace, mandala, kresba dne, „co kdyby", 3 dveře, atd.).
+- Každý blok agenda_outline má hravý název („Asociační otevření — 8 slov o tátovi", ne „úvodní rozhovor"), 3-5 vět detailu a pokud možno tool_id.
+- VŠE remote-native — žádné fyzické pomůcky. Karel pracuje skrz chat, hlas, foto kresby, screen canvas, posílání obrázků (Rorschach lite, TAT lite).
+- playful_hooks: 2-4 konkrétní hravé háčky („Co by řekl tomu obrazu Tundrupkův drak?"), pro spontánnost.
+- materials_needed: digitální příprava (sada slov pro WAT, obrázek skvrny, scéna pro TAT), žádné fyzické věci.
+- Inspirace JUNG: aktivní imaginace, Word Association Test, mandala jako Self-symbolika, dialog s vnitřními postavami.
+
 ROZDĚLENÍ ASKS:
 - Hanička dostává JINÉ otázky než Káťa. Ne stejné body s prohozeným jménem.
 - Hanička je v běžném kontaktu s kluky (každodenní, blízká).
