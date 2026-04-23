@@ -288,7 +288,7 @@ const LiveProgramChecklist = ({
             >
               <div className="flex items-start gap-2">
                 <button
-                  onClick={() => toggleDone(item.id)}
+                  onClick={() => setDoneState(item.id, !item.done)}
                   className="shrink-0 mt-0.5"
                   aria-label={item.done ? "Označit jako nehotový" : "Označit jako hotový"}
                 >
@@ -384,7 +384,7 @@ const LiveProgramChecklist = ({
                     }}
                     onArtifactsChange={arts => onBlockArtifactsChange?.(idx, arts)}
                     onRequestArtefact={kind => onRequestArtefact?.(blockRef, kind)}
-                    onMarkDone={() => toggleDone(item.id)}
+                    onMarkDone={() => setDoneState(item.id, true)}
                   />
                 </div>
               )}
