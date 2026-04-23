@@ -180,7 +180,7 @@ serve(async (req) => {
     let written = 0;
     let skipped = 0;
     for (const part of partList) {
-      const partName = part.name as string;
+      const partName = (part as any).part_name as string;
       const rows = history.filter(
         (r) => (r.part_name ?? "").toLowerCase() === partName.toLowerCase(),
       );
