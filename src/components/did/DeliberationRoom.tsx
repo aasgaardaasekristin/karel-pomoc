@@ -826,9 +826,12 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 size="sm"
                 className="w-full h-8 text-[11px]"
                 onClick={goToLiveSession}
-                disabled={!bridgedPlanId && !d.linked_live_session_id}
+                disabled={(!bridgedPlanId && !d.linked_live_session_id) || startingLive}
               >
-                Spustit sezení <ArrowRight className="w-3 h-3 ml-1" />
+                {startingLive ? (
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                ) : null}
+                {startingLive ? "Otevírám…" : <>Spustit sezení <ArrowRight className="w-3 h-3 ml-1" /></>}
               </Button>
             )}
           </div>
