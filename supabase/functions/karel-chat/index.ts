@@ -151,6 +151,28 @@ serve(async (req) => {
     // Unconditional identity prepend — Karel's identity must be present in ALL modes
     systemPrompt = [SYSTEM_RULES, identityBlock, voiceGuideBlock, tonalBlock, systemPrompt].filter(Boolean).join("\n\n");
 
+    // ═══ JUNG ORIGINAL MEMORY INJECTION ═══
+    // Aktivuje se pro did_terapeut (Hanka/Káťa) — pro děti NIKDY (guard v shouldActivateJungOriginal).
+    try {
+      const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
+      const lastUserText = typeof lastUserMsg?.content === "string"
+        ? lastUserMsg.content
+        : Array.isArray(lastUserMsg?.content)
+          ? lastUserMsg.content.filter((p: any) => p?.type === "text").map((p: any) => p.text).join(" ")
+          : "";
+      const historyText = messages.slice(-6, -1)
+        .map((m: any) => typeof m.content === "string" ? m.content : "")
+        .join("\n");
+      const relevance = classifyJungRelevance(lastUserText, historyText);
+      if (shouldActivateJungOriginal(ctx.domain, ctx.audience, relevance)) {
+        console.log(`[karel-chat][jung] activating: domain=${ctx.domain}, audience=${ctx.audience}, score=${relevance.score.toFixed(2)}`);
+        const jungBlock = await buildJungOriginalInjection({ matched: relevance.matched, score: relevance.score });
+        systemPrompt += `\n\n${jungBlock}`;
+      }
+    } catch (jungErr) {
+      console.warn("[karel-chat][jung] injection failed (non-fatal):", jungErr);
+    }
+
     // ═══ DID DAILY CONTEXT INJECTION ═══
     // Load structured daily profile from did_daily_context (built by karel-daily-refresh)
     if (mode === "childcare" || effectiveMode === "kata") {
