@@ -105,10 +105,12 @@ const BlockDiagnosticChat = ({
   const [lastError, setLastError] = useState<string | null>(null);
   const [localResearch, setLocalResearch] = useState<BlockResearch | null>(null);
   const [localResearchLoading, setLocalResearchLoading] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   const autoStartedRef = useRef(false);
 
   useEffect(() => {
+    setHydrated(false);
     if (typeof window !== "undefined") {
       try {
         const storedSignature = window.localStorage.getItem(metaKey);
@@ -138,19 +140,22 @@ const BlockDiagnosticChat = ({
     setProtocolState(null);
     setLocalResearch(null);
     setLocalResearchLoading(false);
+    setHydrated(true);
   }, [artKey, blockIndex, blockSignature, metaKey, turnsKey]);
 
   useEffect(() => {
+    if (!hydrated) return;
     if (typeof window === "undefined") return;
     try { window.localStorage.setItem(turnsKey, JSON.stringify(turns)); } catch {}
     onTurnsChange?.(turns);
-  }, [turns, turnsKey, onTurnsChange]);
+  }, [hydrated, turns, turnsKey, onTurnsChange]);
 
   useEffect(() => {
+    if (!hydrated) return;
     if (typeof window === "undefined") return;
     try { window.localStorage.setItem(artKey, JSON.stringify(artifacts)); } catch {}
     onArtifactsChange?.(artifacts);
-  }, [artifacts, artKey, onArtifactsChange]);
+  }, [hydrated, artifacts, artKey, onArtifactsChange]);
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
