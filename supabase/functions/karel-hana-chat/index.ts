@@ -22,6 +22,8 @@ import {
   shouldBlockDIDEvidence,
   type RoleScopeResult,
 } from "../_shared/roleScopeClassifier.ts";
+import { classifyJungRelevance, shouldActivateJungOriginal } from "../_shared/jungTopicClassifier.ts";
+import { buildJungOriginalInjection } from "../_shared/jungOriginalInjection.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
