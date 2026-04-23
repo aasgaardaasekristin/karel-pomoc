@@ -1071,7 +1071,7 @@ ${report}${interrogationBlock}${reflectionText}`;
               )}
             </button>
             {planExpanded && (
-              <div className="px-3 pb-3 pt-0 max-h-80 overflow-y-auto border-t border-primary/15">
+              <div className="px-3 pb-3 pt-0 max-h-64 overflow-y-auto border-t border-primary/15">
                 <LiveProgramChecklist
                   planMarkdown={contextBrief}
                   storageKey={`live_program_${planId ?? "ad-hoc"}`}
@@ -1087,6 +1087,21 @@ ${report}${interrogationBlock}${reflectionText}`;
                       "note",
                     )
                   }
+                  onActivateBlock={(block) => {
+                    pushActivateBlock(block);
+                    setPlanExpanded(false);
+                    toast.info(`Karel vyrábí obsah pro bod #${block.index + 1}…`);
+                  }}
+                  onRequestArtefact={(block, kind) => {
+                    setActiveBlock(block);
+                    if (kind === "audio") {
+                      toast.info(`Bod #${block.index + 1}: spouštím nahrávání…`);
+                      recorder.startRecording();
+                    } else {
+                      toast.info(`Bod #${block.index + 1}: vyber fotku.`);
+                      imageUpload.openFilePicker();
+                    }
+                  }}
                 />
               </div>
             )}
