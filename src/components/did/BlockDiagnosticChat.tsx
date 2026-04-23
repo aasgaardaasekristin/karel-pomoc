@@ -202,7 +202,7 @@ const BlockDiagnosticChat = ({
             therapist_name: therapistName,
             session_id: sessionId,
             program_block: { index: blockIndex, text: blockText, detail: blockDetail },
-            research: research ?? null,
+            research: effectiveResearch ?? null,
             turns: existingTurns.map((t) => ({ from: t.from, text: t.text, ts: t.ts })),
             state: protocolState,
             trigger,
@@ -236,18 +236,18 @@ const BlockDiagnosticChat = ({
         setIsThinking(false);
       }
     },
-    [partName, therapistName, sessionId, blockIndex, blockText, blockDetail, research, protocolState],
+    [partName, therapistName, sessionId, blockIndex, blockText, blockDetail, effectiveResearch, protocolState],
   );
 
   // Auto-start setup briefing jakmile je k dispozici research
   useEffect(() => {
     if (autoStartedRef.current) return;
     if (turns.length > 0) { autoStartedRef.current = true; return; }
-    if (!research || isResearchLoading) return;
+    if (!effectiveResearch || effectiveResearchLoading) return;
     autoStartedRef.current = true;
     void callFollowup("start", []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [research, isResearchLoading]);
+  }, [effectiveResearch, effectiveResearchLoading]);
 
   const handleSend = async () => {
     const text = draft.trim();
