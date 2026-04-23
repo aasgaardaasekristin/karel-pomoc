@@ -1,8 +1,9 @@
-import { useMemo, useState, useEffect } from "react";
-import { CheckCircle2, Circle, ChevronDown, ChevronRight, ListChecks, NotebookPen, Sparkles, Mic, Camera, Send } from "lucide-react";
+import { useMemo, useState, useEffect, useCallback } from "react";
+import { CheckCircle2, Circle, ChevronDown, ChevronRight, ListChecks, Sparkles, Mic, Camera } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { supabase } from "@/integrations/supabase/client";
+import BlockDiagnosticChat, { type BlockResearch, type DiagTurn, type BlockArtifact } from "./BlockDiagnosticChat";
 
 /**
  * LiveProgramChecklist
@@ -34,12 +35,14 @@ export type ProgramBlockRef = {
 interface Props {
   planMarkdown: string;
   storageKey: string;
+  partName?: string;
+  therapistName?: string;
   onItemToggle?: (item: ProgramItem) => void;
   onObservationSubmit?: (item: ProgramItem) => void;
-  /** Nové: Hanka klikla „Spustit bod" — Karel má vyrobit obsah. */
   onActivateBlock?: (block: ProgramBlockRef) => void;
-  /** Nové: Hanka chce pro daný bod nahrát/poslat artefakt (audio/foto). */
   onRequestArtefact?: (block: ProgramBlockRef, kind: "audio" | "image") => void;
+  onBlockTurnsChange?: (blockIndex: number, turns: DiagTurn[]) => void;
+  onBlockArtifactsChange?: (blockIndex: number, artifacts: BlockArtifact[]) => void;
 }
 
 function parseProgramBullets(md: string): string[] {
@@ -101,10 +104,14 @@ function parseProgramBullets(md: string): string[] {
 const LiveProgramChecklist = ({
   planMarkdown,
   storageKey,
+  partName = "Tundrupek",
+  therapistName = "Hanka",
   onItemToggle,
   onObservationSubmit,
   onActivateBlock,
   onRequestArtefact,
+  onBlockTurnsChange,
+  onBlockArtifactsChange,
 }: Props) => {
   const parsed = useMemo(() => parseProgramBullets(planMarkdown), [planMarkdown]);
 
@@ -161,7 +168,32 @@ const LiveProgramChecklist = ({
   }, [items, storageKey]);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [researchByIdx, setResearchByIdx] = useState<Record<number, BlockResearch | null>>({});
+  const [researchLoadingIdx, setResearchLoadingIdx] = useState<Record<number, boolean>>({});
+
+  const loadResearch = useCallback(
+    async (idx: number, blockText: string, blockDetail: string | undefined, depth: "light" | "deep" = "light") => {
+      if (researchByIdx[idx] !== undefined || researchLoadingIdx[idx]) return;
+      setResearchLoadingIdx(m => ({ ...m, [idx]: true }));
+      try {
+        const { data, error } = await (supabase as any).functions.invoke("karel-block-research", {
+          body: {
+            part_name: partName,
+            program_block: { index: idx, text: blockText, detail: blockDetail },
+            depth,
+          },
+        });
+        if (error) throw error;
+        setResearchByIdx(m => ({ ...m, [idx]: data as BlockResearch }));
+      } catch (e) {
+        console.warn("[LiveProgramChecklist] research failed", e);
+        setResearchByIdx(m => ({ ...m, [idx]: null }));
+      } finally {
+        setResearchLoadingIdx(m => ({ ...m, [idx]: false }));
+      }
+    },
+    [researchByIdx, researchLoadingIdx, partName],
+  );
 
   const toggleDone = (id: string) => {
     setItems(prev => {
@@ -172,18 +204,18 @@ const LiveProgramChecklist = ({
     });
   };
 
-  const submitObservation = (id: string) => {
-    const draft = (drafts[id] ?? "").trim();
-    if (!draft) return;
+  const appendObservationFromTurns = (id: string, turns: DiagTurn[]) => {
+    const formatted = turns
+      .map(t => `${t.from === "karel" ? "K" : "H"}: ${t.text}`)
+      .join("\n");
     setItems(prev => {
       const next = prev.map(it =>
-        it.id === id ? { ...it, observation: it.observation ? `${it.observation}\n\n${draft}` : draft } : it,
+        it.id === id ? { ...it, observation: formatted } : it,
       );
       const updated = next.find(it => it.id === id);
       if (updated && onObservationSubmit) onObservationSubmit(updated);
       return next;
     });
-    setDrafts(d => ({ ...d, [id]: "" }));
   };
 
   const buildBlockRef = (item: ProgramItem, idx: number): ProgramBlockRef => {
@@ -299,31 +331,26 @@ const LiveProgramChecklist = ({
                   {isExp ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                 </button>
               </div>
-              {isExp && (
-                <div className="mt-2 pl-6 space-y-1.5">
-                  {item.observation && (
-                    <div className="rounded-sm bg-muted/40 px-2 py-1.5 text-[11px] text-foreground whitespace-pre-wrap">
-                      {item.observation}
-                    </div>
-                  )}
-                  <div className="flex items-end gap-1.5">
-                    <Textarea
-                      value={drafts[item.id] ?? ""}
-                      onChange={e => setDrafts(d => ({ ...d, [item.id]: e.target.value }))}
-                      placeholder="Co jsi u tohoto bodu pozorovala…"
-                      className="min-h-[2.5rem] text-[11px] flex-1"
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-[10px] gap-1 shrink-0"
-                      onClick={() => submitObservation(item.id)}
-                      disabled={!(drafts[item.id] ?? "").trim()}
-                    >
-                      <NotebookPen className="w-3 h-3" />
-                      Přidat
-                    </Button>
-                  </div>
+              {isExp && !isFallback && (
+                <div className="mt-2 pl-6">
+                  <BlockDiagnosticChat
+                    blockIndex={idx}
+                    blockText={blockRef.text}
+                    blockDetail={blockRef.detail}
+                    partName={partName}
+                    therapistName={therapistName}
+                    storageKey={storageKey}
+                    research={researchByIdx[idx] ?? null}
+                    isResearchLoading={!!researchLoadingIdx[idx]}
+                    onLoadResearch={() => loadResearch(idx, blockRef.text, blockRef.detail, "deep")}
+                    onTurnsChange={turns => {
+                      appendObservationFromTurns(item.id, turns);
+                      onBlockTurnsChange?.(idx, turns);
+                    }}
+                    onArtifactsChange={arts => onBlockArtifactsChange?.(idx, arts)}
+                    onRequestArtefact={kind => onRequestArtefact?.(blockRef, kind)}
+                    onMarkDone={() => toggleDone(item.id)}
+                  />
                 </div>
               )}
             </div>
