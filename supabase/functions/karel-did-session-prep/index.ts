@@ -142,7 +142,9 @@ serve(async (req) => {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [threadsResult, tasksResult, cyclesResult, sessionsResult, profileResult, agreementsResult, driveData, perplexityData, therapistMemory] = await Promise.allSettled([
+    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    const [threadsResult, tasksResult, cyclesResult, sessionsResult, profileResult, agreementsResult, driveData, perplexityData, therapistMemory, methodHistoryResult] = await Promise.allSettled([
       // Recent threads for this part
       supabase.from("did_threads")
         .select("messages, started_at, last_activity_at, sub_mode")
@@ -226,6 +228,13 @@ serve(async (req) => {
         const token = await getAccessToken();
         return await readTherapistMemory(token, therapistKey);
       })(),
+      // Per-part method history (anti-repetition + learning, 14 days)
+      supabase.from("did_part_method_history")
+        .select("method_key, variant_used, session_date, clinical_yield, tolerance, trauma_marker, notes_md, next_step_hint")
+        .eq("part_id", partName)
+        .gte("session_date", fourteenDaysAgo)
+        .order("session_date", { ascending: false })
+        .limit(40),
     ]);
 
     // Extract results
