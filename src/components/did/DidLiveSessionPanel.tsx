@@ -1495,7 +1495,7 @@ ${report}${interrogationBlock}${reflectionText}`;
       </div>
 
       {/* Messages — explicitní min-h chrání před zkolabováním pod kartami */}
-      <ScrollArea className="flex-1 min-h-[14rem] px-2 sm:px-4" ref={scrollRef}>
+      <ScrollArea className="flex-1 min-h-0 px-2 sm:px-4" ref={scrollRef}>
         <div className="max-w-3xl mx-auto py-4 space-y-3">
           {messages.map((msg, i) => (
             <div key={i} className="space-y-1">
