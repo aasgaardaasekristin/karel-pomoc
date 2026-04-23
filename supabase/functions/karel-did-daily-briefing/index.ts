@@ -468,6 +468,8 @@ async function generateBriefing(
       }).join("\n")}\n\n⚠ Tyto porady JSOU UZAVŘENÉ. Pravidla:\n  1) NIKDY pro tyto subject_parts/téma nezakládej nové decisions se stejným nebo téměř stejným titulkem.\n  2) Pokud dnes existuje aktivní krize na těchto částech, navaž na poradu (zmiň "navazujeme na podepsanou poradu '<title>'") místo nového rozhodnutí.\n  3) V proposed_session.first_draft a why_today VYUŽIJ závěr porady — neopakuj, co tým už schválil.\n\n`
     : "";
 
+  const toolboxSection = candidates[0]?.score >= 3 ? `\n\n${summarizeToolboxForPrompt()}\n` : "";
+
   const userPrompt = `KONTEXT PRO BRIEFING (${context.today}):
 
 ${context.pantry_a_summary ? `═══ SPIŽÍRNA A — RANNÍ PRACOVNÍ ZÁSOBA ═══\n${context.pantry_a_summary}\n\n` : ""}${pantryBSection}${approvedDelibsSection}AKTIVNÍ KRIZE (${context.crises.length}):
@@ -487,10 +489,10 @@ ${context.recent_session_plans.map((p: any) => `- ${p.session_date} | ${p.part_n
 
 KANDIDÁTI NA DNEŠNÍ SEZENÍ (skórovací heuristika):
 ${candidates.length > 0 ? candidates.slice(0, 5).map((c) => `- ${c.part_name} (skóre ${c.score}): ${c.reasons.join(", ")}`).join("\n") : "(žádní silní kandidáti — proposed_session může být null)"}
-
+${toolboxSection}
 ÚKOL:
 Vygeneruj strukturovaný briefing pro dnešní poradu týmu. Drž se pravidel z system promptu.
-${candidates[0]?.score >= 3 ? `MUSÍŠ navrhnout sezení — nejvhodnější kandidát je ${candidates[0].part_name}.` : "Pokud žádný kandidát nemá dost silné signály, nech proposed_session null."}`;
+${candidates[0]?.score >= 3 ? `MUSÍŠ navrhnout sezení — nejvhodnější kandidát je ${candidates[0].part_name}. Program (agenda_outline) MUSÍ obsahovat alespoň 2 konkrétní hravé nástroje z arzenálu (uveď jejich tool_id).` : "Pokud žádný kandidát nemá dost silné signály, nech proposed_session null."}`;
 
   const res = await fetch(AI_URL, {
     method: "POST",
