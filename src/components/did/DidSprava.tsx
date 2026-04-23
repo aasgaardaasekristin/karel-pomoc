@@ -45,6 +45,8 @@ interface Props {
   isCleaningTasks?: boolean;
   onRefreshMemory?: () => void;
   isRefreshingMemory?: boolean;
+  onJungBootstrap?: () => void;
+  isJungBootstrapping?: boolean;
   refreshTrigger?: number;
   onSelectPart?: (partName: string) => void;
 }
@@ -178,6 +180,8 @@ const DidSprava = ({
   isCleaningTasks,
   onRefreshMemory,
   isRefreshingMemory,
+  onJungBootstrap,
+  isJungBootstrapping,
   refreshTrigger = 0,
   onSelectPart,
 }: Props) => {
@@ -500,6 +504,16 @@ const DidSprava = ({
               loading={isBootstrapping}
               onClick={() => { onBootstrap(); setOpen(false); }}
             />
+
+            {onJungBootstrap && (
+              <ToolButton
+                icon={<Database className={`w-4 h-4 text-primary ${isJungBootstrapping ? "animate-pulse" : ""}`} />}
+                title="Inicializovat Jungovu paměť"
+                desc="Jednorázové nasátí PAMET_KAREL/ORIGINAL/ (3 dokumenty z Perplexity)"
+                loading={isJungBootstrapping}
+                onClick={() => { onJungBootstrap(); setOpen(false); }}
+              />
+            )}
           </div>
         )}
 
