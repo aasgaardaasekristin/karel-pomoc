@@ -345,6 +345,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
   const [iterating, setIterating] = useState(false);
   const [lastIterateComment, setLastIterateComment] = useState<string | null>(null);
   const lastIterateInputRef = useRef<string>("");
+  const [startingLive, setStartingLive] = useState(false);
 
   useEffect(() => {
     const found = items.find((x) => x.id === deliberationId) ?? null;
@@ -471,7 +472,6 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
     }
   };
 
-  const [startingLive, setStartingLive] = useState(false);
   /**
    * SPUSTIT SEZENÍ TRUTH PASS (2026-04-23):
    *   Toto tlačítko je nyní jediným spouštěčem živého DID sezení v Pracovně.
