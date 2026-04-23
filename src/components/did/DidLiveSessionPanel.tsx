@@ -823,6 +823,24 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
       try {
         const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
         const driveTargetPath = `06_INTERVENCE/${todayKey}_${partName}_analyza`;
+
+        // ── INTERROGATION Q&A (THERAPIST-LED TRUTH PASS, C2) ──
+        // Karlovo cílené doptávání + odpovědi terapeutky musí být součástí
+        // balíku ve Spižírně, jinak se ztratí v noční flush rotaci.
+        let interrogationBlock = "";
+        if (interrogationPayload?.qa?.length) {
+          const qaLines = interrogationPayload.qa
+            .map((q, i) => {
+              const attachLabels = (q.attachments ?? []).map(a => `[${a.kind}: ${a.label}]`).join(" ");
+              return `**${i + 1}. ${q.question}**\n${q.answer || "(bez odpovědi)"}${attachLabels ? `\n_Přílohy:_ ${attachLabels}` : ""}`;
+            })
+            .join("\n\n");
+          interrogationBlock = `\n\n## KARLOVO POST-SESSION DOPTÁVÁNÍ\n\n${qaLines}`;
+          if (interrogationPayload.extraNote?.trim()) {
+            interrogationBlock += `\n\n**Doplněk terapeutky:** ${interrogationPayload.extraNote.trim()}`;
+          }
+        }
+
         const fullContent = `# Analýza sezení s ${partName}
 **Datum:** ${todayKey}
 **Terapeutka:** ${therapistName}
@@ -831,7 +849,7 @@ ${planId ? `**Plán ID:** ${planId}` : ""}
 
 ---
 
-${report}${reflectionText}`;
+${report}${interrogationBlock}${reflectionText}`;
 
         await (supabase as any).from("did_pantry_packages").insert({
           source_id: savedSessionId,
@@ -845,14 +863,13 @@ ${report}${reflectionText}`;
             therapist: therapistName,
             plan_id: planId ?? null,
             therapist_addendum: reflectionText.length > 0,
+            interrogation_qa_count: interrogationPayload?.qa?.length ?? 0,
             generated_at: new Date().toISOString(),
           },
         });
         console.log("[Spižírna] session_analysis package queued for nightly Drive flush");
       } catch (pantryErr) {
         console.error("Failed to enqueue pantry package:", pantryErr);
-        // Nezablokujeme UX — analýza je uložena v `did_part_sessions`,
-        // pantry je doplňková vrstva pro noční Drive propis.
       }
     }
 
