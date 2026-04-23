@@ -1,8 +1,16 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft, Camera, X, Shuffle, CheckCircle, RotateCcw, FileText, ChevronDown, ChevronUp, StickyNote, DoorClosed, AlertTriangle } from "lucide-react";
+import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft, Camera, X, Shuffle, CheckCircle, RotateCcw, FileText, ChevronDown, ChevronUp, StickyNote, DoorClosed, AlertTriangle, RefreshCw, Link2, MessageSquare } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -17,12 +25,53 @@ import DidPostSessionInterrogation, { type InterrogationAnswer } from "./DidPost
 import LiveProgramChecklist from "./LiveProgramChecklist";
 import KarelInSessionCards, { type KarelHintTrigger } from "./KarelInSessionCards";
 
-type Message = { role: "user" | "assistant"; content: string };
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+  // ── instrumentace pro „terapeut musí vědět, že to dorazilo" (2026-04-23) ──
+  ts?: string;                 // ISO timestamp odeslání / přijetí
+  failed?: boolean;            // true = volání karel-chat selhalo, máme retry tlačítko
+  errorMsg?: string;           // detail chyby (pro toast/UI)
+  acceptedAt?: string;         // HH:MM kdy Karel odpověděl (badge ✓ přijato)
+  attachedBlockIndex?: number; // pokud terapeut připojil zprávu k bodu programu
+  attachedBlockText?: string;  // krátký label bodu pro UI
+};
 
 const formatDuration = (seconds: number) => {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
+};
+
+// Lokální parser bodů programu — kopírujeme stejnou logiku jako v LiveProgramChecklist,
+// abychom v hlavním panelu mohli nabídnout dropdown „Připojit k bodu" bez lift-upu state.
+const parseProgramBulletsLocal = (md: string): string[] => {
+  if (!md) return [];
+  const lines = md.split(/\r?\n/);
+  const bullets: string[] = [];
+  let inSection = false;
+  let started = false;
+  const sectionRe = /^#{1,6}\s+program\s+sezení\s*$/i;
+  const bulletRe = /^\s*(?:[-*•]|\d+[.)])\s+(.+)$/;
+  for (const raw of lines) {
+    const line = raw.replace(/\u00A0/g, " ").trimEnd();
+    if (sectionRe.test(line)) { inSection = true; started = false; continue; }
+    if (inSection && /^#{1,6}\s+/.test(line) && !sectionRe.test(line)) break;
+    if (!inSection) continue;
+    const m = bulletRe.exec(line);
+    if (m) {
+      const t = m[1].replace(/\*\*/g, "").replace(/__/g, "").replace(/\s+/g, " ").trim();
+      if (t.length >= 6) { bullets.push(t); started = true; }
+      continue;
+    }
+    if (bullets.length > 0 && /^\s{2,}\S/.test(raw)) {
+      bullets[bullets.length - 1] = `${bullets[bullets.length - 1]} — ${line.trim()}`;
+      continue;
+    }
+    if (line === "") { if (started) break; continue; }
+    if (started) break;
+  }
+  return bullets.slice(0, 12);
 };
 
 interface DidLiveSessionPanelProps {
@@ -263,6 +312,7 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
 ═══ INSTRUKCE ═══
 - Jsi Karel, kognitivní agent PŘÍTOMNÝ na živém sezení s DID částí "${activePart}".
 - ${therapistName} ti píše, co ${activePart} říká/dělá, nebo posílá audio segmenty.
+- ⚡ POVINNÉ POTVRZENÍ PŘÍJMU: V PRVNÍ větě své odpovědi DOSLOVA odcituj klíčové slovo / asociaci / větu, kterou ti ${therapistName} právě napsala. Formát: "Slyším: »…« — …" nebo "Beru: »…« — …". Tím terapeutka uvidí, že jsi její vstup skutečně přijal. NIKDY tento řádek nevynechej.
 - Odpovídej OKAMŽITĚ a STRUČNĚ (3-5 řádků max):
   🎯 Co říct ${activePart} (přesná věta, respektuj jazyk a věk části)
   👀 Na co si dát pozor (neverbální signály, switching, disociace)
@@ -278,25 +328,38 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
   // Detekce přímé výzvy „napiš mi slova / otázky / nápady" — přesměrujeme na produce
   const CONTENT_REQUEST_RE = /(napiš|dej|navrhni|vygeneruj|řekni|vyrob)\s+(mi\s+)?(ty\s+)?(slova|asociace|otázky|otazky|nápady|napady|barvy|instrukci|seznam)/i;
 
-  const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
-    const userMessage = input.trim();
-    setInput("");
+  // ── Volba bodu programu, ke kterému se další zpráva připojí (dropdown vedle textarey) ──
+  const programBlocks = useMemo(() => parseProgramBulletsLocal(contextBrief ?? ""), [contextBrief]);
+  const [attachToBlockIdx, setAttachToBlockIdx] = useState<number | null>(null);
 
-    const updatedMessages = [...messages, { role: "user" as const, content: userMessage }];
-    setMessages(updatedMessages);
-
-    // Přímá výzva na produkci obsahu pro aktivní bod → produce endpoint místo karel-chat
-    if (activeBlock && CONTENT_REQUEST_RE.test(userMessage)) {
-      pushActivateBlock(activeBlock, userMessage);
-      toast.info(`Karel vyrábí obsah pro bod #${activeBlock.index + 1}…`);
-      return;
+  // ── Pomocná funkce: přidá zápis do localStorage diagnostického logu daného bodu ──
+  // BlockDiagnosticChat čte tento klíč při mountu (`${storageKey}::turns::${idx}`).
+  // Tím Karelovo „připojeno k bodu" reálně dorazí do per-bod chatu i do completion gate.
+  const appendToBlockTurns = useCallback((blockIndex: number, hanaText: string, karelText?: string) => {
+    if (typeof window === "undefined") return;
+    const baseKey = `live_program_${planId ?? "ad-hoc"}`;
+    const turnsKey = `${baseKey}::turns::${blockIndex}`;
+    try {
+      const raw = window.localStorage.getItem(turnsKey);
+      const arr: { from: string; text: string; ts: string }[] = raw ? JSON.parse(raw) : [];
+      const ts = new Date().toISOString();
+      arr.push({ from: "hana", text: hanaText, ts });
+      if (karelText) arr.push({ from: "karel", text: karelText, ts: new Date().toISOString() });
+      window.localStorage.setItem(turnsKey, JSON.stringify(arr));
+    } catch (e) {
+      console.warn("[live] appendToBlockTurns failed:", e);
     }
+  }, [planId]);
 
-    // Karel proaktivní reakce na nový input terapeutky
-    pushHintTrigger(userMessage, "note");
+  // ── Jádro odeslání: streamuje karel-chat odpověď. Vrací true při úspěchu. ──
+  // Klíčové oproti původní verzi: NIKDY nemažeme uživatelskou zprávu z chatu.
+  // Při chybě jen označíme zprávu `failed=true` (UI nabídne „Zkusit znovu").
+  const streamKarelReply = useCallback(async (
+    historyForApi: Message[],
+    userMsgTs: string,
+    blockAttachment?: { index: number; text: string },
+  ): Promise<boolean> => {
     setIsLoading(true);
-
     let assistantContent = "";
     try {
       const headers = await getAuthHeaders();
@@ -306,18 +369,20 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
           method: "POST",
           headers,
           body: JSON.stringify({
-            messages: updatedMessages,
+            messages: historyForApi,
             mode: "supervision",
             didInitialContext: buildContext(),
           }),
         }
       );
-
-      if (!response.ok || !response.body) throw new Error("Chyba");
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      setMessages([...updatedMessages, { role: "assistant", content: "" }]);
+      // Vlož prázdnou Karlovu zprávu — bude se postupně plnit streamem
+      setMessages(prev => [...prev, { role: "assistant", content: "", ts: new Date().toISOString() }]);
 
       while (true) {
         const { done, value } = await reader.read();
@@ -336,7 +401,17 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
             const content = parsed.choices?.[0]?.delta?.content;
             if (content) {
               assistantContent += content;
-              setMessages([...updatedMessages, { role: "assistant", content: assistantContent }]);
+              setMessages(prev => {
+                const next = [...prev];
+                // poslední zpráva je Karel — aktualizuj content
+                for (let i = next.length - 1; i >= 0; i--) {
+                  if (next[i].role === "assistant") {
+                    next[i] = { ...next[i], content: assistantContent };
+                    break;
+                  }
+                }
+                return next;
+              });
             }
           } catch {
             buffer = line + "\n" + buffer;
@@ -345,22 +420,144 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
         }
       }
 
-      // Detect switch in final response
-      if (assistantContent) {
-        const cleaned = detectSwitch(assistantContent);
-        if (cleaned !== assistantContent) {
-          setMessages([...updatedMessages, { role: "assistant", content: cleaned }]);
-        }
+      // Vyčistit case: Karel nic nevrátil → považujeme za chybu (failed badge)
+      if (!assistantContent.trim()) {
+        // Smaž prázdnou Karlovu placeholder zprávu
+        setMessages(prev => {
+          const next = [...prev];
+          if (next.length && next[next.length - 1].role === "assistant" && !next[next.length - 1].content) {
+            next.pop();
+          }
+          return next;
+        });
+        throw new Error("Karel vrátil prázdnou odpověď");
       }
+
+      // Detekce switche
+      const cleaned = detectSwitch(assistantContent);
+      const finalContent = cleaned !== assistantContent ? cleaned : assistantContent;
+      const acceptedAt = new Date().toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" });
+
+      // Označ uživatelskou zprávu jako přijatou + vyčisti případný předchozí failed stav.
+      // Současně dopiš Karlovu finální verzi (po switch cleanup).
+      setMessages(prev => {
+        const next = [...prev];
+        for (let i = next.length - 1; i >= 0; i--) {
+          if (next[i].role === "assistant") {
+            next[i] = { ...next[i], content: finalContent };
+            break;
+          }
+        }
+        for (let i = next.length - 1; i >= 0; i--) {
+          if (next[i].role === "user" && next[i].ts === userMsgTs) {
+            next[i] = { ...next[i], failed: false, errorMsg: undefined, acceptedAt };
+            break;
+          }
+        }
+        return next;
+      });
+
+      // Pokud byla zpráva připojena k bodu programu, zaloguj i Karlovu odpověď
+      // do diagnostického logu daného bodu (ať to přežije remount + completion gate).
+      if (blockAttachment) {
+        appendToBlockTurns(blockAttachment.index, /* hana */ "", finalContent);
+        // Note: hana text byl už zalogován v sendMessage před streamem.
+      }
+
+      // Hint trigger spustíme až PO úspěšném streamu — neblbne pravý sloupec při chybě.
+      // Pošleme jen poslední uživatelský vstup.
+      const lastUserText = historyForApi[historyForApi.length - 1]?.content ?? "";
+      if (lastUserText) pushHintTrigger(lastUserText, "note");
+
+      return true;
     } catch (error) {
-      console.error("DID Live session error:", error);
-      toast.error("Chyba při komunikaci s Karlem");
-      if (!assistantContent) setMessages(messages);
+      console.error("DID Live session stream error:", error);
+      const errMsg = error instanceof Error ? error.message : "Neznámá chyba";
+
+      // ── KLÍČOVÁ OPRAVA: NIKDY nemažeme zprávu Hany ──
+      // Označíme ji `failed=true` a uživatelka má retry tlačítko.
+      setMessages(prev => {
+        const next = [...prev];
+        // Smaž prázdnou Karlovu placeholder zprávu (pokud vznikla)
+        if (next.length && next[next.length - 1].role === "assistant" && !next[next.length - 1].content.trim()) {
+          next.pop();
+        }
+        // Najdi uživatelskou zprávu podle ts a označ failed
+        for (let i = next.length - 1; i >= 0; i--) {
+          if (next[i].role === "user" && next[i].ts === userMsgTs) {
+            next[i] = { ...next[i], failed: true, errorMsg: errMsg, acceptedAt: undefined };
+            break;
+          }
+        }
+        return next;
+      });
+      toast.error(`Karel teď neodpověděl — text máš uložený, klikni „Zkusit znovu". (${errMsg})`);
+      return false;
     } finally {
       setIsLoading(false);
       textareaRef.current?.focus();
     }
+  }, [buildContext, detectSwitch, pushHintTrigger, appendToBlockTurns]);
+
+  const sendMessage = async () => {
+    if (!input.trim() || isLoading) return;
+    const userMessage = input.trim();
+    setInput("");
+
+    // Přímá výzva na produkci obsahu pro aktivní bod → produce endpoint místo karel-chat
+    if (activeBlock && CONTENT_REQUEST_RE.test(userMessage)) {
+      const ts = new Date().toISOString();
+      setMessages(prev => [...prev, { role: "user", content: userMessage, ts, acceptedAt: new Date().toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" }) }]);
+      pushActivateBlock(activeBlock, userMessage);
+      toast.info(`Karel vyrábí obsah pro bod #${activeBlock.index + 1}…`);
+      return;
+    }
+
+    // Atašmán k bodu programu (z dropdownu vedle textarey)
+    const attached = (attachToBlockIdx !== null && programBlocks[attachToBlockIdx])
+      ? { index: attachToBlockIdx, text: programBlocks[attachToBlockIdx] }
+      : undefined;
+
+    const ts = new Date().toISOString();
+    const userObj: Message = {
+      role: "user",
+      content: userMessage,
+      ts,
+      attachedBlockIndex: attached?.index,
+      attachedBlockText: attached?.text,
+    };
+    const updatedMessages: Message[] = [...messages, userObj];
+    setMessages(updatedMessages);
+
+    // Pokud terapeut připojuje zprávu k bodu, hned ji zaloguj do per-bod logu
+    // (i kdyby Karel selhal, asociace zůstane uložená u bodu).
+    if (attached) {
+      appendToBlockTurns(attached.index, userMessage);
+    }
+
+    // Reset výběru bodu po odeslání — terapeut musí explicitně připojit znovu
+    setAttachToBlockIdx(null);
+
+    // Připrav historii pro API (BEZ instrumentačních polí, jen role+content)
+    const apiHistory: Message[] = updatedMessages.map(m => ({ role: m.role, content: m.content }));
+    await streamKarelReply(apiHistory, ts, attached);
   };
+
+  // ── Retry pro neúspěšné zprávy ──
+  // Zprávu Hany ponecháme; jen znovu zavoláme stream s aktuální historií.
+  const retryUserMessage = useCallback(async (msgTs: string) => {
+    if (isLoading) return;
+    const idx = messages.findIndex(m => m.role === "user" && m.ts === msgTs);
+    if (idx < 0) return;
+    // Vyčisti failed flag, aby UI hned přepnulo na „přemýšlí…"
+    setMessages(prev => prev.map((m, i) => i === idx ? { ...m, failed: false, errorMsg: undefined } : m));
+    const apiHistory: Message[] = messages.slice(0, idx + 1).map(m => ({ role: m.role, content: m.content }));
+    const attached = messages[idx].attachedBlockIndex !== undefined && messages[idx].attachedBlockText
+      ? { index: messages[idx].attachedBlockIndex!, text: messages[idx].attachedBlockText! }
+      : undefined;
+    await streamKarelReply(apiHistory, msgTs, attached);
+  }, [messages, isLoading, streamKarelReply]);
+
 
   // Audio segment analysis
   const handleAudioSegmentAnalysis = async () => {
@@ -1298,7 +1495,43 @@ ${report}${interrogationBlock}${reflectionText}`;
       <ScrollArea className="flex-1 min-h-[14rem] px-2 sm:px-4" ref={scrollRef}>
         <div className="max-w-3xl mx-auto py-4 space-y-3">
           {messages.map((msg, i) => (
-            <ChatMessage key={i} message={msg} />
+            <div key={i} className="space-y-1">
+              <ChatMessage message={msg} />
+              {/* ── Meta-řádek pod uživatelskou zprávou: přijato / chyba / bod ── */}
+              {msg.role === "user" && (msg.acceptedAt || msg.failed || msg.attachedBlockIndex !== undefined) && (
+                <div className="flex flex-wrap items-center gap-1.5 pl-2 text-[10px]">
+                  {msg.attachedBlockIndex !== undefined && (
+                    <Badge variant="outline" className="h-4 text-[9px] gap-0.5 border-primary/30 text-primary">
+                      <Link2 className="w-2.5 h-2.5" />
+                      bod #{msg.attachedBlockIndex + 1}
+                    </Badge>
+                  )}
+                  {msg.acceptedAt && !msg.failed && (
+                    <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+                      ✓ Karel přijal · uloženo {msg.acceptedAt}
+                    </span>
+                  )}
+                  {msg.failed && (
+                    <>
+                      <span className="text-destructive font-medium flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" />
+                        Karel neodpověděl{msg.errorMsg ? ` (${msg.errorMsg})` : ""}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-5 px-1.5 text-[10px] gap-1 border-destructive/40 text-destructive hover:bg-destructive/10"
+                        onClick={() => msg.ts && retryUserMessage(msg.ts)}
+                        disabled={isLoading}
+                      >
+                        <RefreshCw className="w-2.5 h-2.5" />
+                        Zkusit znovu
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           ))}
           {isLoading && messages[messages.length - 1]?.role === "user" && (
             <div className="flex justify-start">
@@ -1350,7 +1583,60 @@ ${report}${interrogationBlock}${reflectionText}`;
 
       {/* Input */}
       <div className="border-t border-border bg-card/50 backdrop-blur-sm">
-        <div className="max-w-3xl mx-auto px-3 sm:px-4 py-3">
+        <div className="max-w-3xl mx-auto px-3 sm:px-4 py-3 space-y-2">
+          {/* ── Orientační lišta: kam vlastně píšu + výběr bodu programu ── */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="outline"
+              className="text-[10px] h-5 gap-1 border-primary/30 text-primary bg-primary/5"
+            >
+              <MessageSquare className="w-2.5 h-2.5" />
+              Hlavní tok sezení — Karel čte VŠE co napíšeš
+            </Badge>
+            {programBlocks.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant={attachToBlockIdx !== null ? "default" : "outline"}
+                    className="h-6 text-[10px] gap-1 px-2"
+                    title="Připojit další zprávu jako asociaci k vybranému bodu programu"
+                  >
+                    <Link2 className="w-3 h-3" />
+                    {attachToBlockIdx !== null
+                      ? `→ bod #${attachToBlockIdx + 1}`
+                      : "Připojit k bodu"}
+                    <ChevronDown className="w-3 h-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="max-w-sm">
+                  <DropdownMenuLabel className="text-[10px] text-muted-foreground">
+                    Další zpráva se zaloguje jako asociace daného bodu
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-xs"
+                    onClick={() => setAttachToBlockIdx(null)}
+                  >
+                    <span className="text-muted-foreground">Žádný bod (jen do hlavního toku)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {programBlocks.map((b, i) => (
+                    <DropdownMenuItem
+                      key={i}
+                      className="text-xs items-start gap-2"
+                      onClick={() => setAttachToBlockIdx(i)}
+                    >
+                      <Badge variant="outline" className="text-[9px] h-4 mt-0.5">
+                        #{i + 1}
+                      </Badge>
+                      <span className="line-clamp-2">{b}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
           <div className="flex gap-2 items-end">
             <Textarea
               ref={textareaRef}
@@ -1362,7 +1648,7 @@ ${report}${interrogationBlock}${reflectionText}`;
                   sendMessage();
                 }
               }}
-              placeholder={`Co ${partName} říká / dělá...`}
+              placeholder={`Sem zapisuj, co ${partName} říká nebo dělá. Karel okamžitě poradí. (Enter odešle, Shift+Enter = nový řádek)`}
               className="flex-1 min-w-0 min-h-[2.75rem] max-h-[7.5rem] resize-none text-sm"
               disabled={isLoading || isFinishing}
             />
@@ -1371,6 +1657,7 @@ ${report}${interrogationBlock}${reflectionText}`;
               onClick={sendMessage}
               disabled={!input.trim() || isLoading || isFinishing}
               className="h-[2.75rem] w-[2.75rem] shrink-0"
+              title="Odeslat (Enter)"
             >
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
