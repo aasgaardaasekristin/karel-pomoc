@@ -724,11 +724,6 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                   Karel svolal poradu
                 </h4>
                 <RichMarkdown compact>{d.initial_karel_brief ?? "(žádný brief)"}</RichMarkdown>
-                {d.reason && (
-                  <p className="text-[11px] text-muted-foreground italic mt-2">
-                    Důvod: {d.reason}
-                  </p>
-                )}
               </section>
 
               {/* Karlův návrh — pro session_plan je to first_draft z briefingu */}
