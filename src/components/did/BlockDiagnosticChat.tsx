@@ -719,27 +719,75 @@ NEPIŠ dlouhé analýzy. Jsi průvodce v reálném čase, ne soudce.`;
         </div>
       )}
 
-      {/* ── Tlačítka per-bod artefakty ── */}
+      {/* ── Skrytá file inputy pro upload ── */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        capture="environment"
+        className="hidden"
+        onChange={(e) => handleImageFiles(e.target.files)}
+      />
+      <input
+        ref={videoInputRef}
+        type="file"
+        accept="video/*"
+        className="hidden"
+        onChange={(e) => handleVideoFiles(e.target.files)}
+      />
+
+      {/* ── Tlačítka per-bod artefakty (REAL upload + nahrávání) ── */}
       <div className="flex items-center gap-1.5 flex-wrap border-t border-border/40 pt-2">
+        {!isRecording ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 text-[10px] gap-1"
+            onClick={() => void startAudioRecording()}
+            disabled={isAnalyzingArtifact}
+            title="Začít nahrávat audio (real-time, max 5 min)"
+          >
+            <Mic className="w-3 h-3" /> Nahrát audio
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="destructive"
+            className="h-6 text-[10px] gap-1"
+            onClick={stopAudioRecording}
+            title="Zastavit nahrávání a poslat Karlovi"
+          >
+            <Square className="w-3 h-3" /> Stop ({Math.floor(recordSeconds / 60)}:
+            {String(recordSeconds % 60).padStart(2, "0")})
+          </Button>
+        )}
         <Button
           size="sm"
           variant="outline"
           className="h-6 text-[10px] gap-1"
-          onClick={() => addArtifactPlaceholder("audio")}
-          title="Nahrát/přiložit audio k tomuto bodu"
+          onClick={() => imageInputRef.current?.click()}
+          disabled={isRecording || isAnalyzingArtifact}
+          title="Foto z kamery / nahrát kresbu / screenshot"
         >
-          <Mic className="w-3 h-3" /> + audio
+          <Camera className="w-3 h-3" /> Foto / kresba
         </Button>
         <Button
           size="sm"
           variant="outline"
           className="h-6 text-[10px] gap-1"
-          onClick={() => addArtifactPlaceholder("image")}
-          title="Vyfotit/přiložit obrázek (kresbu) k tomuto bodu"
+          onClick={() => videoInputRef.current?.click()}
+          disabled={isRecording || isAnalyzingArtifact}
+          title="Nahrát video"
         >
-          <Camera className="w-3 h-3" /> + foto
+          <Video className="w-3 h-3" /> Video
         </Button>
-        {artifacts.length > 0 && (
+        {isAnalyzingArtifact && (
+          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <Loader2 className="w-3 h-3 animate-spin" /> Karel zpracovává…
+          </span>
+        )}
+        {artifacts.length > 0 && !isAnalyzingArtifact && (
           <span className="text-[9px] text-muted-foreground">
             přiloženo: {artifacts.length} {artifacts.length === 1 ? "artefakt" : "artefaktů"}
           </span>
