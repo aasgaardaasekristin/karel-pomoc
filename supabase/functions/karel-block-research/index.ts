@@ -399,22 +399,31 @@ Deno.serve(async (req: Request) => {
 
     const blockText = String(block.text + (block.detail ? ` — ${block.detail}` : "")).slice(0, 600);
 
-    // 1) Perplexity rešerše (jen u depth=deep nebo když je to evidentně diagnostický test)
+    // 0) DETEKCE PEVNÉHO PLAYBOOKU — pokud existuje, je to autoritativní zdroj
+    const playbook: Playbook | null = detectPlaybook(blockText);
+
+    // 1) Perplexity rešerše — vždy cílená na konkrétní manuál (pokud máme playbook)
     let perplexity: { content: string; citations: string[] } | null = null;
     const hints = detectMethodHints(blockText);
-    const isDiagnostic = hints.isDrawing || hints.isAssociation || hints.isPlay || hints.isNarrative;
+    const isDiagnostic = hints.isDrawing || hints.isAssociation || hints.isPlay || hints.isNarrative || !!playbook;
     if (depth === "deep" || isDiagnostic) {
-      const ppPrompt = `Jaké jsou přesné odborné parametry pro tuto diagnostickou aktivitu s dítětem (${partAge ? `věk ${partAge}` : "věk nezveřejněn"})?
+      const manualHint = playbook
+        ? `Vycházíme z manuálu: ${playbook.method_label}. Zdroje: ${playbook.source_refs.join("; ")}.`
+        : "Identifikuj typ projektivní/diagnostické metody a cituj manuál.";
+      const ppPrompt = `Klinický psycholog — dětská psychodiagnostika. ${manualHint}
 
-"${blockText}"
+Bod programu: "${blockText}"
+Část: ${partName}${partAge ? ` (věk ${partAge})` : ""}
 
-Odpověz česky a stručně:
-1) Konkrétní pomůcky (typ tužky, papíru, hraček).
-2) Přesná instrukce, kterou má terapeut říct dítěti.
-3) Diagnostická kritéria — co sledovat během aktivity (např. odkud začíná kreslit, umístění na papíru, tlak tužky, vývojová úroveň, latence odpovědí, neverbální signály).
-4) Jaké artefakty pro validní klinickou analýzu (foto kresby, audio, video, zápis odpovědí).
+Odpověz česky a velmi konkrétně:
+1) Přesné pomůcky dle manuálu (typ tužky HB, formát A4, stopky, audio, figurky…).
+2) Doslovná instrukce dítěti dle manuálu.
+3) Co terapeutka MUSÍ povinně zaznamenávat každý turn (verbatim, latence v sekundách, afekt, neverbální).
+4) Diagnostická kritéria a red flags (perseverace, klang, prodloužená latence, vegetativní reakce, vynechané části, izolace postavy…).
+5) Trauma response — co dělat, když dítě reaguje flashbackem / pláčem / freeze. Citovat trauma-informed přístup.
+6) Jaké artefakty pro validní analýzu (foto, audio, verbatim log).
 
-Cituj odbornou literaturu, kde je to relevantní (Machover, Koch, Buck, projektivní techniky, ICD-11, odborné články).`;
+Cituj reálné manuály (Machover 1949, Koch 1949, Buck 1948, Burns 1970, Jung 1906, Bellak CAT 1949, Lowenfeld 1979, Levine SE).`;
 
       perplexity = await callPerplexity(ppPrompt);
     }
@@ -426,10 +435,22 @@ Cituj odbornou literaturu, kde je to relevantní (Machover, Koch, Buck, projekti
     if (structured) {
       result = {
         ...structured,
+        method_id: playbook?.method_id ?? structured.method_id,
         citations: perplexity?.citations,
+        // přepiš expected_artifacts z playbooku, pokud existuje (přesnější)
+        expected_artifacts: playbook
+          ? Array.from(new Set([
+              ...structured.expected_artifacts,
+              ...playbook.required_artifacts.filter(a => a === "image" || a === "audio" || a === "text") as ("image"|"audio"|"text")[],
+            ]))
+          : structured.expected_artifacts,
+        source: playbook ? "playbook" : structured.source,
       };
     } else {
-      result = buildFallback(blockText, partName, partAge);
+      const fb = buildFallback(blockText, partName, partAge);
+      result = playbook
+        ? { ...fb, method_id: playbook.method_id, method_label: playbook.method_label, source: "playbook" }
+        : fb;
     }
 
     return new Response(JSON.stringify(result), {
