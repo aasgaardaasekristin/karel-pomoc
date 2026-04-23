@@ -27,6 +27,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 import { selectPantryA, summarizePantryAForPrompt, type PantryASnapshot } from "../_shared/pantryA.ts";
 import { readUnprocessedPantryB, markPantryBProcessed } from "../_shared/pantryB.ts";
+import { summarizeToolboxForPrompt } from "../_shared/therapeuticToolbox.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -326,18 +327,32 @@ const BRIEFING_TOOL = {
             kata_involvement: { type: "string", description: "Jednou větou, zda dnes přizvat Káťu a za jakých okolností." },
             agenda_outline: {
               type: "array",
-              description: "Strukturovaná minutáž sezení — 4 až 6 kroků. Každý krok má krátký název, doporučenou dobu a 1-2 věty co se v něm děje.",
+              description: "Strukturovaná minutáž sezení — 4 až 6 kroků. Každý krok MUSÍ být ŽIVÝ a HRAVÝ — pojmenuj konkrétní terapeutický nástroj z arzenálu (asociační test, Rorschach lite, aktivní imaginace, kresba „Jak je dnes uvnitř", grounding 5-4-3-2-1, atd.). NE generické bloky typu „úvod / práce / uzávěr".",
               items: {
                 type: "object",
                 properties: {
-                  block: { type: "string", description: "Krátký název kroku, např. 'Úvod a ground-check'." },
+                  block: { type: "string", description: "Konkrétní hravý název kroku, např. „Asociační otevření — 8 slov o domově" nebo „Mandala dne s reflexí středu". Žádná abstraktní slova jako „práce s emocemi"." },
                   minutes: { type: "number", description: "Doporučená doba v minutách." },
-                  detail: { type: "string", description: "1-2 věty co se v bloku konkrétně dělá." },
+                  detail: { type: "string", description: "3-5 vět co se v bloku konkrétně děje: pomůcky (remote — chat, hlas, kresba do screenu, foto), Karlův prompt nebo otázka, čeho si v reakci části všímat. Hravý jazyk, ne klinický." },
+                  tool_id: { type: "string", description: "ID nástroje z toolboxu (wat, barvy_dnes, rorschach_lite, tat_lite, active_imagination, safe_place, what_if, world_building, tri_dvere, deset_let, skala_telo, grounding_5_4_3_2_1, kresba_dnes, mandala, rukopis_vzorek). Volitelné, pokud blok kombinuje více nástrojů." },
                 },
-                required: ["block"],
+                required: ["block", "detail"],
                 additionalProperties: false,
               },
               minItems: 3,
+              maxItems: 6,
+            },
+            playful_hooks: {
+              type: "array",
+              description: "2-4 konkrétní hravé háčky, které Karel uvnitř sezení rozjede, pokud je čas/prostor: nečekaná otázka, asociace, mini-hra. Každý hook 1 věta.",
+              items: { type: "string" },
+              minItems: 0,
+              maxItems: 4,
+            },
+            materials_needed: {
+              type: "array",
+              description: "Co si Karel připraví PŘED sezením (obrázky pro Rorschach lite, sada slov pro WAT, scéna pro TAT lite). Vše digitální — žádné fyzické pomůcky.",
+              items: { type: "string" },
               maxItems: 6,
             },
             questions_for_hanka: {
