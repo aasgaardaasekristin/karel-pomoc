@@ -3,7 +3,7 @@
  * ---------------------------
  * Pevná knihovna profesionálních diagnostických protokolů.
  * Karel je MUSÍ dodržet — toto je rámec, který vyrobí klinické podmínky
- * a zabrání jeho «improvizaci« do obecných frází.
+ * a zabrání jeho "improvizaci" do obecných frází.
  *
  * Každý playbook má pevnou strukturu (viz typ Playbook).
  * Inspirace v reálných manuálech (Jung asociační experiment, Machover DAP,
@@ -15,11 +15,11 @@
  */
 
 export type PlaybookPhase =
-  | «setup«
-  | «running«
-  | «trauma_pause«
-  | «closure«
-  | «done«;
+  | "setup"
+  | "running"
+  | "trauma_pause"
+  | "closure"
+  | "done";
 
 export type Playbook = {
   method_id: string;
@@ -35,8 +35,8 @@ export type Playbook = {
     measurements_required: string[]; // co zapisovat každý turn
   };
   step_protocol: {
-    /** Když je kind=«sequence_words«, planned_steps je pole stimulů. */
-    kind: «sequence_words« | «drawing_phases« | «open_dialog« | «narrative« | «play«;
+    /** Když je kind="sequence_words", planned_steps je pole stimulů. */
+    kind: "sequence_words" | "drawing_phases" | "open_dialog" | "narrative" | "play";
     planned_steps?: string[]; // např. asoc. slova
     instruction: string;      // co dělat na každém kroku
     what_to_record: string[]; // doslovná odpověď, latence, mimika...
@@ -53,14 +53,14 @@ export type Playbook = {
     debrief_questions: string[];
     grounding: string;
   };
-  required_artifacts: («image« | «audio« | «text« | «verbatim_log« | «latency_log«)[];
+  required_artifacts: ("image" | "audio" | "text" | "verbatim_log" | "latency_log")[];
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1) JUNG ASOCIAČNÍ EXPERIMENT (zkrácený 8slovný dětský variant)
 // ─────────────────────────────────────────────────────────────────────────────
 export const playbook_association_experiment_jung: Playbook = {
-  method_id: «association_experiment_jung«,
+  method_id: "association_experiment_jung",
   method_label: «Asociační experiment (Jung) — dětský zkrácený protokol 8 slov«,
   source_refs: [
     «C. G. Jung — Studies in Word Association (1906)«,
@@ -92,17 +92,17 @@ export const playbook_association_experiment_jung: Playbook = {
     ],
   },
   step_protocol: {
-    kind: «sequence_words«,
+    kind: "sequence_words",
     // planned_steps doplňuje dynamicky karel-live-session-produce na míru bodu programu
     planned_steps: undefined,
     instruction:
       «Řekni přesně jedno slovo, klidně, neutrálním tónem. Spusť stopky. Doslovně zapiš první odpověď dítěte. Zaznamenej latenci a afekt. Pokud dítě mlčí > 30 s, zapiš »odmlka 30+ s« a přejdi k dalšímu slovu BEZ opakování.«,
     what_to_record: [
-      «verbatim«,
-      «latency_seconds«,
-      «affect«,
-      «nonverbal«,
-      «therapist_note«,
+      "verbatim",
+      "latency_seconds",
+      "affect",
+      "nonverbal",
+      "therapist_note",
     ],
     red_flags: [
       «prodloužení latence > 8 s u afektivního slova (indikátor komplexu)«,
@@ -143,14 +143,14 @@ export const playbook_association_experiment_jung: Playbook = {
     grounding:
       «Zakončete krátkou klidnou aktivitou (oblíbená hračka, voda, pohyb) — neodcházej hned k dalšímu testu.«,
   },
-  required_artifacts: [«audio«, «verbatim_log«, «latency_log«],
+  required_artifacts: ["audio", "verbatim_log", "latency_log"],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2) KRESBA POSTAVY (Machover Draw-A-Person)
 // ─────────────────────────────────────────────────────────────────────────────
 export const playbook_draw_a_person_machover: Playbook = {
-  method_id: «draw_a_person_machover«,
+  method_id: "draw_a_person_machover",
   method_label: «Kresba postavy (Machover DAP)«,
   source_refs: [
     «Machover — Personality Projection in the Drawing of the Human Figure (1949)«,
@@ -184,17 +184,17 @@ export const playbook_draw_a_person_machover: Playbook = {
     ],
   },
   step_protocol: {
-    kind: «drawing_phases«,
+    kind: "drawing_phases",
     instruction:
       «Fáze 1: nech kreslit nerušeně. Fáze 2 (po dokončení): post-drawing inquiry — klidným tónem se zeptej kdo to je, kolik je mu let, co dělá, jak se cítí. Doslova zapiš odpovědi.«,
     what_to_record: [
-      «drawing_order«,
-      «placement«,
-      «pressure«,
-      «erasures«,
-      «size«,
-      «missing_parts«,
-      «post_drawing_inquiry_verbatim«,
+      "drawing_order",
+      "placement",
+      "pressure",
+      "erasures",
+      "size",
+      "missing_parts",
+      "post_drawing_inquiry_verbatim",
     ],
     red_flags: [
       «vynechané ruce / oči / ústa (možná disociativní marker)«,
@@ -210,7 +210,7 @@ export const playbook_draw_a_person_machover: Playbook = {
     immediate_actions: [
       «Zastav inquiry, neptej se dál«,
       «Validuj (»to je důležitý vjem«)«,
-      «Grounding«,
+      "Grounding",
       «Rozhodni o pokračování«,
     ],
     do_not_repeat_stimulus: false,
@@ -224,18 +224,18 @@ export const playbook_draw_a_person_machover: Playbook = {
     ],
     grounding: «krátká uvolňovací aktivita«,
   },
-  required_artifacts: [«image«, «verbatim_log«],
+  required_artifacts: ["image", "verbatim_log"],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3) STROM (Koch Baumtest)
 // ─────────────────────────────────────────────────────────────────────────────
 export const playbook_tree_test_koch: Playbook = {
-  method_id: «tree_test_koch_baum«,
+  method_id: "tree_test_koch_baum",
   method_label: «Test stromu (Koch Baumtest)«,
   source_refs: [«Karl Koch — Der Baumtest (1949)«],
   pre_session_setup: {
-    supplies: [«tužka HB«, «A4 nelinkovaný papír (na výšku)«, «klid«],
+    supplies: [«tužka HB«, «A4 nelinkovaný papír (na výšku)«, "klid"],
     room: «klidné prostředí«,
     therapist_position: «z boku, mlčky pozoruj«,
     child_position: «u stolu«,
@@ -257,10 +257,10 @@ export const playbook_tree_test_koch: Playbook = {
     ],
   },
   step_protocol: {
-    kind: «drawing_phases«,
+    kind: "drawing_phases",
     instruction:
       «Fáze 1: nech kreslit. Fáze 2: post-drawing — »kolik je tomu stromu let? jak se mu daří? co se mu stalo?«. Doslovný zápis.«,
-    what_to_record: [«drawing_order«, «placement«, «size«, «pressure«, «tree_parts«, «post_inquiry_verbatim«],
+    what_to_record: ["drawing_order", "placement", "size", "pressure", "tree_parts", "post_inquiry_verbatim"],
     red_flags: [
       «dutiny v kmeni (často trauma marker)«,
       «uschlé větve, opadané listí«,
@@ -270,7 +270,7 @@ export const playbook_tree_test_koch: Playbook = {
   },
   trauma_response_protocol: {
     signs: [«pláč«, «verbalizace zranění stromu«, «ztuhnutí«],
-    immediate_actions: [«validace«, «grounding«, «rozhodnutí«],
+    immediate_actions: ["validace", "grounding", «rozhodnutí«],
     do_not_repeat_stimulus: false,
     grounding_script: «Klidně přesun k bezpečné aktivitě.«,
   },
@@ -279,18 +279,18 @@ export const playbook_tree_test_koch: Playbook = {
     debrief_questions: [«Co tomu stromu přeješ?«],
     grounding: «krátká pauza«,
   },
-  required_artifacts: [«image«, «verbatim_log«],
+  required_artifacts: ["image", "verbatim_log"],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 4) DŮM-STROM-POSTAVA (Buck HTP)
 // ─────────────────────────────────────────────────────────────────────────────
 export const playbook_htp_buck: Playbook = {
-  method_id: «htp_buck«,
+  method_id: "htp_buck",
   method_label: «Dům-Strom-Postava (Buck HTP)«,
   source_refs: [«John Buck — H-T-P Technique (1948)«],
   pre_session_setup: {
-    supplies: [«tužka HB«, «3× A4 nelinkovaný papír«, «klid«],
+    supplies: [«tužka HB«, «3× A4 nelinkovaný papír«, "klid"],
     room: «klidné prostředí«,
     therapist_position: «z boku«,
     child_position: «u stolu«,
@@ -303,10 +303,10 @@ export const playbook_htp_buck: Playbook = {
     ],
   },
   step_protocol: {
-    kind: «drawing_phases«,
+    kind: "drawing_phases",
     instruction:
       «Po každé kresbě post-drawing inquiry: dům — »kdo tam bydlí, je tam šťastný?«, strom — »jak se mu daří?«, postava — »kdo to je, co dělá, cítí?«. Doslovně zapiš.«,
-    what_to_record: [«per_drawing_full_set«],
+    what_to_record: ["per_drawing_full_set"],
     red_flags: [
       «okna bez skla / zamřížovaná«,
       «dům bez dveří nebo komínu«,
@@ -317,28 +317,28 @@ export const playbook_htp_buck: Playbook = {
   },
   trauma_response_protocol: {
     signs: [«pláč«, «popis nebezpečí v domě«, «ztuhnutí«],
-    immediate_actions: [«validace«, «grounding«],
+    immediate_actions: ["validace", "grounding"],
     do_not_repeat_stimulus: false,
     grounding_script: «Klidně přesun.«,
   },
   closure_protocol: {
     reproduction_check: null,
     debrief_questions: [«Která kresba se ti dělala nejlíp?«],
-    grounding: «pauza«,
+    grounding: "pauza",
   },
-  required_artifacts: [«image«, «verbatim_log«],
+  required_artifacts: ["image", "verbatim_log"],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 5) RODINA V AKCI (Burns KFD)
 // ─────────────────────────────────────────────────────────────────────────────
 export const playbook_kfd_burns: Playbook = {
-  method_id: «kfd_burns«,
+  method_id: "kfd_burns",
   method_label: «Kinetická kresba rodiny (Burns KFD)«,
   source_refs: [«Burns & Kaufman — Kinetic Family Drawings (1970)«],
   pre_session_setup: {
     supplies: [«tužka HB«, «A4 nelinkovaný«],
-    room: «klid«,
+    room: "klid",
     therapist_position: «z boku«,
     child_position: «u stolu«,
     what_to_say_first:
@@ -354,10 +354,10 @@ export const playbook_kfd_burns: Playbook = {
     ],
   },
   step_protocol: {
-    kind: «drawing_phases«,
+    kind: "drawing_phases",
     instruction:
       «Post-drawing inquiry: zeptej se na každou postavu — kdo to je, co dělá, jak se cítí, co si myslí o ostatních. Pokud někdo chybí, jemně se zeptej proč.«,
-    what_to_record: [«all_KFD_indicators«, «post_inquiry_verbatim«],
+    what_to_record: ["all_KFD_indicators", "post_inquiry_verbatim"],
     red_flags: [
       «vynechání rodiče nebo sourozence«,
       «izolace dítěte (samo v rohu)«,
@@ -368,7 +368,7 @@ export const playbook_kfd_burns: Playbook = {
   },
   trauma_response_protocol: {
     signs: [«pláč«, «popis násilí«, «ztuhnutí při určité postavě«],
-    immediate_actions: [«okamžitá validace«, «grounding«, «klinické rozhodnutí o ohlášení (DOP)«],
+    immediate_actions: [«okamžitá validace«, "grounding", «klinické rozhodnutí o ohlášení (DOP)«],
     do_not_repeat_stimulus: false,
     grounding_script: «Klid, bezpečí, pauza.«,
   },
@@ -377,19 +377,19 @@ export const playbook_kfd_burns: Playbook = {
     debrief_questions: [«Jak se cítíš, když se na tu kresbu díváš?«],
     grounding: «pauza, klidná aktivita«,
   },
-  required_artifacts: [«image«, «verbatim_log«],
+  required_artifacts: ["image", "verbatim_log"],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 6) NARATIVNÍ PROJEKCE (CAT/TAT styl)
 // ─────────────────────────────────────────────────────────────────────────────
 export const playbook_narrative_cat: Playbook = {
-  method_id: «narrative_cat_tat«,
+  method_id: "narrative_cat_tat",
   method_label: «Narativní projektivní vyprávění (CAT/TAT styl)«,
   source_refs: [«Bellak — CAT (1949)«, «Murray — TAT (1943)«],
   pre_session_setup: {
     supplies: [«audio nahrávač / mobil«, «papír na zápis«, «obrázek nebo téma«],
-    room: «klid«,
+    room: "klid",
     therapist_position: «naproti, klidně«,
     child_position: «pohodlně«,
     what_to_say_first:
@@ -406,10 +406,10 @@ export const playbook_narrative_cat: Playbook = {
     ],
   },
   step_protocol: {
-    kind: «narrative«,
+    kind: "narrative",
     instruction:
       «Doslovně zapiš nebo nahraj. Pokud dítě skončí příliš brzy, jednou se zeptej: »A co bylo dál?« Jinak nezasahuj.«,
-    what_to_record: [«full_verbatim_story«, «pauses«, «affect_changes«],
+    what_to_record: ["full_verbatim_story", "pauses", "affect_changes"],
     red_flags: [
       «katastrofický konec bez záchrany«,
       «absence pomáhající figury«,
@@ -418,24 +418,24 @@ export const playbook_narrative_cat: Playbook = {
     ],
   },
   trauma_response_protocol: {
-    signs: [«pláč«, «freeze«, «ztráta hlasu«, «verbalizace traumatu jako toho hrdiny],
-    immediate_actions: [«okamžitě zastav vyprávění«, «validace«, «grounding«],
+    signs: [«pláč«, "freeze", «ztráta hlasu«, «verbalizace traumatu jako toho hrdiny],
+    immediate_actions: [«okamžitě zastav vyprávění«, "validace", "grounding"],
     do_not_repeat_stimulus: false,
     grounding_script: «Klidně přesun do bezpečí.«,
   },
   closure_protocol: {
     reproduction_check: null,
     debrief_questions: [«Co by si ten hrdina přál?«, «Jak se cítíš teď?«],
-    grounding: «pauza«,
+    grounding: "pauza",
   },
-  required_artifacts: [«audio«, «verbatim_log«],
+  required_artifacts: ["audio", "verbatim_log"],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 7) HRA S FIGURKAMI / PÍSKOVIŠTĚ (Lowenfeld)
 // ─────────────────────────────────────────────────────────────────────────────
 export const playbook_sandtray_lowenfeld: Playbook = {
-  method_id: «sandtray_lowenfeld«,
+  method_id: "sandtray_lowenfeld",
   method_label: «Hra s figurkami / pískoviště (Lowenfeld World Technique)«,
   source_refs: [«Margaret Lowenfeld — The World Technique (1979)«],
   pre_session_setup: {
@@ -457,10 +457,10 @@ export const playbook_sandtray_lowenfeld: Playbook = {
     ],
   },
   step_protocol: {
-    kind: «play«,
+    kind: "play",
     instruction:
       «Mlčky pozoruj 10–20 min. Zapiš sekvenci akcí. Po dokončení se zeptej: »Můžeš mi povědět, co se v tom světě děje?« Vyfoť výslednou scénu.«,
-    what_to_record: [«sequence_of_actions«, «final_scene_photo«, «narrative_verbatim«],
+    what_to_record: ["sequence_of_actions", "final_scene_photo", "narrative_verbatim"],
     red_flags: [
       «izolovaná malá figurka v rohu«,
       «opakované pohřbívání / schovávání«,
@@ -470,28 +470,28 @@ export const playbook_sandtray_lowenfeld: Playbook = {
   },
   trauma_response_protocol: {
     signs: [«pláč«, «destruktivní zničení scény«, «ztuhnutí«],
-    immediate_actions: [«validace«, «grounding«, «rozhodnutí«],
+    immediate_actions: ["validace", "grounding", «rozhodnutí«],
     do_not_repeat_stimulus: false,
     grounding_script: «Klid.«,
   },
   closure_protocol: {
     reproduction_check: null,
     debrief_questions: [«Co bys v tom světě ještě chtěl změnit?«],
-    grounding: «pauza«,
+    grounding: "pauza",
   },
-  required_artifacts: [«image«, «audio«, «verbatim_log«],
+  required_artifacts: ["image", "audio", "verbatim_log"],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 8) TĚLOVÁ MAPA (somatický scan, dětská adaptace)
 // ─────────────────────────────────────────────────────────────────────────────
 export const playbook_body_map_somatic: Playbook = {
-  method_id: «body_map_somatic«,
+  method_id: "body_map_somatic",
   method_label: «Tělová mapa (somatic scan)«,
   source_refs: [«Levine — Somatic Experiencing (adaptace pro děti)«],
   pre_session_setup: {
-    supplies: [«předtištěná silueta postavy A4«, «barevné pastelky / fixy«, «klid«],
-    room: «klid«,
+    supplies: [«předtištěná silueta postavy A4«, «barevné pastelky / fixy«, "klid"],
+    room: "klid",
     therapist_position: «vedle, podpůrně«,
     child_position: «u stolu«,
     what_to_say_first:
@@ -504,10 +504,10 @@ export const playbook_body_map_somatic: Playbook = {
     ],
   },
   step_protocol: {
-    kind: «drawing_phases«,
+    kind: "drawing_phases",
     instruction:
       «Po dokončení projdi spolu mapu — »a tady ta barva znamená co?«. Doslovně zapiš.«,
-    what_to_record: [«color_to_zone_mapping«, «verbatim_explanations«],
+    what_to_record: ["color_to_zone_mapping", "verbatim_explanations"],
     red_flags: [
       «černé/červené zóny v genitální oblasti, krku, hrudi (somatický marker traumatu)«,
       «nebarvi se vůbec (alexithymie)«,
@@ -516,7 +516,7 @@ export const playbook_body_map_somatic: Playbook = {
   },
   trauma_response_protocol: {
     signs: [«pláč«, «verbalizace bolesti vázané na vzpomínku«, «ztuhnutí«],
-    immediate_actions: [«validace«, «grounding«, «rozhodnutí«],
+    immediate_actions: ["validace", "grounding", «rozhodnutí«],
     do_not_repeat_stimulus: false,
     grounding_script: «Klid, dech.«,
   },
@@ -525,14 +525,14 @@ export const playbook_body_map_somatic: Playbook = {
     debrief_questions: [«Která barva ti přijde teď nejvíc?«],
     grounding: «pohyb / dech«,
   },
-  required_artifacts: [«image«, «verbatim_log«],
+  required_artifacts: ["image", "verbatim_log"],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 9) BEZPEČNÉ MÍSTO (vizualizace, grounding)
 // ─────────────────────────────────────────────────────────────────────────────
 export const playbook_safe_place: Playbook = {
-  method_id: «safe_place_visualization«,
+  method_id: "safe_place_visualization",
   method_label: «Bezpečné místo (vizualizace)«,
   source_refs: [«EMDR Resource Development — Shapiro«],
   pre_session_setup: {
@@ -551,10 +551,10 @@ export const playbook_safe_place: Playbook = {
     ],
   },
   step_protocol: {
-    kind: «open_dialog«,
+    kind: "open_dialog",
     instruction:
       «Pomalé otázky: »Co vidíš? Co slyšíš? Jak to tam voní? Jak se ti tam dýchá?« Žádný spěch.«,
-    what_to_record: [«full_description«, «sensory_anchors«, «affect«],
+    what_to_record: ["full_description", "sensory_anchors", "affect"],
     red_flags: [
       «dítě nedokáže najít bezpečné místo (silný marker absence vnitřního bezpečí)«,
       «místo se mění v ohrožující«,
@@ -572,7 +572,7 @@ export const playbook_safe_place: Playbook = {
     debrief_questions: [«Můžeš si to místo zapamatovat? Vrátíme se k němu jindy?«],
     grounding: «lehký pohyb«,
   },
-  required_artifacts: [«verbatim_log«],
+  required_artifacts: ["verbatim_log"],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -671,7 +671,7 @@ ${p.step_protocol.red_flags.map(s => «  ⚠ « + s).join(«\n«)}
 
 ▼ TRAUMA RESPONSE PROTOCOL
 Příznaky: ${p.trauma_response_protocol.signs.join(«; «)}
-DO NOT REPEAT STIMULUS: ${p.trauma_response_protocol.do_not_repeat_stimulus ? «ANO — NIKDY neopakuj stejný stimul po traumatické reakci« : «ne«}
+DO NOT REPEAT STIMULUS: ${p.trauma_response_protocol.do_not_repeat_stimulus ? «ANO — NIKDY neopakuj stejný stimul po traumatické reakci« : "ne"}
 Okamžité akce:
 ${p.trauma_response_protocol.immediate_actions.map(s => «  → « + s).join(«\n«)}
 Grounding skript pro dítě:
