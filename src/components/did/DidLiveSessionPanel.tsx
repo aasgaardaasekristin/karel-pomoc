@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft, Camera, X, Shuffle, CheckCircle, RotateCcw, FileText, ChevronDown, ChevronUp, StickyNote, DoorClosed, AlertTriangle, RefreshCw, Link2, MessageSquare } from "lucide-react";
+import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft, Camera, X, Shuffle, CheckCircle, RotateCcw, FileText, ChevronDown, ChevronUp, StickyNote, DoorClosed, AlertTriangle, RefreshCw, Link2, MessageSquare, Sparkles } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
