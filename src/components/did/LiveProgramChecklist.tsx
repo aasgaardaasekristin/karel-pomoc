@@ -37,6 +37,7 @@ interface Props {
   storageKey: string;
   partName?: string;
   therapistName?: string;
+  sessionId?: string;
   onItemToggle?: (item: ProgramItem) => void;
   onObservationSubmit?: (item: ProgramItem) => void;
   onActivateBlock?: (block: ProgramBlockRef) => void;
@@ -106,6 +107,7 @@ const LiveProgramChecklist = ({
   storageKey,
   partName = "Tundrupek",
   therapistName = "Hanka",
+  sessionId,
   onItemToggle,
   onObservationSubmit,
   onActivateBlock,
@@ -340,6 +342,7 @@ const LiveProgramChecklist = ({
                     partName={partName}
                     therapistName={therapistName}
                     storageKey={storageKey}
+                    sessionId={sessionId}
                     research={researchByIdx[idx] ?? null}
                     isResearchLoading={!!researchLoadingIdx[idx]}
                     onLoadResearch={() => loadResearch(idx, blockRef.text, blockRef.detail, "deep")}
