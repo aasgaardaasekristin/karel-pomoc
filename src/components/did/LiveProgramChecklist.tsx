@@ -50,23 +50,26 @@ function parseProgramBullets(md: string): string[] {
 
   const lines = md.split(/\r?\n/);
   const bullets: string[] = [];
-  let inListContext = false;
+  let inProgramSection = false;
 
-  // Aktivace v okolí klíčových sekcí
-  const sectionRe = /^#{1,6}\s+(program|agenda|plán|plan|sezení|průběh|kroky)/i;
+  // Aktivace POUZE v programové sekci — jinak bychom nasáli i otázky,
+  // původní návrhy nebo jiné bullet seznamy v markdownu.
+  const sectionRe = /^#{1,6}\s+(program sezení|program|agenda|plán sezení|průběh sezení|kroky sezení)/i;
   const bulletRe = /^\s*(?:[-*•]|\d+[.)])\s+(.+)$/;
 
   for (const raw of lines) {
     const line = raw.replace(/\u00A0/g, " ").trimEnd();
 
     if (sectionRe.test(line)) {
-      inListContext = true;
+      inProgramSection = true;
       continue;
     }
 
-    // Jiný heading ukončí list (přejdeme do jiné sekce)
-    if (/^#{1,6}\s+/.test(line) && !sectionRe.test(line)) {
-      inListContext = false;
+    if (inProgramSection && /^#{1,6}\s+/.test(line) && !sectionRe.test(line)) {
+      break;
+    }
+
+    if (!inProgramSection) {
       continue;
     }
 
@@ -81,7 +84,12 @@ function parseProgramBullets(md: string): string[] {
       continue;
     }
 
-    // Pokud nejsme v list-friendly oblasti a narazíme na prázdný řádek, nic
+    // Detail programu je v markdownu často na odsazeném dalším řádku.
+    if (bullets.length > 0 && /^\s{2,}\S/.test(raw)) {
+      bullets[bullets.length - 1] = `${bullets[bullets.length - 1]} — ${line.trim()}`;
+      continue;
+    }
+
     if (line === "") continue;
   }
 

@@ -199,19 +199,6 @@ Deno.serve(async (req: Request) => {
         agendaLines.push("");
       }
 
-      const qBlock = (label: string, list: any): string[] => {
-        const arr = Array.isArray(list) ? list : [];
-        if (arr.length === 0) return [];
-        const out = [`## Otázky pro ${label} (a odpovědi)`];
-        arr.forEach((q: any) => {
-          const txt = typeof q === "string" ? q : (q?.question ?? "");
-          const ans = typeof q === "object" && q?.answer ? `\n   ↳ ${q.answer}` : "";
-          if (txt) out.push(`- ${txt}${ans}`);
-        });
-        out.push("");
-        return out;
-      };
-
       const planMarkdown = [
         `# Schválený plán z týmové porady`,
         `**Porada:** ${updated.title}`,
@@ -222,9 +209,6 @@ Deno.serve(async (req: Request) => {
         updated.reason ? `**Důvod:** ${updated.reason}` : "",
         ``,
         ...agendaLines,
-        ...qBlock("Haničku", updated.questions_for_hanka),
-        ...qBlock("Káťu", updated.questions_for_kata),
-        updated.karel_proposed_plan ? `## Karlův původní návrh\n${updated.karel_proposed_plan}` : "",
         updated.final_summary ? `## Závěr porady\n${updated.final_summary}` : "",
       ].filter(Boolean).join("\n");
 
