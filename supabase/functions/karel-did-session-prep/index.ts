@@ -247,6 +247,23 @@ serve(async (req) => {
     const drive = driveData.status === "fulfilled" ? driveData.value : { partCard: "", therapyPlan: "", agreements: "", strategic: "" };
     const perplexity = perplexityData.status === "fulfilled" ? perplexityData.value : "";
     const tMemory = therapistMemory.status === "fulfilled" ? therapistMemory.value : "";
+    const methodHistory: any[] = methodHistoryResult.status === "fulfilled" ? methodHistoryResult.value.data || [] : [];
+
+    // Anti-repetition + learning souhrn pro Karla
+    const bannedCombos = methodHistory.map((r: any) => `• ${r.method_key} | varianta: ${r.variant_used ?? "(žádná konkrétní)"} | ${r.session_date}`);
+    const strugglingMethods = Array.from(new Set(methodHistory.filter((r: any) => (r.tolerance ?? 5) < 2 || r.trauma_marker).map((r: any) => r.method_key)));
+    const promisingMethods = methodHistory.filter((r: any) => (r.clinical_yield ?? 0) >= 4).map((r: any) => `• ${r.method_key}${r.next_step_hint ? ` — pokračovat: ${r.next_step_hint}` : ""}`);
+    const methodHistoryBlock = methodHistory.length
+      ? `\n═══ HISTORIE METOD U TÉTO ČÁSTI (posledních 14 dní) — POVINNÉ PRO ANTI-REPETITION ═══
+ZAKÁZANÉ KOMBINACE (nesmíš je opakovat — zvol jinou metodu, nebo POVINNĚ navrhni NOVOU variantu):
+${bannedCombos.length ? bannedCombos.join("\n") : "(žádné)"}
+KULHAJÍCÍ METODY (nízká tolerance / trauma marker — zvaž jinou modalitu nebo zjemnění):
+${strugglingMethods.length ? strugglingMethods.map((m) => `• ${m}`).join("\n") : "(žádné)"}
+PROSPÍVAJÍCÍ METODY (clinical_yield ≥ 4 — můžeš navázat NOVOU variantou, ne opakováním):
+${promisingMethods.length ? promisingMethods.join("\n") : "(žádné)"}
+
+PRAVIDLO: Pokud volíš metodu, která je v BANNED, MUSÍŠ explicitně popsat, jakou NOVOU variantu (jiný materiál, jiný framing, jiný cíl) zvolíš a proč. Jinak preferuj NEPOUŽITOU metodu z knihovny.`
+      : `\n═══ HISTORIE METOD ═══\n(prázdná — část nemá v posledních 14 dnech zaznamenanou žádnou metodu, máš volnou ruku)`;
 
     // Build conversation summaries
     const activityLabel = (subMode: string) => subMode === "cast" ? "PŘÍMÁ AKTIVITA (část přímo mluvila)" : "ZMÍNKA (pohled terapeutky, část NEMUSÍ být k dispozici)";
