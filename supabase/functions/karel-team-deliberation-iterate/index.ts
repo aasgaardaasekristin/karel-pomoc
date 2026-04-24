@@ -9,7 +9,7 @@
  * Vstup:
  *   {
  *     deliberation_id: string,
- *     latest_input: { author: "hanka"|"kata", text: string }
+  *     latest_input: { author: "hanka"|"kata", text: string, question?: string }
  *   }
  *
  * Výstup:
@@ -25,6 +25,8 @@ const corsHeaders = {
 };
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { summarizeToolboxForPrompt } from "../_shared/therapeuticToolbox.ts";
+import { appendPantryB } from "../_shared/pantryB.ts";
+import { createObservation, routeObservation } from "../_shared/observations.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -59,6 +61,18 @@ function fingerprint(s: string): string {
   return String(h);
 }
 
+function inferInputKind(text: string): "plan_change" | "followup_need" | "conclusion" {
+  const t = text.toLowerCase();
+  if (/l[eé]k|derin|medik|tablet|doktor|psychiatr|příbal|pribal|bolest|hlav/.test(t)) return "plan_change";
+  if (/zjistit|ověřit|overit|domluvit|pohl[ií]dat|připomen/.test(t)) return "followup_need";
+  return "conclusion";
+}
+
+function buildImplicationText(authorLabel: string, subjectPart: string, question: string | null, text: string): string {
+  const q = question ? ` Na otázku „${question}“` : "";
+  return `${authorLabel}${q} uvedla: ${text}. Pro plán s částí ${subjectPart} to musí být započítáno jako aktuální týmová informace, ne jako otevřené slepé místo.`;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -85,6 +99,7 @@ Deno.serve(async (req: Request) => {
     const latest = body?.latest_input ?? {};
     const author = String(latest?.author ?? "");
     const text = String(latest?.text ?? "").trim();
+    const question = latest?.question ? String(latest.question).trim() : null;
     if (!deliberationId || !["hanka", "kata"].includes(author) || !text) {
       return new Response(JSON.stringify({ error: "bad input" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -136,6 +151,7 @@ Deno.serve(async (req: Request) => {
 
     const subjectPart = (row.subject_parts ?? [])[0] ?? "(neurčeno)";
     const authorLabel = author === "hanka" ? "Hanička" : "Káťa";
+    const implicationText = buildImplicationText(authorLabel, subjectPart, question, text);
 
     const prompt = `Jsi Karel — vedoucí terapeutického týmu, esence C. G. Junga. Pracuješ na ŽIVÉM, HRAVÉM programu sezení s částí "${subjectPart}".
 
@@ -249,6 +265,62 @@ PRAVIDLA STRUKTURY:
       return new Response(JSON.stringify({ error: updErr.message }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    try {
+      const inputKind = inferInputKind(text);
+      const obsId = await createObservation(admin, {
+        subject_type: "part",
+        subject_id: subjectPart,
+        source_type: "therapist_message",
+        source_ref: deliberationId,
+        fact: implicationText,
+        evidence_level: "D2",
+        confidence: 0.85,
+        time_horizon: inputKind === "conclusion" ? "0_14d" : "hours",
+      });
+      await routeObservation(admin, obsId, {
+        subject_type: "part",
+        subject_id: subjectPart,
+        evidence_level: "D2",
+        time_horizon: inputKind === "conclusion" ? "0_14d" : "hours",
+        fact: implicationText,
+      }, inputKind === "conclusion" ? "team_coordination" : "immediate_plan");
+
+      await appendPantryB(admin, {
+        user_id: userId,
+        entry_kind: inputKind,
+        source_kind: "team_deliberation_answer",
+        source_ref: `${deliberationId}:${author}:${fingerprint(text)}`,
+        summary: implicationText,
+        detail: {
+          deliberation_id: deliberationId,
+          deliberation_title: row.title,
+          question,
+          answer: text,
+          program_draft: programDraft,
+          karel_inline_comment: karelComment,
+        },
+        intended_destinations: ["briefing_input", "did_implications", "did_therapist_tasks"],
+        related_part_name: subjectPart,
+        related_therapist: author as "hanka" | "kata",
+      });
+
+      await admin.from("did_team_agreements").insert({
+        user_id: userId,
+        subject_type: "part",
+        subject_id: subjectPart,
+        agreement_text: text,
+        implication_text: implicationText,
+        source_table: "did_team_deliberations",
+        source_record_id: deliberationId,
+        source_detail: { question, author, title: row.title },
+        agreed_by: [author],
+        evidence_level: "D2",
+        priority: inputKind === "plan_change" ? "high" : "normal",
+      });
+    } catch (memoryErr) {
+      console.warn("[delib-iterate] memory write failed (non-fatal):", memoryErr);
     }
 
     return new Response(JSON.stringify({

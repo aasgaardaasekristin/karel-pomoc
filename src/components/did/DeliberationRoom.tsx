@@ -472,7 +472,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
    * Spouští se po každé nové odpovědi nebo diskusní zprávě terapeutky
    * (pro typ `session_plan`). Krize zůstává ve starém synthesis flow.
    */
-  const triggerIterate = async (input: { author: "hanka" | "kata"; text: string }) => {
+  const triggerIterate = async (input: { author: "hanka" | "kata"; text: string; question?: string }) => {
     if (!d || d.deliberation_type !== "session_plan") return;
     if (d.status === "approved" || d.status === "closed" || d.status === "archived") return;
     const dedupe = `${input.author}::${input.text.trim()}`;
@@ -534,7 +534,9 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
     try {
       await answerQuestion(d.id, who, idx, answer);
       // Iterativní přepis programu po odpovědi terapeutky.
-      void triggerIterate({ author: who, text: answer });
+      const fieldName = who === "hanka" ? "questions_for_hanka" : "questions_for_kata";
+      const question = ((d as any)[fieldName] ?? [])[idx]?.question;
+      void triggerIterate({ author: who, text: answer, question });
     } catch (e: any) {
       toast.error(e?.message ?? "Uložení odpovědi selhalo.");
     }

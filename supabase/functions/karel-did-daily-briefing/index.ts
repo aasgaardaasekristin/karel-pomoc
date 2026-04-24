@@ -332,12 +332,12 @@ async function gatherContext(supabase: any) {
       pantryBEntries = await readUnprocessedPantryB(supabase, userIdResolved);
       const { data: approved } = await supabase
         .from("did_team_deliberations")
-        .select("id, title, deliberation_type, subject_parts, final_summary, karel_synthesis, updated_at")
+        .select("id, title, deliberation_type, subject_parts, status, final_summary, karel_synthesis, questions_for_hanka, questions_for_kata, discussion_log, updated_at")
         .eq("user_id", userIdResolved)
-        .eq("status", "approved")
-        .gte("updated_at", `${daysAgoISO(2)}T00:00:00Z`)
+        .in("status", ["approved", "awaiting_signoff", "active"])
+        .gte("updated_at", `${daysAgoISO(7)}T00:00:00Z`)
         .order("updated_at", { ascending: false })
-        .limit(10);
+        .limit(20);
       approvedDeliberations = approved ?? [];
       console.log(`[briefing] Pantry B loaded: entries=${pantryBEntries.length}, approved_delibs=${approvedDeliberations.length}`);
     }
@@ -611,13 +611,26 @@ async function generateBriefing(
     ? `═══ SPIŽÍRNA B — VČEREJŠÍ IMPLIKACE PRO DNEŠEK ═══\nTo jsou věci, které z včerejších vláken / porad / sezení přímo plynou pro dnešní rozhodování. Použij je v greeting, last_3_days a hlavně v decisions a ask_*. NEIGNORUJ je.\n${pbEntries.slice(0, 30).map(formatPantryBLine).join("\n")}\n\n`
     : "";
   const approvedDelibsSection = approvedDelibs.length > 0
-    ? `═══ NEDÁVNO PODEPSANÉ PORADY (posledních 48h) — ZÁVAZNÉ POZADÍ ═══\n${approvedDelibs.map((d: any) => {
+    ? `═══ NEDÁVNÉ PORADY A ODPOVĚDI TERAPEUTEK (posledních 7 dní) — ZÁVAZNÉ POZADÍ ═══
+${approvedDelibs.map((d: any) => {
         const ks = d.karel_synthesis as any;
         const next = ks?.next_step ? ` → další krok: ${ks.next_step}` : "";
         const summary = d.final_summary ? ` | shrnutí: ${String(d.final_summary).slice(0, 160)}` : "";
         const subj = (d.subject_parts || []).join(", ");
-        return `- "${d.title}" (${d.deliberation_type}${subj ? `, ${subj}` : ""})${next}${summary}`;
-      }).join("\n")}\n\n⚠ Tyto porady JSOU UZAVŘENÉ. Pravidla:\n  1) NIKDY pro tyto subject_parts/téma nezakládej nové decisions se stejným nebo téměř stejným titulkem.\n  2) Pokud dnes existuje aktivní krize na těchto částech, navaž na poradu (zmiň "navazujeme na podepsanou poradu '<title>'") místo nového rozhodnutí.\n  3) V proposed_session.first_draft a why_today VYUŽIJ závěr porady — neopakuj, co tým už schválil.\n\n`
+        const qa = [...(d.questions_for_hanka || []), ...(d.questions_for_kata || [])]
+          .filter((q: any) => String(q?.answer || "").trim())
+          .slice(0, 4)
+          .map((q: any) => `Q: ${String(q.question || "").slice(0, 90)} → A: ${String(q.answer || "").slice(0, 160)}`)
+          .join(" | ");
+        return `- "${d.title}" [${d.status}] (${d.deliberation_type}${subj ? `, ${subj}` : ""})${next}${summary}${qa ? ` | odpovědi: ${qa}` : ""}`;
+      }).join("\n")}
+
+⚠ Tyto porady mohou být uzavřené i rozpracované. Pravidla:
+  1) NIKDY pro tyto subject_parts/téma nezakládej nové decisions se stejným nebo téměř stejným titulkem.
+  2) Pokud odpověď terapeutky upřesňuje lék/Derin/dohodu, zacházej s ní jako s aktuální evidencí, ne jako s otevřenou neznámou.
+  3) V proposed_session.first_draft a why_today VYUŽIJ závěr porady i konkrétní odpovědi — neopakuj, co tým už vyjasnil.
+
+`
     : "";
 
   const toolboxSection = candidates[0]?.score >= 3 ? `\n\n${summarizeToolboxForPrompt()}\n` : "";

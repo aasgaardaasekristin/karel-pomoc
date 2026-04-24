@@ -96,7 +96,17 @@ export interface OpenFollowup {
   owner: string | null;
   destinations: string[];
   review_at: string | null;
-  source_kind: "implication" | "pending_question" | "task";
+  source_kind: "implication" | "pending_question" | "task" | "agreement";
+}
+
+export interface TeamAgreementRow {
+  id: string;
+  subject_id: string;
+  agreement_text: string;
+  implication_text: string | null;
+  agreed_by: string[];
+  priority: string | null;
+  valid_from: string;
 }
 
 export interface TodayPriority {
@@ -157,6 +167,9 @@ export interface PantryASnapshot {
   /** Včerejší výsledky sezení */
   yesterday_session_results: YesterdaySessionResult[];
 
+  /** Aktivní týmové dohody a závěry, které už nejsou jen otevřená otázka. */
+  team_agreements: TeamAgreementRow[];
+
   /** Otevřené follow-upy (implications + pending_questions + open tasks) */
   open_followups: OpenFollowup[];
 
@@ -214,6 +227,7 @@ export async function selectPantryA(
     yesterdayCtxRes,
     implicationsRes,
     pendingQuestionsRes,
+    teamAgreementsRes,
     openTasksRes,
     briefingRes,
     therapyPlanRes,
@@ -262,9 +276,17 @@ export async function selectPantryA(
       .order("created_at", { ascending: false })
       .limit(40),
     sb.from("did_pending_questions")
-      .select("id, question, directed_to, blocking, created_at")
-      .eq("status", "open")
+      .select("id, question, directed_to, blocking, created_at, status, answer, answered_at")
+      .in("status", ["open", "answered", "partially_answered"])
+      .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
       .order("created_at", { ascending: false })
+      .limit(30),
+    sb.from("did_team_agreements")
+      .select("id, subject_id, agreement_text, implication_text, agreed_by, priority, valid_from")
+      .eq("user_id", userId)
+      .is("superseded_at", null)
+      .gte("valid_from", new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
+      .order("valid_from", { ascending: false })
       .limit(30),
     sb.from("did_therapist_tasks")
       .select("id, task, assigned_to, due_date, status, priority")
@@ -366,9 +388,12 @@ export async function selectPantryA(
 
   const pendingQs = (pendingQuestionsRes.status === "fulfilled"
     ? pendingQuestionsRes.value.data ?? []
-    : []) as Array<{ id: string; question: string; directed_to: string | null; blocking: boolean | null; created_at: string }>;
+    : []) as Array<{ id: string; question: string; directed_to: string | null; blocking: boolean | null; created_at: string; status?: string | null; answer?: string | null; answered_at?: string | null }>;
   const hankaOpenQs = pendingQs.filter((q) => (q.directed_to || "").toLowerCase().includes("hank")).length;
   const kataOpenQs = pendingQs.filter((q) => (q.directed_to || "").toLowerCase().includes("kat")).length;
+  const agreementRows = (teamAgreementsRes.status === "fulfilled"
+    ? teamAgreementsRes.value.data ?? []
+    : []) as TeamAgreementRow[];
 
   const hana_therapeutic: HanaTherapeuticSlot = {
     current_caseload_focus: hankaTaskFocus,
@@ -413,11 +438,19 @@ export async function selectPantryA(
     })),
     ...pendingQs.map((q) => ({
       id: q.id,
-      text: q.question,
+      text: q.answer ? `${q.question} → ${q.answer}` : q.question,
       owner: q.directed_to,
       destinations: [],
       review_at: null,
       source_kind: "pending_question" as const,
+    })),
+    ...agreementRows.map((a) => ({
+      id: a.id,
+      text: a.implication_text || a.agreement_text,
+      owner: Array.isArray(a.agreed_by) ? a.agreed_by.join("+") : null,
+      destinations: ["briefing_input", "05A"],
+      review_at: null,
+      source_kind: "agreement" as const,
     })),
     ...therapistTasks
       .filter((t) => t.priority === "high" || t.priority === "urgent")
@@ -499,6 +532,7 @@ export async function selectPantryA(
     hana_therapeutic,
     kata_therapeutic,
     yesterday_session_results,
+    team_agreements: agreementRows,
     open_followups,
     today_priorities,
     today_therapy_plan,
@@ -557,6 +591,13 @@ export function summarizePantryAForPrompt(snap: PantryASnapshot): string {
     `## Včerejší sezení (${snap.yesterday_session_results.length})\n` +
       snap.yesterday_session_results
         .map((s) => `- ${s.part_name ?? "?"} (${s.therapist ?? "?"}): ${s.summary.slice(0, 120)}`)
+        .join("\n"),
+  );
+  parts.push(
+    `## Týmové dohody (${snap.team_agreements.length})\n` +
+      snap.team_agreements
+        .slice(0, 10)
+        .map((a) => `- ${a.subject_id}: ${(a.implication_text || a.agreement_text).slice(0, 180)}`)
         .join("\n"),
   );
   parts.push(

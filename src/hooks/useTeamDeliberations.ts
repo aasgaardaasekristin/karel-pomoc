@@ -124,7 +124,7 @@ export function useTeamDeliberations(refreshTrigger = 0) {
   const iterateProgram = useCallback(
     async (
       deliberationId: string,
-      latestInput: { author: "hanka" | "kata"; text: string },
+      latestInput: { author: "hanka" | "kata"; text: string; question?: string },
     ) => {
       const { data, error } = await (supabase as any).functions.invoke(
         "karel-team-deliberation-iterate",
