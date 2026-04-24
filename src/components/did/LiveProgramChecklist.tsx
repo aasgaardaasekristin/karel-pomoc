@@ -401,6 +401,7 @@ const LiveProgramChecklist = ({
           observationsByBlock[idx] = it.observation;
         }
       });
+      await persistProgress(items, incomplete ? "partial" : "completed");
 
       const { data, error } = await supabase.functions.invoke("karel-did-session-evaluate", {
         body: {
@@ -426,7 +427,7 @@ const LiveProgramChecklist = ({
     } finally {
       setFinalizing(false);
     }
-  }, [doneCount, finalized, finalizing, items, sessionId, storageKey]);
+  }, [doneCount, finalized, finalizing, items, persistProgress, sessionId, storageKey]);
 
   return (
     <div className="rounded-md border border-primary/25 bg-primary/5">
@@ -560,10 +561,16 @@ const LiveProgramChecklist = ({
                     isResearchLoading={!!researchLoadingIdx[idx]}
                     onLoadResearch={() => loadResearch(idx, blockRef.text, blockRef.detail, "deep")}
                     onTurnsChange={turns => {
+                      turnsByBlockRef.current[idx] = turns;
                       appendObservationFromTurns(item.id, turns);
                       onBlockTurnsChange?.(idx, turns);
+                      queueProgressSync(items);
                     }}
-                    onArtifactsChange={arts => onBlockArtifactsChange?.(idx, arts)}
+                    onArtifactsChange={arts => {
+                      artifactsByBlockRef.current[idx] = arts;
+                      onBlockArtifactsChange?.(idx, arts);
+                      queueProgressSync(items);
+                    }}
                     onRequestArtefact={kind => onRequestArtefact?.(blockRef, kind)}
                     onMarkDone={() => setDoneState(item.id, true)}
                   />
