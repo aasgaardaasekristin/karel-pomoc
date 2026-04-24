@@ -9,7 +9,7 @@
  * Vstup:
  *   {
  *     deliberation_id: string,
- *     latest_input: { author: "hanka"|"kata", text: string }
+  *     latest_input: { author: "hanka"|"kata", text: string, question?: string }
  *   }
  *
  * Výstup:
@@ -99,6 +99,7 @@ Deno.serve(async (req: Request) => {
     const latest = body?.latest_input ?? {};
     const author = String(latest?.author ?? "");
     const text = String(latest?.text ?? "").trim();
+    const question = latest?.question ? String(latest.question).trim() : null;
     if (!deliberationId || !["hanka", "kata"].includes(author) || !text) {
       return new Response(JSON.stringify({ error: "bad input" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -150,6 +151,7 @@ Deno.serve(async (req: Request) => {
 
     const subjectPart = (row.subject_parts ?? [])[0] ?? "(neurčeno)";
     const authorLabel = author === "hanka" ? "Hanička" : "Káťa";
+    const implicationText = buildImplicationText(authorLabel, subjectPart, question, text);
 
     const prompt = `Jsi Karel — vedoucí terapeutického týmu, esence C. G. Junga. Pracuješ na ŽIVÉM, HRAVÉM programu sezení s částí "${subjectPart}".
 
