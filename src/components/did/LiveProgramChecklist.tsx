@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { CheckCircle2, Circle, ChevronDown, ChevronRight, ListChecks, Sparkles, Mic, Camera, FlagOff, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -218,6 +218,85 @@ const LiveProgramChecklist = ({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [researchByIdx, setResearchByIdx] = useState<Record<number, BlockResearch | null>>({});
   const [researchLoadingIdx, setResearchLoadingIdx] = useState<Record<number, boolean>>({});
+  const turnsByBlockRef = useRef<Record<number, DiagTurn[]>>({});
+  const artifactsByBlockRef = useRef<Record<number, BlockArtifact[]>>({});
+  const syncTimerRef = useRef<number | null>(null);
+
+  const persistProgress = useCallback(async (snapshotItems: ProgramItem[], finalizedReason?: "completed" | "partial") => {
+    if (!sessionId) return;
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData.user?.id;
+    if (!userId) return;
+
+    const completed = snapshotItems.filter(it => it.done).length;
+    const now = new Date().toISOString();
+    const { error } = await (supabase as any)
+      .from("did_live_session_progress")
+      .upsert({
+        user_id: userId,
+        plan_id: sessionId,
+        part_name: partName,
+        therapist: therapistName,
+        items: snapshotItems,
+        turns_by_block: turnsByBlockRef.current,
+        artifacts_by_block: artifactsByBlockRef.current,
+        completed_blocks: completed,
+        total_blocks: snapshotItems.length,
+        last_activity_at: now,
+        finalized_at: finalizedReason ? now : null,
+        finalized_reason: finalizedReason ?? null,
+      }, { onConflict: "plan_id" });
+
+    if (error) {
+      console.warn("[LiveProgramChecklist] progress sync failed", error);
+    }
+  }, [partName, sessionId, therapistName]);
+
+  const queueProgressSync = useCallback((snapshotItems: ProgramItem[]) => {
+    if (!sessionId || typeof window === "undefined") return;
+    if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = window.setTimeout(() => {
+      void persistProgress(snapshotItems);
+    }, 700);
+  }, [persistProgress, sessionId]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await (supabase as any)
+        .from("did_live_session_progress")
+        .select("items, turns_by_block, artifacts_by_block")
+        .eq("plan_id", sessionId)
+        .maybeSingle();
+      if (cancelled || error || !data) return;
+
+      if (data.turns_by_block && typeof data.turns_by_block === "object") {
+        turnsByBlockRef.current = data.turns_by_block;
+        Object.entries(data.turns_by_block as Record<string, DiagTurn[]>).forEach(([idx, turns]) => {
+          try { window.localStorage.setItem(`${storageKey}::turns::${idx}`, JSON.stringify(turns)); } catch {}
+        });
+      }
+      if (data.artifacts_by_block && typeof data.artifacts_by_block === "object") {
+        artifactsByBlockRef.current = data.artifacts_by_block;
+      }
+      if (Array.isArray(data.items) && data.items.length === initialItems.length) {
+        setItems(initialItems.map((it, i) => ({
+          ...it,
+          done: !!data.items[i]?.done,
+          observation: data.items[i]?.observation ?? "",
+        })));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [initialItems, sessionId, storageKey]);
+
+  useEffect(() => {
+    queueProgressSync(items);
+    return () => {
+      if (syncTimerRef.current && typeof window !== "undefined") window.clearTimeout(syncTimerRef.current);
+    };
+  }, [items, queueProgressSync]);
 
   const loadResearch = useCallback(
     async (idx: number, blockText: string, blockDetail: string | undefined, depth: "light" | "deep" = "light") => {
@@ -248,6 +327,7 @@ const LiveProgramChecklist = ({
       const next = prev.map(it => (it.id === id ? { ...it, done } : it));
       const changed = next.find(it => it.id === id);
       if (changed && onItemToggle) onItemToggle(changed);
+      queueProgressSync(next);
       return next;
     });
   };
