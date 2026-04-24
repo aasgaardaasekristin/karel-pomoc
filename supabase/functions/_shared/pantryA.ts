@@ -167,6 +167,9 @@ export interface PantryASnapshot {
   /** Včerejší výsledky sezení */
   yesterday_session_results: YesterdaySessionResult[];
 
+  /** Aktivní týmové dohody a závěry, které už nejsou jen otevřená otázka. */
+  team_agreements: TeamAgreementRow[];
+
   /** Otevřené follow-upy (implications + pending_questions + open tasks) */
   open_followups: OpenFollowup[];
 
@@ -529,6 +532,7 @@ export async function selectPantryA(
     hana_therapeutic,
     kata_therapeutic,
     yesterday_session_results,
+    team_agreements: agreementRows,
     open_followups,
     today_priorities,
     today_therapy_plan,
