@@ -677,6 +677,69 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
+      {/* 3.5 Vyhodnocení včerejšího sezení (sekce mezi „Z dřívějška" a „Návrh sezení") */}
+      {p.yesterday_session_review && p.yesterday_session_review.held && (
+        <>
+          <NarrativeDivider />
+          <SectionHead icon={<Users className="w-3.5 h-3.5 text-primary/70" />}>
+            Vyhodnocení včerejšího sezení
+          </SectionHead>
+          <div className="mt-2 p-3 rounded-lg border border-border/60 bg-card/40 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {p.yesterday_session_review.part_name && (
+                <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">
+                  {p.yesterday_session_review.part_name}
+                </Badge>
+              )}
+              {p.yesterday_session_review.lead && (
+                <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">
+                  vedla {p.yesterday_session_review.lead}
+                </Badge>
+              )}
+              {p.yesterday_session_review.completion && (
+                <Badge
+                  className={`text-[10px] h-5 px-2 border ${
+                    p.yesterday_session_review.completion === "completed"
+                      ? "bg-emerald-500/15 text-emerald-700 border-emerald-500/30"
+                      : p.yesterday_session_review.completion === "partial"
+                      ? "bg-amber-500/15 text-amber-700 border-amber-500/30"
+                      : "bg-destructive/15 text-destructive border-destructive/30"
+                  }`}
+                >
+                  {p.yesterday_session_review.completion === "completed"
+                    ? "Dokončeno"
+                    : p.yesterday_session_review.completion === "partial"
+                    ? "Částečně"
+                    : "Nedokončeno"}
+                </Badge>
+              )}
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Z pohledu části</p>
+              <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line mt-0.5">
+                {p.yesterday_session_review.child_focus}
+              </p>
+            </div>
+            {p.yesterday_session_review.therapist_note && (
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Terapeutka</p>
+                <p className="text-[12px] leading-relaxed text-foreground/75 italic whitespace-pre-line mt-0.5">
+                  {p.yesterday_session_review.therapist_note}
+                </p>
+              </div>
+            )}
+            {p.yesterday_session_review.what_to_carry_forward && (
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Neseme si dál</p>
+                <p className="text-[12px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
+                  {p.yesterday_session_review.what_to_carry_forward}
+                </p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
       {/* 4. Dnešní navržené sezení — klikatelné.
           THERAPIST-LED TRUTH PASS (2026-04-22): Tato sekce zobrazuje POUZE
           první návrh sezení a CTA "Otevřít poradu". Pokud je porada už
