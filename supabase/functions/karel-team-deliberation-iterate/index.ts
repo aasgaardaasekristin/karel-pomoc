@@ -25,6 +25,8 @@ const corsHeaders = {
 };
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { summarizeToolboxForPrompt } from "../_shared/therapeuticToolbox.ts";
+import { appendPantryB } from "../_shared/pantryB.ts";
+import { createObservation, routeObservation } from "../_shared/observations.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -57,6 +59,18 @@ function fingerprint(s: string): string {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
   return String(h);
+}
+
+function inferInputKind(text: string): "plan_change" | "followup_need" | "conclusion" {
+  const t = text.toLowerCase();
+  if (/l[eé]k|derin|medik|tablet|doktor|psychiatr|příbal|pribal|bolest|hlav/.test(t)) return "plan_change";
+  if (/zjistit|ověřit|overit|domluvit|pohl[ií]dat|připomen/.test(t)) return "followup_need";
+  return "conclusion";
+}
+
+function buildImplicationText(authorLabel: string, subjectPart: string, question: string | null, text: string): string {
+  const q = question ? ` Na otázku „${question}“` : "";
+  return `${authorLabel}${q} uvedla: ${text}. Pro plán s částí ${subjectPart} to musí být započítáno jako aktuální týmová informace, ne jako otevřené slepé místo.`;
 }
 
 Deno.serve(async (req: Request) => {
