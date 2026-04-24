@@ -320,6 +320,23 @@ PRAVIDLA STRUKTURY:
         evidence_level: "D2",
         priority: inputKind === "plan_change" ? "high" : "normal",
       });
+
+      const drivePayload = `\n\n## Týmová dohoda / odpověď terapeutky — ${subjectPart} (${new Date().toISOString().slice(0, 10)})\n_Zdroj: týmová porada ${deliberationId.slice(0, 8)}, ${authorLabel}_\n\n${implicationText}\n`;
+      await admin.from("did_pending_drive_writes").insert({
+        user_id: userId,
+        target_document: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+        write_type: "append",
+        content: encodeGovernedWrite(drivePayload, {
+          source_type: "team_deliberation_answer",
+          source_id: `${deliberationId}:${author}:${fingerprint(text)}`,
+          content_type: inputKind === "plan_change" ? "care_plan_change" : "team_coordination",
+          subject_type: "part",
+          subject_id: subjectPart,
+          payload_fingerprint: fingerprint(drivePayload),
+        }),
+        priority: inputKind === "plan_change" ? "high" : "normal",
+        status: "pending",
+      });
     } catch (memoryErr) {
       console.warn("[delib-iterate] memory write failed (non-fatal):", memoryErr);
     }
