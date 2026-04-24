@@ -763,7 +763,8 @@ Vyhodnoť toto sezení. Drž se pravidel ze system promptu.
 - Vrať VÝHRADNĚ tool call emit_session_evaluation.`;
 
     const evaluation = sanitizeEvaluation(await callAi(prompt, apiKey), endedReason, completedBlocks, totalBlocks);
-    const markdown = renderEvaluationMarkdown(evaluation, ctx.plan, endedReason, completedBlocks, totalBlocks);
+    const diagnosticValidity = buildDiagnosticValidityReport(ctx.plan.plan_markdown, turnsByBlock, observationsByBlock, liveProgress);
+    const markdown = renderEvaluationMarkdown(evaluation, ctx.plan, endedReason, completedBlocks, totalBlocks, diagnosticValidity);
 
     const targets = await persistEvaluation(
       sb,
