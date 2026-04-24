@@ -141,8 +141,9 @@ async function scoreSessionCandidates(supabase: any): Promise<SessionCandidate[]
 async function gatherContext(supabase: any) {
   const threeDaysAgo = daysAgoISO(3);
   const sevenDaysAgo = daysAgoISO(7);
+  const yesterdayISO = daysAgoISO(1);
 
-  const [crisesRes, recentObsRes, olderObsRes, pendingRes, threadsRes, plansRes] = await Promise.all([
+  const [crisesRes, recentObsRes, olderObsRes, pendingRes, threadsRes, plansRes, yesterdaySessionsRes, yesterdayPlansRes] = await Promise.all([
     supabase.from("crisis_events")
       .select("id, part_name, severity, phase, trigger_description, days_active, opened_at, clinical_summary")
       .not("phase", "in", '("closed","CLOSED")')
@@ -171,6 +172,18 @@ async function gatherContext(supabase: any) {
       .select("id, plan_date, selected_part, therapist, status, plan_markdown, crisis_event_id")
       .gte("plan_date", threeDaysAgo)
       .order("plan_date", { ascending: false }),
+    // Včerejší sezení s vyhodnocením (pro yesterday_session_review)
+    supabase.from("did_part_sessions")
+      .select("id, part_name, therapist, session_date, session_type, ai_analysis, methods_used, methods_effectiveness, karel_notes, karel_therapist_feedback, handoff_note, tasks_assigned")
+      .eq("session_date", yesterdayISO)
+      .order("created_at", { ascending: false })
+      .limit(5),
+    // Včerejší plány (i in_progress, abychom poznali částečné sezení)
+    supabase.from("did_daily_session_plans")
+      .select("id, plan_date, selected_part, therapist, session_lead, status, completed_at, plan_markdown")
+      .eq("plan_date", yesterdayISO)
+      .order("created_at", { ascending: false })
+      .limit(5),
   ]);
 
   const { data: parts } = await supabase
@@ -243,8 +256,13 @@ async function gatherContext(supabase: any) {
     console.warn("[briefing] Pantry B / approved deliberations load failed (non-fatal):", bErr);
   }
 
+  // ── Včerejší sezení (pro yesterday_session_review) ──
+  const yesterdaySessions = (yesterdaySessionsRes.data || []) as any[];
+  const yesterdayPlans = (yesterdayPlansRes.data || []) as any[];
+
   return {
     today: pragueDayISO(),
+    yesterday: yesterdayISO,
     crises: crisesRes.data || [],
     recent_observations: (recentObsRes.data || []).map((o: any) => ({
       ...o,
@@ -269,6 +287,8 @@ async function gatherContext(supabase: any) {
       part_name: p.selected_part ?? null,
       session_date: p.plan_date,
     })),
+    yesterday_sessions: yesterdaySessions,
+    yesterday_plans: yesterdayPlans,
     pantry_a: pantryA,
     pantry_a_summary: pantryASummary,
     pantry_b_entries: pantryBEntries,
@@ -298,6 +318,37 @@ const BRIEFING_TOOL = {
         lingering: {
           type: "string",
           description: "Co zůstává významné z dřívějška (1-3 věty). Jen skutečně relevantní věci, ne všechno staré.",
+        },
+        yesterday_session_review: {
+          type: "object",
+          description:
+            "Vyhodnocení včerejšího sezení (pokud nějaké proběhlo). Pokud včera žádné sezení nebylo " +
+            "(žádný řádek v `did_part_sessions` se včerejším datem ani plán in_progress), nech tento klíč null. " +
+            "Pokud sezení nebylo dokončené, NETVAR že bylo — uveď completion='partial' a řekni co se nestihlo. " +
+            "DŮRAZ: child_focus je primární obsah (jak to bylo z pohledu části / dítěte). " +
+            "therapist_note je sekundární vrstva (1-2 věty o motivaci/práci terapeutky).",
+          properties: {
+            held: { type: "boolean", description: "True pokud včera proběhlo aspoň částečné sezení." },
+            part_name: { type: "string" },
+            lead: { type: "string", enum: ["Hanička", "Káťa", "společně"] },
+            completion: { type: "string", enum: ["completed", "partial", "abandoned"] },
+            child_focus: {
+              type: "string",
+              description:
+                "PRIMÁRNÍ — 2-4 věty o tom, jak na tom byla část. Co prožívala, kde se otevřela / uzavřela, " +
+                "co fungovalo / nefungovalo Z POHLEDU DÍTĚTE. Konkrétně, ne obecně.",
+            },
+            therapist_note: {
+              type: "string",
+              description: "SEKUNDÁRNÍ — 1-2 věty o tom, jak to terapeutka ustála a co ji posílilo / vyčerpalo.",
+            },
+            what_to_carry_forward: {
+              type: "string",
+              description: "1-2 věty: co konkrétně si z toho neseme do dnešního dne / dalšího sezení.",
+            },
+          },
+          required: ["held", "child_focus"],
+          additionalProperties: false,
         },
         decisions: {
           type: "array",

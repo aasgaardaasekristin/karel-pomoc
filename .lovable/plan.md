@@ -1,236 +1,127 @@
+## Diagnóza: proč nedošlo k vyhodnocení včerejšího sezení
 
-# Oprava live sezení: po „Spustit sezení“ se má otevřít program bod po bodu, ne generický chat
+### Co existuje a co ne
 
-## Co je teď skutečně špatně
+| Komponenta | Existuje? | Poznámka |
+|---|---|---|
+| `karel-session-finalize` (edge funkce) | ✅ ANO | Ale píše do `client_sessions` / `client_tasks` — **to je tabulka pro Pracovní/klientský režim, NE pro DID kluky.** Nikde v DID workflow se nevolá. |
+| Volání finalize z `BlockDiagnosticChat` / `LiveProgramChecklist` | ❌ NE | LIVE program v Pracovně neví, jak skončit. Když Hana dojede poslední blok, nic se nestane. |
+| Funkce, která analyzuje DID sezení a píše do `did_part_sessions` (ai_analysis, methods_used, karel_therapist_feedback…) | ❌ NE | Jediný zápis do `did_part_sessions` je z `karel-did-auto-session-plan` při schválení porady — vloží řádek s `notes = plán` a prázdným `ai_analysis`. To je přesně řádek `5ae5932d…` z 23.4. |
+| Funkce, která pošle hodnocení sezení do Drive (KARTA_<part>) | ❌ NE | Žádná funkce nevytváří `did_pantry_packages` typu `session_summary`. |
+| Funkce, která ráno načte hodnocení sezení a zařadí ho do Karlův přehled | ⚠️ ČÁSTEČNĚ | `karel-did-daily-briefing` čte `karel_pantry_b_entries` (Spižírnu B) a inlinuje ji do promptu pod hlavičkou `SPIŽÍRNA B — VČEREJŠÍ IMPLIKACE PRO DNEŠEK`. Ale nikdo do Spižírny B z DID sezení nezapíše → briefing nemá co načíst. Briefing navíc **nemá vyhrazenou sekci** „vyhodnocení včerejšího sezení". Schéma má jen: `greeting / last_3_days / lingering / decisions / proposed_session / ask_hanka / ask_kata / closing`. |
 
-Problém není jen ve scrollu. Problém je v tom, že je špatně navržená samotná obrazovka live sezení.
+### Konkrétní řetěz selhání pro 23.4. sezení s Tundrupkem
+1. Hana otevřela LIVE program → `BlockDiagnosticChat` → odpracovala (částečně) bloky → zavřela okno.
+2. Žádný hook „session ended" → `did_part_sessions.5ae5932d…` zůstal s `ai_analysis=""`, `karel_therapist_feedback=""`, `methods_used=NULL`.
+3. `did_daily_session_plans.565e8da3…` zůstal `status='in_progress'`, `completed_at=NULL`.
+4. `karel_pantry_b_entries` → 0 nových entries z průběhu sezení.
+5. Ráno 24.4. `karel-did-daily-briefing` načetl Spižírnu B → našel jen jediný záznam (podpis porady z 23.4. ráno) → vyrobil `last_3_days` z thread vlákna `7d095a81…` (volná konverzace TUNDRUPEK), nikoli ze sezení.
+6. Briefing fyzicky nemá kam vyhodnocení napsat — schéma neobsahuje pole pro retrospektivu sezení.
 
-Teď se po `Spustit sezení` otevře `DidLiveSessionPanel`, který jako hlavní obsah ukáže:
-- generický uvítací text „Hani, jsem tu s tebou…“
-- hlavní chat pro celý průběh
-- hint karty Karla
-- plán schovaný až v rozbalovacím bloku nahoře
+---
 
-To je v přímém rozporu s tím, co potřebuješ:
-- nejdřív vidět schválený plán sezení,
-- kliknout na konkrétní bod programu,
-- a teprve potom otevřít pracovní prostor toho bodu:
-  - celý úkol,
-  - Karlův konkrétní návod,
-  - co má Hana říct,
-  - jak to uvést,
-  - co sledovat,
-  - jaké pomůcky potřebuje,
-  - přílohy,
-  - krokový chat s Karlem.
+## Plán opravy
 
-Navíc současný layout míchá dohromady:
-- globální chat,
-- per-bod vedení,
-- checklist,
-- hint karty,
+### A. Nová edge funkce `karel-did-session-evaluate`
 
-takže se důležitý obsah propadá mimo viditelnou část a terapeutka nevidí to, co reálně potřebuje pro práci s bodem.
+Souhrnný evaluátor pro DID sezení. Volaná dvěma cestami:
+- **automaticky** z UI při ukončení sezení (i částečném),
+- **automaticky** noční funkcí jako safety net (pokud uživatel zapomene zavřít).
 
-## Cílové chování
+**Vstup:** `{ planId, partName, threadId, completedBlocks, totalBlocks, leadTherapist, durationMinutes, endedReason: 'completed' | 'partial' | 'auto_safety_net' }`
 
-Po kliknutí na:
+**Co dělá (Gemini 2.5 Pro):**
+1. Načte plán (`did_daily_session_plans` + bloky), reálnou konverzaci z `did_threads.messages` v okně sezení, kontext části (`did_parts` karta z DB) a profil terapeutky (`therapist_crisis_profile`).
+2. Vygeneruje strukturovaný JSON:
+   - `session_arc` — co se dělo blok po bloku
+   - `child_perspective` — **hlavní důraz**: jak na tom byla část (Tundrupek), co prožívala, co fungovalo / nefungovalo z pohledu dítěte, regrese / progrese, riziko retraumatizace
+   - `therapist_motivation` — čeho si u Hany / Káti všiml (odhodlání, empatie, kde zaváhala, co ji posílilo) — sekundární vrstva
+   - `methods_used` + `methods_effectiveness` (per metoda: ✅ / ⚠️ / ❌ + 1 věta proč)
+   - `key_insights` — 2-4 klinické závěry
+   - `implications_for_tomorrow` — co z toho plyne pro další postup
+   - `tasks` — `[{owner: hanka|kata|karel, urgency, text}]`
+   - `recommended_next_step` — návrh dalšího sezení / pauzy
+   - `completion_status` — `completed | partial(X/Y blocks) | abandoned`
+   - `incomplete_note` — pokud částečné: 1-2 věty o tom, co nestihli a co s tím
+3. **Zápis výsledku do tří míst** (vše idempotentně podle `planId`):
+   - `did_part_sessions` (update existujícího řádku): `ai_analysis`, `methods_used`, `methods_effectiveness`, `karel_notes`, `karel_therapist_feedback`, `tasks_assigned`
+   - `did_daily_session_plans`: `status='completed'`, `completed_at=now()`
+   - `karel_pantry_b_entries`: 1 hlavní `entry_kind='conclusion'` se `summary=child_perspective[:200]` + N entries `entry_kind='followup_need'` z `tasks[]` + případně `entry_kind='hypothesis_change'` z `key_insights`. Všechny mají `source_kind='therapy_session'`, `source_ref=planId`, `intended_destinations=['briefing_input','did_therapist_tasks','did_implications']`.
+   - `did_pantry_packages`: 1 balík `package_type='session_summary'` s plnou markdown verzí, `drive_target_path='KARTA_<PART_NAME>'`. Druhý balík `package_type='session_log'` s `drive_target_path='KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG'`.
+4. Vrací JSON evaluaci (UI ji rovnou zobrazí Hance).
 
-`Návrh sezení k poradě → Otevřít poradu → Spustit sezení`
+### B. Napojení na UI (auto-trigger)
+1. `LiveProgramChecklist.tsx` — přidat tlačítko **„Ukončit sezení a vyhodnotit"** (vždy viditelné, i když nejsou všechny bloky `done`). Po kliku zavolá `karel-did-session-evaluate` a zobrazí spinner → výsledek.
+2. `BlockDiagnosticChat.tsx` — když se poslední blok přepne na `done`, automaticky nabídnout finalizaci (toast s tlačítkem, NE silent autocall — terapeutka má kontrolu).
+3. Po finalizaci: lock plánu (UI prokliká do read-only zobrazení vyhodnocení), zápis odznaku „Vyhodnoceno" do `LiveProgramChecklist`.
 
-se musí otevřít live místnost ve 2 krocích:
+### C. Noční safety-net v `karel-did-daily-cycle`
+Před Phase 8B (Pantry B Flush) přidat krok **Phase 8A.5 — Stale session evaluation**:
+- Najdi `did_daily_session_plans` se `status='in_progress'` + `plan_date < today` + bez navazujícího `did_part_sessions.ai_analysis`.
+- Pro každý zavolej `karel-did-session-evaluate` se `endedReason='auto_safety_net'`.
+- Výsledek se rovnou propíše do Spižírny B → ranní briefing ho ten samý běh načte.
 
-### 1. Výchozí obraz live sezení = jen schválený plán
-Ne generický chat.
+### D. Rozšíření `karel-did-daily-briefing` o sekci „Vyhodnocení včerejška"
+1. **Změna schématu** v `karel-did-daily-briefing/index.ts` (kolem řádku 290–397):
+   - Přidat nové pole `yesterday_session_review` (object, optional) s podpoli:
+     - `held` (bool) — proběhlo včera nějaké sezení?
+     - `part_name` (string)
+     - `lead` (`hanka|kata|both`)
+     - `completion` (`completed|partial|abandoned`)
+     - `child_focus` (string, 2-3 věty) — **primární obsah**
+     - `therapist_note` (string, 1-2 věty) — sekundární obsah o motivaci/práci terapeutky
+     - `what_to_carry_forward` (string, 1-2 věty)
+   - Přidat do `required` array? **Ne** — pokud včera žádné sezení nebylo, pole je `null` a UI sekci skryje. Tím obejdeme situaci „nemáme co říct".
+2. **Změna promptu**: před odesláním do AI načíst:
+   - `did_part_sessions` se včerejším `session_date` + neprázdným `ai_analysis` + případně `did_daily_session_plans` se včerejším `plan_date`
+   - Vložit do promptu blok `═══ VČERA PROBĚHLO SEZENÍ ═══` s plnou evaluací z `ai_analysis` + statusem dokončení
+   - Pokyn: „Vyhodnoť pro Hanu/Káťu jak to šlo. **Důraz vždy na zážitek dítěte / části**, sekundárně na práci terapeutky. Pokud sezení nebylo dokončeno, explicitně to napiš a vyhodnoť jen to, co proběhlo."
+3. **Změna pořadí v UI render** (`DidDailyBriefingPanel.tsx`):
+   ```
+   1. greeting
+   2. last_3_days  (= "Z dřívějška zůstává podstatné")
+   3. yesterday_session_review  ← NOVÉ, mezi #2 a #4
+   4. proposed_session  (= "Návrh sezení k poradě")
+   5. decisions
+   6. lingering
+   7. ask_hanka / ask_kata
+   8. closing
+   ```
 
-Zobrazí se:
-- hlavička live sezení,
-- schválený plán sezení jako hlavní obsah,
-- seznam bodů programu,
-- u každého bodu tlačítko `Spustit bod`.
+### E. Jednorázový reprocess pro 23.4.
+Po deploymentu výše uvedeného: zavolat `karel-did-session-evaluate` ručně (přes admin tlačítko v `AdminSpravaLauncher.tsx` nebo přes `supabase--curl_edge_functions`) s `planId='565e8da3-9f30-46d0-87c1-048672712b3b'` a `endedReason='auto_safety_net'`. Pak přegenerovat dnešní briefing s `force: true` → Karelův přehled bude obsahovat sekci `yesterday_session_review` s vyhodnocením.
 
-Bez velkého uvítacího odstavce.
-Bez hlavního generického chatu přes celou obrazovku.
+---
 
-### 2. Po kliknutí na `Spustit bod` = otevře se pracovní prostor konkrétního bodu
-Ten musí obsahovat vše potřebné pro práci s tím jedním bodem:
+## Co se po implementaci stane denně
 
-```text
-[Zpět na plán]  [Bod 2: Název]
---------------------------------
-Karlův brief k bodu
-- co má Hana říct
-- jak to uvést
-- jaké pomůcky použít
-- na co si dát pozor
-- co sledovat
-- proč tu techniku děláme
+**Dnes ráno (jednorázově):** zpětně vyhodnotí 23.4. sezení s Tundrupkem (i když bylo nedokončené) a doplní do dnešního Karlův přehled novou sekci „Vyhodnocení včerejška".
 
-Přílohy / vstupy
-[Fotka] [Obrázek] [Mikrofon] [Audio] [Video]
+**Každé další sezení:**
+- Hana dojede poslední blok → toast „Ukončit a vyhodnotit?" → klik → AI vyhodnocení → uloží se do DB + Spižírny B + odešle se balík na Drive (`KARTA_TUNDRUPEK` + `05C_SEZENI_LOG`).
+- Pokud zapomene → noční safety-net to udělá za ni s `endedReason='auto_safety_net'`.
 
-Krokový chat k tomuto bodu
-Karel: první instrukce
-Hana: zapíše reakci dítěte
-Karel: další přesný krok
-Hana: další reakce
-...
-```
+**Každé ráno:**
+- 04:00 UTC `karel-did-context-prime` načte z Drive čerstvě zapsanou kartu Tundrupka (už obsahuje včerejší vyhodnocení).
+- 05:00 UTC `karel-did-daily-cycle` projede Phase 8A.5 (stale eval) + Pantry B flush.
+- 05:30 UTC `karel-did-daily-briefing` najde v DB včerejší `did_part_sessions.ai_analysis` + Spižírnu B → vygeneruje sekci `yesterday_session_review` s důrazem na dítě → Karel ji renderuje mezi „Z dřívějška" a „Návrh sezení".
 
-Tohle už v kódu částečně existuje v `BlockDiagnosticChat`, ale je to teď zastrčené uvnitř checklistu místo toho, aby to bylo hlavní pracovní plátno bodu.
+---
 
-## Co upravím
+## Soubory a funkce
 
-### A. Předělám `DidLiveSessionPanel` z „globálního live chatu“ na „live program workspace“
-Současný root flow změním takto:
+**Nové:**
+- `supabase/functions/karel-did-session-evaluate/index.ts`
 
-- odstraním generický greeting jako hlavní první obraz,
-- odstraním současné postavení „hlavní chat + hint karty“ jako výchozího středu obrazovky,
-- přidám explicitní režimy obrazovky:
+**Upravené (edge):**
+- `supabase/functions/karel-did-daily-briefing/index.ts` — schema + prompt + load yesterday session
+- `supabase/functions/karel-did-daily-cycle/index.ts` — Phase 8A.5 safety net
 
-```text
-mode = "plan_overview" | "block_workspace"
-```
+**Upravené (UI):**
+- `src/components/did/LiveProgramChecklist.tsx` — tlačítko Ukončit & vyhodnotit
+- `src/components/did/BlockDiagnosticChat.tsx` — auto-toast po posledním bloku
+- `src/components/did/DidDailyBriefingPanel.tsx` — render nové sekce `yesterday_session_review`
+- `src/components/did/AdminSpravaLauncher.tsx` — diagnostické tlačítko reprocess pro libovolné `planId`
 
-- `plan_overview` = seznam bodů schváleného plánu
-- `block_workspace` = detail právě spuštěného bodu
-
-### B. Checklist přesunu do hlavní plochy jako výchozí obraz
-V `DidLiveSessionPanel.tsx`:
-- `LiveProgramChecklist` už nebude schovaný jen v collapsible sekci,
-- stane se hlavním obsahem po otevření live sezení,
-- schválený plán bude scrollovatelný jako centrální obsah,
-- po otevření se bude hned zobrazovat celý pracovní seznam bodů.
-
-### C. `Spustit bod` přepne do dedikovaného workspace toho bodu
-Místo toho, aby se Karlův obsah vyráběl do vedlejších hint karet a ztrácel se v toku:
-
-- kliknutí na `Spustit bod` nastaví aktivní bod,
-- přepne UI do `block_workspace`,
-- nahoře bude jasné:
-  - číslo bodu,
-  - název bodu,
-  - tlačítko `Zpět na plán`.
-
-### D. Jako hlavní obsah bodu použiju `BlockDiagnosticChat`
-To je přesně ten mechanismus, který už odpovídá tomu, co chceš:
-- diagnostický brief,
-- pomůcky,
-- instrukce dítěti,
-- co sledovat,
-- očekávané artefakty,
-- krokový mini-chat Karel ↔ Hana,
-- per-bod ukládání turnů,
-- retry při chybě.
-
-Ale musím ho vytáhnout do hlavní plochy bodu, ne ho nechat schovaný jen po rozbalení v checklistu.
-
-### E. Zruším zbytečný generický úvod „Hani, jsem tu s tebou…“
-Ten text teď zabírá prostor a nepomáhá.
-
-Místo něj bude u aktivního bodu rovnou konkrétní pracovní obsah:
-- co říct,
-- jak to uvést,
-- proč ten krok děláme,
-- co sledovat,
-- co poslat jako přílohu.
-
-### F. Sjednotím přílohy přímo s aktivním bodem
-V block workspace budou jasně navázané akce:
-- fotka / obrázek,
-- mikrofon / audio,
-- video,
-- případně poznámka.
-
-Každá příloha se bude vázat k aktivnímu bodu, ne „někam do obecného live panelu“.
-
-### G. Opravím scroll na správném místě
-V block workspace nastavím layout takto:
-
-```text
-[sticky header bodu]
-[scrollovatelný obsah bodu]
-[sticky input pro reakci Hany]
-```
-
-Tím bude vždy vidět:
-- celý obsah bodu,
-- Karlův brief,
-- spodní chat input.
-
-Nebude už situace, kdy:
-- vidíš jen začátek karty,
-- nevidíš celý úkol,
-- nevidíš Karlův popis,
-- nevidíš chatovací pole.
-
-### H. Hint karty `KarelInSessionCards` přestanu používat jako hlavní místo instrukcí
-Tyhle karty jsou teď jedna z hlavních příčin chaosu.
-
-Použiju je maximálně jako vedlejší doplněk, nebo je pro block režim úplně vyřadím, aby:
-- se instrukce nezobrazovaly „bokem“,
-- Karlův konkrétní obsah byl vždy přímo v detailu aktivního bodu.
-
-## Soubory k úpravě
-
-1. `src/components/did/DidLiveSessionPanel.tsx`
-   - hlavní refaktor obrazovky live sezení
-   - zavedení `plan_overview` / `block_workspace`
-   - odstranění generického startovacího toku jako hlavního obsahu
-   - nový scroll ownership
-   - sticky header + sticky input v detailu bodu
-
-2. `src/components/did/LiveProgramChecklist.tsx`
-   - zachovat checklist jako vstupní obraz
-   - zjednodušit roli komponenty: seznam bodů + `Spustit bod`
-   - případně odstranit závislost na skrytém inline detailu jako primárním UX
-
-3. `src/components/did/BlockDiagnosticChat.tsx`
-   - použít jako hlavní pracovní modul detailu bodu
-   - případně doplnit lepší nadpisy / rozložení sekcí pro brief, pomůcky, instrukce, chat
-
-4. `src/components/did/KarelInSessionCards.tsx`
-   - omezit nebo vyřadit z hlavního toku aktivního bodu, aby nepřekážel
-
-5. případně `src/components/did/DeliberationRoom.tsx`
-   - jen ověřit, že po `Spustit sezení` se otevírá nový live workspace správně
-   - bez změny backend logiky
-
-## Technické poznámky
-
-- Backend měnit není potřeba.
-- Už existující endpointy pro per-bod logiku zůstanou:
-  - `karel-block-research`
-  - `karel-block-followup`
-  - `karel-live-session-produce`
-- Oprava je hlavně:
-  - UI architektura,
-  - rozvržení obrazovky,
-  - přesun existující per-bod logiky do hlavního pracovního toku.
-- Video upload doplním do UI pouze pokud v projektu už existuje použitelný upload pattern; jinak ho zařadím jako samostatný navazující krok po stabilizaci hlavního flow.
-
-## Jak poznám, že je to konečně správně
-
-1. Po `Spustit sezení` nevidím generický chat, ale rovnou schválený plán bod po bodu.
-2. U každého bodu programu je `Spustit bod`.
-3. Po kliknutí na bod se otevře samostatný pracovní prostor toho bodu.
-4. V tom prostoru je vidět:
-   - celý úkol,
-   - Karlův konkrétní návod,
-   - co má Hana říkat,
-   - jak to uvést,
-   - co sledovat,
-   - pomůcky,
-   - přílohy,
-   - chatovací okno k tomu bodu.
-5. Celý obsah bodu jde normálně scrollovat.
-6. Spodní input pro odpověď Hany je vždy vidět.
-7. Karlovy instrukce nejsou schované v nějaké malé kartě bokem nebo mimo viewport.
-8. Terapeutka nemusí hádat, kam psát ani kde najde vedení ke konkrétnímu bodu.
-
-## Priorita implementace
-
-1. Nejprve opravím architekturu obrazovky live sezení.
-2. Pak přepojím `Spustit bod` na dedikovaný workspace bodu.
-3. Pak doladím scroll a sticky input.
-4. Nakonec pročistím zbytečné prvky, které teď dělají chaos.
+**Beze změny zůstává:** `karel-session-finalize` (ten patří klientskému Pracovnímu režimu, neplést s DID).</parameter>
+<parameter name="summary">Diagnóza ukázala, že DID sezení nemá vyhodnocovací funkci ani auto-finalize — `karel-session-finalize` existuje, ale slouží jen Pracovnímu režimu. Navrhuji novou funkci `karel-did-session-evaluate` (s důrazem na dítě, sekundárně motivace terapeutek), auto-trigger z UI při ukončení (i částečném), noční safety-net pro zapomenutá sezení, a novou sekci `yesterday_session_review` v Karlův přehled mezi „Z dřívějška" a „Návrh sezení". Plus jednorázový reprocess pro 23.4.
