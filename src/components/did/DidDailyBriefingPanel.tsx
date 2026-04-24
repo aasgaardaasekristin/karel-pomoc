@@ -751,8 +751,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             </div>
             {p.yesterday_session_review.karel_summary ? (
               <div>
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Karlovo přetlumočení</p>
-                <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line mt-0.5">
+                <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
                   {p.yesterday_session_review.karel_summary}
                 </p>
               </div>
