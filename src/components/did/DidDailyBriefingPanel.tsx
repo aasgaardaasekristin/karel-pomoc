@@ -85,10 +85,21 @@ interface ProposedSession {
 interface AskItemObj { id: string; text: string }
 type AskItemRaw = string | AskItemObj;
 
+interface YesterdaySessionReview {
+  held: boolean;
+  part_name?: string;
+  lead?: "Hanička" | "Káťa" | "společně";
+  completion?: "completed" | "partial" | "abandoned";
+  child_focus: string;
+  therapist_note?: string;
+  what_to_carry_forward?: string;
+}
+
 interface BriefingPayload {
   greeting: string;
   last_3_days: string;
   lingering?: string;
+  yesterday_session_review?: YesterdaySessionReview | null;
   decisions: BriefingDecision[];
   proposed_session?: ProposedSession | null;
   ask_hanka: AskItemRaw[];
