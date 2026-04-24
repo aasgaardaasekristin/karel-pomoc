@@ -385,9 +385,12 @@ export async function selectPantryA(
 
   const pendingQs = (pendingQuestionsRes.status === "fulfilled"
     ? pendingQuestionsRes.value.data ?? []
-    : []) as Array<{ id: string; question: string; directed_to: string | null; blocking: boolean | null; created_at: string }>;
+    : []) as Array<{ id: string; question: string; directed_to: string | null; blocking: boolean | null; created_at: string; status?: string | null; answer?: string | null; answered_at?: string | null }>;
   const hankaOpenQs = pendingQs.filter((q) => (q.directed_to || "").toLowerCase().includes("hank")).length;
   const kataOpenQs = pendingQs.filter((q) => (q.directed_to || "").toLowerCase().includes("kat")).length;
+  const agreementRows = (teamAgreementsRes.status === "fulfilled"
+    ? teamAgreementsRes.value.data ?? []
+    : []) as TeamAgreementRow[];
 
   const hana_therapeutic: HanaTherapeuticSlot = {
     current_caseload_focus: hankaTaskFocus,
@@ -432,11 +435,19 @@ export async function selectPantryA(
     })),
     ...pendingQs.map((q) => ({
       id: q.id,
-      text: q.question,
+      text: q.answer ? `${q.question} → ${q.answer}` : q.question,
       owner: q.directed_to,
       destinations: [],
       review_at: null,
       source_kind: "pending_question" as const,
+    })),
+    ...agreementRows.map((a) => ({
+      id: a.id,
+      text: a.implication_text || a.agreement_text,
+      owner: Array.isArray(a.agreed_by) ? a.agreed_by.join("+") : null,
+      destinations: ["briefing_input", "05A"],
+      review_at: null,
+      source_kind: "agreement" as const,
     })),
     ...therapistTasks
       .filter((t) => t.priority === "high" || t.priority === "urgent")
