@@ -623,8 +623,7 @@ ${approvedDelibs.map((d: any) => {
           .map((q: any) => `Q: ${String(q.question || "").slice(0, 90)} → A: ${String(q.answer || "").slice(0, 160)}`)
           .join(" | ");
         return `- "${d.title}" [${d.status}] (${d.deliberation_type}${subj ? `, ${subj}` : ""})${next}${summary}${qa ? ` | odpovědi: ${qa}` : ""}`;
-      }).join("
-")}
+      }).join("\n")}
 
 ⚠ Tyto porady mohou být uzavřené i rozpracované. Pravidla:
   1) NIKDY pro tyto subject_parts/téma nezakládej nové decisions se stejným nebo téměř stejným titulkem.
