@@ -3281,6 +3281,66 @@ export type Database = {
         }
         Relationships: []
       }
+      did_team_agreements: {
+        Row: {
+          agreed_by: string[]
+          agreement_text: string
+          created_at: string
+          evidence_level: string
+          expires_at: string | null
+          id: string
+          implication_text: string | null
+          priority: string
+          source_detail: Json
+          source_record_id: string
+          source_table: string
+          subject_id: string
+          subject_type: string
+          superseded_at: string | null
+          updated_at: string
+          user_id: string
+          valid_from: string
+        }
+        Insert: {
+          agreed_by?: string[]
+          agreement_text: string
+          created_at?: string
+          evidence_level?: string
+          expires_at?: string | null
+          id?: string
+          implication_text?: string | null
+          priority?: string
+          source_detail?: Json
+          source_record_id: string
+          source_table: string
+          subject_id: string
+          subject_type?: string
+          superseded_at?: string | null
+          updated_at?: string
+          user_id: string
+          valid_from?: string
+        }
+        Update: {
+          agreed_by?: string[]
+          agreement_text?: string
+          created_at?: string
+          evidence_level?: string
+          expires_at?: string | null
+          id?: string
+          implication_text?: string | null
+          priority?: string
+          source_detail?: Json
+          source_record_id?: string
+          source_table?: string
+          subject_id?: string
+          subject_type?: string
+          superseded_at?: string | null
+          updated_at?: string
+          user_id?: string
+          valid_from?: string
+        }
+        Relationships: []
+      }
       did_team_deliberations: {
         Row: {
           agenda_outline: Json
