@@ -31,6 +31,18 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
+function fallbackHint(therapistName: string, attachmentKind: string | null, observation: string) {
+  const name = therapistName === "Káťa" ? "Káťo" : "Hani";
+  const observed = observation.toLowerCase();
+  if (attachmentKind === "audio" || observed.includes("mluv") || observed.includes("hlas")) {
+    return `${name}, teď hlavně zachyť doslovné formulace, pauzy a změny hlasu; interpretaci nech až po sezení. Pokud se objeví silná emoce, zpomal a zeptej se na jeden konkrétní pocit v těle.`;
+  }
+  if (attachmentKind === "image" || observed.includes("kres") || observed.includes("obráz")) {
+    return `${name}, teď popiš jen viditelné detaily bez výkladu a nech ho doplnit, co je na obrázku nejdůležitější. Zeptej se jemně: „Co se tam děje právě teď?“`;
+  }
+  return `${name}, AI je teď přetížená, takže bez improvizované interpretace: drž prostor, zaznamenej doslovná slova a jednu konkrétní změnu v chování. Pokud je nejistota, zeptej se jen na to, co potřebuje právě teď.`;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
@@ -102,8 +114,17 @@ ${observation}
     if (!aiRes.ok) {
       const t = await aiRes.text();
       console.error("[live-feedback] AI error", aiRes.status, t);
+      if (aiRes.status === 429 || aiRes.status === 402 || aiRes.status >= 500) {
+        return new Response(JSON.stringify({
+          karel_hint: fallbackHint(therapistName, attachmentKind, observation),
+          fallback: true,
+          reason: aiRes.status === 429 ? "AI_RATE_LIMITED" : aiRes.status === 402 ? "AI_CREDITS_REQUIRED" : "AI_SERVICE_UNAVAILABLE",
+        }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       return new Response(JSON.stringify({ error: `ai gateway ${aiRes.status}` }), {
-        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: aiRes.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const aiData = await aiRes.json();
@@ -113,8 +134,12 @@ ${observation}
     });
   } catch (e: any) {
     console.error("[live-feedback] fatal:", e);
-    return new Response(JSON.stringify({ error: e?.message ?? String(e) }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(JSON.stringify({
+      karel_hint: "Hani, teď bez technické asistence: drž prostor, zapisuj doslovné formulace a neuzavírej interpretaci, dokud nebude víc dat.",
+      fallback: true,
+      reason: "LIVE_FEEDBACK_FAILED",
+    }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
