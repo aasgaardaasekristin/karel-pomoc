@@ -317,7 +317,7 @@ async function gatherContext(supabase: any) {
   let pantryBEntries: any[] = [];
   let approvedDeliberations: any[] = [];
   try {
-    const userIdForB = pantryA?.sources?.user_id
+    const userIdForB = null
       // Fallback k libovolnému user_id z did_daily_context (stejný pattern jako Pantry A výše).
       ?? null;
     let userIdResolved: string | null = userIdForB;
@@ -1058,7 +1058,7 @@ Deno.serve(async (req) => {
         .map((e: any) => e?.id)
         .filter((id: any) => typeof id === "string");
       if (consumedIds.length > 0) {
-        await markPantryBProcessed(supabase, consumedIds, "karel-did-daily-briefing", {
+        await markPantryBProcessed(supabase as any, consumedIds, "karel-did-daily-briefing", {
           briefing_id: inserted.id,
           briefing_date: today,
         });
