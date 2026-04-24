@@ -322,32 +322,44 @@ const BRIEFING_TOOL = {
         yesterday_session_review: {
           type: "object",
           description:
-            "Vyhodnocení včerejšího sezení (pokud nějaké proběhlo). Pokud včera žádné sezení nebylo " +
-            "(žádný řádek v `did_part_sessions` se včerejším datem ani plán in_progress), nech tento klíč null. " +
-            "Pokud sezení nebylo dokončené, NETVAR že bylo — uveď completion='partial' a řekni co se nestihlo. " +
-            "DŮRAZ: child_focus je primární obsah (jak to bylo z pohledu části / dítěte). " +
-            "therapist_note je sekundární vrstva (1-2 věty o motivaci/práci terapeutky).",
+            "KLINICKÉ PŘETLUMOČENÍ včerejšího sezení Karlovým hlasem — NE provozní zpráva, NE výpis kroků, NE „co se programově dělo“. " +
+            "Karel mluví jako vedoucí týmu, který právě dočetl analýzu a teď ji vrací zpátky Hance a Káte v lidské řeči. " +
+            "Pokud včera žádné sezení nebylo, nech klíč null. Pokud bylo přerušené nebo částečné, neříkej, že proběhlo celé.",
           properties: {
             held: { type: "boolean", description: "True pokud včera proběhlo aspoň částečné sezení." },
             part_name: { type: "string" },
             lead: { type: "string", enum: ["Hanička", "Káťa", "společně"] },
             completion: { type: "string", enum: ["completed", "partial", "abandoned"] },
-            child_focus: {
+            karel_summary: {
               type: "string",
               description:
-                "PRIMÁRNÍ — 2-4 věty o tom, jak na tom byla část. Co prožívala, kde se otevřela / uzavřela, " +
-                "co fungovalo / nefungovalo Z POHLEDU DÍTĚTE. Konkrétně, ne obecně.",
+                "PRIMÁRNÍ — 4–7 vět Karlova přetlumočení. CO SE VČERA OPRAVDU UKÁZALO — celkový oblouk, klima, atmosféra, " +
+                "kvalita kontaktu mezi částí a terapeutkou. NE seznam programových bodů. Mluv o smyslu, ne o průběhu. " +
+                "Konkrétní jméno části, žádný „systém“, žádný „klient“.",
             },
-            therapist_note: {
+            key_finding_about_part: {
               type: "string",
-              description: "SEKUNDÁRNÍ — 1-2 věty o tom, jak to terapeutka ustála a co ji posílilo / vyčerpalo.",
+              description:
+                "DŮLEŽITÉ KLINICKÉ ZJIŠTĚNÍ O ČÁSTI — 2–4 věty. Co nového / přesnějšího teď víme o této části: " +
+                "její potřeba, obrana, vývojová úroveň, vztahový vzorec, spouštěč, zdroj. " +
+                "Pojmenuj to jako klinický posun v porozumění, ne jako popis epizody.",
             },
-            what_to_carry_forward: {
+            implications_for_plan: {
               type: "string",
-              description: "1-2 věty: co konkrétně si z toho neseme do dnešního dne / dalšího sezení.",
+              description:
+                "CO Z TOHO PLYNE PRO TERAPEUTICKÝ PLÁN — 2–4 věty. Konkrétní úprava směru práce s touto částí: " +
+                "co přidat, co opustit, co zpomalit, jaký formát příště zvolit, na co si dát pozor. " +
+                "Mluv jako klinik, ne jako provozák.",
+            },
+            team_acknowledgement: {
+              type: "string",
+              description:
+                "PODĚKOVÁNÍ A STMELENÍ TÝMU — 1–3 věty osobně adresované terapeutce/terapeutkám, které sezení vedly. " +
+                "Konkrétně pojmenuj, co udělaly dobře (klid, trpělivost, intuitivní rozhodnutí, zvládnutí přerušení). " +
+                "Bez patosu, bez floskulí. Pokud sezení vedla jen jedna z nich, oslov jen ji.",
             },
           },
-          required: ["held", "child_focus"],
+          required: ["held", "karel_summary", "key_finding_about_part", "implications_for_plan", "team_acknowledgement"],
           additionalProperties: false,
         },
         decisions: {
@@ -521,6 +533,42 @@ async function generateBriefing(
 
   const toolboxSection = candidates[0]?.score >= 3 ? `\n\n${summarizeToolboxForPrompt()}\n` : "";
 
+  // ── VČEREJŠÍ SEZENÍ — vstup pro yesterday_session_review ──
+  const ySessions = (context.yesterday_sessions ?? []) as any[];
+  const yPlans = (context.yesterday_plans ?? []) as any[];
+  const yesterdaySection = (ySessions.length > 0 || yPlans.length > 0)
+    ? `═══ VČEREJŠÍ SEZENÍ (${context.yesterday}) — POVINNÝ VSTUP PRO yesterday_session_review ═══
+${ySessions.length > 0 ? ySessions.map((s: any) => {
+  const blob = [
+    `▸ Část: ${s.part_name || "?"} | Vede: ${s.therapist || "?"} | Typ: ${s.session_type || "?"}`,
+    s.methods_used ? `  Metody: ${Array.isArray(s.methods_used) ? s.methods_used.join(", ") : s.methods_used}` : "",
+    s.methods_effectiveness ? `  Efektivita metod: ${typeof s.methods_effectiveness === "object" ? JSON.stringify(s.methods_effectiveness).slice(0, 300) : String(s.methods_effectiveness).slice(0, 300)}` : "",
+    s.karel_notes ? `  Karlovy poznámky: ${String(s.karel_notes).slice(0, 400)}` : "",
+    s.handoff_note ? `  Handoff: ${String(s.handoff_note).slice(0, 300)}` : "",
+    s.karel_therapist_feedback ? `  Feedback terapeutce: ${String(s.karel_therapist_feedback).slice(0, 300)}` : "",
+    s.tasks_assigned ? `  Úkoly: ${typeof s.tasks_assigned === "object" ? JSON.stringify(s.tasks_assigned).slice(0, 200) : String(s.tasks_assigned).slice(0, 200)}` : "",
+    s.ai_analysis ? `  AI analýza (předchozí evaluace):\n${String(s.ai_analysis).slice(0, 1800)}` : "",
+  ].filter(Boolean).join("\n");
+  return blob;
+}).join("\n\n") : "(žádný řádek did_part_sessions ze včerejška)"}
+
+${yPlans.length > 0 ? `Plány ze včerejška:\n${yPlans.map((p: any) => `- ${p.selected_part || "?"} | vede: ${p.session_lead || p.therapist || "?"} | status: ${p.status} | completed_at: ${p.completed_at || "—"}`).join("\n")}` : ""}
+
+⚠ POVINNÉ: Pokud výše existuje aspoň jeden řádek did_part_sessions ze včerejška, MUSÍŠ vyplnit yesterday_session_review s held=true a všemi 4 textovými poli (karel_summary, key_finding_about_part, implications_for_plan, team_acknowledgement). NESMÍŠ to vrátit jako held=false.
+
+⚠ STYL yesterday_session_review (PŘETLUMOČENÍ, NE PROVOZNÍ ZPRÁVA):
+- karel_summary = TVŮJ HLAS, vedoucího týmu, který právě dočetl analýzu. Přetlumoč CO SE DĚLO V SMYSLU, ne v krocích programu. Atmosféra, kontakt, oblouk. NE seznam bodů. NE „Bod 1, Bod 2". 4–7 vět.
+- key_finding_about_part = klinický POSUN V POROZUMĚNÍ části. Co teď víme jinak / přesněji než včera ráno. Pojmenuj to jako klinický vhled, ne jako popis epizody. 2–4 věty.
+- implications_for_plan = konkrétní úprava terapeutického plánu pro tuto část. Co změnit, co zpomalit, co přidat, jaký formát příště. 2–4 věty.
+- team_acknowledgement = osobní poděkování ${ySessions[0]?.therapist === "hanka" ? "Haničce" : ySessions[0]?.therapist === "kata" ? "Káte" : "týmu"}, konkrétně co udělala dobře (klid, intuice, zvládnutí přerušení). Bez patosu, bez floskulí. 1–3 věty.
+
+`
+    : `═══ VČEREJŠÍ SEZENÍ (${context.yesterday}) ═══
+(žádné sezení včera neproběhlo — yesterday_session_review nech null nebo held=false)
+
+`;
+
+
   const userPrompt = `KONTEXT PRO BRIEFING (${context.today}):
 
 ${context.pantry_a_summary ? `═══ SPIŽÍRNA A — RANNÍ PRACOVNÍ ZÁSOBA ═══\n${context.pantry_a_summary}\n\n` : ""}${pantryBSection}${approvedDelibsSection}AKTIVNÍ KRIZE (${context.crises.length}):
@@ -537,6 +585,8 @@ ${context.pending_questions.slice(0, 10).map((q: any) => `- pro ${q.asked_to || 
 
 NEDÁVNÉ SESSION PLÁNY (3 dny):
 ${context.recent_session_plans.map((p: any) => `- ${p.session_date} | ${p.part_name || "?"} | status: ${p.status}`).join("\n") || "(žádné)"}
+
+${yesterdaySection}
 
 KANDIDÁTI NA DNEŠNÍ SEZENÍ (skórovací heuristika):
 ${candidates.length > 0 ? candidates.slice(0, 5).map((c) => `- ${c.part_name} (skóre ${c.score}): ${c.reasons.join(", ")}`).join("\n") : "(žádní silní kandidáti — proposed_session může být null)"}
