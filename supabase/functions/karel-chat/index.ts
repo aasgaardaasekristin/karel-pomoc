@@ -91,6 +91,27 @@ function extractPartName(text: string): string | null {
   return null;
 }
 
+function streamFallbackReply(mode: string, status: number) {
+  const content = mode === "supervision" || mode === "live-session"
+    ? "Hani, jsem teď technicky přetížený, ale sezení nepřerušuj: drž se doslovných zápisů, latencí a změn v těle/hlasu. Teď polož jen jednu klidnou otázku: „Co bylo u toho slova nejdivnější?“"
+    : "Teď jsem technicky přetížený, proto nedám plnou odpověď. Zkus to prosím za chvíli znovu; mezitím neuzavírej interpretaci a drž se jen ověřených dat.";
+  const payload = JSON.stringify({ choices: [{ delta: { content } }] });
+  const reason = status === 429 ? "rate_limited" : status === 402 ? "credits_required" : "unavailable";
+  const stream = new ReadableStream({
+    start(controller) {
+      const enc = new TextEncoder();
+      controller.enqueue(enc.encode(`event: fallback\ndata: ${JSON.stringify({ fallback: true, reason })}\n\n`));
+      controller.enqueue(enc.encode(`data: ${payload}\n\n`));
+      controller.enqueue(enc.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -699,8 +720,7 @@ POKYN: Pokud valence klesá (↓), buď citlivější. Pokud spolupráce roste (
       });
 
       if (!response.ok) {
-        if (response.status === 429) return new Response(JSON.stringify({ error: "Rate limits exceeded" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        if (response.status === 402) return new Response(JSON.stringify({ error: "Payment required" }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (response.status === 429 || response.status === 402 || response.status >= 500) return streamFallbackReply(mode, response.status);
         const text = await response.text();
         console.error(`AI gateway error (${mode}):`, response.status, text);
         return new Response(JSON.stringify({ error: "AI gateway error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -1187,18 +1207,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
     });
 
     if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limits exceeded" }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Payment required" }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+      if (response.status === 429 || response.status === 402 || response.status >= 500) return streamFallbackReply(mode, response.status);
       const text = await response.text();
       console.error("AI gateway error:", response.status, text);
       return new Response(JSON.stringify({ error: "AI gateway error" }), {

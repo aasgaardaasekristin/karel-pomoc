@@ -64,6 +64,20 @@ function parseList(text: string): string[] {
   return items;
 }
 
+function fallbackContent(kind: ReturnType<typeof classifyKind>, blockNum: string, partName: string, therapistName: string) {
+  const addr = therapistName === "Káťa" ? "Káťo" : "Hani";
+  if (kind === "words_list") {
+    return `🎯 Nouzová sada pro bod #${blockNum} — použij klidně, jedno po druhém:\n1. hrad\n2. motor\n3. vítr\n4. klíč\n5. brnění\n6. cíl\n\n${addr}, sleduj hlavně latenci, doslovnou první asociaci, opravy odpovědi a slova, která ${partName} vynechá nebo odmítne.`;
+  }
+  if (kind === "questions") {
+    return `🎯 Otázky pro ${partName}:\n1. „Co se ti u toho vybavilo jako první?“\n2. „Bylo u něčeho divně v těle?“\n3. „Je něco, co k tomu nechceš říct nahlas?“\n\n${addr}, drž tempo pomalu a neuzavírej výklad během sezení.`;
+  }
+  if (kind === "instruction") {
+    return `🎯 Co řekni ${partName}:\n„Zkus nakreslit nebo ukázat jen to, co je teď nejdůležitější — nemusí to být hezké ani celé.“\n\n👀 Sleduj pořadí detailů, tlak, vynechaná místa a spontánní komentáře.`;
+  }
+  return `${addr}, AI je teď přetížená, takže použij bezpečný postup: polož jednu konkrétní otázku, zapisuj doslovné formulace a latenci, a interpretaci nech až po sezení.`;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
@@ -172,15 +186,16 @@ PRAVIDLA:
     if (!aiRes.ok) {
       const t = await aiRes.text();
       console.error("[live-produce] AI error", aiRes.status, t);
-      if (aiRes.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit — zkus za chvilku znovu." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (aiRes.status === 402) {
-        return new Response(JSON.stringify({ error: "Lovable AI kredit vyčerpán." }), {
-          status: 402,
+      if (aiRes.status === 429 || aiRes.status === 402 || aiRes.status >= 500) {
+        const content = fallbackContent(kind, String(blockNum), partName, therapistName);
+        return new Response(JSON.stringify({
+          karel_content: content,
+          kind,
+          items: (kind === "words_list" || kind === "questions") ? parseList(content) : undefined,
+          fallback: true,
+          reason: aiRes.status === 429 ? "AI_RATE_LIMITED" : aiRes.status === 402 ? "AI_CREDITS_REQUIRED" : "AI_SERVICE_UNAVAILABLE",
+        }), {
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
