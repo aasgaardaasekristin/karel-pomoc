@@ -317,9 +317,7 @@ async function gatherContext(supabase: any) {
   let pantryBEntries: any[] = [];
   let approvedDeliberations: any[] = [];
   try {
-    const userIdForB = null
-      // Fallback k libovolnému user_id z did_daily_context (stejný pattern jako Pantry A výše).
-      ?? null;
+    const userIdForB: string | null = null;
     let userIdResolved: string | null = userIdForB;
     if (!userIdResolved) {
       const { data: anyCtxRow } = await supabase
