@@ -141,8 +141,9 @@ async function scoreSessionCandidates(supabase: any): Promise<SessionCandidate[]
 async function gatherContext(supabase: any) {
   const threeDaysAgo = daysAgoISO(3);
   const sevenDaysAgo = daysAgoISO(7);
+  const yesterdayISO = daysAgoISO(1);
 
-  const [crisesRes, recentObsRes, olderObsRes, pendingRes, threadsRes, plansRes] = await Promise.all([
+  const [crisesRes, recentObsRes, olderObsRes, pendingRes, threadsRes, plansRes, yesterdaySessionsRes, yesterdayPlansRes] = await Promise.all([
     supabase.from("crisis_events")
       .select("id, part_name, severity, phase, trigger_description, days_active, opened_at, clinical_summary")
       .not("phase", "in", '("closed","CLOSED")')
@@ -171,6 +172,18 @@ async function gatherContext(supabase: any) {
       .select("id, plan_date, selected_part, therapist, status, plan_markdown, crisis_event_id")
       .gte("plan_date", threeDaysAgo)
       .order("plan_date", { ascending: false }),
+    // Včerejší sezení s vyhodnocením (pro yesterday_session_review)
+    supabase.from("did_part_sessions")
+      .select("id, part_name, therapist, session_date, session_type, ai_analysis, methods_used, methods_effectiveness, karel_notes, karel_therapist_feedback, handoff_note, tasks_assigned")
+      .eq("session_date", yesterdayISO)
+      .order("created_at", { ascending: false })
+      .limit(5),
+    // Včerejší plány (i in_progress, abychom poznali částečné sezení)
+    supabase.from("did_daily_session_plans")
+      .select("id, plan_date, selected_part, therapist, session_lead, status, completed_at, plan_markdown")
+      .eq("plan_date", yesterdayISO)
+      .order("created_at", { ascending: false })
+      .limit(5),
   ]);
 
   const { data: parts } = await supabase
