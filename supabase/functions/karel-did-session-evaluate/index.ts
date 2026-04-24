@@ -658,7 +658,9 @@ Deno.serve(async (req: Request) => {
         turnsByBlock = (liveProgress.turns_by_block ?? {}) as Record<string, any[]>;
         const items = Array.isArray(liveProgress.items) ? liveProgress.items : [];
         observationsByBlock = Object.fromEntries(
-          items.map((it: any, idx: number) => [String(idx), String(it?.observation ?? "")]).filter(([, v]) => String(v).trim()),
+          items
+            .map((it: any, idx: number): [string, string] => [String(idx), String(it?.observation ?? "")])
+            .filter((entry: [string, string]) => entry[1].trim().length > 0),
         );
       }
     }
