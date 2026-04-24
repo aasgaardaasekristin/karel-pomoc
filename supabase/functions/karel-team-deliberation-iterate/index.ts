@@ -267,6 +267,62 @@ PRAVIDLA STRUKTURY:
       });
     }
 
+    try {
+      const inputKind = inferInputKind(text);
+      const obsId = await createObservation(admin, {
+        subject_type: "part",
+        subject_id: subjectPart,
+        source_type: "therapist_message",
+        source_ref: deliberationId,
+        fact: implicationText,
+        evidence_level: "D2",
+        confidence: 0.85,
+        time_horizon: inputKind === "conclusion" ? "0_14d" : "hours",
+      });
+      await routeObservation(admin, obsId, {
+        subject_type: "part",
+        subject_id: subjectPart,
+        evidence_level: "D2",
+        time_horizon: inputKind === "conclusion" ? "0_14d" : "hours",
+        fact: implicationText,
+      }, inputKind === "conclusion" ? "team_coordination" : "immediate_plan");
+
+      await appendPantryB(admin, {
+        user_id: userId,
+        entry_kind: inputKind,
+        source_kind: "team_deliberation_answer",
+        source_ref: `${deliberationId}:${author}:${fingerprint(text)}`,
+        summary: implicationText,
+        detail: {
+          deliberation_id: deliberationId,
+          deliberation_title: row.title,
+          question,
+          answer: text,
+          program_draft: programDraft,
+          karel_inline_comment: karelComment,
+        },
+        intended_destinations: ["briefing_input", "did_implications", "did_therapist_tasks"],
+        related_part_name: subjectPart,
+        related_therapist: author as "hanka" | "kata",
+      });
+
+      await admin.from("did_team_agreements").insert({
+        user_id: userId,
+        subject_type: "part",
+        subject_id: subjectPart,
+        agreement_text: text,
+        implication_text: implicationText,
+        source_table: "did_team_deliberations",
+        source_record_id: deliberationId,
+        source_detail: { question, author, title: row.title },
+        agreed_by: [author],
+        evidence_level: "D2",
+        priority: inputKind === "plan_change" ? "high" : "normal",
+      });
+    } catch (memoryErr) {
+      console.warn("[delib-iterate] memory write failed (non-fatal):", memoryErr);
+    }
+
     return new Response(JSON.stringify({
       program_draft: programDraft,
       karel_inline_comment: karelComment,
