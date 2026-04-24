@@ -549,6 +549,122 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
     }
   }, [buildContext, detectSwitch, pushHintTrigger, appendToBlockTurns]);
 
+  const readSseText = async (body: ReadableStream<Uint8Array>, onChunk?: (text: string) => void) => {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let out = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf("\n")) !== -1) {
+        let line = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 1);
+        if (line.endsWith("\r")) line = line.slice(0, -1);
+        if (!line.startsWith("data: ")) continue;
+        const json = line.slice(6).trim();
+        if (json === "[DONE]") return out;
+        try {
+          const parsed = JSON.parse(json);
+          const content = parsed.choices?.[0]?.delta?.content;
+          if (content) {
+            out += content;
+            onChunk?.(out);
+          }
+        } catch {
+          buffer = line + "\n" + buffer;
+          break;
+        }
+      }
+    }
+    return out;
+  };
+
+  const executeLiveAction = useCallback(async (
+    action: LiveAction,
+    userMessage: string,
+    ts: string,
+    updatedMessages: Message[],
+    attached?: { index: number; text: string },
+  ): Promise<boolean> => {
+    if (!action) return false;
+    setIsLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const acceptedAt = new Date().toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" });
+
+      if (action === "image_stimulus") {
+        const stimulus = buildTowerStimulusMarkdown();
+        setMessages(prev => [
+          ...prev.map(m => (m.role === "user" && m.ts === ts ? { ...m, acceptedAt, failed: false, errorMsg: undefined } : m)),
+          { role: "assistant", content: stimulus, ts: new Date().toISOString() },
+        ]);
+        if (attached) appendToBlockTurns(attached.index, "", stimulus);
+        toast.success("Karel vložil obrázkový stimul do chatu.");
+        return true;
+      }
+
+      if (action === "drive_read") {
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ partName: activePart, tailLines: 180 }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.content) throw new Error(data?.error || `Drive čtení selhalo HTTP ${res.status}`);
+        const driveNote = `📂 **Drive načteno:** ${data.fileName || `karta ${activePart}`} (${data.totalChars || "?"} znaků).\n\nRelevantní výřez jsem právě přidal do kontextu sezení; teď odpovím podle něj, ne z paměti.`;
+        setMessages(prev => [...prev, { role: "assistant", content: driveNote, ts: new Date().toISOString() }]);
+        const actionHistory: Message[] = [
+          ...updatedMessages,
+          { role: "assistant", content: `${driveNote}\n\n═══ NAČTENÝ OBSAH Z DRIVE ═══\n${String(data.content).slice(0, 9000)}` },
+          { role: "user", content: `Odpověz teď na můj požadavek výše s využitím právě načtené karty/dokumentu. Pokud něco v kartě není, řekni to výslovně. Požadavek: ${userMessage}` },
+        ];
+        return await streamKarelReply(actionHistory, ts, attached);
+      }
+
+      if (action === "internet_search") {
+        let assistantContent = "";
+        setMessages(prev => [...prev, { role: "assistant", content: "🔎 Hledám na internetu…", ts: new Date().toISOString() }]);
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-research`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            query: userMessage,
+            partName: activePart,
+            conversationContext: messages.slice(-8).map(m => `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${m.content}`).join("\n"),
+          }),
+        });
+        if (!res.ok || !res.body) throw new Error(`Internetová rešerše selhala HTTP ${res.status}`);
+        assistantContent = await readSseText(res.body, (content) => {
+          setMessages(prev => {
+            const next = [...prev];
+            const lastIdx = next.length - 1;
+            if (next[lastIdx]?.role === "assistant") next[lastIdx] = { ...next[lastIdx], content };
+            return next;
+          });
+        });
+        if (!assistantContent.trim()) throw new Error("Vyhledávání vrátilo prázdnou odpověď");
+        setMessages(prev => prev.map(m => (m.role === "user" && m.ts === ts ? { ...m, acceptedAt, failed: false, errorMsg: undefined } : m)));
+        if (attached) appendToBlockTurns(attached.index, "", assistantContent);
+        toast.success("Internetová rešerše dokončena.");
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Neznámá chyba";
+      console.error("DID live action failed:", error);
+      setMessages(prev => prev.map(m => (m.role === "user" && m.ts === ts ? { ...m, failed: true, errorMsg: errMsg, acceptedAt: undefined } : m)));
+      toast.error(`Karel akci neprovedl: ${errMsg}`);
+      return true;
+    } finally {
+      setIsLoading(false);
+      textareaRef.current?.focus();
+    }
+  }, [activePart, appendToBlockTurns, messages, readSseText, streamKarelReply]);
+
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
     const userMessage = input.trim();
@@ -587,6 +703,12 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
 
     // Reset výběru bodu po odeslání — terapeut musí explicitně připojit znovu
     setAttachToBlockIdx(null);
+
+    const liveAction = detectLiveAction(userMessage);
+    if (liveAction) {
+      const handled = await executeLiveAction(liveAction, userMessage, ts, updatedMessages, attached);
+      if (handled) return;
+    }
 
     // Připrav historii pro API (BEZ instrumentačních polí, jen role+content)
     const apiHistory: Message[] = updatedMessages.map(m => ({ role: m.role, content: m.content }));
