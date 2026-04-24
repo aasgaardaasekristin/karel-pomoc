@@ -586,6 +586,8 @@ ${context.pending_questions.slice(0, 10).map((q: any) => `- pro ${q.asked_to || 
 NEDÁVNÉ SESSION PLÁNY (3 dny):
 ${context.recent_session_plans.map((p: any) => `- ${p.session_date} | ${p.part_name || "?"} | status: ${p.status}`).join("\n") || "(žádné)"}
 
+${yesterdaySection}
+
 KANDIDÁTI NA DNEŠNÍ SEZENÍ (skórovací heuristika):
 ${candidates.length > 0 ? candidates.slice(0, 5).map((c) => `- ${c.part_name} (skóre ${c.score}): ${c.reasons.join(", ")}`).join("\n") : "(žádní silní kandidáti — proposed_session může být null)"}
 ${toolboxSection}
