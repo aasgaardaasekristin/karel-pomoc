@@ -1,8 +1,9 @@
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { CheckCircle2, Circle, ChevronDown, ChevronRight, ListChecks, Sparkles, Mic, Camera } from "lucide-react";
+import { CheckCircle2, Circle, ChevronDown, ChevronRight, ListChecks, Sparkles, Mic, Camera, FlagOff, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import BlockDiagnosticChat, { type BlockResearch, type DiagTurn, type BlockArtifact } from "./BlockDiagnosticChat";
 
 /**
@@ -280,6 +281,73 @@ const LiveProgramChecklist = ({
 
   const doneCount = items.filter(it => it.done).length;
 
+  // ── Ukončit a vyhodnotit (volá karel-did-session-evaluate) ──
+  // sessionId je v tomto kontextu rovno planId (did_daily_session_plans.id) —
+  // viz DidLiveSessionPanel, který předává `sessionId={planId}`.
+  const [finalizing, setFinalizing] = useState(false);
+  const [finalized, setFinalized] = useState(false);
+
+  const handleEndAndEvaluate = useCallback(async () => {
+    if (finalizing || finalized) return;
+    if (!sessionId) {
+      toast.error("Chybí ID plánu — nelze vyhodnotit (zřejmě ad-hoc sezení).");
+      return;
+    }
+    const incomplete = doneCount < items.length;
+    if (incomplete) {
+      const ok = window.confirm(
+        `Ještě není označeno ${items.length - doneCount} z ${items.length} bodů. Opravdu sezení ukončit a vyhodnotit částečně?`,
+      );
+      if (!ok) return;
+    }
+
+    setFinalizing(true);
+    try {
+      // Sběr per-block turnů a pozorování (turny ukládá BlockDiagnosticChat do localStorage).
+      const turnsByBlock: Record<number, Array<{ from: "karel" | "hana"; text: string }>> = {};
+      const observationsByBlock: Record<number, string> = {};
+      items.forEach((it, idx) => {
+        const turnsKey = `${storageKey}::turns::${idx}`;
+        try {
+          const raw = typeof window !== "undefined" ? window.localStorage.getItem(turnsKey) : null;
+          if (raw) {
+            const parsed = JSON.parse(raw) as DiagTurn[];
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              turnsByBlock[idx] = parsed.map(t => ({ from: t.from, text: t.text }));
+            }
+          }
+        } catch { /* ignore */ }
+        if (it.observation && it.observation.trim().length > 0) {
+          observationsByBlock[idx] = it.observation;
+        }
+      });
+
+      const { data, error } = await supabase.functions.invoke("karel-did-session-evaluate", {
+        body: {
+          planId: sessionId,
+          completedBlocks: doneCount,
+          totalBlocks: items.length,
+          endedReason: incomplete ? "partial" : "completed",
+          turnsByBlock,
+          observationsByBlock,
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.ok === false) throw new Error((data as any)?.error || "Vyhodnocení selhalo.");
+      setFinalized(true);
+      toast.success(
+        incomplete
+          ? "Sezení částečně ukončeno a vyhodnoceno. Karel zahrne shrnutí do zítřejšího přehledu."
+          : "Sezení ukončeno a vyhodnoceno. Karel zahrne shrnutí do zítřejšího přehledu.",
+      );
+    } catch (e: any) {
+      console.error("[LiveProgramChecklist] evaluate failed", e);
+      toast.error(e?.message || "Vyhodnocení selhalo, zkus to znovu.");
+    } finally {
+      setFinalizing(false);
+    }
+  }, [doneCount, finalized, finalizing, items, sessionId, storageKey]);
+
   return (
     <div className="rounded-md border border-primary/25 bg-primary/5">
       <div className="px-3 py-2 border-b border-primary/15 flex items-center justify-between gap-2">
@@ -290,6 +358,21 @@ const LiveProgramChecklist = ({
             {doneCount}/{items.length}
           </Badge>
         </div>
+        <Button
+          size="sm"
+          variant={doneCount >= items.length ? "default" : "outline"}
+          className="h-6 text-[10px] px-2 gap-1"
+          onClick={handleEndAndEvaluate}
+          disabled={finalizing || finalized || items.length === 0}
+          title="Ukončit sezení a nechat Karla vyhodnotit (i částečně)"
+        >
+          {finalizing ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <FlagOff className="w-3 h-3" />
+          )}
+          {finalized ? "Vyhodnoceno" : "Ukončit a vyhodnotit"}
+        </Button>
       </div>
 
       <div className="px-2 py-2 space-y-1.5 max-h-[24rem] overflow-y-auto">

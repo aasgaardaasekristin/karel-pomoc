@@ -7252,6 +7252,62 @@ Vra\u0165 JSON:
       console.warn("[PART-STATUS] Auto-detection failed (non-fatal):", partStatusErr);
     }
 
+    // ═══ PHASE 8A.5 — SESSION EVALUATION SAFETY NET ═══
+    //
+    // Pokud Hana zapomene v Pracovně kliknout „Ukončit a vyhodnotit",
+    // zůstane plán v `did_daily_session_plans` ve stavu `in_progress`
+    // a včerejší sezení se nikdy klinicky nevyhodnotí. Tato fáze
+    // automaticky zavolá karel-did-session-evaluate pro každý plán
+    // starší než 18 hodin, který stále nemá `completed_at`.
+    //
+    // endedReason='auto_safety_net' v evaluatoru:
+    //   - completion_status = 'partial' nebo 'abandoned' (rozhodne AI)
+    //   - markdown obsahuje poznámku, že sezení nebylo manuálně ukončeno
+    //   - Spižírna B + KARTA_<part> dostanou aspoň částečné vyhodnocení,
+    //     aby se to objevilo v dnešním Karlově přehledu (yesterday_session_review).
+    await setPhase("phase_8a5_session_eval_safety_net", "Fáze 8A.5: Safety-net vyhodnocení sezení");
+    try {
+      const cutoffIso = new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString();
+      const { data: stalePlans, error: spErr } = await sb
+        .from("did_daily_session_plans")
+        .select("id, plan_date, selected_part, status, created_at, completed_at")
+        .in("status", ["in_progress", "approved", "active"])
+        .is("completed_at", null)
+        .lt("created_at", cutoffIso)
+        .limit(10);
+      if (spErr) {
+        console.warn("[PHASE_8A5] Failed to query stale plans:", spErr.message);
+      } else {
+        console.log(`[PHASE_8A5] Found ${stalePlans?.length ?? 0} stale plan(s) older than 18h without completion`);
+        for (const plan of stalePlans ?? []) {
+          try {
+            const evalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-did-session-evaluate`;
+            const evalCtl = new AbortController();
+            const evalTo = setTimeout(() => evalCtl.abort(), 60000);
+            const evalRes = await fetch(evalUrl, {
+              method: "POST",
+              signal: evalCtl.signal,
+              headers: {
+                Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                planId: (plan as any).id,
+                endedReason: "auto_safety_net",
+              }),
+            });
+            clearTimeout(evalTo);
+            const okText = evalRes.ok ? "OK" : `HTTP ${evalRes.status}`;
+            console.log(`[PHASE_8A5] Plan ${(plan as any).id} (${(plan as any).selected_part}, ${(plan as any).plan_date}): ${okText}`);
+          } catch (evalErr) {
+            console.warn(`[PHASE_8A5] Evaluator failed for plan ${(plan as any).id}:`, (evalErr as any)?.message ?? evalErr);
+          }
+        }
+      }
+    } catch (safetyErr) {
+      console.warn("[PHASE_8A5] Safety net failed (non-fatal):", safetyErr);
+    }
+
     // ═══ HOURGLASS: PHASE 8B — SPIŽÍRNA B FLUSH (schema-correct, no-silent-loss) ═══
     //
     // Routuje denní implikace z Spižírny B do canonical cílů:

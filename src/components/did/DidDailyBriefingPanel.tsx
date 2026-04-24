@@ -85,10 +85,21 @@ interface ProposedSession {
 interface AskItemObj { id: string; text: string }
 type AskItemRaw = string | AskItemObj;
 
+interface YesterdaySessionReview {
+  held: boolean;
+  part_name?: string;
+  lead?: "Hanička" | "Káťa" | "společně";
+  completion?: "completed" | "partial" | "abandoned";
+  child_focus: string;
+  therapist_note?: string;
+  what_to_carry_forward?: string;
+}
+
 interface BriefingPayload {
   greeting: string;
   last_3_days: string;
   lingering?: string;
+  yesterday_session_review?: YesterdaySessionReview | null;
   decisions: BriefingDecision[];
   proposed_session?: ProposedSession | null;
   ask_hanka: AskItemRaw[];
@@ -663,6 +674,69 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           <p className="text-[13px] leading-relaxed text-foreground/80 mt-2 whitespace-pre-line">
             {p.lingering}
           </p>
+        </>
+      )}
+
+      {/* 3.5 Vyhodnocení včerejšího sezení (sekce mezi „Z dřívějška" a „Návrh sezení") */}
+      {p.yesterday_session_review && p.yesterday_session_review.held && (
+        <>
+          <NarrativeDivider />
+          <SectionHead icon={<Users className="w-3.5 h-3.5 text-primary/70" />}>
+            Vyhodnocení včerejšího sezení
+          </SectionHead>
+          <div className="mt-2 p-3 rounded-lg border border-border/60 bg-card/40 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {p.yesterday_session_review.part_name && (
+                <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">
+                  {p.yesterday_session_review.part_name}
+                </Badge>
+              )}
+              {p.yesterday_session_review.lead && (
+                <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">
+                  vedla {p.yesterday_session_review.lead}
+                </Badge>
+              )}
+              {p.yesterday_session_review.completion && (
+                <Badge
+                  className={`text-[10px] h-5 px-2 border ${
+                    p.yesterday_session_review.completion === "completed"
+                      ? "bg-emerald-500/15 text-emerald-700 border-emerald-500/30"
+                      : p.yesterday_session_review.completion === "partial"
+                      ? "bg-amber-500/15 text-amber-700 border-amber-500/30"
+                      : "bg-destructive/15 text-destructive border-destructive/30"
+                  }`}
+                >
+                  {p.yesterday_session_review.completion === "completed"
+                    ? "Dokončeno"
+                    : p.yesterday_session_review.completion === "partial"
+                    ? "Částečně"
+                    : "Nedokončeno"}
+                </Badge>
+              )}
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Z pohledu části</p>
+              <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line mt-0.5">
+                {p.yesterday_session_review.child_focus}
+              </p>
+            </div>
+            {p.yesterday_session_review.therapist_note && (
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Terapeutka</p>
+                <p className="text-[12px] leading-relaxed text-foreground/75 italic whitespace-pre-line mt-0.5">
+                  {p.yesterday_session_review.therapist_note}
+                </p>
+              </div>
+            )}
+            {p.yesterday_session_review.what_to_carry_forward && (
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Neseme si dál</p>
+                <p className="text-[12px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
+                  {p.yesterday_session_review.what_to_carry_forward}
+                </p>
+              </div>
+            )}
+          </div>
         </>
       )}
 
