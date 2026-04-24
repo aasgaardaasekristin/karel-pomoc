@@ -46,6 +46,97 @@ const daysAgoISO = (n: number): string => {
   return pragueDayISO(d);
 };
 
+const normalizeTherapistLabel = (value: unknown): "Hanička" | "Káťa" | "společně" | undefined => {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (!raw) return undefined;
+  if (raw.includes("spol") || raw.includes("oba") || raw.includes("both")) return "společně";
+  if (raw.includes("han") || raw.includes("hanka")) return "Hanička";
+  if (raw.includes("kat") || raw.includes("káťa") || raw.includes("kata")) return "Káťa";
+  return undefined;
+};
+
+const cleanBlockText = (value: unknown): string =>
+  String(value ?? "")
+    .replace(/\r/g, "")
+    .replace(/^[-*]\s+/gm, "• ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+const extractMarkdownSection = (markdown: string, heading: string): string => {
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = markdown.match(new RegExp(`###\\s+${escaped}\\s*\\n([\\s\\S]*?)(?=\\n###\\s+|$)`, "i"));
+  return cleanBlockText(match?.[1] ?? "");
+};
+
+const extractMarkdownSectionByPrefix = (markdown: string, prefix: string): string => {
+  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = markdown.match(new RegExp(`###\\s+${escaped}[^\\n]*\\n([\\s\\S]*?)(?=\\n###\\s+|$)`, "i"));
+  return cleanBlockText(match?.[1] ?? "");
+};
+
+const mergeUniqueParagraphs = (...chunks: Array<unknown>): string => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const chunk of chunks) {
+    const text = cleanBlockText(chunk);
+    if (!text) continue;
+    for (const paragraph of text.split(/\n\n+/)) {
+      const trimmed = paragraph.trim();
+      if (!trimmed) continue;
+      const key = trimmed.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(trimmed);
+    }
+  }
+  return out.join("\n\n");
+};
+
+function enrichYesterdaySessionReview(payload: any, context: any) {
+  const latestSession = Array.isArray(context?.yesterday_sessions) ? context.yesterday_sessions[0] : null;
+  if (!latestSession) return payload;
+
+  const review = payload?.yesterday_session_review && typeof payload.yesterday_session_review === "object"
+    ? { ...payload.yesterday_session_review }
+    : {};
+
+  const analysis = String(latestSession.ai_analysis ?? "");
+  const sessionArc = extractMarkdownSection(analysis, "Oblouk sezení");
+  const childPerspective = extractMarkdownSectionByPrefix(analysis, "Z pohledu");
+  const keyInsights = extractMarkdownSection(analysis, "Klíčové závěry");
+  const implications = extractMarkdownSection(analysis, "Co z toho plyne pro další postup");
+  const therapistWork = extractMarkdownSection(analysis, "Práce terapeutky");
+
+  payload.yesterday_session_review = {
+    held: true,
+    part_name: String(latestSession.part_name ?? review.part_name ?? "").trim() || undefined,
+    lead: normalizeTherapistLabel(latestSession.therapist ?? review.lead) ?? review.lead,
+    completion: review.completion ?? "partial",
+    karel_summary: mergeUniqueParagraphs(
+      latestSession.karel_notes,
+      sessionArc,
+      childPerspective,
+      review.karel_summary,
+    ),
+    key_finding_about_part: mergeUniqueParagraphs(
+      keyInsights,
+      review.key_finding_about_part,
+    ),
+    implications_for_plan: mergeUniqueParagraphs(
+      latestSession.handoff_note,
+      implications,
+      review.implications_for_plan,
+    ),
+    team_acknowledgement: mergeUniqueParagraphs(
+      latestSession.karel_therapist_feedback,
+      therapistWork,
+      review.team_acknowledgement,
+    ),
+  };
+
+  return payload;
+}
+
 // ───────────────────────────────────────────────────────────
 // HEURISTIKA: skórování kandidátů na dnešní sezení
 // ───────────────────────────────────────────────────────────
