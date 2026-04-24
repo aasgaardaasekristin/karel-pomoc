@@ -7281,6 +7281,17 @@ Vra\u0165 JSON:
         console.log(`[PHASE_8A5] Found ${stalePlans?.length ?? 0} stale plan(s) older than 18h without completion`);
         for (const plan of stalePlans ?? []) {
           try {
+            const { data: liveProgress } = await sb
+              .from("did_live_session_progress")
+              .select("items, turns_by_block, completed_blocks, total_blocks")
+              .eq("plan_id", (plan as any).id)
+              .maybeSingle();
+            const progressItems = Array.isArray((liveProgress as any)?.items) ? (liveProgress as any).items : [];
+            const observationsByBlock = Object.fromEntries(
+              progressItems
+                .map((it: any, idx: number) => [String(idx), String(it?.observation ?? "")])
+                .filter(([, value]: [string, string]) => value.trim().length > 0),
+            );
             const evalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-did-session-evaluate`;
             const evalCtl = new AbortController();
             const evalTo = setTimeout(() => evalCtl.abort(), 60000);
@@ -7294,6 +7305,10 @@ Vra\u0165 JSON:
               body: JSON.stringify({
                 planId: (plan as any).id,
                 endedReason: "auto_safety_net",
+                completedBlocks: (liveProgress as any)?.completed_blocks,
+                totalBlocks: (liveProgress as any)?.total_blocks,
+                turnsByBlock: (liveProgress as any)?.turns_by_block ?? {},
+                observationsByBlock,
               }),
             });
             clearTimeout(evalTo);

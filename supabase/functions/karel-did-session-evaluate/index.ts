@@ -180,6 +180,10 @@ ABSOLUTNÍ PRAVIDLA:
 ANTI-FABRIKACE:
 - Vycházej VÝHRADNĚ z poskytnutého: programu sezení, konverzace per blok, observací,
   karty části. Pokud něco v datech nemáš, napiš "nebylo zaznamenáno", NIKDY nefabrikuj.
+- ABSENCE ZÁZNAMU NENÍ DŮKAZ, ŽE SEZENÍ NEPROBĚHLO. Pokud chybí průběhová data,
+  napiš, že chybí záznam o průběhu / formálním ukončení; nesmíš tvrdit, že sezení
+  bylo sotva začaté, přerušeno nebo neuskutečněno.
+- Pokud většina bodů programu proběhla, completion_status nesmí být abandoned.
 
 TÓN:
 - Kultivovaná čeština. Konkrétně, klinicky, bez patosu.
@@ -306,6 +310,39 @@ function formatThreadMessagesForPrompt(threads: any[], plan: SessionPlan): strin
       messages.slice(-15).map((m) => `${m.role}: ${m.content}`).join("\n");
   }
   return filtered.map((m) => `${m.role}: ${m.content}`).join("\n");
+}
+
+async function loadLiveProgress(sb: any, planId: string) {
+  const { data } = await sb
+    .from("did_live_session_progress")
+    .select("items, turns_by_block, artifacts_by_block, completed_blocks, total_blocks, finalized_reason, last_activity_at")
+    .eq("plan_id", planId)
+    .maybeSingle();
+  return data ?? null;
+}
+
+function hasEvidence(turnsByBlock: Record<string, any[]>, observationsByBlock: Record<string, string>, completedBlocks?: number): boolean {
+  return (completedBlocks ?? 0) > 0 ||
+    Object.values(turnsByBlock || {}).some(v => Array.isArray(v) && v.length > 0) ||
+    Object.values(observationsByBlock || {}).some(v => String(v || "").trim().length > 0);
+}
+
+function sanitizeEvaluation(evaluation: any, endedReason: EndedReason, completedBlocks?: number, totalBlocks?: number) {
+  const ratio = totalBlocks && totalBlocks > 0 ? (completedBlocks ?? 0) / totalBlocks : 0;
+  if (ratio >= 0.5 && evaluation.completion_status === "abandoned") {
+    evaluation.completion_status = ratio >= 0.85 ? "completed" : "partial";
+    evaluation.incomplete_note = evaluation.incomplete_note || "Sezení proběhlo z větší části; nedokončené zůstaly jen některé body programu.";
+  }
+  if (endedReason === "auto_safety_net" && ratio === 0) {
+    const forbidden = /(neuskutečn|sotva zač|hned v úvodu|okamžitě přeruš|nebylo možné realizovat|vůbec zahájit)/i;
+    for (const key of ["incomplete_note", "session_arc", "child_perspective", "recommended_next_step"]) {
+      if (typeof evaluation[key] === "string" && forbidden.test(evaluation[key])) {
+        evaluation[key] = "Sezení nebylo formálně uzavřeno a v backendu není dost průběhových dat pro spolehlivý klinický závěr. Nelze z toho usuzovat, že sezení neproběhlo; je potřeba doplnit ruční záznam terapeutky.";
+      }
+    }
+    if (evaluation.completion_status === "abandoned") evaluation.completion_status = "partial";
+  }
+  return evaluation;
 }
 
 async function callAi(prompt: string, apiKey: string): Promise<any> {
@@ -605,14 +642,28 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const completedBlocks = typeof body?.completedBlocks === "number" ? body.completedBlocks : undefined;
-    const totalBlocks = typeof body?.totalBlocks === "number" ? body.totalBlocks : undefined;
+    let completedBlocks = typeof body?.completedBlocks === "number" ? body.completedBlocks : undefined;
+    let totalBlocks = typeof body?.totalBlocks === "number" ? body.totalBlocks : undefined;
     const endedReason: EndedReason = body?.endedReason ?? "completed";
-    const turnsByBlock = (body?.turnsByBlock ?? {}) as Record<string, any[]>;
-    const observationsByBlock = (body?.observationsByBlock ?? {}) as Record<string, string>;
+    let turnsByBlock = (body?.turnsByBlock ?? {}) as Record<string, any[]>;
+    let observationsByBlock = (body?.observationsByBlock ?? {}) as Record<string, string>;
     const force = body?.force === true;
 
     const ctx = await loadContext(sb, planId);
+    const liveProgress = await loadLiveProgress(sb, planId);
+    if (liveProgress) {
+      completedBlocks = completedBlocks ?? liveProgress.completed_blocks ?? undefined;
+      totalBlocks = totalBlocks ?? liveProgress.total_blocks ?? undefined;
+      if (!hasEvidence(turnsByBlock, observationsByBlock, completedBlocks)) {
+        turnsByBlock = (liveProgress.turns_by_block ?? {}) as Record<string, any[]>;
+        const items = Array.isArray(liveProgress.items) ? liveProgress.items : [];
+        observationsByBlock = Object.fromEntries(
+          items
+            .map((it: any, idx: number): [string, string] => [String(idx), String(it?.observation ?? "")])
+            .filter((entry: [string, string]) => entry[1].trim().length > 0),
+        );
+      }
+    }
 
     // Idempotence guard — pokud už evaluováno a NE force, vrať existující.
     if (
@@ -632,6 +683,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const evidencePresent = hasEvidence(turnsByBlock, observationsByBlock, completedBlocks);
     const blockTranscript = formatBlockTurnsForPrompt(turnsByBlock, observationsByBlock);
     const threadTranscript = formatThreadMessagesForPrompt(ctx.threads, ctx.plan);
 
@@ -652,6 +704,7 @@ Datum: ${ctx.plan.plan_date}
 Vede: ${ctx.plan.session_lead || ctx.plan.therapist}
 Důvod ukončení: ${endedReason}
 ${blockSummary}
+Evidence status: ${evidencePresent ? "průběhová data jsou k dispozici" : "chybí průběhová data; NESMÍŠ z toho vyvodit, že sezení neproběhlo"}
 
 ${partInfo}
 
@@ -668,11 +721,13 @@ ${threadTranscript}
 ÚKOL:
 Vyhodnoť toto sezení. Drž se pravidel ze system promptu.
 - Pokud sezení nebylo dokončené, completion_status='partial' nebo 'abandoned' a v incomplete_note popiš co se nestihlo.
+- Pokud chybí průběhová data, nepiš, že sezení bylo sotva začaté/neuskutečněné; napiš jen, že chybí dostatečný záznam.
+- Pokud proběhla alespoň polovina bodů, completion_status nesmí být 'abandoned'.
 - HLAVNÍ VRSTVA = child_perspective (4-7 vět, konkrétně, pro Tundrupka / příslušnou část).
 - Therapist_motivation drž stručné (1-2 věty).
 - Vrať VÝHRADNĚ tool call emit_session_evaluation.`;
 
-    const evaluation = await callAi(prompt, apiKey);
+    const evaluation = sanitizeEvaluation(await callAi(prompt, apiKey), endedReason, completedBlocks, totalBlocks);
     const markdown = renderEvaluationMarkdown(evaluation, ctx.plan, endedReason, completedBlocks, totalBlocks);
 
     const targets = await persistEvaluation(
