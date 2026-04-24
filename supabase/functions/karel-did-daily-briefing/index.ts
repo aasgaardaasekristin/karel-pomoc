@@ -842,7 +842,8 @@ Deno.serve(async (req) => {
     const context = await gatherContext(supabase);
 
     // 3) AI generování
-    const { payload, durationMs } = await generateBriefing(context, candidates, apiKey);
+    const { payload: rawPayload, durationMs } = await generateBriefing(context, candidates, apiKey);
+    const payload = enrichYesterdaySessionReview(rawPayload, context);
 
     // 3b) ── ASK ITEM IDENTITY ──
     // AI vrací ask_hanka/ask_kata jako string[]. Server přidá stabilní `id` na
