@@ -1,138 +1,113 @@
-## Co jsem zjistil
+Zjistil jsem hlavní příčiny. Nejde o jednu chybu, ale o nesoulad mezi tím, co Karlovy instrukce slibují, a tím, jak jsou živá sezení technicky zapojená.
 
-Karel už má základ profesionální vrstvy, ale je nedostatečný pro skutečně odbornou diagnostickou práci.
+## Co je teď špatně
 
-Aktuálně existuje:
-- knihovna metod `karel_method_library`, ale jen s 9 stručnými seed manuály;
-- pevné `clinicalPlaybooks.ts` pro Jungův asociační experiment, kresbu postavy, strom, HTP, KFD, CAT/TAT styl, sandtray, body map a bezpečné místo;
-- živý bod sezení používá `karel-block-research` a `karel-block-followup`, takže Karel umí vést protokol krok za krokem;
-- u asociačního experimentu se už 7× načetl manuál z knihovny a historie ukazuje 2 uzavřená použití.
+1. Živé sezení volá Karla v režimu `supervision`, který má záměrně rychlou cestu bez těžkých operací. V kódu je výslovně uvedeno, že pro `supervision` a `live-session` se přeskakuje Drive, Perplexity/internet i úkoly. Proto když terapeut během sezení řekne „najdi na internetu Emma Tustin“, model nemá žádný nástroj, kterým by to v tom běhu provedl. Výsledkem je verbální „výmluva“ nebo přeformulování úkolu.
 
-Hlavní problém:
-- Karel má protokoly pro vedení metody, ale nemá stejně pevný protokol pro profesionální vyhodnocení výsledků.
-- Asociační experiment vyžaduje latence, verbatim odpovědi, afekt, neverbální projevy, perseverace, reprodukční kontrolu atd. Karel je sice umí vyžadovat, ale post-session evaluace je nevyhodnocuje podle samostatného skórovacího rámce.
-- `karel-did-session-evaluate` ukládá obecné `methods_effectiveness`, ale nevyrobí strukturovaný diagnostický nález typu: stimulus → odpověď → latence → marker komplexu → interpretace → míra jistoty → co ověřit příště.
-- Analýza obrázků (`karel-analyze-file`) je zatím obecná: „popiš co vidíš, navrhni doporučení“. Není napojená na konkrétní kresbové manuály a nevyžaduje standardizovaný záznam umístění, velikosti, pořadí kreslení, vynechaných částí, inquiry atd.
-- ROR/Rorschach v systému reálně není implementovaný jako protokol. Je pouze zmíněn jako zdrojový kontext u Jungova experimentu. To znamená: Karel by teď neměl předstírat plnohodnotné ROR vyhodnocení.
-- Vývojová diagnostika dítěte je zmíněná jen okrajově (např. Goodenough-Harris u kresby postavy), ale není z ní samostatná vývojová osa.
+2. Ad-hoc internetová rešerše existuje mimo živé sezení (`karel-did-research`) a bloková metodická rešerše existuje pro plánované body (`karel-block-research`). Ale hlavní chat v živém sezení nemá automatický router, který by rozpoznal „vyhledej / najdi na internetu / ověř“ a zavolal rešeršní funkci.
 
-## Návrh opravy
+3. Drive čtení existuje (`karel-did-drive-read`) a umí najít kartu části podle `partName`, ale živý chat si kartu během odpovědi dynamicky nenačítá. Dostává jen předem poslaný kontext (`contextBrief` / `didInitialContext`) a ten je oříznutý. Pokud se v průběhu sezení ukáže, že je potřeba karta nebo konkrétní dokument, Karel si ji neumí v tom samém kroku vyžádat a načíst.
 
-### 1. Zavést „diagnostický důkazní protokol“
+4. Karel plánuje „pošlu obrázek do chatu“, ale v aplikaci není funkce, která by v živém sezení obrázek skutečně vygenerovala nebo vložila jako zprávu. Existuje upload a analýza obrázků od terapeutky, ne Karlovo odesílání obrázkových stimulů. Proto model slíbí klinicky smysluplný postup, ale technicky ho nemá jak splnit; potom začne couvat („obrázek není nutný“).
 
-Doplnit nový jednotný datový rámec pro každou diagnostickou metodu:
+5. Některé instrukce v promptu jsou deklaratorní („máš přímý přístup k Drive“, „prostuduj kartu“), ale bez skutečného tool-call mechanismu. To je nebezpečné: model pak věří, že přístup má, ale reálně nedošlo k žádnému načtení. Potřebujeme z toho udělat explicitní pracovní protokol: pokud požadavek vyžaduje internet/Drive/obrázek, Karel nesmí odpovědět klinicky, dokud příslušná akce neproběhne nebo selhání není transparentně ukázané.
+
+## Oprava: zavést „akční router“ pro živé sezení
+
+Implementuji mezivrstvu před běžnou Karlovou odpovědí v `DidLiveSessionPanel` / backendu:
 
 ```text
-Metoda
-  → požadované vstupy
-  → povinné artefakty
-  → měřené proměnné
-  → skórovací / interpretační osa
-  → limity validity
-  → diferenciální vysvětlení
-  → závěr s mírou jistoty
-  → co ověřit příště
+Terapeutův vstup
+   ↓
+Live Action Router
+   ├─ internet_search  → karel-did-research / nový stručný live-search endpoint
+   ├─ drive_read       → karel-did-drive-read(partName/documents)
+   ├─ image_stimulus   → nový endpoint pro vytvoření nebo výběr obrázkového stimulu
+   └─ normal_reply     → běžná Karlova odpověď
+   ↓
+Karel odpoví až s reálným výsledkem akce v kontextu
 ```
 
-Karel potom nebude smět říct „z toho plyne X“, pokud v datech chybí povinný vstup.
+## Konkrétní změny
 
-Příklad u asociačního experimentu:
-- bez latencí nesmí hodnotit komplexy podle latence;
-- bez verbatim odpovědí nesmí analyzovat obsah odpovědí;
-- bez reprodukční kontroly nesmí mluvit o reprodukčních chybách;
-- pokud je záznam neúplný, musí výslovně napsat: „validita omezená, chybí…“.
+### 1. Rozpoznávání přímých požadavků terapeuta
+V živém sezení zachytím formulace typu:
+- „najdi na internetu“, „vyhledej“, „ověř“, „kdo je Emma Tustin“
+- „načti kartu“, „podívej se do karty“, „najdi na Drive“, „co je v dokumentu“
+- „pošli obrázek“, „ukaž mu obrázek“, „dej obrázek věže/skvrny/dveří“
 
-### 2. Přidat samostatnou funkci pro profesionální analýzu metody
+Tyto požadavky nepůjdou do obyčejného promptu jako text, ale spustí odpovídající backend akci.
 
-Vytvořit backend funkci `karel-method-analysis`, která nebude jen „obecně hodnotit sezení“, ale vyhodnotí konkrétní diagnostický materiál.
+### 2. Internet během sezení
+Přidám live internet rešerši:
+- dotaz typu „Emma Tustin“ se opravdu odešle do vyhledávání,
+- výsledek se vloží do chatu jako Karlova odpověď s označením „nalezeno / zdroje / klinický význam pro asociaci“,
+- následná odpověď Karla bude muset navázat na faktické výsledky, ne improvizovat.
 
-Pro Jungův asociační experiment bude výstup strukturovaný například:
+Důležité: pro citlivá fakta bude Karel povinně oddělovat:
+- co bylo nalezeno ve zdrojích,
+- co Arthur řekl,
+- jaká je klinická hypotéza,
+- co nelze uzavřít.
 
-```text
-1. Kvalita dat
-2. Tabulka stimulů
-   - stimul
-   - odpověď
-   - latence
-   - afekt
-   - neverbální reakce
-   - marker: normální / komplexový / vyhýbavý / trauma signál
-3. Komplexové clustery
-4. Trauma-informed interpretace
-5. Vývojová přiměřenost odpovědí
-6. Alternativní vysvětlení
-7. Klinický závěr s jistotou
-8. Doporučení pro další sezení
-```
+### 3. Drive a karty částí během sezení
+Napojím živé sezení na existující čtení Drive:
+- když terapeut požádá o kartu části, zavolá se `karel-did-drive-read` s `partName`,
+- výsledek se vloží do kontextu daného sezení,
+- Karel odpoví až po načtení karty,
+- pokud karta není nalezena, řekne konkrétní technické selhání, ne „výmluvu“.
 
-Tato analýza se uloží zpět do `did_part_sessions`, Pantry B a do historie metody.
+Současně doplním auditní stopu do průběhu sezení: „načtena karta Arthur / dokument X / výsledek Y znaků“.
 
-### 3. Rozšířit knihovnu manuálů
+### 4. Obrázky/slíbené stimuly
+Zavedu bezpečný mechanismus pro Karlovy obrázkové stimuly:
 
-Doplnit seed manuály a playbooky pro:
+Varianta A — rychlá a stabilní:
+- Karel neposílá generovaný obrázek, ale vybere předpřipravený stimul z interní sady: osamělá věž, tři dveře, cesta lesem, dům v krajině, abstraktní skvrna apod.
+- UI vloží do chatu vizuální kartu stimulu.
 
-- asociační experiment: oddělit vedení testu od vyhodnocení;
-- vývojovou diagnostiku dítěte: jazyk, kognitivní úroveň, hra, emoční regulace, sociální reciprocita, symbolizace, kresba podle vývoje;
-- kresbové metody: Goodenough-Harris vývojová osa, Machover opatrně jako projektivní hypotézy, KFD/HTP/Koch s limity validity;
-- ROR/Rorschach pouze jako „neadministrovat plný standardizovaný Rorschach bez licencovaného psychologa a kompletního protokolu“. Karel může maximálně připravit bezpečný projektivní inkblot-like rozhovor, ale musí jej označit jako nestandardizovaný, ne jako ROR skórování.
+Varianta B — plnohodnotná:
+- backend vygeneruje obrázek přes podporovaný obrazový model,
+- uloží ho do úložiště,
+- vloží do chatu jako obrázkovou zprávu.
 
-Tím se předejde tomu, aby Karel působil odborně, ale ve skutečnosti improvizoval.
+Navrhnu začít variantou A, protože je levnější, rychlejší, reprodukovatelná a klinicky bezpečnější. Karel už pak nesmí říct „pošlu obrázek“, pokud obrazový stimul skutečně nevloží do chatu.
 
-### 4. Zpřísnit prompt v živém vedení bodu
+### 5. Zákaz falešných slibů v promptu
+Upravím prompt pro živé sezení:
+- Karel nesmí tvrdit, že něco vyhledal, načetl nebo poslal, pokud akce neproběhla.
+- Pokud požadavek vyžaduje nástroj, musí odpověď začít provedením nástroje nebo transparentním selháním.
+- „Obrázek není nutný“ nesmí být použito jako únik, pokud sám Karel obrázek naplánoval nebo ho terapeut výslovně vyžádal.
 
-U `karel-block-followup` doplnit pravidla:
-- Karel musí během sezení hlídat, zda Hana/Káťa skutečně zapisují data potřebná k pozdější analýze;
-- pokud chybí latence/verbatim/foto/audio, musí terapeutku ihned zastavit a požádat o doplnění;
-- nesmí posunout protokol do `done`, pokud chybí minimální data pro validní analýzu, ledaže výslovně označí výstup jako „nevalidní / pouze orientační“.
+### 6. Persistování do záznamu sezení
+Všechny tyto akce se propíšou do `did_live_session_progress` / vyhodnocení sezení:
+- internetová rešerše včetně dotazu a zdrojů,
+- Drive čtení včetně názvu dokumentu,
+- vložený obrázkový stimul,
+- klinická návaznost na výsledek.
 
-### 5. Zpřísnit analýzu obrázků a audia
+Tím se další ranní přehled a následné vyhodnocení nebudou tvářit, že se nic nestalo.
 
-U `karel-analyze-file` a `karel-audio-analysis` doplnit režim `diagnostic_method`:
-- pokud jde o kresbu, Karel nejdřív načte odpovídající manuál/playbook;
-- odpověď bude rozlišovat „popis viditelného“ vs. „opatrná hypotéza“ vs. „nelze určit“;
-- nebude dělat diagnostické závěry bez kontextu, post-drawing inquiry a vývojového věku;
-- bude vyžadovat doplňující data: pořadí kreslení, instrukci, zda byla guma, formát papíru, věk části, verbatim komentáře.
+## Technická místa zásahu
 
-### 6. Upravit závěrečné vyhodnocení sezení
+- `src/components/did/DidLiveSessionPanel.tsx` — zachytit přímé požadavky terapeuta a místo běžného chatu spustit action router.
+- `supabase/functions/karel-chat/index.ts` — opravit režim živého DID sezení, aby nepoužíval `supervision` fast-path bez Drive/internetu, nebo mu přidat výslovné action pre-processing.
+- `supabase/functions/karel-did-research/index.ts` — doplnit stručný live režim pro konkrétní faktografické dotazy typu „Emma Tustin“.
+- `supabase/functions/karel-did-drive-read/index.ts` — použít existující `partName` režim přímo z live sezení.
+- Nově: `supabase/functions/karel-live-stimulus-image` nebo interní knihovna stimulů — vložení obrázku/stimulu do chatu.
+- `supabase/functions/karel-did-session-evaluate/index.ts` — zahrnout action logy do vyhodnocení.
 
-`karel-did-session-evaluate` má po dokončení sezení:
-- rozpoznat použité metody podle `method_id`;
-- pro každou metodu zavolat/integrovat `karel-method-analysis`;
-- do výsledného vyhodnocení vložit oddíl „Diagnostická validita“;
-- jasně oddělit:
-  - co je doložený nález,
-  - co je hypotéza,
-  - co je doporučení,
-  - co chybí pro profesionální závěr.
+## Jak ověřím opravu
 
-### 7. UI doplněk pro terapeutku
+Otestuji tři scénáře:
 
-V živém bodu sezení doplnit malý kontrolní checklist „Pro validní analýzu chybí“:
-- verbatim odpovědi;
-- latence;
-- afekt/neverbální reakce;
-- foto kresby;
-- audio;
-- post-test inquiry;
-- reprodukční kontrola.
+1. Terapeut napíše: „Najdi prosím na internetu Emma Tustin a vysvětli souvislost s Arthurovou asociací.“
+   - očekávání: proběhne skutečné vyhledání, odpověď obsahuje zdroje a klinickou interpretaci.
 
-Cíl: Hana/Káťa hned uvidí, proč by pozdější Karlova analýza nebyla profesionální.
+2. Terapeut napíše: „Načti si Arthurovu kartu a zohledni ji.“
+   - očekávání: aplikace zavolá Drive čtení, Karel řekne, co z karty použil.
 
-## Technické kroky
+3. Terapeut napíše: „Pošli obrázek osamělé věže, jak jsi slíbil.“
+   - očekávání: do chatu se vloží obrázkový stimul nebo vizuální karta; Karel nepřehodí odpověď na „není nutné“.
 
-1. Rozšířit `clinicalPlaybooks.ts` o analytické sekce a validitu vstupů.
-2. Rozšířit seed `karel-method-library-seed` o nové/hlubší manuály.
-3. Vytvořit backend funkci `karel-method-analysis` se strukturovaným tool-calling výstupem.
-4. Napojit `karel-block-followup` na povinné měřené proměnné a blokaci falešného `done`.
-5. Napojit `karel-did-session-evaluate` na metodu‑po‑metodě diagnostickou analýzu.
-6. Upravit `karel-analyze-file` a `karel-audio-analysis` pro diagnostické artefakty.
-7. Upravit `BlockDiagnosticChat` / `LiveProgramChecklist`, aby UI zobrazovalo chybějící diagnostická data.
-8. Doplnit testy na:
-   - asociační test bez latencí → výstup musí říct „nelze validně hodnotit latence“;
-   - ROR dotaz → Karel nesmí předstírat standardizované Rorschach skórování;
-   - kresba bez inquiry → Karel musí označit závěr jako omezený;
-   - kompletní asociační protokol → Karel vyrobí tabulkovou profesionální analýzu.
-
-## Bezpečnostní / klinické pravidlo
-
-Karel může být výborný supervizní a interpretační nástroj, ale nesmí předstírat standardizovanou psychodiagnostiku tam, kde nejsou splněny podmínky administrace, skórování a licence. Oprava tedy nebude jen „aby byl sebevědomější“, ale hlavně aby byl odbornější: bude přesnější, opatrnější, důkazní a transparentní v limitech.
+Výsledkem bude, že Karel nebude jen „mluvit o přístupu“ k internetu/Drive/obrázkům, ale bude mít skutečný vykonávací mechanismus a auditní stopu.
