@@ -38,6 +38,22 @@ type Message = {
   attachedBlockText?: string;  // krátký label bodu pro UI
 };
 
+type LiveAction = "internet_search" | "drive_read" | "image_stimulus" | null;
+
+const detectLiveAction = (text: string): LiveAction => {
+  const t = text.toLowerCase();
+  if (/(pošli|posli|ukaž|ukaz|dej|vlož|vloz|zobraz).{0,40}(obrázek|obrazek|stimul|skvrn|věž|vez|dveř|dver|cest|les|dům|dum)/i.test(t)) return "image_stimulus";
+  if (/(najdi|vyhledej|dohledej|ověř|over|prohledej|internet|googl|kdo je|co je).{0,80}(internet|web|online|zdroj|emma|tustin|článek|clanek|studie|google)|\bemma\s+tustin\b/i.test(t)) return "internet_search";
+  if (/(načti|nacti|přečti|precti|podívej|podivej|najdi|otevři|otevri).{0,60}(drive|kartu|kartě|karte|kartot|dokument|soubor)/i.test(t)) return "drive_read";
+  return null;
+};
+
+const buildTowerStimulusMarkdown = () => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560"><defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d8e3e7"/><stop offset="1" stop-color="#f2eadb"/></linearGradient><linearGradient id="hill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8fa184"/><stop offset="1" stop-color="#5d6f5a"/></linearGradient></defs><rect width="900" height="560" fill="url(#sky)"/><path d="M0 390 C170 330 270 365 410 330 C575 288 690 330 900 285 L900 560 L0 560 Z" fill="url(#hill)"/><path d="M520 128 L642 128 L662 410 L500 410 Z" fill="#6f6a5d"/><path d="M500 128 L581 64 L662 128 Z" fill="#4f4a43"/><rect x="556" y="319" width="46" height="91" rx="20" fill="#2d2b28"/><rect x="548" y="176" width="24" height="52" rx="12" fill="#d6d0bd"/><rect x="611" y="176" width="24" height="52" rx="12" fill="#d6d0bd"/><path d="M120 438 C205 410 286 417 354 392" stroke="#3f4b3d" stroke-width="10" fill="none" opacity=".45"/><circle cx="188" cy="304" r="34" fill="#69785f" opacity=".75"/><rect x="182" y="324" width="12" height="94" fill="#4b3c31" opacity=".65"/><path d="M0 455 C145 430 270 462 410 436 C588 405 724 438 900 398 L900 560 L0 560 Z" fill="#d8c8a8" opacity=".45"/></svg>`;
+  const url = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  return `🖼️ **Obrázkový stimul pro vyprávění**\n\n![Osamělá věž v krajině](${url})\n\nHani, obrázek jsem vložil do chatu. Řekni Arthurovi přesně: „Podívej se na tu věž a vymysli krátký příběh: kdo v ní bydlí, co se stalo předtím a co se stane dál?“\n\nZapiš prosím verbatim odpověď, pauzy, afekt a zda se objeví motiv izolace, ochrany, uvěznění nebo útěku.`;
+};
+
 const formatDuration = (seconds: number) => {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
