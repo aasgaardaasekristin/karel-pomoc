@@ -181,6 +181,25 @@ const extractNotebookLMSection = (content: string): string | null => {
 const ChatMessage = ({ message, onNotebookCopied, onTaskAdded }: ChatMessageProps) => {
   const isUser = message.role === "user";
 
+  const renderInlineImageStimuli = (content: string) => {
+    const imageRe = /!\[([^\]]*)\]\((data:image\/svg\+xml;[^)]+)\)/g;
+    const images = Array.from(content.matchAll(imageRe));
+    if (images.length === 0) return null;
+    return (
+      <div className="mb-2 space-y-2">
+        {images.map((m, i) => (
+          <img
+            key={`${m[1]}-${i}`}
+            src={m[2]}
+            alt={m[1] || "Karlův obrázkový stimul"}
+            className="w-full max-w-[28rem] rounded-md border border-border/60 object-cover"
+            loading="lazy"
+          />
+        ))}
+      </div>
+    );
+  };
+
   if (isUser) {
     const images: string[] = [];
     let textContent = "";
@@ -224,10 +243,12 @@ const ChatMessage = ({ message, onNotebookCopied, onTaskAdded }: ChatMessageProp
 
   if (sections.length === 0) {
     const notebookSection = extractNotebookLMSection(contentWithoutTasks);
+    const contentForMarkdown = contentWithoutTasks.replace(/!\[[^\]]*\]\(data:image\/svg\+xml;[^)]+\)/g, "").trim();
     return (
       <div className="flex justify-start">
         <div className="max-w-[92%] sm:max-w-[85%] md:max-w-[75%] chat-message-assistant">
-          <RichMarkdown>{contentWithoutTasks}</RichMarkdown>
+          {renderInlineImageStimuli(contentWithoutTasks)}
+          {contentForMarkdown && <RichMarkdown>{contentForMarkdown}</RichMarkdown>}
           {notebookSection && <CopyButton text={notebookSection} label="Kopírovat pro NotebookLM" />}
           <TaskSuggestInline suggestions={taskSuggestions} onTaskAdded={onTaskAdded} />
         </div>

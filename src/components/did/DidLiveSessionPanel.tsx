@@ -38,6 +38,22 @@ type Message = {
   attachedBlockText?: string;  // krátký label bodu pro UI
 };
 
+type LiveAction = "internet_search" | "drive_read" | "image_stimulus" | null;
+
+const detectLiveAction = (text: string): LiveAction => {
+  const t = text.toLowerCase();
+  if (/(pošli|posli|ukaž|ukaz|dej|vlož|vloz|zobraz).{0,40}(obrázek|obrazek|stimul|skvrn|věž|vez|dveř|dver|cest|les|dům|dum)/i.test(t)) return "image_stimulus";
+  if (/(najdi|vyhledej|dohledej|ověř|over|prohledej|internet|googl|kdo je|co je).{0,80}(internet|web|online|zdroj|emma|tustin|článek|clanek|studie|google)|\bemma\s+tustin\b/i.test(t)) return "internet_search";
+  if (/(načti|nacti|přečti|precti|podívej|podivej|najdi|otevři|otevri).{0,60}(drive|kartu|kartě|karte|kartot|dokument|soubor)/i.test(t)) return "drive_read";
+  return null;
+};
+
+const buildTowerStimulusMarkdown = () => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560"><defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d8e3e7"/><stop offset="1" stop-color="#f2eadb"/></linearGradient><linearGradient id="hill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8fa184"/><stop offset="1" stop-color="#5d6f5a"/></linearGradient></defs><rect width="900" height="560" fill="url(#sky)"/><path d="M0 390 C170 330 270 365 410 330 C575 288 690 330 900 285 L900 560 L0 560 Z" fill="url(#hill)"/><path d="M520 128 L642 128 L662 410 L500 410 Z" fill="#6f6a5d"/><path d="M500 128 L581 64 L662 128 Z" fill="#4f4a43"/><rect x="556" y="319" width="46" height="91" rx="20" fill="#2d2b28"/><rect x="548" y="176" width="24" height="52" rx="12" fill="#d6d0bd"/><rect x="611" y="176" width="24" height="52" rx="12" fill="#d6d0bd"/><path d="M120 438 C205 410 286 417 354 392" stroke="#3f4b3d" stroke-width="10" fill="none" opacity=".45"/><circle cx="188" cy="304" r="34" fill="#69785f" opacity=".75"/><rect x="182" y="324" width="12" height="94" fill="#4b3c31" opacity=".65"/><path d="M0 455 C145 430 270 462 410 436 C588 405 724 438 900 398 L900 560 L0 560 Z" fill="#d8c8a8" opacity=".45"/></svg>`;
+  const url = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  return `🖼️ **Obrázkový stimul pro vyprávění**\n\n![Osamělá věž v krajině](${url})\n\nHani, obrázek jsem vložil do chatu. Řekni Arthurovi přesně: „Podívej se na tu věž a vymysli krátký příběh: kdo v ní bydlí, co se stalo předtím a co se stane dál?“\n\nZapiš prosím verbatim odpověď, pauzy, afekt a zda se objeví motiv izolace, ochrany, uvěznění nebo útěku.`;
+};
+
 const formatDuration = (seconds: number) => {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -533,6 +549,122 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
     }
   }, [buildContext, detectSwitch, pushHintTrigger, appendToBlockTurns]);
 
+  const readSseText = async (body: ReadableStream<Uint8Array>, onChunk?: (text: string) => void) => {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let out = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf("\n")) !== -1) {
+        let line = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 1);
+        if (line.endsWith("\r")) line = line.slice(0, -1);
+        if (!line.startsWith("data: ")) continue;
+        const json = line.slice(6).trim();
+        if (json === "[DONE]") return out;
+        try {
+          const parsed = JSON.parse(json);
+          const content = parsed.choices?.[0]?.delta?.content;
+          if (content) {
+            out += content;
+            onChunk?.(out);
+          }
+        } catch {
+          buffer = line + "\n" + buffer;
+          break;
+        }
+      }
+    }
+    return out;
+  };
+
+  const executeLiveAction = useCallback(async (
+    action: LiveAction,
+    userMessage: string,
+    ts: string,
+    updatedMessages: Message[],
+    attached?: { index: number; text: string },
+  ): Promise<boolean> => {
+    if (!action) return false;
+    setIsLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const acceptedAt = new Date().toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" });
+
+      if (action === "image_stimulus") {
+        const stimulus = buildTowerStimulusMarkdown();
+        setMessages(prev => [
+          ...prev.map(m => (m.role === "user" && m.ts === ts ? { ...m, acceptedAt, failed: false, errorMsg: undefined } : m)),
+          { role: "assistant", content: stimulus, ts: new Date().toISOString() },
+        ]);
+        if (attached) appendToBlockTurns(attached.index, "", stimulus);
+        toast.success("Karel vložil obrázkový stimul do chatu.");
+        return true;
+      }
+
+      if (action === "drive_read") {
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ partName: activePart, tailLines: 180 }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.content) throw new Error(data?.error || `Drive čtení selhalo HTTP ${res.status}`);
+        const driveNote = `📂 **Drive načteno:** ${data.fileName || `karta ${activePart}`} (${data.totalChars || "?"} znaků).\n\nRelevantní výřez jsem právě přidal do kontextu sezení; teď odpovím podle něj, ne z paměti.`;
+        setMessages(prev => [...prev, { role: "assistant", content: driveNote, ts: new Date().toISOString() }]);
+        const actionHistory: Message[] = [
+          ...updatedMessages,
+          { role: "assistant", content: `${driveNote}\n\n═══ NAČTENÝ OBSAH Z DRIVE ═══\n${String(data.content).slice(0, 9000)}` },
+          { role: "user", content: `Odpověz teď na můj požadavek výše s využitím právě načtené karty/dokumentu. Pokud něco v kartě není, řekni to výslovně. Požadavek: ${userMessage}` },
+        ];
+        return await streamKarelReply(actionHistory, ts, attached);
+      }
+
+      if (action === "internet_search") {
+        let assistantContent = "";
+        setMessages(prev => [...prev, { role: "assistant", content: "🔎 Hledám na internetu…", ts: new Date().toISOString() }]);
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-research`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            query: userMessage,
+            partName: activePart,
+            conversationContext: messages.slice(-8).map(m => `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${m.content}`).join("\n"),
+          }),
+        });
+        if (!res.ok || !res.body) throw new Error(`Internetová rešerše selhala HTTP ${res.status}`);
+        assistantContent = await readSseText(res.body, (content) => {
+          setMessages(prev => {
+            const next = [...prev];
+            const lastIdx = next.length - 1;
+            if (next[lastIdx]?.role === "assistant") next[lastIdx] = { ...next[lastIdx], content };
+            return next;
+          });
+        });
+        if (!assistantContent.trim()) throw new Error("Vyhledávání vrátilo prázdnou odpověď");
+        setMessages(prev => prev.map(m => (m.role === "user" && m.ts === ts ? { ...m, acceptedAt, failed: false, errorMsg: undefined } : m)));
+        if (attached) appendToBlockTurns(attached.index, "", assistantContent);
+        toast.success("Internetová rešerše dokončena.");
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Neznámá chyba";
+      console.error("DID live action failed:", error);
+      setMessages(prev => prev.map(m => (m.role === "user" && m.ts === ts ? { ...m, failed: true, errorMsg: errMsg, acceptedAt: undefined } : m)));
+      toast.error(`Karel akci neprovedl: ${errMsg}`);
+      return true;
+    } finally {
+      setIsLoading(false);
+      textareaRef.current?.focus();
+    }
+  }, [activePart, appendToBlockTurns, messages, readSseText, streamKarelReply]);
+
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
     const userMessage = input.trim();
@@ -571,6 +703,12 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
 
     // Reset výběru bodu po odeslání — terapeut musí explicitně připojit znovu
     setAttachToBlockIdx(null);
+
+    const liveAction = detectLiveAction(userMessage);
+    if (liveAction) {
+      const handled = await executeLiveAction(liveAction, userMessage, ts, updatedMessages, attached);
+      if (handled) return;
+    }
 
     // Připrav historii pro API (BEZ instrumentačních polí, jen role+content)
     const apiHistory: Message[] = updatedMessages.map(m => ({ role: m.role, content: m.content }));
