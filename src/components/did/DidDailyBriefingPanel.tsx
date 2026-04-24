@@ -90,9 +90,14 @@ interface YesterdaySessionReview {
   part_name?: string;
   lead?: "Hanička" | "Káťa" | "společně";
   completion?: "completed" | "partial" | "abandoned";
-  child_focus: string;
-  therapist_note?: string;
-  what_to_carry_forward?: string;
+  /** Karlovo přetlumočení sezení (4–7 vět, smysl ne provoz). */
+  karel_summary: string;
+  /** Klíčové zjištění o části (2–4 věty). */
+  key_finding_about_part: string;
+  /** Co z toho plyne pro terapeutický plán (2–4 věty). */
+  implications_for_plan: string;
+  /** Poděkování / stmelení týmu (1–3 věty). */
+  team_acknowledgement: string;
 }
 
 interface BriefingPayload {
