@@ -33,6 +33,7 @@ export type PantryBEntryKind =
 export type PantryBSourceKind =
   | "chat_postwriteback"
   | "team_deliberation"
+  | "team_deliberation_answer"
   | "crisis_session"
   | "therapy_session"
   | "did_meeting"
