@@ -291,6 +291,36 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     loadApprovedToday();
   }, [loadLatest, loadApprovedToday, refreshTrigger]);
 
+  // Auto-refresh při nově vygenerovaném briefingu (realtime) i při focusu okna,
+  // aby uživatel neviděl zastaralou verzi po regeneraci v jiné záložce / serveru.
+  useEffect(() => {
+    const channel = supabase
+      .channel("did_daily_briefings_panel")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "did_daily_briefings" },
+        () => {
+          loadLatest();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "did_daily_briefings" },
+        () => {
+          loadLatest();
+        },
+      )
+      .subscribe();
+
+    const onFocus = () => loadLatest();
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      supabase.removeChannel(channel);
+    };
+  }, [loadLatest]);
+
   const handleRegenerate = async () => {
     setRegenerating(true);
     try {
