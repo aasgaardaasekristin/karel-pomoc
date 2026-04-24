@@ -332,12 +332,12 @@ async function gatherContext(supabase: any) {
       pantryBEntries = await readUnprocessedPantryB(supabase, userIdResolved);
       const { data: approved } = await supabase
         .from("did_team_deliberations")
-        .select("id, title, deliberation_type, subject_parts, final_summary, karel_synthesis, updated_at")
+        .select("id, title, deliberation_type, subject_parts, status, final_summary, karel_synthesis, questions_for_hanka, questions_for_kata, discussion_log, updated_at")
         .eq("user_id", userIdResolved)
-        .eq("status", "approved")
-        .gte("updated_at", `${daysAgoISO(2)}T00:00:00Z`)
+        .in("status", ["approved", "awaiting_signoff", "active"])
+        .gte("updated_at", `${daysAgoISO(7)}T00:00:00Z`)
         .order("updated_at", { ascending: false })
-        .limit(10);
+        .limit(20);
       approvedDeliberations = approved ?? [];
       console.log(`[briefing] Pantry B loaded: entries=${pantryBEntries.length}, approved_delibs=${approvedDeliberations.length}`);
     }
