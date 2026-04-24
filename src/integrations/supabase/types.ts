@@ -2033,6 +2033,68 @@ export type Database = {
         }
         Relationships: []
       }
+      did_live_session_progress: {
+        Row: {
+          artifacts_by_block: Json
+          completed_blocks: number
+          created_at: string
+          finalized_at: string | null
+          finalized_reason: string | null
+          id: string
+          items: Json
+          last_activity_at: string
+          part_name: string
+          plan_id: string
+          therapist: string
+          total_blocks: number
+          turns_by_block: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          artifacts_by_block?: Json
+          completed_blocks?: number
+          created_at?: string
+          finalized_at?: string | null
+          finalized_reason?: string | null
+          id?: string
+          items?: Json
+          last_activity_at?: string
+          part_name?: string
+          plan_id: string
+          therapist?: string
+          total_blocks?: number
+          turns_by_block?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          artifacts_by_block?: Json
+          completed_blocks?: number
+          created_at?: string
+          finalized_at?: string | null
+          finalized_reason?: string | null
+          id?: string
+          items?: Json
+          last_activity_at?: string
+          part_name?: string
+          plan_id?: string
+          therapist?: string
+          total_blocks?: number
+          turns_by_block?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "did_live_session_progress_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: true
+            referencedRelation: "did_daily_session_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       did_meetings: {
         Row: {
           agenda: string
