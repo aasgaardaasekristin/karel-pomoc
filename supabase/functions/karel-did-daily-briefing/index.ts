@@ -256,8 +256,13 @@ async function gatherContext(supabase: any) {
     console.warn("[briefing] Pantry B / approved deliberations load failed (non-fatal):", bErr);
   }
 
+  // ── Včerejší sezení (pro yesterday_session_review) ──
+  const yesterdaySessions = (yesterdaySessionsRes.data || []) as any[];
+  const yesterdayPlans = (yesterdayPlansRes.data || []) as any[];
+
   return {
     today: pragueDayISO(),
+    yesterday: yesterdayISO,
     crises: crisesRes.data || [],
     recent_observations: (recentObsRes.data || []).map((o: any) => ({
       ...o,
@@ -282,6 +287,8 @@ async function gatherContext(supabase: any) {
       part_name: p.selected_part ?? null,
       session_date: p.plan_date,
     })),
+    yesterday_sessions: yesterdaySessions,
+    yesterday_plans: yesterdayPlans,
     pantry_a: pantryA,
     pantry_a_summary: pantryASummary,
     pantry_b_entries: pantryBEntries,
