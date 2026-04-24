@@ -20,7 +20,7 @@ serve(async (req) => {
   const { user } = authResult;
 
   try {
-    const { attachments, mode, chatContext, userPrompt } = await req.json();
+    const { attachments, mode, chatContext, userPrompt, diagnosticMethod } = await req.json();
 
     if (!attachments || attachments.length === 0) {
       return new Response(JSON.stringify({ error: "Žádné přílohy" }), {
@@ -117,13 +117,25 @@ serve(async (req) => {
     }
 
     // Add user prompt or auto-analyze instruction
+    const diagnosticGuard = diagnosticMethod || mode === "diagnostic_method"
+      ? `
+
+DIAGNOSTICKÝ REŽIM — POVINNÉ:
+- Nejdřív odděl čistý popis viditelného/slyšitelného od interpretace.
+- U kresby nesmíš dělat profesionální závěr bez věku části, instrukce, pořadí kreslení, formátu papíru, informace o gumě a post-drawing inquiry.
+- U asociačního experimentu nesmíš hodnotit komplexy bez verbatim odpovědí a latencí.
+- ROR/Rorschach nikdy neskóruj jako standardizovaný Rorschach, pokud není kompletní licencovaná administrace a scoring; označ jej nanejvýš jako nestandardizovaný projektivní materiál.
+- Každý závěr označ jako: doložený nález / pracovní hypotéza / nehodnotitelné.
+`
+      : "";
+
     const analyzeText = userPrompt 
       ? userPrompt
       : `Analyzuj přiložené soubory. Popiš co vidíš/slyšíš, identifikuj klíčové body a navrhni doporučení.`;
 
     contentParts.push({
       type: "text",
-      text: `${modeContext}\n\n${chatContext ? `Kontext z chatu:\n${chatContext}\n\n` : ""}${analyzeText}`,
+      text: `${modeContext}${diagnosticGuard}\n\n${chatContext ? `Kontext z chatu:\n${chatContext}\n\n` : ""}${analyzeText}`,
     });
 
     const systemPrompt = `Jsi Karel – supervizní mentor (Carl Gustav Jung v moderním nastavení). ${modeContext}
@@ -135,6 +147,11 @@ Tvůj úkol:
 4. U audio/video: analyzuj tón hlasu, emoce, nervové rozpoložení, případné známky stresu
 5. U dokumentů: shrň obsah, identifikuj rizika, navrhni postupy
 6. U obrázků/screenshotů: popiš co vidíš, zaměř se na relevantní detaily
+
+DIAGNOSTICKÁ VALIDITA:
+- Nepředstírej standardizovanou psychodiagnostiku z neúplných dat.
+- U projektivních metod vždy uveď limity validity a co chybí pro profesionální závěr.
+- ROR/Rorschach bez kompletní licencované administrace nikdy neskóruj jako Rorschach.
 
 Odpovídej česky, strukturovaně, profesionálně ale empaticky.`;
 
