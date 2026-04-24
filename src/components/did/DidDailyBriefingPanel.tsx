@@ -720,24 +720,32 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               )}
             </div>
             <div>
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Z pohledu části</p>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Karlovo přetlumočení</p>
               <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line mt-0.5">
-                {p.yesterday_session_review.child_focus}
+                {p.yesterday_session_review.karel_summary}
               </p>
             </div>
-            {p.yesterday_session_review.therapist_note && (
+            {p.yesterday_session_review.key_finding_about_part && (
               <div>
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Terapeutka</p>
-                <p className="text-[12px] leading-relaxed text-foreground/75 italic whitespace-pre-line mt-0.5">
-                  {p.yesterday_session_review.therapist_note}
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co teď víme o části</p>
+                <p className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
+                  {p.yesterday_session_review.key_finding_about_part}
                 </p>
               </div>
             )}
-            {p.yesterday_session_review.what_to_carry_forward && (
+            {p.yesterday_session_review.implications_for_plan && (
               <div>
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Neseme si dál</p>
-                <p className="text-[12px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
-                  {p.yesterday_session_review.what_to_carry_forward}
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co z toho plyne pro plán</p>
+                <p className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
+                  {p.yesterday_session_review.implications_for_plan}
+                </p>
+              </div>
+            )}
+            {p.yesterday_session_review.team_acknowledgement && (
+              <div className="pt-1 border-t border-border/40">
+                <p className="text-[11px] uppercase tracking-wide text-primary/70">Pro tým</p>
+                <p className="text-[12px] leading-relaxed text-foreground/85 italic whitespace-pre-line mt-0.5">
+                  {p.yesterday_session_review.team_acknowledgement}
                 </p>
               </div>
             )}
