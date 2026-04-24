@@ -533,6 +533,42 @@ async function generateBriefing(
 
   const toolboxSection = candidates[0]?.score >= 3 ? `\n\n${summarizeToolboxForPrompt()}\n` : "";
 
+  // ── VČEREJŠÍ SEZENÍ — vstup pro yesterday_session_review ──
+  const ySessions = (context.yesterday_sessions ?? []) as any[];
+  const yPlans = (context.yesterday_plans ?? []) as any[];
+  const yesterdaySection = (ySessions.length > 0 || yPlans.length > 0)
+    ? `═══ VČEREJŠÍ SEZENÍ (${context.yesterday}) — POVINNÝ VSTUP PRO yesterday_session_review ═══
+${ySessions.length > 0 ? ySessions.map((s: any) => {
+  const blob = [
+    `▸ Část: ${s.part_name || "?"} | Vede: ${s.therapist || "?"} | Typ: ${s.session_type || "?"}`,
+    s.methods_used ? `  Metody: ${Array.isArray(s.methods_used) ? s.methods_used.join(", ") : s.methods_used}` : "",
+    s.methods_effectiveness ? `  Efektivita metod: ${typeof s.methods_effectiveness === "object" ? JSON.stringify(s.methods_effectiveness).slice(0, 300) : String(s.methods_effectiveness).slice(0, 300)}` : "",
+    s.karel_notes ? `  Karlovy poznámky: ${String(s.karel_notes).slice(0, 400)}` : "",
+    s.handoff_note ? `  Handoff: ${String(s.handoff_note).slice(0, 300)}` : "",
+    s.karel_therapist_feedback ? `  Feedback terapeutce: ${String(s.karel_therapist_feedback).slice(0, 300)}` : "",
+    s.tasks_assigned ? `  Úkoly: ${typeof s.tasks_assigned === "object" ? JSON.stringify(s.tasks_assigned).slice(0, 200) : String(s.tasks_assigned).slice(0, 200)}` : "",
+    s.ai_analysis ? `  AI analýza (předchozí evaluace):\n${String(s.ai_analysis).slice(0, 1800)}` : "",
+  ].filter(Boolean).join("\n");
+  return blob;
+}).join("\n\n") : "(žádný řádek did_part_sessions ze včerejška)"}
+
+${yPlans.length > 0 ? `Plány ze včerejška:\n${yPlans.map((p: any) => `- ${p.selected_part || "?"} | vede: ${p.session_lead || p.therapist || "?"} | status: ${p.status} | completed_at: ${p.completed_at || "—"}`).join("\n")}` : ""}
+
+⚠ POVINNÉ: Pokud výše existuje aspoň jeden řádek did_part_sessions ze včerejška, MUSÍŠ vyplnit yesterday_session_review s held=true a všemi 4 textovými poli (karel_summary, key_finding_about_part, implications_for_plan, team_acknowledgement). NESMÍŠ to vrátit jako held=false.
+
+⚠ STYL yesterday_session_review (PŘETLUMOČENÍ, NE PROVOZNÍ ZPRÁVA):
+- karel_summary = TVŮJ HLAS, vedoucího týmu, který právě dočetl analýzu. Přetlumoč CO SE DĚLO V SMYSLU, ne v krocích programu. Atmosféra, kontakt, oblouk. NE seznam bodů. NE „Bod 1, Bod 2". 4–7 vět.
+- key_finding_about_part = klinický POSUN V POROZUMĚNÍ části. Co teď víme jinak / přesněji než včera ráno. Pojmenuj to jako klinický vhled, ne jako popis epizody. 2–4 věty.
+- implications_for_plan = konkrétní úprava terapeutického plánu pro tuto část. Co změnit, co zpomalit, co přidat, jaký formát příště. 2–4 věty.
+- team_acknowledgement = osobní poděkování ${ySessions[0]?.therapist === "hanka" ? "Haničce" : ySessions[0]?.therapist === "kata" ? "Káte" : "týmu"}, konkrétně co udělala dobře (klid, intuice, zvládnutí přerušení). Bez patosu, bez floskulí. 1–3 věty.
+
+`
+    : `═══ VČEREJŠÍ SEZENÍ (${context.yesterday}) ═══
+(žádné sezení včera neproběhlo — yesterday_session_review nech null nebo held=false)
+
+`;
+
+
   const userPrompt = `KONTEXT PRO BRIEFING (${context.today}):
 
 ${context.pantry_a_summary ? `═══ SPIŽÍRNA A — RANNÍ PRACOVNÍ ZÁSOBA ═══\n${context.pantry_a_summary}\n\n` : ""}${pantryBSection}${approvedDelibsSection}AKTIVNÍ KRIZE (${context.crises.length}):
