@@ -749,12 +749,18 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                 </Badge>
               )}
             </div>
-            <div>
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Karlovo přetlumočení</p>
-              <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line mt-0.5">
-                {p.yesterday_session_review.karel_summary}
-              </p>
-            </div>
+            {p.yesterday_session_review.karel_summary ? (
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Karlovo přetlumočení</p>
+                <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line mt-0.5">
+                  {p.yesterday_session_review.karel_summary}
+                </p>
+              </div>
+            ) : (
+              <div className="text-[12px] italic text-muted-foreground">
+                Karlovo přetlumočení se právě dogeneruvává. Pokud se neobjeví do minuty, klikni „Přegenerovat".
+              </div>
+            )}
             {p.yesterday_session_review.key_finding_about_part && (
               <div>
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co teď víme o části</p>
