@@ -594,6 +594,13 @@ export function summarizePantryAForPrompt(snap: PantryASnapshot): string {
         .join("\n"),
   );
   parts.push(
+    `## Týmové dohody (${snap.team_agreements.length})\n` +
+      snap.team_agreements
+        .slice(0, 10)
+        .map((a) => `- ${a.subject_id}: ${(a.implication_text || a.agreement_text).slice(0, 180)}`)
+        .join("\n"),
+  );
+  parts.push(
     `## Open follow-ups (${snap.open_followups.length})\n` +
       snap.open_followups.slice(0, 10).map((f) => `- [${f.source_kind}] ${f.text.slice(0, 140)}`).join("\n"),
   );
