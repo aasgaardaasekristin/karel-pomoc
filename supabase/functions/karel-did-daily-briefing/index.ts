@@ -322,32 +322,44 @@ const BRIEFING_TOOL = {
         yesterday_session_review: {
           type: "object",
           description:
-            "Vyhodnocení včerejšího sezení (pokud nějaké proběhlo). Pokud včera žádné sezení nebylo " +
-            "(žádný řádek v `did_part_sessions` se včerejším datem ani plán in_progress), nech tento klíč null. " +
-            "Pokud sezení nebylo dokončené, NETVAR že bylo — uveď completion='partial' a řekni co se nestihlo. " +
-            "DŮRAZ: child_focus je primární obsah (jak to bylo z pohledu části / dítěte). " +
-            "therapist_note je sekundární vrstva (1-2 věty o motivaci/práci terapeutky).",
+            "KLINICKÉ PŘETLUMOČENÍ včerejšího sezení Karlovým hlasem — NE provozní zpráva, NE výpis kroků, NE „co se programově dělo“. " +
+            "Karel mluví jako vedoucí týmu, který právě dočetl analýzu a teď ji vrací zpátky Hance a Káte v lidské řeči. " +
+            "Pokud včera žádné sezení nebylo, nech klíč null. Pokud bylo přerušené nebo částečné, neříkej, že proběhlo celé.",
           properties: {
             held: { type: "boolean", description: "True pokud včera proběhlo aspoň částečné sezení." },
             part_name: { type: "string" },
             lead: { type: "string", enum: ["Hanička", "Káťa", "společně"] },
             completion: { type: "string", enum: ["completed", "partial", "abandoned"] },
-            child_focus: {
+            karel_summary: {
               type: "string",
               description:
-                "PRIMÁRNÍ — 2-4 věty o tom, jak na tom byla část. Co prožívala, kde se otevřela / uzavřela, " +
-                "co fungovalo / nefungovalo Z POHLEDU DÍTĚTE. Konkrétně, ne obecně.",
+                "PRIMÁRNÍ — 4–7 vět Karlova přetlumočení. CO SE VČERA OPRAVDU UKÁZALO — celkový oblouk, klima, atmosféra, " +
+                "kvalita kontaktu mezi částí a terapeutkou. NE seznam programových bodů. Mluv o smyslu, ne o průběhu. " +
+                "Konkrétní jméno části, žádný „systém“, žádný „klient“.",
             },
-            therapist_note: {
+            key_finding_about_part: {
               type: "string",
-              description: "SEKUNDÁRNÍ — 1-2 věty o tom, jak to terapeutka ustála a co ji posílilo / vyčerpalo.",
+              description:
+                "DŮLEŽITÉ KLINICKÉ ZJIŠTĚNÍ O ČÁSTI — 2–4 věty. Co nového / přesnějšího teď víme o této části: " +
+                "její potřeba, obrana, vývojová úroveň, vztahový vzorec, spouštěč, zdroj. " +
+                "Pojmenuj to jako klinický posun v porozumění, ne jako popis epizody.",
             },
-            what_to_carry_forward: {
+            implications_for_plan: {
               type: "string",
-              description: "1-2 věty: co konkrétně si z toho neseme do dnešního dne / dalšího sezení.",
+              description:
+                "CO Z TOHO PLYNE PRO TERAPEUTICKÝ PLÁN — 2–4 věty. Konkrétní úprava směru práce s touto částí: " +
+                "co přidat, co opustit, co zpomalit, jaký formát příště zvolit, na co si dát pozor. " +
+                "Mluv jako klinik, ne jako provozák.",
+            },
+            team_acknowledgement: {
+              type: "string",
+              description:
+                "PODĚKOVÁNÍ A STMELENÍ TÝMU — 1–3 věty osobně adresované terapeutce/terapeutkám, které sezení vedly. " +
+                "Konkrétně pojmenuj, co udělaly dobře (klid, trpělivost, intuitivní rozhodnutí, zvládnutí přerušení). " +
+                "Bez patosu, bez floskulí. Pokud sezení vedla jen jedna z nich, oslov jen ji.",
             },
           },
-          required: ["held", "child_focus"],
+          required: ["held", "karel_summary", "key_finding_about_part", "implications_for_plan", "team_acknowledgement"],
           additionalProperties: false,
         },
         decisions: {
