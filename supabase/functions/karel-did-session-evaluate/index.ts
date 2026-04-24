@@ -642,14 +642,26 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const completedBlocks = typeof body?.completedBlocks === "number" ? body.completedBlocks : undefined;
-    const totalBlocks = typeof body?.totalBlocks === "number" ? body.totalBlocks : undefined;
+    let completedBlocks = typeof body?.completedBlocks === "number" ? body.completedBlocks : undefined;
+    let totalBlocks = typeof body?.totalBlocks === "number" ? body.totalBlocks : undefined;
     const endedReason: EndedReason = body?.endedReason ?? "completed";
-    const turnsByBlock = (body?.turnsByBlock ?? {}) as Record<string, any[]>;
-    const observationsByBlock = (body?.observationsByBlock ?? {}) as Record<string, string>;
+    let turnsByBlock = (body?.turnsByBlock ?? {}) as Record<string, any[]>;
+    let observationsByBlock = (body?.observationsByBlock ?? {}) as Record<string, string>;
     const force = body?.force === true;
 
     const ctx = await loadContext(sb, planId);
+    const liveProgress = await loadLiveProgress(sb, planId);
+    if (liveProgress) {
+      completedBlocks = completedBlocks ?? liveProgress.completed_blocks ?? undefined;
+      totalBlocks = totalBlocks ?? liveProgress.total_blocks ?? undefined;
+      if (!hasEvidence(turnsByBlock, observationsByBlock, completedBlocks)) {
+        turnsByBlock = (liveProgress.turns_by_block ?? {}) as Record<string, any[]>;
+        const items = Array.isArray(liveProgress.items) ? liveProgress.items : [];
+        observationsByBlock = Object.fromEntries(
+          items.map((it: any, idx: number) => [String(idx), String(it?.observation ?? "")]).filter(([, v]) => String(v).trim()),
+        );
+      }
+    }
 
     // Idempotence guard — pokud už evaluováno a NE force, vrať existující.
     if (
@@ -669,6 +681,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const evidencePresent = hasEvidence(turnsByBlock, observationsByBlock, completedBlocks);
     const blockTranscript = formatBlockTurnsForPrompt(turnsByBlock, observationsByBlock);
     const threadTranscript = formatThreadMessagesForPrompt(ctx.threads, ctx.plan);
 
@@ -689,6 +702,7 @@ Datum: ${ctx.plan.plan_date}
 Vede: ${ctx.plan.session_lead || ctx.plan.therapist}
 Důvod ukončení: ${endedReason}
 ${blockSummary}
+Evidence status: ${evidencePresent ? "průběhová data jsou k dispozici" : "chybí průběhová data; NESMÍŠ z toho vyvodit, že sezení neproběhlo"}
 
 ${partInfo}
 
@@ -705,11 +719,13 @@ ${threadTranscript}
 ÚKOL:
 Vyhodnoť toto sezení. Drž se pravidel ze system promptu.
 - Pokud sezení nebylo dokončené, completion_status='partial' nebo 'abandoned' a v incomplete_note popiš co se nestihlo.
+- Pokud chybí průběhová data, nepiš, že sezení bylo sotva začaté/neuskutečněné; napiš jen, že chybí dostatečný záznam.
+- Pokud proběhla alespoň polovina bodů, completion_status nesmí být 'abandoned'.
 - HLAVNÍ VRSTVA = child_perspective (4-7 vět, konkrétně, pro Tundrupka / příslušnou část).
 - Therapist_motivation drž stručné (1-2 věty).
 - Vrať VÝHRADNĚ tool call emit_session_evaluation.`;
 
-    const evaluation = await callAi(prompt, apiKey);
+    const evaluation = sanitizeEvaluation(await callAi(prompt, apiKey), endedReason, completedBlocks, totalBlocks);
     const markdown = renderEvaluationMarkdown(evaluation, ctx.plan, endedReason, completedBlocks, totalBlocks);
 
     const targets = await persistEvaluation(
