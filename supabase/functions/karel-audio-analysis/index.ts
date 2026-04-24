@@ -82,6 +82,15 @@ Zaměř se na:
 - Pokud je to relevantní, navrhni konkrétní aktivitu/hru pro stabilizaci`;
     }
     
+    systemPrompt += `
+
+═══ DIAGNOSTICKÁ VALIDITA — POVINNÉ ═══
+Pokud audio zachycuje diagnostickou metodu (asociační experiment, kresbu, projektivní hru, ROR/Rorschach apod.), odděl popis dat od interpretace.
+- Asociační experiment: bez verbatim odpovědí a latencí nesmíš hodnotit komplexy podle reakčního času.
+- Kresba/projektivní metoda: bez artefaktu a post-test inquiry nesmíš dělat profesionální závěr.
+- ROR/Rorschach: nikdy nepředstírej standardizované skórování bez kompletní licencované administrace.
+Závěry formuluj jako doložený nález / pracovní hypotéza / nehodnotitelné.`;
+    
     if (systemContext) {
       systemPrompt += `\n\n═══ KONTEXT Z KARTOTÉKY DID ═══\n${systemContext}`;
     }

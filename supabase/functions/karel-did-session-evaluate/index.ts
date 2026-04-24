@@ -345,6 +345,38 @@ function sanitizeEvaluation(evaluation: any, endedReason: EndedReason, completed
   return evaluation;
 }
 
+function buildDiagnosticValidityReport(planText: string | null, turnsByBlock: Record<string, any[]>, observationsByBlock: Record<string, string>, liveProgress: any): string {
+  const text = `${planText ?? ""}\n${Object.values(observationsByBlock).join("\n")}`.toLowerCase();
+  const isAssociation = /(asocia|prvn[íi] n[áa]pad|slovn[íi] hra|\b\d+\s*slov)/i.test(text);
+  const isDrawing = /(kresb|nakresl|strom|postav|d[ůu]m|rodin|mapa t[ěe]la|body map)/i.test(text);
+  const isRorschach = /(rorsch|ror|inkblot|skvrn)/i.test(text);
+  const allTurns = Object.values(turnsByBlock || {}).flat().map((t: any) => String(t?.text ?? ""));
+  const allText = `${allTurns.join("\n")}\n${Object.values(observationsByBlock).join("\n")}`;
+  const hasLatency = /latenc|\b\d{1,3}\s*(s|sec|sek|sekund)\b/i.test(allText);
+  const hasVerbatim = allTurns.some((s) => s.trim().length > 12);
+  const hasAffect = /(afekt|pláč|plac|úzkost|uzkost|freeze|ztuhl|smích|smich|napětí|napeti|mlč|mlc)/i.test(allText);
+  const hasNonverbal = /(neverb|mimika|postoj|ruce|oči|oci|hlas|zbled|červen|cerven|slzy)/i.test(allText);
+  const hasReproduction = /(reproduk|vzpomene|pamatuje|zopak)/i.test(allText);
+  const artifacts = liveProgress?.artifacts_by_block && typeof liveProgress.artifacts_by_block === "object"
+    ? Object.values(liveProgress.artifacts_by_block).flat() as any[]
+    : [];
+  const hasImage = artifacts.some((a: any) => a?.kind === "image");
+  const hasAudio = artifacts.some((a: any) => a?.kind === "audio");
+  const missing: string[] = [];
+  if (isAssociation && !hasLatency) missing.push("latence v sekundách");
+  if ((isAssociation || isDrawing) && !hasVerbatim) missing.push("doslovný verbatim zápis");
+  if ((isAssociation || isDrawing) && !hasAffect) missing.push("afekt / emoční reakce");
+  if ((isAssociation || isDrawing) && !hasNonverbal) missing.push("neverbální projevy");
+  if (isAssociation && !hasReproduction) missing.push("reprodukční kontrola po pauze");
+  if (isAssociation && !hasAudio && !hasVerbatim) missing.push("audio nebo přesný turn-by-turn protokol");
+  if (isDrawing && !hasImage) missing.push("foto/kopie kresby či artefaktu");
+  const methodLine = [isAssociation ? "asociační experiment" : null, isDrawing ? "kresbová/projektivní metoda" : null, isRorschach ? "ROR/Rorschach téma" : null].filter(Boolean).join(", ") || "bez jasně rozpoznané standardní diagnostické metody";
+  const rorGuard = isRorschach
+    ? "\n- ROR/Rorschach: Karel nesmí předstírat standardizované skórování; bez kompletní licencované administrace jde pouze o orientační projektivní rozhovor."
+    : "";
+  return `### Diagnostická validita\nRozpoznaná metoda: ${methodLine}.\n${missing.length ? `Validita je omezená — chybí: ${missing.join(", ")}. Závěry níže ber jako pracovní hypotézy, ne jako standardizovanou psychodiagnostiku.` : "Minimální důkazní vrstva je přítomná; závěry přesto formuluj jako klinické hypotézy a odděl je od doložených pozorování."}${rorGuard}`;
+}
+
 async function callAi(prompt: string, apiKey: string): Promise<any> {
   const res = await fetch(AI_URL, {
     method: "POST",
@@ -383,6 +415,7 @@ function renderEvaluationMarkdown(
   endedReason: EndedReason,
   completedBlocks: number | undefined,
   totalBlocks: number | undefined,
+  diagnosticValidity: string,
 ): string {
   const dateLabel = plan.plan_date;
   const partLabel = plan.selected_part;
@@ -425,6 +458,8 @@ ${evaluation.therapist_motivation}
 
 ### Použité metody a jejich efektivita
 ${methodsLines || "(nezaznamenáno)"}
+
+${diagnosticValidity}
 
 ### Klíčové závěry
 ${insightsLines || "(žádné)"}
@@ -728,7 +763,8 @@ Vyhodnoť toto sezení. Drž se pravidel ze system promptu.
 - Vrať VÝHRADNĚ tool call emit_session_evaluation.`;
 
     const evaluation = sanitizeEvaluation(await callAi(prompt, apiKey), endedReason, completedBlocks, totalBlocks);
-    const markdown = renderEvaluationMarkdown(evaluation, ctx.plan, endedReason, completedBlocks, totalBlocks);
+    const diagnosticValidity = buildDiagnosticValidityReport(ctx.plan.plan_markdown, turnsByBlock, observationsByBlock, liveProgress);
+    const markdown = renderEvaluationMarkdown(evaluation, ctx.plan, endedReason, completedBlocks, totalBlocks, diagnosticValidity);
 
     const targets = await persistEvaluation(
       sb,

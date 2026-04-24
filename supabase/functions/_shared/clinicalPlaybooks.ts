@@ -23,6 +23,12 @@ export type Playbook = {
   method_id: string;
   method_label: string;
   source_refs: string[];
+  analysis_protocol?: {
+    required_inputs: string[];
+    validity_rules: string[];
+    interpretation_axes: string[];
+    hard_limits: string[];
+  };
   pre_session_setup: {
     supplies: string[];
     room: string;
@@ -126,7 +132,18 @@ export const playbook_association_experiment_jung: Playbook = {
     ],
     do_not_repeat_stimulus: true,
     grounding_script:
-      "Přečti dítěti klidně: »Tundrupku, jsi tady se mnou, jsme v bezpečí. Zhluboka se nadechni se mnou — nádech, výdech. Pojmenuj mi tři věci, které vidíš v místnosti.« Počkej na odpovědi, oceň, pak pauza min. 3 minuty.",
+      "Přečti dítěti klidně: »Tundrupku, jsi tady se mnou, jsme v bezpečí. Pojmenuj mi tři věci, které vidíš v místnosti, dvě věci, kterých se můžeš dotknout, a jednu barvu, která je příjemná.« Počkej na odpovědi, oceň, pak pauza min. 3 minuty.",
+  },
+  analysis_protocol: {
+    required_inputs: ["stimulus", "verbatim_response", "latency_seconds", "affect", "nonverbal", "reproduction_check"],
+    validity_rules: [
+      "Bez latencí nehodnoť komplex podle reakčního času.",
+      "Bez verbatim odpovědí nevyvozuj obsahové komplexy.",
+      "Bez reprodukční kontroly nehodnoť reprodukční chyby.",
+      "Každou interpretaci označ jako doložený nález, hypotézu, nebo nehodnotitelné.",
+    ],
+    interpretation_axes: ["latence", "perseverace", "klang", "afekt", "neverbální změna", "trauma signál", "vývojová přiměřenost"],
+    hard_limits: ["Nejde o formální standardizovanou psychodiagnostiku; závěry jsou klinické hypotézy pro terapeutický tým."],
   },
   closure_protocol: {
     reproduction_check:
