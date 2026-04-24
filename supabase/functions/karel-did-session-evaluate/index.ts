@@ -91,7 +91,7 @@ const SESSION_EVAL_TOOL = {
           type: "string",
           description:
             "SEKUNDÁRNÍ vrstva (1-2 věty). Jak to terapeutka ustála, kde byla skvělá, co ji posílilo / vyčerpalo. " +
-            "Jméno terapeutky uvádej („Hanička", „Káťa"). NEMORALIZUJ.",
+            "Jméno terapeutky uvádej (Hanička, Káťa). NEMORALIZUJ.",
         },
         methods_used: {
           type: "array",
