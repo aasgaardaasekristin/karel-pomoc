@@ -96,7 +96,17 @@ export interface OpenFollowup {
   owner: string | null;
   destinations: string[];
   review_at: string | null;
-  source_kind: "implication" | "pending_question" | "task";
+  source_kind: "implication" | "pending_question" | "task" | "agreement";
+}
+
+export interface TeamAgreementRow {
+  id: string;
+  subject_id: string;
+  agreement_text: string;
+  implication_text: string | null;
+  agreed_by: string[];
+  priority: string | null;
+  valid_from: string;
 }
 
 export interface TodayPriority {
@@ -214,6 +224,7 @@ export async function selectPantryA(
     yesterdayCtxRes,
     implicationsRes,
     pendingQuestionsRes,
+    teamAgreementsRes,
     openTasksRes,
     briefingRes,
     therapyPlanRes,
@@ -262,9 +273,17 @@ export async function selectPantryA(
       .order("created_at", { ascending: false })
       .limit(40),
     sb.from("did_pending_questions")
-      .select("id, question, directed_to, blocking, created_at")
-      .eq("status", "open")
+      .select("id, question, directed_to, blocking, created_at, status, answer, answered_at")
+      .in("status", ["open", "answered", "partially_answered"])
+      .gte("created_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
       .order("created_at", { ascending: false })
+      .limit(30),
+    sb.from("did_team_agreements")
+      .select("id, subject_id, agreement_text, implication_text, agreed_by, priority, valid_from")
+      .eq("user_id", userId)
+      .is("superseded_at", null)
+      .gte("valid_from", new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
+      .order("valid_from", { ascending: false })
       .limit(30),
     sb.from("did_therapist_tasks")
       .select("id, task, assigned_to, due_date, status, priority")
