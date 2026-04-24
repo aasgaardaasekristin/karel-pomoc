@@ -299,6 +299,37 @@ const BRIEFING_TOOL = {
           type: "string",
           description: "Co zůstává významné z dřívějška (1-3 věty). Jen skutečně relevantní věci, ne všechno staré.",
         },
+        yesterday_session_review: {
+          type: "object",
+          description:
+            "Vyhodnocení včerejšího sezení (pokud nějaké proběhlo). Pokud včera žádné sezení nebylo " +
+            "(žádný řádek v `did_part_sessions` se včerejším datem ani plán in_progress), nech tento klíč null. " +
+            "Pokud sezení nebylo dokončené, NETVAR že bylo — uveď completion='partial' a řekni co se nestihlo. " +
+            "DŮRAZ: child_focus je primární obsah (jak to bylo z pohledu části / dítěte). " +
+            "therapist_note je sekundární vrstva (1-2 věty o motivaci/práci terapeutky).",
+          properties: {
+            held: { type: "boolean", description: "True pokud včera proběhlo aspoň částečné sezení." },
+            part_name: { type: "string" },
+            lead: { type: "string", enum: ["Hanička", "Káťa", "společně"] },
+            completion: { type: "string", enum: ["completed", "partial", "abandoned"] },
+            child_focus: {
+              type: "string",
+              description:
+                "PRIMÁRNÍ — 2-4 věty o tom, jak na tom byla část. Co prožívala, kde se otevřela / uzavřela, " +
+                "co fungovalo / nefungovalo Z POHLEDU DÍTĚTE. Konkrétně, ne obecně.",
+            },
+            therapist_note: {
+              type: "string",
+              description: "SEKUNDÁRNÍ — 1-2 věty o tom, jak to terapeutka ustála a co ji posílilo / vyčerpalo.",
+            },
+            what_to_carry_forward: {
+              type: "string",
+              description: "1-2 věty: co konkrétně si z toho neseme do dnešního dne / dalšího sezení.",
+            },
+          },
+          required: ["held", "child_focus"],
+          additionalProperties: false,
+        },
         decisions: {
           type: "array",
           description: "Společná rozhodnutí pro dnešek. MAX 2 položky, +1 navíc jen pokud je crisis (= max 3 celkem). Konkrétní rozhodovací názvy, NE generické 'koordinovat strategii'. ID NEDOPLŇUJ — server přidá.",
