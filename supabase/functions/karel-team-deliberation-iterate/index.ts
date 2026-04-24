@@ -27,6 +27,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { summarizeToolboxForPrompt } from "../_shared/therapeuticToolbox.ts";
 import { appendPantryB } from "../_shared/pantryB.ts";
 import { createObservation, routeObservation } from "../_shared/observations.ts";
+import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -269,7 +270,7 @@ PRAVIDLA STRUKTURY:
 
     try {
       const inputKind = inferInputKind(text);
-      const obsId = await createObservation(admin, {
+      const obsId = await createObservation(admin as any, {
         subject_type: "part",
         subject_id: subjectPart,
         source_type: "therapist_message",
@@ -279,7 +280,7 @@ PRAVIDLA STRUKTURY:
         confidence: 0.85,
         time_horizon: inputKind === "conclusion" ? "0_14d" : "hours",
       });
-      await routeObservation(admin, obsId, {
+      await routeObservation(admin as any, obsId, {
         subject_type: "part",
         subject_id: subjectPart,
         evidence_level: "D2",
@@ -287,7 +288,7 @@ PRAVIDLA STRUKTURY:
         fact: implicationText,
       }, inputKind === "conclusion" ? "team_coordination" : "immediate_plan");
 
-      await appendPantryB(admin, {
+      await appendPantryB(admin as any, {
         user_id: userId,
         entry_kind: inputKind,
         source_kind: "team_deliberation_answer",
