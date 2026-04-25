@@ -72,6 +72,46 @@ function cleanCandidate(value: string | undefined): string | null {
   return candidate;
 }
 
+function isActiveCandidate(row: Record<string, unknown>, expectedPart: string): boolean {
+  const status = normalizeText(row.status).toLowerCase();
+  const lifecycle = normalizeText(row.lifecycle_status).toLowerCase();
+  const breakdown = (row.urgency_breakdown ?? {}) as Record<string, unknown>;
+  const selectedPart = normalizeText(row.selected_part);
+  if (status === "cancelled" || lifecycle === "cancelled") return false;
+  if (breakdown.invalidated_reason || breakdown.result_status === "invalidated") return false;
+  if (!selectedPart || NON_PART_CANDIDATES.has(normalizeIdentity(selectedPart))) return false;
+  if (expectedPart && normalizeIdentity(selectedPart) !== normalizeIdentity(expectedPart)) return false;
+  return true;
+}
+
+async function resolveVerifiedPart(sb: ReturnType<typeof createClient>, candidate: string, userId: string): Promise<{ selectedPart: string; guard: Record<string, unknown> } | null> {
+  const candidateNorm = normalizeIdentity(candidate);
+  const { data: parts, error } = await sb
+    .from("did_part_registry")
+    .select("part_name, display_name, status, index_confirmed_at")
+    .eq("user_id", userId)
+    .limit(500);
+  if (error) throw error;
+
+  const matched = (parts ?? []).find((part: Record<string, unknown>) => {
+    return [part.part_name, part.display_name].some((value) => normalizeIdentity(String(value ?? "")) === candidateNorm);
+  });
+
+  if (!matched) return null;
+  const selectedPart = normalizeText(matched.display_name) || normalizeText(matched.part_name);
+  if (!selectedPart) return null;
+  return {
+    selectedPart,
+    guard: {
+      raw_candidate: candidate,
+      resolution: "registry_part",
+      selected_part: selectedPart,
+      index_confirmed: Boolean(matched.index_confirmed_at),
+      status: matched.status ?? null,
+    },
+  };
+}
+
 function extractDifferentPart(answer: string, plannedPart: string): string | null {
   const name = "([\\p{L}][\\p{L}0-9_-]{1,40})";
   const patterns: { pattern: RegExp; index: number }[] = [
