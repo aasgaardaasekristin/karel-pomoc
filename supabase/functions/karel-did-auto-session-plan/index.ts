@@ -100,11 +100,42 @@ function getPragueDate(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
 }
 
+function deriveKarelDirectContract(selectedPart: UrgencyResult, forcePart: string | null) {
+  const readiness_today = selectedPart.breakdown?.crisis ? "red" : selectedPart.score >= 6 ? "amber" : "green";
+  const session_mode = readiness_today === "red"
+    ? "check_in"
+    : selectedPart.breakdown?.fading_alert
+      ? "check_in"
+      : selectedPart.breakdown?.active_3d
+        ? "state_mapping"
+        : "resource_building";
+  const allowed_depth = readiness_today === "red"
+    ? "check_in_only"
+    : session_mode === "grounding"
+      ? "grounding_only"
+      : session_mode;
+  return {
+    kind: "karel_direct_session_candidate",
+    session_actor: "karel_direct",
+    session_mode,
+    human_review_required: true,
+    readiness_today,
+    allowed_depth,
+    forbidden: ["trauma_memory_work", "deep_regression", "unapproved_therapeutic_intervention"],
+    first_question: readiness_today === "red"
+      ? "Jde teď být spolu pár minut bezpečně, nebo mám jen zůstat potichu poblíž?"
+      : "Jak ti dnes je, když jsme spolu tady přes obrazovku?",
+    actual_part_if_differs: null,
+    result_status: null,
+    generated_by: forcePart ? "manual_session_plan" : "auto_session_plan",
+  };
+}
+
 // ═══ Urgency scoring v2 ═══
 interface UrgencyResult {
   partName: string;
   score: number;
-  breakdown: Record<string, number>;
+  breakdown: Record<string, any>;
   tier: "fading" | "active" | "sleeping" | "override";
 }
 
