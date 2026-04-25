@@ -461,7 +461,7 @@ function formatThreadMessagesForPrompt(threads: any[], plan: SessionPlan): strin
 async function loadLiveProgress(sb: any, planId: string) {
   const { data } = await sb
     .from("did_live_session_progress")
-    .select("items, turns_by_block, artifacts_by_block, completed_blocks, total_blocks, finalized_reason, last_activity_at")
+    .select("items, turns_by_block, artifacts_by_block, completed_blocks, total_blocks, finalized_reason, post_session_result, last_activity_at")
     .eq("plan_id", planId)
     .maybeSingle();
   return data ?? null;
@@ -489,9 +489,16 @@ function inferActualPartIfDiffers(ctx: { plan: SessionPlan; threads?: any[] }): 
     .join("\n");
   if (!text.trim()) return null;
   const normalized = normalizePartLookupKey(text);
-  if (/\bnejsem\b/.test(normalized) && !normalized.includes(planned)) return "uncertain";
-  const explicit = text.match(/(?:jsem|tady je|oz[ýy]v[áa] se)\s+([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽa-záčďéěíňóřšťúůýž][\p{L}\s-]{1,32})/u);
-  const candidate = explicit?.[1]?.trim();
+  const plannedPattern = planned.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  if (new RegExp(`\\b(?:ja\\s+)?nejsem\\s+${plannedPattern}\\b`).test(normalized)) return "uncertain";
+  if (/\bto\s+nejsem\s+ja\b/.test(normalized)) {
+    const afterCorrection = text.match(/to\s+nejsem\s+j[áa]\s*[,.;:-]?\s*jsem\s+([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][\p{L}\s-]{1,32})/u)?.[1]?.trim();
+    if (afterCorrection && normalizePartLookupKey(afterCorrection) !== planned) return afterCorrection;
+    return "uncertain";
+  }
+  if (/\bnejsem\s+ten\s*,?\s+koho\s+hledas\b/.test(normalized)) return "uncertain";
+  const explicit = text.match(/(?:^|[\n.!?]\s*)(?:j[áa]\s+)?(?:jsem|tady je|oz[ýy]v[áa] se|mluv[íi])\s+([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][\p{L}\s-]{1,32})/u);
+  const candidate = explicit?.[1]?.replace(/[.,;:!?].*$/, "").trim();
   if (candidate && normalizePartLookupKey(candidate) !== planned) return candidate;
   return null;
 }
