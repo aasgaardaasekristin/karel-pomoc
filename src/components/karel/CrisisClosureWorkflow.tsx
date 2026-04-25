@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { CheckCircle, AlertTriangle, Users, Brain, RefreshCw, Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { callEdgeFunction } from "@/lib/safeEdgeFunction";
 import type { CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
@@ -19,7 +18,13 @@ const CrisisClosureWorkflow: React.FC<Props> = ({ card, onRefetch }) => {
 
   const withLoading = async (key: string, fn: () => Promise<void>) => {
     setActionLoading(key);
-    try { await fn(); } finally { setActionLoading(null); }
+    try {
+      await fn();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Akci se nepodařilo provést. Zkus to znovu nebo otevři detail krize.");
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const ActionBtn: React.FC<{ loadingKey: string; onClick: () => void; children: React.ReactNode; variant?: string; disabled?: boolean }> = ({ loadingKey, onClick, children, variant, disabled }) => {
