@@ -473,6 +473,29 @@ function hasEvidence(turnsByBlock: Record<string, any[]>, observationsByBlock: R
     Object.values(observationsByBlock || {}).some(v => String(v || "").trim().length > 0);
 }
 
+function karelDirectHasPartResponse(threads: any[] = []): boolean {
+  return threads.some((thread: any) => {
+    const messages = Array.isArray(thread?.messages) ? thread.messages : [];
+    return messages.slice(1).some((m: any) => String(m?.role ?? "").toLowerCase() === "user" && String(m?.content ?? "").trim().length > 0);
+  });
+}
+
+function inferActualPartIfDiffers(ctx: { plan: SessionPlan; threads?: any[] }): string | null {
+  const planned = normalizePartLookupKey(ctx.plan.selected_part);
+  const text = (ctx.threads ?? [])
+    .flatMap((thread: any) => Array.isArray(thread?.messages) ? thread.messages.slice(1) : [])
+    .filter((m: any) => String(m?.role ?? "").toLowerCase() === "user")
+    .map((m: any) => String(m?.content ?? ""))
+    .join("\n");
+  if (!text.trim()) return null;
+  const normalized = normalizePartLookupKey(text);
+  if (/\bnejsem\b/.test(normalized) && !normalized.includes(planned)) return "uncertain";
+  const explicit = text.match(/(?:jsem|tady je|oz[ýy]v[áa] se)\s+([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽa-záčďéěíňóřšťúůýž][\p{L}\s-]{1,32})/u);
+  const candidate = explicit?.[1]?.trim();
+  if (candidate && normalizePartLookupKey(candidate) !== planned) return candidate;
+  return null;
+}
+
 function buildEvidenceItems(ctx: { plan: SessionPlan; threads: any[]; partCard: any; partCardLookup?: PartCardLookup }, liveProgress: any, turnsByBlock: Record<string, any[]>, observationsByBlock: Record<string, string>) {
   const progressItems = Array.isArray(liveProgress?.items) ? liveProgress.items : [];
   const lookup = ctx.partCardLookup ?? {
