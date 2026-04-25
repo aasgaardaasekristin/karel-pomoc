@@ -804,7 +804,7 @@ function buildAnalysisJson(args: {
   };
 }
 
-async function createKarelDirectFollowUp(sb: any, args: { userId: string; planId: string; partName: string; outcome: string }) {
+async function createKarelDirectFollowUp(sb: any, args: { userId: string; planId: string; partName: string; outcome: KarelDirectOutcome; actualPart?: string | null }) {
   const subjectId = args.planId;
   const { data: existing } = await sb
     .from("did_pending_questions")
@@ -814,8 +814,11 @@ async function createKarelDirectFollowUp(sb: any, args: { userId: string; planId
     .eq("subject_id", subjectId)
     .limit(1);
   if (existing?.length) return;
+  const question = args.outcome === "actual_part_differs"
+    ? `Haničko, v Karlově přímém kontaktu se možná ozvala jiná část než ${args.partName}. Můžeš prosím podle dnešního chování potvrdit, kdo byl pravděpodobně přítomný?`
+    : `Haničko, ${args.partName} dnes v Karlově přímém kontaktu neodpověděl/a. Viděla jsi dnes známky stažení, únavy, přítomnosti jiné části nebo důvod, proč kontakt nebyl možný?`;
   await sb.from("did_pending_questions").insert({
-    question: `Haničko, ${args.partName} dnes v Karlově přímém kontaktu nebyl dostupný. Viděla jsi dnes známky stažení, únavy nebo přítomnosti jiné části?`,
+    question,
     context: `MVP-SESSION-2 karel_direct outcome: ${args.outcome}`,
     subject_type: "karel_direct_session",
     subject_id: subjectId,
@@ -825,19 +828,22 @@ async function createKarelDirectFollowUp(sb: any, args: { userId: string; planId
   });
 }
 
-async function persistKarelDirectNoContact(sb: any, ctx: { plan: SessionPlan; threads?: any[]; partCardLookup?: PartCardLookup }, outcome: "deferred" | "unavailable", endedReason: EndedReason) {
+async function persistKarelDirectOutcome(sb: any, ctx: { plan: SessionPlan; threads?: any[]; partCardLookup?: PartCardLookup }, args: { outcome: KarelDirectOutcome; endedReason: EndedReason; evidencePresent: boolean; actualPartIfDiffers?: string | null }) {
   const now = new Date().toISOString();
-  const reviewStatus: ReviewStatus = outcome === "deferred" ? "cancelled" : "evidence_limited";
+  const outcome = args.outcome;
+  const reviewStatus: ReviewStatus = outcome === "deferred" ? "cancelled" : outcome === "completed" ? "analyzed" : outcome === "partial" && args.evidencePresent ? "partially_analyzed" : "evidence_limited";
   const postSessionResult = {
     schema: "post_session_result.v1",
     provenance: "auto_derived",
     status: outcome,
     entered_by: null,
     entered_at: null,
-    endedReason,
-    contactOccurred: false,
+    endedReason: args.endedReason,
+    contactOccurred: outcome === "completed" || outcome === "partial" || outcome === "actual_part_differs",
     completionStatus: outcome,
-    evidenceValidity: "low",
+    evidenceValidity: outcome === "completed" ? "moderate" : "low",
+    actualPart: args.actualPartIfDiffers ?? null,
+    actual_part_if_differs: args.actualPartIfDiffers ?? null,
   };
   const analysisJson = {
     schema: "did_session_review.analysis.v1",
@@ -849,7 +855,7 @@ async function persistKarelDirectNoContact(sb: any, ctx: { plan: SessionPlan; th
       completedBlocks: 0,
       totalBlocks: null,
       completion_ratio: null,
-      contactOccurred: false,
+      contactOccurred: postSessionResult.contactOccurred,
       actualPart: ctx.partCardLookup?.status === "resolved" ? ctx.partCardLookup.canonical_part_name : null,
       durationMinutes: null,
       evidence_availability: { live_progress: "missing", checklist_count: 0, turn_by_turn_count: 0, observations_count: 0, transcript: "missing", artifacts_count: 0 },
@@ -857,7 +863,7 @@ async function persistKarelDirectNoContact(sb: any, ctx: { plan: SessionPlan; th
     },
     narrative_summary: { session_arc: null, child_perspective: null },
     working_deductions: [],
-    unknowns: [outcome === "deferred" ? "Karlův přímý kontakt byl odložen; důvod je potřeba doplnit terapeutkou." : "Část nebyla v Karlově přímém kontaktu dostupná; nelze předstírat proběhlé sezení."],
+    unknowns: [outcome === "deferred" ? "Karlův přímý kontakt byl odložen; důvod je potřeba doplnit terapeutkou." : outcome === "actual_part_differs" ? "Pravděpodobně se ozvala jiná část; identitu musí potvrdit terapeutka." : "Výsledek Karlova přímého kontaktu je evidence-limited; nelze předstírat hotový klinický závěr."],
     writebacks: { therapeutic_implications: null, team_implications: null, next_session_recommendation: "Doplnit krátkou odpověď terapeutky a podle ní upravit další plán." },
     review_status: reviewStatus,
     post_session_result: postSessionResult,
@@ -874,7 +880,7 @@ async function persistKarelDirectNoContact(sb: any, ctx: { plan: SessionPlan; th
     evidence_items: [{ kind: "karel_direct_thread", available: false, outcome }],
     transcript_available: false,
     live_progress_available: false,
-    clinical_summary: outcome === "deferred" ? "Karlův přímý kontakt byl dnes odložen." : "Část dnes nebyla v Karlově přímém kontaktu dostupná.",
+    clinical_summary: outcome === "deferred" ? "Karlův přímý kontakt byl dnes odložen." : outcome === "unavailable" ? "Část dnes nebyla v Karlově přímém kontaktu dostupná." : outcome === "actual_part_differs" ? "V Karlově přímém kontaktu se možná ozvala jiná část; výsledek vyžaduje potvrzení terapeutkou." : "Karlův přímý kontakt má omezenou evidenci; výstup je pouze auditní.",
     evidence_limitations: "Kontakt neproběhl nebo není dostupná průběhová evidence; výstup není terapeutický záznam.",
     analysis_json: analysisJson,
     projection_status: "skipped",
@@ -888,13 +894,13 @@ async function persistKarelDirectNoContact(sb: any, ctx: { plan: SessionPlan; th
     lifecycle_status: reviewStatus,
     completed_at: now,
     finalized_at: now,
-    finalization_source: endedReason,
+    finalization_source: args.endedReason,
     finalization_reason: outcome,
-    urgency_breakdown: { ...(ctx.plan.urgency_breakdown ?? {}), result_status: outcome },
+    urgency_breakdown: { ...(ctx.plan.urgency_breakdown ?? {}), result_status: outcome, actual_part_if_differs: args.actualPartIfDiffers ?? (ctx.plan.urgency_breakdown as any)?.actual_part_if_differs ?? null },
     updated_at: now,
   }).eq("id", ctx.plan.id);
   await sb.from("did_live_session_progress").update({ post_session_result: postSessionResult, updated_at: now }).eq("plan_id", ctx.plan.id);
-  await createKarelDirectFollowUp(sb, { userId: ctx.plan.user_id, planId: ctx.plan.id, partName: ctx.plan.selected_part, outcome });
+  if (["unavailable", "deferred", "actual_part_differs"].includes(outcome)) await createKarelDirectFollowUp(sb, { userId: ctx.plan.user_id, planId: ctx.plan.id, partName: ctx.plan.selected_part, outcome, actualPart: args.actualPartIfDiffers });
   return { reviewStatus, postSessionResult };
 }
 
