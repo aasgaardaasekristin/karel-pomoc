@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { cleanDisplayName } from "@/lib/didPartNaming";
+import { safeEdgeFunction } from "@/lib/safeEdgeFunction";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -750,21 +751,11 @@ export function useCrisisOperationalState() {
 // ── Backend readiness fetcher ──────────────────────────────────
 
 async function fetchBackendReadiness(crisisEventId: string): Promise<ClosureReadiness4Layer | null> {
+  const result = await safeEdgeFunction("karel-crisis-closure-meeting", { action: "check_closure_readiness", crisis_event_id: crisisEventId });
+  if (!result.ok) return null;
+  const r = result.data?.readiness || result.data;
+  if (!r?.clinical || !r?.process || !r?.team || !r?.operational) return null;
   try {
-    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-    const session = (await supabase.auth.getSession()).data.session;
-    const res = await fetch(`https://${projectId}.supabase.co/functions/v1/karel-crisis-closure-meeting`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      },
-      body: JSON.stringify({ action: "check_closure_readiness", crisis_event_id: crisisEventId }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data.readiness) return null;
-    const r = data.readiness;
     return {
       clinical: { met: r.clinical.met, blockers: r.clinical.blockers || [] },
       process: { met: r.process.met, blockers: r.process.blockers || [] },

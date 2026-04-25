@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { CheckCircle, AlertTriangle, Users, Brain, RefreshCw, Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { callEdgeFunction } from "@/lib/safeEdgeFunction";
 import type { CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
 
 interface Props {
@@ -10,16 +10,7 @@ interface Props {
   onRefetch: () => void;
 }
 
-async function callFn(fnName: string, body: Record<string, any>) {
-  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-  const session = (await supabase.auth.getSession()).data.session;
-  const res = await fetch(`https://${projectId}.supabase.co/functions/v1/${fnName}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
-    body: JSON.stringify(body),
-  });
-  return res.json();
-}
+const callFn = callEdgeFunction;
 
 const CrisisClosureWorkflow: React.FC<Props> = ({ card, onRefetch }) => {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -27,7 +18,13 @@ const CrisisClosureWorkflow: React.FC<Props> = ({ card, onRefetch }) => {
 
   const withLoading = async (key: string, fn: () => Promise<void>) => {
     setActionLoading(key);
-    try { await fn(); } finally { setActionLoading(null); }
+    try {
+      await fn();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Akci se nepodařilo provést. Zkus to znovu nebo otevři detail krize.");
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const ActionBtn: React.FC<{ loadingKey: string; onClick: () => void; children: React.ReactNode; variant?: string; disabled?: boolean }> = ({ loadingKey, onClick, children, variant, disabled }) => {

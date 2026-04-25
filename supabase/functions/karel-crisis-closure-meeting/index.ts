@@ -59,23 +59,29 @@ interface ClosureReadiness {
 }
 
 async function checkClosureReadiness(sb: any, crisisEventId: string): Promise<ClosureReadiness> {
-  const { data: crisis } = await sb.from("crisis_events").select("*").eq("id", crisisEventId).single();
+  const { data: crisis, error: crisisError } = await sb.from("crisis_events").select("*").eq("id", crisisEventId).single();
+  if (crisisError) throw new Error(`db_error:check_crisis:${crisisError.message}`);
   if (!crisis) throw new Error("Crisis not found");
 
-  const { data: interviews } = await sb.from("crisis_karel_interviews")
+  const { data: interviews, error: interviewsError } = await sb.from("crisis_karel_interviews")
     .select("*").eq("crisis_event_id", crisisEventId).order("created_at", { ascending: false }).limit(3);
+  if (interviewsError) throw new Error(`db_error:check_interviews:${interviewsError.message}`);
 
-  const { data: sessions } = await sb.from("did_daily_session_plans")
+  const { data: sessions, error: sessionsError } = await sb.from("did_daily_session_plans")
     .select("*").eq("crisis_event_id", crisisEventId);
+  if (sessionsError) throw new Error(`db_error:check_sessions:${sessionsError.message}`);
 
-  const { data: questions } = await sb.from("crisis_session_questions")
+  const { data: questions, error: questionsError } = await sb.from("crisis_session_questions")
     .select("*").eq("crisis_event_id", crisisEventId);
+  if (questionsError) throw new Error(`db_error:check_questions:${questionsError.message}`);
 
-  const { data: meetings } = await sb.from("did_meetings")
+  const { data: meetings, error: meetingsError } = await sb.from("did_meetings")
     .select("*").eq("crisis_event_id", crisisEventId).eq("is_closure_meeting", true);
+  if (meetingsError) throw new Error(`db_error:check_meetings:${meetingsError.message}`);
 
-  const { data: checklist } = await sb.from("crisis_closure_checklist")
+  const { data: checklist, error: checklistError } = await sb.from("crisis_closure_checklist")
     .select("*").eq("crisis_event_id", crisisEventId).order("created_at", { ascending: false }).limit(1);
+  if (checklistError) throw new Error(`db_error:check_checklist:${checklistError.message}`);
 
   const cl = checklist?.[0];
   const closureMeeting = meetings?.[0];
@@ -157,14 +163,16 @@ async function handleInitiateClosureMeeting(sb: any, body: any) {
   if (!crisis_event_id) return jsonRes({ error: "crisis_event_id required" }, 400);
 
   // Check for existing closure meeting
-  const { data: existing } = await sb.from("did_meetings")
+  const { data: existing, error: existingError } = await sb.from("did_meetings")
     .select("id, status").eq("crisis_event_id", crisis_event_id).eq("is_closure_meeting", true).limit(1);
+  if (existingError) return dbErrorRes("find_existing_meeting", existingError);
 
   if (existing?.length) {
-    return jsonRes({ success: true, meeting_id: existing[0].id, already_exists: true, status: existing[0].status });
+    return jsonRes({ ok: true, success: true, meeting_id: existing[0].id, already_exists: true, status: existing[0].status });
   }
 
-  const { data: crisis } = await sb.from("crisis_events").select("part_name").eq("id", crisis_event_id).single();
+  const { data: crisis, error: crisisError } = await sb.from("crisis_events").select("part_name").eq("id", crisis_event_id).single();
+  if (crisisError) return dbErrorRes("find_crisis_for_meeting", crisisError, crisisError.code === "PGRST116" ? 404 : 500);
   if (!crisis) return jsonRes({ error: "Crisis not found" }, 404);
 
   const { data: meeting, error } = await sb.from("did_meetings").insert({
@@ -178,16 +186,17 @@ async function handleInitiateClosureMeeting(sb: any, body: any) {
     meeting_conclusions: { clinical: null, process: null, recommendation: null },
   }).select("id").single();
 
-  if (error) throw error;
+  if (error) return dbErrorRes("insert_closure_meeting", error);
 
   // Update crisis_events
-  await sb.from("crisis_events").update({
+  const { error: updateError } = await sb.from("crisis_events").update({
     closure_meeting_id: meeting.id,
     operating_state: "ready_for_joint_review",
     updated_at: new Date().toISOString(),
   }).eq("id", crisis_event_id);
+  if (updateError) return dbErrorRes("link_closure_meeting", updateError);
 
-  return jsonRes({ success: true, meeting_id: meeting.id, already_exists: false });
+  return jsonRes({ ok: true, success: true, meeting_id: meeting.id, already_exists: false });
 }
 
 async function handleSubmitPosition(sb: any, body: any) {
@@ -205,25 +214,72 @@ async function handleSubmitPosition(sb: any, body: any) {
     updated_at: new Date().toISOString(),
   };
 
-  await sb.from("did_meetings").update(update).eq("id", meeting_id);
-  return jsonRes({ success: true, therapist, recorded: true });
+  const { error } = await sb.from("did_meetings").update(update).eq("id", meeting_id);
+  if (error) return dbErrorRes("submit_position", error);
+  return jsonRes({ ok: true, success: true, therapist, recorded: true });
+}
+
+async function handleAcknowledgeAlert(sb: any, body: any) {
+  const { alert_id, crisis_event_id } = body;
+  if (!alert_id && !crisis_event_id) return jsonRes({ ok: false, error: "alert_id or crisis_event_id required" }, 400);
+
+  let resolvedEventId = crisis_event_id as string | undefined;
+  if (alert_id) {
+    const { data: alert, error: alertError } = await sb.from("crisis_alerts")
+      .select("id, part_name").eq("id", alert_id).maybeSingle();
+    if (alertError) return dbErrorRes("find_alert", alertError);
+    if (!alert) return jsonRes({ ok: false, error: "Alert not found" }, 404);
+
+    const stamp = new Date().toISOString();
+    const { error: ackError } = await sb.from("crisis_alerts")
+      .update({ acknowledged_at: stamp, acknowledged_by: "karel" }).eq("id", alert_id);
+    if (ackError) return dbErrorRes("acknowledge_alert", ackError);
+
+    if (!resolvedEventId) {
+      const { data: crisis, error: crisisLookupError } = await sb.from("crisis_events")
+        .select("id").eq("part_name", alert.part_name).is("closed_at", null)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (crisisLookupError) return dbErrorRes("find_crisis_for_alert", crisisLookupError);
+      resolvedEventId = crisis?.id;
+    }
+  }
+
+  if (resolvedEventId) {
+    const { data: crisis, error: crisisError } = await sb.from("crisis_events")
+      .select("id").eq("id", resolvedEventId).maybeSingle();
+    if (crisisError) return dbErrorRes("find_crisis_for_acknowledge", crisisError);
+    if (!crisis) return jsonRes({ ok: false, error: "Crisis not found" }, 404);
+
+    const stamp = new Date().toISOString();
+    const { error: dismissError } = await sb.from("crisis_events")
+      .update({ banner_dismissed: true, banner_dismissed_at: stamp }).eq("id", resolvedEventId);
+    if (dismissError) return dbErrorRes("dismiss_crisis_banner", dismissError);
+  }
+
+  return jsonRes({ ok: true, success: true, action: "acknowledge_alert", crisis_event_id: resolvedEventId ?? null, alert_id: alert_id ?? null, status: "acknowledged" });
 }
 
 async function handleGenerateKarelStatement(sb: any, body: any) {
   const { crisis_event_id } = body;
   if (!crisis_event_id) return jsonRes({ error: "crisis_event_id required" }, 400);
 
-  const { data: crisis } = await sb.from("crisis_events").select("*").eq("id", crisis_event_id).single();
+  const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+  if (!lovableApiKey) return missingEnvRes(["LOVABLE_API_KEY"]);
+
+  const { data: crisis, error: crisisError } = await sb.from("crisis_events").select("*").eq("id", crisis_event_id).single();
+  if (crisisError) return dbErrorRes("find_crisis_for_statement", crisisError, crisisError.code === "PGRST116" ? 404 : 500);
   if (!crisis) return jsonRes({ error: "Crisis not found" }, 404);
 
-  const { data: meeting } = await sb.from("did_meetings")
+  const { data: meeting, error: meetingError } = await sb.from("did_meetings")
     .select("*").eq("crisis_event_id", crisis_event_id).eq("is_closure_meeting", true).limit(1).single();
+  if (meetingError) return dbErrorRes("find_closure_meeting", meetingError, meetingError.code === "PGRST116" ? 404 : 500);
   if (!meeting) return jsonRes({ error: "No closure meeting found" }, 404);
 
   const readiness = await checkClosureReadiness(sb, crisis_event_id);
 
-  const { data: interviews } = await sb.from("crisis_karel_interviews")
+  const { data: interviews, error: interviewsError } = await sb.from("crisis_karel_interviews")
     .select("*").eq("crisis_event_id", crisis_event_id).order("created_at", { ascending: false }).limit(5);
+  if (interviewsError) return dbErrorRes("load_statement_interviews", interviewsError);
 
   // Generate Karel's final statement via AI
   const aiPayload = {
@@ -260,7 +316,7 @@ Piš česky, stručně, klinicky přesně.`
 
   const aiResp = await fetch("https://ai.lovable.dev/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${lovableApiKey}` },
     body: JSON.stringify(aiPayload),
   });
 
@@ -275,7 +331,7 @@ Piš česky, stručně, klinicky přesně.`
     readiness.clinical.met && readiness.process.met ? "PODMÍNĚNĚ DOPORUČUJI — čekám na tým" :
     "NEDOPORUČUJI UZAVŘÍT — " + readiness.all_blockers.slice(0, 3).join(", ");
 
-  await sb.from("did_meetings").update({
+  const { error: meetingUpdateError } = await sb.from("did_meetings").update({
     karel_final_statement: karelStatement,
     closure_recommendation: recommendation,
     meeting_conclusions: {
@@ -288,15 +344,18 @@ Piš česky, stručně, klinicky přesně.`
     },
     updated_at: new Date().toISOString(),
   }).eq("id", meeting.id);
+  if (meetingUpdateError) return dbErrorRes("save_karel_statement", meetingUpdateError);
 
   // Update crisis_events
-  await sb.from("crisis_events").update({
+  const { error: crisisUpdateError } = await sb.from("crisis_events").update({
     closure_statement: karelStatement,
     closure_reason: recommendation,
     updated_at: new Date().toISOString(),
   }).eq("id", crisis_event_id);
+  if (crisisUpdateError) return dbErrorRes("save_crisis_statement", crisisUpdateError);
 
   return jsonRes({
+    ok: true,
     success: true,
     karel_statement: karelStatement,
     recommendation,
@@ -314,7 +373,8 @@ async function handleTransitionState(sb: any, body: any) {
     return jsonRes({ error: `Invalid state: ${target_state}. Valid: ${VALID_STATES.join(", ")}` }, 400);
   }
 
-  const { data: crisis } = await sb.from("crisis_events").select("*").eq("id", crisis_event_id).single();
+  const { data: crisis, error: crisisError } = await sb.from("crisis_events").select("*").eq("id", crisis_event_id).single();
+  if (crisisError) return dbErrorRes("find_crisis_for_transition", crisisError, crisisError.code === "PGRST116" ? 404 : 500);
   if (!crisis) return jsonRes({ error: "Crisis not found" }, 404);
 
   const currentState = crisis.operating_state || "active";
@@ -366,7 +426,8 @@ async function handleTransitionState(sb: any, body: any) {
     update.closure_proposed_by = "karel_system";
   }
 
-  await sb.from("crisis_events").update(update).eq("id", crisis_event_id);
+  const { error: updateError } = await sb.from("crisis_events").update(update).eq("id", crisis_event_id);
+  if (updateError) return dbErrorRes("transition_state", updateError);
 
   // Fire card propagation for significant transitions
   if (["ready_for_joint_review", "ready_to_close", "closed", "monitoring_post"].includes(target_state)) {
@@ -399,6 +460,7 @@ async function handleTransitionState(sb: any, body: any) {
   }
 
   return jsonRes({
+    ok: true,
     success: true,
     previous_state: currentState,
     new_state: target_state,
@@ -411,9 +473,13 @@ async function handleTransitionState(sb: any, body: any) {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const missing = [!supabaseUrl && "SUPABASE_URL", !serviceRoleKey && "SUPABASE_SERVICE_ROLE_KEY"].filter(Boolean) as string[];
+    if (missing.length > 0) return missingEnvRes(missing);
+
+    const sb = createClient(supabaseUrl!, serviceRoleKey!);
     const body = await req.json();
     const action = body.action;
 
@@ -424,17 +490,19 @@ serve(async (req) => {
         return await handleSubmitPosition(sb, body);
       case "generate_karel_statement":
         return await handleGenerateKarelStatement(sb, body);
+      case "acknowledge_alert":
+        return await handleAcknowledgeAlert(sb, body);
       case "check_closure_readiness":
-        if (!body.crisis_event_id) return jsonRes({ error: "crisis_event_id required" }, 400);
-        return jsonRes(await checkClosureReadiness(sb, body.crisis_event_id));
+        if (!body.crisis_event_id) return jsonRes({ ok: false, error: "crisis_event_id required" }, 400);
+        return jsonRes({ ok: true, success: true, readiness: await checkClosureReadiness(sb, body.crisis_event_id) });
       case "transition_state":
         return await handleTransitionState(sb, body);
       default:
-        return jsonRes({ error: "Unknown action. Use: initiate_closure_meeting, submit_position, generate_karel_statement, check_closure_readiness, transition_state" }, 400);
+        return jsonRes({ ok: false, error: "Unknown action. Use: initiate_closure_meeting, submit_position, generate_karel_statement, acknowledge_alert, check_closure_readiness, transition_state" }, 400);
     }
   } catch (err) {
     console.error("[closure-meeting] Error:", err);
-    return jsonRes({ error: String(err) }, 500);
+    return jsonRes({ ok: false, error: "runtime_error", message: err instanceof Error ? err.message : String(err) }, 500);
   }
 });
 
@@ -453,4 +521,12 @@ function jsonRes(body: Record<string, unknown>, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+function missingEnvRes(missing: string[]) {
+  return jsonRes({ ok: false, error: "missing_env", missing }, 500);
+}
+
+function dbErrorRes(step: string, error: { message?: string; code?: string }, status = 500) {
+  return jsonRes({ ok: false, error: "db_error", step, message: error.message || "Database operation failed" }, status);
 }

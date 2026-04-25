@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { CheckCircle, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { callEdgeFunction } from "@/lib/safeEdgeFunction";
 import type { CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
 import CrisisDailyManagement from "./CrisisDailyManagement";
 import CrisisSessionQA from "./CrisisSessionQA";
@@ -34,22 +35,7 @@ const TABS: { key: TabKey; label: string }[] = [
  *   - Detail má teď tři klinicky smysluplné záložky: Řízení / Uzavření / Historie.
  */
 
-async function callFn(fnName: string, body: Record<string, any>) {
-  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-  const session = (await supabase.auth.getSession()).data.session;
-  const res = await fetch(`https://${projectId}.supabase.co/functions/v1/${fnName}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  const payload = text ? JSON.parse(text) : {};
-  if (!res.ok) throw new Error(payload?.error || `HTTP ${res.status}`);
-  return payload;
-}
+const callFn = callEdgeFunction;
 
 const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch, initialTab }) => {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab || "management");
