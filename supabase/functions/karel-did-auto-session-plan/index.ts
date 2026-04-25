@@ -412,29 +412,16 @@ serve(async (req) => {
       therapistContext = body?.therapistContext || null;
     } catch { /* empty body is fine */ }
 
-    // ═══ CHECK EXISTING AUTO PLAN (only block auto, not manual) ═══
+    // ═══ CHECK EXISTING THERAPIST-LED AUTO PLAN (only block auto, not manual) ═══
     if (!forcePart) {
-      const { data: karelDirectPlans } = await sb.from("did_daily_session_plans")
-        .select("id")
-        .eq("plan_date", todayPrague)
-        .contains("urgency_breakdown", { session_actor: "karel_direct" })
-        .in("status", ["generated", "in_progress"])
-        .limit(1);
-
-      if (karelDirectPlans && karelDirectPlans.length > 0) {
-        console.log(`[auto-session-plan] Karel-direct candidate already exists for ${todayPrague}, skipping.`);
-        return new Response(JSON.stringify({ success: true, skipped: true, reason: "karel_direct_candidate_exists", existingPlanId: karelDirectPlans[0].id }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
       const { data: autoPlans } = await sb.from("did_daily_session_plans")
-        .select("id, generated_by")
+        .select("id, generated_by, urgency_breakdown")
         .eq("plan_date", todayPrague)
-        .eq("generated_by", "auto");
+        .eq("generated_by", "auto")
+        .not("urgency_breakdown", "cs", JSON.stringify({ session_actor: "karel_direct" }));
 
       if (autoPlans && autoPlans.length > 0) {
-        console.log(`[auto-session-plan] Auto plan already exists for ${todayPrague}, skipping.`);
+        console.log(`[auto-session-plan] Therapist-led auto plan already exists for ${todayPrague}, skipping.`);
         return new Response(JSON.stringify({ success: true, skipped: true, reason: "plan_exists" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
