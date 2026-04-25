@@ -7294,7 +7294,7 @@ Vra\u0165 JSON:
                 .map((it: any, idx: number) => [String(idx), String(it?.observation ?? "")])
                 .filter(([, value]: [string, string]) => value.trim().length > 0),
             );
-            const evalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-did-session-evaluate`;
+            const evalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-did-session-finalize`;
             const evalCtl = new AbortController();
             const evalTo = setTimeout(() => evalCtl.abort(), 60000);
             const evalRes = await fetch(evalUrl, {
@@ -7306,7 +7306,8 @@ Vra\u0165 JSON:
               },
               body: JSON.stringify({
                 planId: (plan as any).id,
-                endedReason: "auto_safety_net",
+                source: "auto_safety_net",
+                reason: "calendar_day_safety_net",
                 completedBlocks: (liveProgress as any)?.completed_blocks,
                 totalBlocks: (liveProgress as any)?.total_blocks,
                 turnsByBlock: (liveProgress as any)?.turns_by_block ?? {},
