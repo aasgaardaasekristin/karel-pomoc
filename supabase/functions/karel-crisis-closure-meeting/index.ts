@@ -163,14 +163,16 @@ async function handleInitiateClosureMeeting(sb: any, body: any) {
   if (!crisis_event_id) return jsonRes({ error: "crisis_event_id required" }, 400);
 
   // Check for existing closure meeting
-  const { data: existing } = await sb.from("did_meetings")
+  const { data: existing, error: existingError } = await sb.from("did_meetings")
     .select("id, status").eq("crisis_event_id", crisis_event_id).eq("is_closure_meeting", true).limit(1);
+  if (existingError) return dbErrorRes("find_existing_meeting", existingError);
 
   if (existing?.length) {
-    return jsonRes({ success: true, meeting_id: existing[0].id, already_exists: true, status: existing[0].status });
+    return jsonRes({ ok: true, success: true, meeting_id: existing[0].id, already_exists: true, status: existing[0].status });
   }
 
-  const { data: crisis } = await sb.from("crisis_events").select("part_name").eq("id", crisis_event_id).single();
+  const { data: crisis, error: crisisError } = await sb.from("crisis_events").select("part_name").eq("id", crisis_event_id).single();
+  if (crisisError) return dbErrorRes("find_crisis_for_meeting", crisisError, crisisError.code === "PGRST116" ? 404 : 500);
   if (!crisis) return jsonRes({ error: "Crisis not found" }, 404);
 
   const { data: meeting, error } = await sb.from("did_meetings").insert({
@@ -184,16 +186,17 @@ async function handleInitiateClosureMeeting(sb: any, body: any) {
     meeting_conclusions: { clinical: null, process: null, recommendation: null },
   }).select("id").single();
 
-  if (error) throw error;
+  if (error) return dbErrorRes("insert_closure_meeting", error);
 
   // Update crisis_events
-  await sb.from("crisis_events").update({
+  const { error: updateError } = await sb.from("crisis_events").update({
     closure_meeting_id: meeting.id,
     operating_state: "ready_for_joint_review",
     updated_at: new Date().toISOString(),
   }).eq("id", crisis_event_id);
+  if (updateError) return dbErrorRes("link_closure_meeting", updateError);
 
-  return jsonRes({ success: true, meeting_id: meeting.id, already_exists: false });
+  return jsonRes({ ok: true, success: true, meeting_id: meeting.id, already_exists: false });
 }
 
 async function handleSubmitPosition(sb: any, body: any) {
