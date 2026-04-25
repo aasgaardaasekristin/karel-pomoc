@@ -68,7 +68,11 @@ function inferInputKind(text: string): "plan_change" | "followup_need" | "conclu
   return "conclusion";
 }
 
-function inferPlanChangeState(inputKind: "plan_change" | "followup_need" | "conclusion", before: AgendaBlock[], after: AgendaBlock[]): "unchanged" | "revised" | "deferred" {
+function inferPlanChangeState(inputKind: "plan_change" | "followup_need" | "conclusion", before: AgendaBlock[], after: AgendaBlock[], text: string): "unchanged" | "revised" | "deferred" | "needs_followup_question" {
+  const t = text.toLowerCase();
+  if (/(nev[ií]m|nejsem si jist|nen[íi] jasn|potřebuju? doplnit|potrebuju? doplnit|doptat|ověřit|overit|chyb[íi].{0,40}(informac|odpověď|odpoved)|nen[íi] možné.{0,40}uzavř[ií]t)/i.test(t)) {
+    return "needs_followup_question";
+  }
   const beforeSig = JSON.stringify(before.map((b) => [b.block, b.minutes ?? null, b.detail ?? null, b.tool_id ?? null]));
   const afterSig = JSON.stringify(after.map((b) => [b.block, b.minutes ?? null, b.detail ?? null, b.tool_id ?? null]));
   if (beforeSig !== afterSig) return "revised";
@@ -257,7 +261,7 @@ PRAVIDLA STRUKTURY:
     ];
 
     const inputKind = inferInputKind(text);
-    const planChangeState = inferPlanChangeState(inputKind, currentProgram, programDraft);
+    const planChangeState = inferPlanChangeState(inputKind, currentProgram, programDraft, text);
     const sessionParams = row.session_params && typeof row.session_params === "object"
       ? { ...(row.session_params as Record<string, any>) }
       : {};

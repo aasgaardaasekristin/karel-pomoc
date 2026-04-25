@@ -50,7 +50,7 @@ function pragueTodayISO(): string {
 async function generateChildOpener(partName: string, briefingHint: any): Promise<string> {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   if (!apiKey) {
-    return defaultChildOpener(partName);
+    return safeFallbackChildOpener(partName, briefingHint);
   }
 
   const firstQuestion = String(briefingHint?.first_question ?? "").trim();
@@ -110,11 +110,48 @@ Vrať POUZE krátký prostý text (žádný JSON, žádný code-fence, žádné 
     }
     const data = await res.json();
     const content = data?.choices?.[0]?.message?.content?.trim();
-    return content || defaultChildOpener(partName);
+    return validateChildOpener(content) ? content : safeFallbackChildOpener(partName, briefingHint);
   } catch (e) {
     console.warn("[part-session-prepare] AI error:", e);
-    return defaultChildOpener(partName);
+    return safeFallbackChildOpener(partName, briefingHint);
   }
+}
+
+const FORBIDDEN_CHILD_OPENER_PATTERNS = [
+  /risk_gate/i,
+  /contraindication/i,
+  /contraindikace/i,
+  /stop\s*rule/i,
+  /stop_rules/i,
+  /diagnostick[ýy]\s+z[áa]m[ěe]r/i,
+  /terapeutick[ýy]\s+pl[áa]n/i,
+  /Hani[čc]ka\s+m[áa]/i,
+  /K[áa][ťt]a\s+m[áa]/i,
+  /supervize/i,
+  /program_draft/i,
+  /plan_markdown/i,
+  /readiness\s+red/i,
+  /klinick[áa]\s+hypot[ée]za/i,
+  /\bevidence\b/i,
+  /intern[íi]\s+pozn[áa]mky\s+pro\s+terapeutky/i,
+];
+
+function validateChildOpener(content: unknown): content is string {
+  const text = String(content ?? "").trim();
+  if (!text) return false;
+  return !FORBIDDEN_CHILD_OPENER_PATTERNS.some((rx) => rx.test(text));
+}
+
+function safeFallbackChildOpener(partName: string, briefingHint: any): string {
+  const firstQuestion = String(briefingHint?.first_question ?? "Jak ti je právě teď, když jsme spolu přes obrazovku?").trim();
+  return `Ahoj, ${partName}. Dnes na tebe netlačím.
+Chci jen krátce zjistit, jestli je teď bezpečné být spolu pár minut.
+
+Stačí mi říct jedno z těchto:
+„jde to“, „nejde to“, nebo „nevím“.
+
+První otázka:
+${firstQuestion}`;
 }
 
 function defaultChildOpener(partName: string): string {
