@@ -795,7 +795,7 @@ async function createKarelDirectFollowUp(sb: any, args: { userId: string; planId
     context: `MVP-SESSION-2 karel_direct outcome: ${args.outcome}`,
     subject_type: "karel_direct_session",
     subject_id: subjectId,
-    directed_to: "hanka_kata",
+    directed_to: "both",
     blocking: "clinical_clarification",
     status: "open",
   });
