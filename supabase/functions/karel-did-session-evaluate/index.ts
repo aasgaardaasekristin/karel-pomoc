@@ -223,6 +223,118 @@ interface PartSessionRow {
   thread_id: string | null;
 }
 
+interface PartCardLookup {
+  status: "resolved" | "missing" | "ambiguous";
+  reason: string;
+  selected_part: string;
+  canonical_part_name: string | null;
+  registry_id: string | null;
+  candidates: Array<{ id: string; part_name: string; display_name?: string | null; status?: string | null; drive_folder_label?: string | null; updated_at?: string | null }>;
+}
+
+function normalizePartLookupKey(value: string | null | undefined): string {
+  return String(value ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[_\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function partCandidateNames(row: any): string[] {
+  const aliases = Array.isArray(row?.aliases) ? row.aliases : Array.isArray(row?.metadata?.aliases) ? row.metadata.aliases : [];
+  return [row?.part_name, row?.display_name, row?.drive_folder_label, ...aliases].filter(Boolean).map(String);
+}
+
+function scorePartCandidate(row: any, selectedPart: string): number[] {
+  const selectedTrim = selectedPart.trim();
+  const selectedNorm = normalizePartLookupKey(selectedTrim);
+  const partNorm = normalizePartLookupKey(row?.part_name);
+  const displayNorm = normalizePartLookupKey(row?.display_name);
+  const driveNorm = normalizePartLookupKey(row?.drive_folder_label);
+  const statusNorm = normalizePartLookupKey(row?.status);
+  const uppercaseCanonical = row?.part_name === String(row?.part_name ?? "").toUpperCase() && row?.display_name === String(row?.display_name ?? "").toUpperCase();
+  return [
+    uppercaseCanonical ? 1 : 0,
+    row?.part_name === selectedTrim ? 1 : 0,
+    partNorm === selectedNorm ? 1 : 0,
+    displayNorm && displayNorm === partNorm && row?.display_name === String(row?.display_name ?? "").toUpperCase() ? 1 : 0,
+    driveNorm.includes(partNorm) || driveNorm.includes(selectedNorm) ? 1 : 0,
+    statusNorm === "active" || statusNorm === "aktivni" ? 1 : 0,
+    Date.parse(row?.updated_at ?? "") || 0,
+  ];
+}
+
+function comparePartScores(a: number[], b: number[]): number {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const diff = (a[i] ?? 0) - (b[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+async function resolveCanonicalPart(sb: any, userId: string, selectedPart: string): Promise<{ partCard: any | null; lookup: PartCardLookup }> {
+  const selectedNorm = normalizePartLookupKey(selectedPart);
+  const { data: registryRows, error } = await sb
+    .from("did_part_registry")
+    .select("id, part_name, display_name, status, drive_folder_label, age_estimate, role_in_system, current_state, updated_at")
+    .eq("user_id", userId);
+  if (error) throw error;
+
+  const candidates = (registryRows ?? []).filter((row: any) =>
+    partCandidateNames(row).some((name) => {
+      const norm = normalizePartLookupKey(name);
+      return norm === selectedNorm || norm.includes(selectedNorm) || selectedNorm.includes(norm);
+    }),
+  );
+
+  const candidateSummary = candidates.map((c: any) => ({
+    id: c.id,
+    part_name: c.part_name,
+    display_name: c.display_name ?? null,
+    status: c.status ?? null,
+    drive_folder_label: c.drive_folder_label ?? null,
+    updated_at: c.updated_at ?? null,
+  }));
+
+  if (candidates.length === 0) {
+    console.warn("[evaluate] part_lookup_missing", { selectedPart, selectedNorm });
+    return {
+      partCard: null,
+      lookup: { status: "missing", reason: "no_registry_candidate", selected_part: selectedPart, canonical_part_name: null, registry_id: null, candidates: [] },
+    };
+  }
+
+  const ranked = candidates
+    .map((row: any) => ({ row, score: scorePartCandidate(row, selectedPart) }))
+    .sort((a: any, b: any) => comparePartScores(b.score, a.score));
+  const top = ranked[0];
+  const second = ranked[1];
+  if (second && comparePartScores(top.score, second.score) === 0) {
+    console.warn("[evaluate] ambiguous_part_lookup", { selectedPart, candidates: candidateSummary });
+    return {
+      partCard: null,
+      lookup: { status: "ambiguous", reason: "multiple_equal_registry_candidates", selected_part: selectedPart, canonical_part_name: null, registry_id: null, candidates: candidateSummary },
+    };
+  }
+
+  if (candidates.length > 1) {
+    console.warn("[evaluate] canonical_part_lookup_multiple_candidates", { selectedPart, selected: top.row.id, candidates: candidateSummary });
+  }
+  return {
+    partCard: top.row,
+    lookup: {
+      status: "resolved",
+      reason: candidates.length > 1 ? "resolved_by_priority" : "single_registry_candidate",
+      selected_part: selectedPart,
+      canonical_part_name: top.row.part_name,
+      registry_id: top.row.id,
+      candidates: candidateSummary,
+    },
+  };
+}
+
 async function loadContext(sb: any, planId: string) {
   const { data: plan, error: planErr } = await sb
     .from("did_daily_session_plans")
@@ -253,18 +365,15 @@ async function loadContext(sb: any, planId: string) {
     .order("last_activity_at", { ascending: false })
     .limit(3);
 
-  // Karta části (DB-side mirror — pokud existuje).
-  const { data: partCard } = await sb
-    .from("did_part_registry")
-    .select("id, part_name, age_estimate, role_in_system, current_state")
-    .ilike("part_name", plan.selected_part)
-    .maybeSingle();
+  // Karta části (DB-side mirror) — deterministický resolver místo nejednoznačného ilike+maybeSingle.
+  const { partCard, lookup: partCardLookup } = await resolveCanonicalPart(sb, plan.user_id, plan.selected_part);
 
   return {
     plan: plan as SessionPlan,
     existingSession: (existingSession ?? null) as PartSessionRow | null,
     threads: threadCandidates ?? [],
     partCard: partCard ?? null,
+    partCardLookup,
   };
 }
 
@@ -329,8 +438,14 @@ function hasEvidence(turnsByBlock: Record<string, any[]>, observationsByBlock: R
     Object.values(observationsByBlock || {}).some(v => String(v || "").trim().length > 0);
 }
 
-function buildEvidenceItems(ctx: { plan: SessionPlan; threads: any[]; partCard: any }, liveProgress: any, turnsByBlock: Record<string, any[]>, observationsByBlock: Record<string, string>) {
+function buildEvidenceItems(ctx: { plan: SessionPlan; threads: any[]; partCard: any; partCardLookup?: PartCardLookup }, liveProgress: any, turnsByBlock: Record<string, any[]>, observationsByBlock: Record<string, string>) {
   const progressItems = Array.isArray(liveProgress?.items) ? liveProgress.items : [];
+  const lookup = ctx.partCardLookup ?? {
+    status: ctx.partCard ? "resolved" : "missing",
+    reason: ctx.partCard ? "legacy_resolved" : "legacy_missing",
+    canonical_part_name: ctx.partCard?.part_name ?? null,
+    registry_id: ctx.partCard?.id ?? null,
+  } as PartCardLookup;
   return [
     { kind: "session_plan", available: !!ctx.plan, source_table: "did_daily_session_plans", source_id: ctx.plan.id, date: ctx.plan.plan_date },
     { kind: "live_progress", available: !!liveProgress, source_table: "did_live_session_progress", source_id: ctx.plan.id, completed_blocks: liveProgress?.completed_blocks ?? null, total_blocks: liveProgress?.total_blocks ?? null },
@@ -338,7 +453,7 @@ function buildEvidenceItems(ctx: { plan: SessionPlan; threads: any[]; partCard: 
     { kind: "turn_by_turn", available: Object.values(turnsByBlock || {}).some((v) => Array.isArray(v) && v.length > 0), block_count: Object.keys(turnsByBlock || {}).length },
     { kind: "observations", available: Object.values(observationsByBlock || {}).some((v) => String(v || "").trim().length > 0), count: Object.values(observationsByBlock || {}).filter((v) => String(v || "").trim().length > 0).length },
     { kind: "thread_transcript", available: (ctx.threads || []).some((t: any) => Array.isArray(t.messages) && t.messages.length > 0), thread_count: ctx.threads?.length ?? 0 },
-    { kind: "part_card", available: !!ctx.partCard, source_table: "did_part_registry", part_name: ctx.plan.selected_part },
+    { kind: "part_card", available: lookup.status === "resolved" && !!ctx.partCard, source_table: "did_part_registry", part_name: ctx.plan.selected_part, canonical_part_name: lookup.canonical_part_name, registry_id: lookup.registry_id, lookup_status: lookup.status, lookup_reason: lookup.reason },
   ];
 }
 
@@ -511,7 +626,7 @@ ${tasksLines || "(žádné)"}
 
 async function persistEvaluation(
   sb: any,
-  ctx: { plan: SessionPlan; existingSession: PartSessionRow | null; threads?: any[]; partCard?: any },
+  ctx: { plan: SessionPlan; existingSession: PartSessionRow | null; threads?: any[]; partCard?: any; partCardLookup?: PartCardLookup },
   evaluation: any,
   markdown: string,
   endedReason: EndedReason,
@@ -841,9 +956,12 @@ Deno.serve(async (req: Request) => {
     const threadTranscript = formatThreadMessagesForPrompt(ctx.threads, ctx.plan);
 
     const partInfo = ctx.partCard
-      ? `Karta části: jméno=${ctx.partCard.part_name}, věk≈${ctx.partCard.age_estimate ?? "?"}, ` +
-        `role=${ctx.partCard.role_in_system ?? "?"}, aktuální stav=${ctx.partCard.current_state ?? "?"}`
-      : `(karta části ${ctx.plan.selected_part} v DB nenalezena)`;
+      ? `Karta/registry záznam části nalezen: zadané jméno=${ctx.plan.selected_part}, kanonické jméno=${ctx.partCard.part_name}, ` +
+        `registry_id=${ctx.partCard.id}, věk≈${ctx.partCard.age_estimate ?? "?"}, role=${ctx.partCard.role_in_system ?? "?"}, ` +
+        `aktuální stav=${ctx.partCard.current_state ?? "?"}. Přímá Drive vazba není v DB uložena, netvrď proto, že karta neexistuje.`
+      : ctx.partCardLookup?.status === "ambiguous"
+        ? `(registry lookup části ${ctx.plan.selected_part} je nejednoznačný: ${ctx.partCardLookup.reason}; netvrď, že karta neexistuje)`
+        : `(registry záznam části ${ctx.plan.selected_part} v DB nenalezen)`;
 
     const blockSummary = totalBlocks
       ? `Blocks completed: ${completedBlocks ?? "?"}/${totalBlocks}` +
