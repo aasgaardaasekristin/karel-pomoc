@@ -203,6 +203,7 @@ interface SessionPlan {
   session_lead?: string | null;
   session_format?: string | null;
   plan_markdown: string | null;
+  urgency_breakdown?: Record<string, any> | null;
   status: string;
   completed_at: string | null;
   crisis_event_id: string | null;
@@ -371,15 +372,32 @@ async function loadContext(sb: any, planId: string) {
     .limit(1)
     .maybeSingle();
 
+  const sessionContract = plan.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown : {};
+  let threadCandidates: any[] | null = null;
+  if (sessionContract?.session_actor === "karel_direct") {
+    const { data } = await sb
+      .from("did_threads")
+      .select("id, part_name, sub_mode, started_at, last_activity_at, messages, workspace_type, workspace_id")
+      .eq("workspace_type", "session")
+      .eq("workspace_id", planId)
+      .eq("sub_mode", "karel_part_session")
+      .order("last_activity_at", { ascending: false })
+      .limit(3);
+    threadCandidates = data ?? null;
+  }
+
   // Najít LIVE thread (cast/karel_part_session) pro stejnou část v okně sezení.
-  const { data: threadCandidates } = await sb
+  if (!threadCandidates?.length) {
+  const { data } = await sb
     .from("did_threads")
-    .select("id, part_name, sub_mode, started_at, last_activity_at, messages")
+    .select("id, part_name, sub_mode, started_at, last_activity_at, messages, workspace_type, workspace_id")
     .ilike("part_name", plan.selected_part)
     .gte("last_activity_at", `${plan.plan_date}T00:00:00Z`)
     .lte("last_activity_at", `${plan.plan_date}T23:59:59Z`)
     .order("last_activity_at", { ascending: false })
     .limit(3);
+    threadCandidates = data ?? [];
+  }
 
   // Karta části (DB-side mirror) — deterministický resolver místo nejednoznačného ilike+maybeSingle.
   const { partCard, lookup: partCardLookup } = await resolveCanonicalPart(sb, plan.user_id, plan.selected_part);
