@@ -214,25 +214,72 @@ async function handleSubmitPosition(sb: any, body: any) {
     updated_at: new Date().toISOString(),
   };
 
-  await sb.from("did_meetings").update(update).eq("id", meeting_id);
-  return jsonRes({ success: true, therapist, recorded: true });
+  const { error } = await sb.from("did_meetings").update(update).eq("id", meeting_id);
+  if (error) return dbErrorRes("submit_position", error);
+  return jsonRes({ ok: true, success: true, therapist, recorded: true });
+}
+
+async function handleAcknowledgeAlert(sb: any, body: any) {
+  const { alert_id, crisis_event_id } = body;
+  if (!alert_id && !crisis_event_id) return jsonRes({ ok: false, error: "alert_id or crisis_event_id required" }, 400);
+
+  let resolvedEventId = crisis_event_id as string | undefined;
+  if (alert_id) {
+    const { data: alert, error: alertError } = await sb.from("crisis_alerts")
+      .select("id, part_name").eq("id", alert_id).maybeSingle();
+    if (alertError) return dbErrorRes("find_alert", alertError);
+    if (!alert) return jsonRes({ ok: false, error: "Alert not found" }, 404);
+
+    const stamp = new Date().toISOString();
+    const { error: ackError } = await sb.from("crisis_alerts")
+      .update({ acknowledged_at: stamp, acknowledged_by: "karel" }).eq("id", alert_id);
+    if (ackError) return dbErrorRes("acknowledge_alert", ackError);
+
+    if (!resolvedEventId) {
+      const { data: crisis, error: crisisLookupError } = await sb.from("crisis_events")
+        .select("id").eq("part_name", alert.part_name).is("closed_at", null)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (crisisLookupError) return dbErrorRes("find_crisis_for_alert", crisisLookupError);
+      resolvedEventId = crisis?.id;
+    }
+  }
+
+  if (resolvedEventId) {
+    const { data: crisis, error: crisisError } = await sb.from("crisis_events")
+      .select("id").eq("id", resolvedEventId).maybeSingle();
+    if (crisisError) return dbErrorRes("find_crisis_for_acknowledge", crisisError);
+    if (!crisis) return jsonRes({ ok: false, error: "Crisis not found" }, 404);
+
+    const stamp = new Date().toISOString();
+    const { error: dismissError } = await sb.from("crisis_events")
+      .update({ banner_dismissed: true, banner_dismissed_at: stamp }).eq("id", resolvedEventId);
+    if (dismissError) return dbErrorRes("dismiss_crisis_banner", dismissError);
+  }
+
+  return jsonRes({ ok: true, success: true, action: "acknowledge_alert", crisis_event_id: resolvedEventId ?? null, alert_id: alert_id ?? null, status: "acknowledged" });
 }
 
 async function handleGenerateKarelStatement(sb: any, body: any) {
   const { crisis_event_id } = body;
   if (!crisis_event_id) return jsonRes({ error: "crisis_event_id required" }, 400);
 
-  const { data: crisis } = await sb.from("crisis_events").select("*").eq("id", crisis_event_id).single();
+  const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+  if (!lovableApiKey) return missingEnvRes(["LOVABLE_API_KEY"]);
+
+  const { data: crisis, error: crisisError } = await sb.from("crisis_events").select("*").eq("id", crisis_event_id).single();
+  if (crisisError) return dbErrorRes("find_crisis_for_statement", crisisError, crisisError.code === "PGRST116" ? 404 : 500);
   if (!crisis) return jsonRes({ error: "Crisis not found" }, 404);
 
-  const { data: meeting } = await sb.from("did_meetings")
+  const { data: meeting, error: meetingError } = await sb.from("did_meetings")
     .select("*").eq("crisis_event_id", crisis_event_id).eq("is_closure_meeting", true).limit(1).single();
+  if (meetingError) return dbErrorRes("find_closure_meeting", meetingError, meetingError.code === "PGRST116" ? 404 : 500);
   if (!meeting) return jsonRes({ error: "No closure meeting found" }, 404);
 
   const readiness = await checkClosureReadiness(sb, crisis_event_id);
 
-  const { data: interviews } = await sb.from("crisis_karel_interviews")
+  const { data: interviews, error: interviewsError } = await sb.from("crisis_karel_interviews")
     .select("*").eq("crisis_event_id", crisis_event_id).order("created_at", { ascending: false }).limit(5);
+  if (interviewsError) return dbErrorRes("load_statement_interviews", interviewsError);
 
   // Generate Karel's final statement via AI
   const aiPayload = {
@@ -269,7 +316,7 @@ Piš česky, stručně, klinicky přesně.`
 
   const aiResp = await fetch("https://ai.lovable.dev/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${lovableApiKey}` },
     body: JSON.stringify(aiPayload),
   });
 
@@ -284,7 +331,7 @@ Piš česky, stručně, klinicky přesně.`
     readiness.clinical.met && readiness.process.met ? "PODMÍNĚNĚ DOPORUČUJI — čekám na tým" :
     "NEDOPORUČUJI UZAVŘÍT — " + readiness.all_blockers.slice(0, 3).join(", ");
 
-  await sb.from("did_meetings").update({
+  const { error: meetingUpdateError } = await sb.from("did_meetings").update({
     karel_final_statement: karelStatement,
     closure_recommendation: recommendation,
     meeting_conclusions: {
@@ -297,15 +344,18 @@ Piš česky, stručně, klinicky přesně.`
     },
     updated_at: new Date().toISOString(),
   }).eq("id", meeting.id);
+  if (meetingUpdateError) return dbErrorRes("save_karel_statement", meetingUpdateError);
 
   // Update crisis_events
-  await sb.from("crisis_events").update({
+  const { error: crisisUpdateError } = await sb.from("crisis_events").update({
     closure_statement: karelStatement,
     closure_reason: recommendation,
     updated_at: new Date().toISOString(),
   }).eq("id", crisis_event_id);
+  if (crisisUpdateError) return dbErrorRes("save_crisis_statement", crisisUpdateError);
 
   return jsonRes({
+    ok: true,
     success: true,
     karel_statement: karelStatement,
     recommendation,
