@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Database, FileText, CheckCircle, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { callEdgeFunction } from "@/lib/safeEdgeFunction";
 import type { CrisisOperationalCard, AuditEntry } from "@/hooks/useCrisisOperationalState";
 
 interface Props {
@@ -14,24 +15,7 @@ interface Props {
  * and CrisisSessionQA. All crisis actions go through edge functions,
  * not direct DB writes.
  */
-async function callFn(fnName: string, body: Record<string, any>) {
-  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-  const session = (await supabase.auth.getSession()).data.session;
-  const res = await fetch(`https://${projectId}.supabase.co/functions/v1/${fnName}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
-    body: JSON.stringify(body),
-  });
-
-  const text = await res.text();
-  const payload = text ? JSON.parse(text) : {};
-
-  if (!res.ok) {
-    throw new Error(payload?.error || `HTTP ${res.status}`);
-  }
-
-  return payload;
-}
+const callFn = callEdgeFunction;
 
 const AuditRow: React.FC<{ entry: AuditEntry }> = ({ entry }) => {
   const statusColor = entry.status === "ok" ? "text-green-600" : entry.status === "failed" ? "text-destructive" : "text-muted-foreground";
