@@ -363,18 +363,15 @@ async function loadContext(sb: any, planId: string) {
     .order("last_activity_at", { ascending: false })
     .limit(3);
 
-  // Karta části (DB-side mirror — pokud existuje).
-  const { data: partCard } = await sb
-    .from("did_part_registry")
-    .select("id, part_name, age_estimate, role_in_system, current_state")
-    .ilike("part_name", plan.selected_part)
-    .maybeSingle();
+  // Karta části (DB-side mirror) — deterministický resolver místo nejednoznačného ilike+maybeSingle.
+  const { partCard, lookup: partCardLookup } = await resolveCanonicalPart(sb, plan.user_id, plan.selected_part);
 
   return {
     plan: plan as SessionPlan,
     existingSession: (existingSession ?? null) as PartSessionRow | null,
     threads: threadCandidates ?? [],
     partCard: partCard ?? null,
+    partCardLookup,
   };
 }
 
