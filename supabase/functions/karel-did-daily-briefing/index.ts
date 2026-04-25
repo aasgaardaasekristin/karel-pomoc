@@ -459,7 +459,15 @@ const BRIEFING_TOOL = {
             held: { type: "boolean", description: "True pokud včera proběhlo aspoň částečné sezení." },
             part_name: { type: "string" },
             lead: { type: "string", enum: ["Hanička", "Káťa", "společně"] },
+            review_status: { type: "string", description: "Stav review, např. partially_analyzed." },
             completion: { type: "string", enum: ["completed", "partial", "abandoned"] },
+            completed_checklist_count: { type: "number" },
+            total_checklist_count: { type: "number" },
+            evidence_label: { type: "string", description: "Krátká evidence značka, např. 1/5 checklist položek." },
+            evidence_limited: { type: "boolean" },
+            evidence_limitations: { type: "string" },
+            review_id: { type: "string" },
+            plan_id: { type: "string" },
             karel_summary: {
               type: "string",
               description:
