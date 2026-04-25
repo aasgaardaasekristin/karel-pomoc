@@ -48,7 +48,7 @@ const corsHeaders = {
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-2.5-pro";
 
-type EndedReason = "completed" | "partial" | "auto_safety_net";
+type EndedReason = "completed" | "partial" | "auto_safety_net" | "manual_end" | "save_transcript" | "exit_session";
 
 const pragueDayISO = (d: Date = new Date()): string =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(d);
@@ -205,6 +205,8 @@ interface SessionPlan {
   crisis_event_id: string | null;
 }
 
+type ReviewStatus = "analyzed" | "partially_analyzed" | "evidence_limited" | "failed_analysis" | "cancelled";
+
 interface PartSessionRow {
   id: string;
   user_id: string;
@@ -325,6 +327,38 @@ function hasEvidence(turnsByBlock: Record<string, any[]>, observationsByBlock: R
   return (completedBlocks ?? 0) > 0 ||
     Object.values(turnsByBlock || {}).some(v => Array.isArray(v) && v.length > 0) ||
     Object.values(observationsByBlock || {}).some(v => String(v || "").trim().length > 0);
+}
+
+function buildEvidenceItems(ctx: { plan: SessionPlan; threads: any[]; partCard: any }, liveProgress: any, turnsByBlock: Record<string, any[]>, observationsByBlock: Record<string, string>) {
+  const progressItems = Array.isArray(liveProgress?.items) ? liveProgress.items : [];
+  return [
+    { kind: "session_plan", available: !!ctx.plan, source_table: "did_daily_session_plans", source_id: ctx.plan.id, date: ctx.plan.plan_date },
+    { kind: "live_progress", available: !!liveProgress, source_table: "did_live_session_progress", source_id: ctx.plan.id, completed_blocks: liveProgress?.completed_blocks ?? null, total_blocks: liveProgress?.total_blocks ?? null },
+    { kind: "checklist", available: progressItems.length > 0, count: progressItems.length },
+    { kind: "turn_by_turn", available: Object.values(turnsByBlock || {}).some((v) => Array.isArray(v) && v.length > 0), block_count: Object.keys(turnsByBlock || {}).length },
+    { kind: "observations", available: Object.values(observationsByBlock || {}).some((v) => String(v || "").trim().length > 0), count: Object.values(observationsByBlock || {}).filter((v) => String(v || "").trim().length > 0).length },
+    { kind: "thread_transcript", available: (ctx.threads || []).some((t: any) => Array.isArray(t.messages) && t.messages.length > 0), thread_count: ctx.threads?.length ?? 0 },
+    { kind: "part_card", available: !!ctx.partCard, source_table: "did_part_registry", part_name: ctx.plan.selected_part },
+  ];
+}
+
+function checklistItems(liveProgress: any) {
+  const items = Array.isArray(liveProgress?.items) ? liveProgress.items : [];
+  const labelOf = (it: any, idx: number) => String(it?.title || it?.label || it?.text || it?.name || `Bod ${idx + 1}`);
+  const done = items.filter((it: any) => it?.done === true || it?.completed === true || it?.status === "done");
+  const missing = items.filter((it: any) => !(it?.done === true || it?.completed === true || it?.status === "done"));
+  return {
+    completed: done.map((it: any, idx: number) => ({ label: labelOf(it, idx), status: it?.status ?? "done" })),
+    missing: missing.map((it: any, idx: number) => ({ label: labelOf(it, idx), status: it?.status ?? "missing" })),
+  };
+}
+
+function reviewStatusFor(evaluation: any, evidencePresent: boolean, completedBlocks?: number, totalBlocks?: number): ReviewStatus {
+  if (!evidencePresent) return "evidence_limited";
+  if (evaluation?.completion_status === "completed") return "analyzed";
+  if ((completedBlocks ?? 0) > 0 || evaluation?.completion_status === "partial") return "partially_analyzed";
+  if (totalBlocks && totalBlocks > 0) return "evidence_limited";
+  return "partially_analyzed";
 }
 
 function sanitizeEvaluation(evaluation: any, endedReason: EndedReason, completedBlocks?: number, totalBlocks?: number) {
