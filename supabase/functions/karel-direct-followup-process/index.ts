@@ -253,7 +253,7 @@ serve(async (req) => {
       .eq("is_current", true)
       .maybeSingle();
 
-    const classified = classifyAnswer(answer, sourcePlan.selected_part || "");
+    const classified = await classifyAnswer(sb, answer, sourcePlan.selected_part || "", sourcePlan.user_id);
     const now = new Date().toISOString();
     const nextCandidate = {
       session_actor: "karel_direct",
@@ -273,6 +273,8 @@ serve(async (req) => {
       linked_plan_id: sourcePlanId,
       linked_review_id: review?.id ?? null,
       next_candidate: nextCandidate,
+      raw_candidate_part: classified.rawCandidatePart ?? null,
+      entity_guard: classified.entityGuard ?? null,
       processed_at: now,
     };
 
@@ -282,16 +284,18 @@ serve(async (req) => {
     if (classified.action !== "close_as_not_available_today") {
       const { data: byQuestion } = await sb
         .from("did_daily_session_plans")
-        .select("id")
+        .select("id, selected_part, status, lifecycle_status, urgency_breakdown")
         .contains("urgency_breakdown", { source_question_id: questionId })
         .limit(1);
       const { data: bySourcePlan } = await sb
         .from("did_daily_session_plans")
-        .select("id")
+        .select("id, selected_part, status, lifecycle_status, urgency_breakdown")
         .contains("urgency_breakdown", { kind: "karel_direct_followup_candidate", source_plan_id: sourcePlanId })
         .limit(1);
 
-      const existingId = byQuestion?.[0]?.id ?? bySourcePlan?.[0]?.id ?? null;
+      const existingByQuestion = (byQuestion ?? []).find((row: Record<string, unknown>) => isActiveCandidate(row, classified.nextPart));
+      const existingBySourcePlan = (bySourcePlan ?? []).find((row: Record<string, unknown>) => isActiveCandidate(row, classified.nextPart));
+      const existingId = existingByQuestion?.id ?? existingBySourcePlan?.id ?? null;
       if (existingId) {
         candidatePlanId = existingId;
       } else {
