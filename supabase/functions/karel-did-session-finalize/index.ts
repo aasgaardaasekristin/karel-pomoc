@@ -7,6 +7,46 @@ const corsHeaders = {
 };
 
 type FinalizeSource = "manual_end" | "save_transcript" | "exit_session" | "auto_safety_net" | "completed" | "partial";
+type JobStatus = "queued" | "running" | "completed" | "failed" | "already_done";
+
+const json = (payload: Record<string, unknown>, status = 200) =>
+  new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+const isUniqueViolation = (error: any) => String(error?.code || "") === "23505";
+
+async function upsertTerminalJob(sb: any, base: Record<string, unknown>, status: JobStatus, payload: Record<string, unknown>) {
+  const now = new Date().toISOString();
+  const row = {
+    ...base,
+    status,
+    result_summary: status === "already_done" ? "Session review already exists" : "Session finalization completed",
+    result_payload: payload,
+    error_message: null,
+    started_at: now,
+    completed_at: now,
+  };
+
+  const { data, error } = await sb
+    .from("karel_action_jobs")
+    .upsert(row, { onConflict: "dedupe_key" })
+    .select("id, status, dedupe_key, result_payload")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function findJob(sb: any, dedupeKey: string) {
+  const { data, error } = await sb
+    .from("karel_action_jobs")
+    .select("*")
+    .eq("dedupe_key", dedupeKey)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -22,12 +62,7 @@ serve(async (req: Request) => {
     const reason = String(body?.reason || source);
     const force = body?.force === true;
 
-    if (!planId) {
-      return new Response(JSON.stringify({ ok: false, error: "planId je povinné" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!planId) return json({ ok: false, error: "planId je povinné" }, 400);
 
     const { data: plan, error: planErr } = await sb
       .from("did_daily_session_plans")
@@ -35,12 +70,17 @@ serve(async (req: Request) => {
       .eq("id", planId)
       .maybeSingle();
     if (planErr) throw planErr;
-    if (!plan) {
-      return new Response(JSON.stringify({ ok: false, error: "Plán sezení nenalezen" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!plan) return json({ ok: false, error: "Plán sezení nenalezen" }, 404);
+
+    const dedupeKey = `finalize_session:${planId}`;
+    const jobBase = {
+      user_id: plan.user_id,
+      job_type: "finalize_session",
+      dedupe_key: dedupeKey,
+      target_type: "did_session_plan",
+      target_id: planId,
+      source_function: "karel-did-session-finalize",
+    };
 
     const { data: existingReview } = await sb
       .from("did_session_reviews")
@@ -50,101 +90,182 @@ serve(async (req: Request) => {
       .maybeSingle();
 
     if (existingReview && !force) {
-      return new Response(JSON.stringify({ ok: true, reused: true, review: existingReview }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      const resultPayload = { plan_id: planId, review_id: existingReview.id, review_status: existingReview.status };
+      const job = await upsertTerminalJob(sb, jobBase, "already_done", resultPayload);
+      return json({
+        ok: true,
+        reused: true,
+        job_id: job.id,
+        job_status: "already_done",
+        dedupe_key: dedupeKey,
+        review_id: existingReview.id,
+        review: existingReview,
+        result_payload: resultPayload,
       });
+    }
+
+    const existingJob = await findJob(sb, dedupeKey);
+    if (existingJob && !force) {
+      if (["queued", "running", "completed", "already_done"].includes(existingJob.status)) {
+        return json({
+          ok: true,
+          job_id: existingJob.id,
+          job_status: existingJob.status,
+          dedupe_key: dedupeKey,
+          review_id: existingJob.result_payload?.review_id ?? null,
+          result_payload: existingJob.result_payload ?? {},
+        });
+      }
+      if (existingJob.status === "failed") {
+        return json({
+          ok: false,
+          job_id: existingJob.id,
+          job_status: "failed",
+          dedupe_key: dedupeKey,
+          error: existingJob.error_message || "Předchozí finalizace selhala; automatický retry není v C1 povolen.",
+        }, 409);
+      }
     }
 
     const now = new Date().toISOString();
-    await sb.from("did_daily_session_plans").update({
-      lifecycle_status: "awaiting_analysis",
-      finalized_at: now,
-      finalization_source: source,
-      finalization_reason: reason,
-      updated_at: now,
-    }).eq("id", planId);
+    const { data: insertedJob, error: insertJobErr } = await sb
+      .from("karel_action_jobs")
+      .insert({ ...jobBase, status: "running", started_at: now })
+      .select("id, status, dedupe_key")
+      .single();
 
-    const { data: liveProgress } = await sb
-      .from("did_live_session_progress")
-      .select("items, turns_by_block, completed_blocks, total_blocks")
-      .eq("plan_id", planId)
-      .maybeSingle();
-
-    const items = Array.isArray(liveProgress?.items) ? liveProgress.items : [];
-    const observationsByBlock = Object.fromEntries(
-      items
-        .map((it: any, idx: number) => [String(idx), String(it?.observation ?? "")])
-        .filter((entry: string[]) => String(entry[1] ?? "").trim().length > 0),
-    );
-
-    const evalRes = await fetch(`${supabaseUrl}/functions/v1/karel-did-session-evaluate`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${serviceKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        planId,
-        endedReason: source === "auto_safety_net" ? "auto_safety_net" : reason === "completed" ? "completed" : "partial",
-        completedBlocks: liveProgress?.completed_blocks,
-        totalBlocks: liveProgress?.total_blocks,
-        turnsByBlock: liveProgress?.turns_by_block ?? {},
-        observationsByBlock,
-        force,
-      }),
-    });
-
-    const evalPayload = await evalRes.json().catch(() => ({}));
-    if (!evalRes.ok || evalPayload?.ok === false) {
-      const message = evalPayload?.error || `Evaluator HTTP ${evalRes.status}`;
-      await sb.from("did_daily_session_plans").update({
-        lifecycle_status: "failed_analysis",
-        analysis_error: message,
-        updated_at: new Date().toISOString(),
-      }).eq("id", planId);
-
-      const failureReview = {
-        user_id: plan.user_id,
-        plan_id: planId,
-        part_name: plan.selected_part,
-        session_date: plan.plan_date,
-        status: "failed_analysis",
-        review_kind: source === "auto_safety_net" ? "calendar_day_safety_net" : "scheduled_session",
-        evidence_items: [{ kind: "failure", available: true, error: message }],
-        source_data_summary: "analysis failed",
-        projection_status: "skipped",
-        error_message: message,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { data: existingFailureReview } = await sb
-        .from("did_session_reviews")
-        .select("id")
-        .eq("plan_id", planId)
-        .eq("is_current", true)
-        .maybeSingle();
-      if (existingFailureReview?.id) {
-        await sb.from("did_session_reviews").update(failureReview).eq("id", existingFailureReview.id);
-      } else {
-        await sb.from("did_session_reviews").insert(failureReview);
+    if (insertJobErr) {
+      if (isUniqueViolation(insertJobErr)) {
+        const job = await findJob(sb, dedupeKey);
+        return json({
+          ok: job?.status !== "failed",
+          job_id: job?.id ?? null,
+          job_status: job?.status ?? "running",
+          dedupe_key: dedupeKey,
+          result_payload: job?.result_payload ?? {},
+          error: job?.status === "failed" ? job?.error_message : undefined,
+        }, job?.status === "failed" ? 409 : 200);
       }
-
-      return new Response(JSON.stringify({ ok: false, error: message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      throw insertJobErr;
     }
 
-    return new Response(JSON.stringify({ ok: true, ...evalPayload }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const jobId = insertedJob.id;
+
+    try {
+      await sb.from("did_daily_session_plans").update({
+        lifecycle_status: "awaiting_analysis",
+        finalized_at: now,
+        finalization_source: source,
+        finalization_reason: reason,
+        updated_at: now,
+      }).eq("id", planId);
+
+      const { data: liveProgress } = await sb
+        .from("did_live_session_progress")
+        .select("items, turns_by_block, completed_blocks, total_blocks")
+        .eq("plan_id", planId)
+        .maybeSingle();
+
+      const items = Array.isArray(liveProgress?.items) ? liveProgress.items : [];
+      const observationsByBlock = Object.fromEntries(
+        items
+          .map((it: any, idx: number) => [String(idx), String(it?.observation ?? "")])
+          .filter((entry: string[]) => String(entry[1] ?? "").trim().length > 0),
+      );
+
+      const evalRes = await fetch(`${supabaseUrl}/functions/v1/karel-did-session-evaluate`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planId,
+          endedReason: source === "auto_safety_net" ? "auto_safety_net" : reason === "completed" ? "completed" : "partial",
+          completedBlocks: liveProgress?.completed_blocks,
+          totalBlocks: liveProgress?.total_blocks,
+          turnsByBlock: liveProgress?.turns_by_block ?? {},
+          observationsByBlock,
+          force,
+        }),
+      });
+
+      const evalPayload = await evalRes.json().catch(() => ({}));
+      if (!evalRes.ok || evalPayload?.ok === false) {
+        const message = evalPayload?.error || `Evaluator HTTP ${evalRes.status}`;
+        await sb.from("did_daily_session_plans").update({
+          lifecycle_status: "failed_analysis",
+          analysis_error: message,
+          updated_at: new Date().toISOString(),
+        }).eq("id", planId);
+
+        const failureReview = {
+          user_id: plan.user_id,
+          plan_id: planId,
+          part_name: plan.selected_part,
+          session_date: plan.plan_date,
+          status: "failed_analysis",
+          review_kind: source === "auto_safety_net" ? "calendar_day_safety_net" : "scheduled_session",
+          evidence_items: [{ kind: "failure", available: true, error: message }],
+          source_data_summary: "analysis failed",
+          projection_status: "skipped",
+          error_message: message,
+          updated_at: new Date().toISOString(),
+        };
+
+        const { data: existingFailureReview } = await sb
+          .from("did_session_reviews")
+          .select("id")
+          .eq("plan_id", planId)
+          .eq("is_current", true)
+          .maybeSingle();
+        if (existingFailureReview?.id) {
+          await sb.from("did_session_reviews").update(failureReview).eq("id", existingFailureReview.id);
+        } else {
+          await sb.from("did_session_reviews").insert(failureReview);
+        }
+
+        await sb.from("karel_action_jobs").update({
+          status: "failed",
+          error_message: message,
+          completed_at: new Date().toISOString(),
+          result_summary: "Session finalization failed",
+        }).eq("id", jobId);
+
+        return json({ ok: false, job_id: jobId, job_status: "failed", dedupe_key: dedupeKey, error: message }, 500);
+      }
+
+      const resultPayload = {
+        plan_id: planId,
+        review_id: evalPayload?.review_id ?? null,
+        review_status: evalPayload?.review_status ?? null,
+      };
+      await sb.from("karel_action_jobs").update({
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        result_summary: "Session finalization completed",
+        result_payload: resultPayload,
+        error_message: null,
+      }).eq("id", jobId);
+
+      return json({
+        ok: true,
+        job_id: jobId,
+        job_status: "completed",
+        dedupe_key: dedupeKey,
+        review_id: resultPayload.review_id,
+        result_payload: resultPayload,
+        ...evalPayload,
+      });
+    } catch (workErr: any) {
+      const message = workErr?.message ?? String(workErr);
+      await sb.from("karel_action_jobs").update({
+        status: "failed",
+        error_message: message,
+        completed_at: new Date().toISOString(),
+        result_summary: "Session finalization failed",
+      }).eq("id", jobId);
+      throw workErr;
+    }
   } catch (e: any) {
     console.error("[karel-did-session-finalize] fatal:", e);
-    return new Response(JSON.stringify({ ok: false, error: e?.message ?? String(e) }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ ok: false, error: e?.message ?? String(e) }, 500);
   }
 });

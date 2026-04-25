@@ -20,6 +20,7 @@ import ChatMessage from "@/components/ChatMessage";
 import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { Progress } from "@/components/ui/progress";
+import { finalizeDidSessionWithJob } from "@/lib/karelFinalizeJobs";
 
 import DidPostSessionInterrogation, { type InterrogationAnswer } from "./DidPostSessionInterrogation";
 import LiveProgramChecklist from "./LiveProgramChecklist";
@@ -901,8 +902,11 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
       // musí vidět jinak než `in_progress` nebo `done`.
       if (planId) {
         try {
-          await (supabase as any).functions.invoke("karel-did-session-finalize", {
-            body: { planId, source: "save_transcript", reason: "partial" },
+          await finalizeDidSessionWithJob({
+            planId,
+            source: "save_transcript",
+            reason: "partial",
+            onAccepted: () => toast.info("Karel dokončuje vyhodnocení. Výsledek se uloží automaticky."),
           });
         } catch (planErr) {
           console.warn("Failed to finalize plan after transcript save:", planErr);
@@ -1279,8 +1283,11 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
     // v Pracovně viditelný jako uzavřený, ne dál jako `in_progress`.
     if (planId) {
       try {
-        await (supabase as any).functions.invoke("karel-did-session-finalize", {
-          body: { planId, source: "completed", reason: skipped ? "partial" : "completed" },
+        await finalizeDidSessionWithJob({
+          planId,
+          source: "completed",
+          reason: skipped ? "partial" : "completed",
+          onAccepted: () => toast.info("Karel dokončuje vyhodnocení. Výsledek se uloží automaticky."),
         });
       } catch (planErr) {
         console.warn("Failed to finalize plan after analysis:", planErr);
