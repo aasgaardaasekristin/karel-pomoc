@@ -538,7 +538,7 @@ Deno.serve(async (req: Request) => {
           destinations.push("crisis_event_update");
         }
 
-        await appendPantryB(admin, {
+        await appendPantryB(admin as any, {
           user_id: userId,
           entry_kind: updated.deliberation_type === "crisis" ? "state_change" : "conclusion",
           source_kind: "team_deliberation",
