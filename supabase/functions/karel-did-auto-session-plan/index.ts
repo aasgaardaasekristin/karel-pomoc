@@ -95,18 +95,7 @@ async function appendToGoogleDoc(token: string, fileId: string, text: string): P
 
 const truncate = (s: string, max: number) => s.length > max ? s.slice(0, max) + "…" : s;
 const canonicalText = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-const KAREL_DIRECT_IDEMPOTENT_STATUSES = [
-  "pending",
-  "generated",
-  "planned",
-  "in_progress",
-  "awaiting_analysis",
-  "partially_analyzed",
-  "evidence_limited",
-  "analyzed",
-  "completed",
-  "done",
-];
+const KAREL_DIRECT_INACTIVE_STATUSES = new Set(["cancelled", "canceled", "archived"]);
 
 function getPragueDate(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
@@ -145,15 +134,19 @@ function deriveKarelDirectContract(selectedPart: UrgencyResult, forcePart: strin
 
 async function ensureKarelDirectCandidate(sb: any, args: { userId: string; todayPrague: string; selectedPart: UrgencyResult; forcePart: string | null; crisisEventId?: string | null }) {
   const { data: existing } = await sb.from("did_daily_session_plans")
-    .select("id")
+    .select("id,status,lifecycle_status")
     .eq("plan_date", args.todayPrague)
     .contains("urgency_breakdown", { kind: "karel_direct_session_candidate", session_actor: "karel_direct" })
-    .in("status", KAREL_DIRECT_IDEMPOTENT_STATUSES)
-    .limit(1);
+    .limit(10);
 
-  if (existing?.length) {
+  const activeExisting = (existing || []).find((plan: any) =>
+    !KAREL_DIRECT_INACTIVE_STATUSES.has(String(plan.status || "").toLowerCase()) &&
+    !KAREL_DIRECT_INACTIVE_STATUSES.has(String(plan.lifecycle_status || "").toLowerCase())
+  );
+
+  if (activeExisting) {
     console.log(`[auto-session-plan] Karel-direct candidate already exists for ${args.todayPrague}; continuing therapist-led flow.`);
-    return { created: false, existingPlanId: existing[0].id };
+    return { created: false, existingPlanId: activeExisting.id };
   }
 
   const contract = deriveKarelDirectContract(args.selectedPart, args.forcePart);
@@ -412,7 +405,9 @@ serve(async (req) => {
       therapistContext = body?.therapistContext || null;
     } catch { /* empty body is fine */ }
 
-    // ═══ CHECK EXISTING THERAPIST-LED AUTO PLAN (only block auto, not manual) ═══
+    // ═══ CHECK EXISTING THERAPIST-LED AUTO PLAN (only blocks therapist-led insert, not Karel-direct candidate) ═══
+    let therapistLedAutoPlanExists = false;
+    let existingTherapistLedAutoPlanId: string | null = null;
     if (!forcePart) {
       const { data: autoPlans } = await sb.from("did_daily_session_plans")
         .select("id, generated_by, urgency_breakdown")
@@ -424,10 +419,9 @@ serve(async (req) => {
       );
 
       if (therapistLedAutoPlans.length > 0) {
-        console.log(`[auto-session-plan] Therapist-led auto plan already exists for ${todayPrague}, skipping.`);
-        return new Response(JSON.stringify({ success: true, skipped: true, reason: "plan_exists" }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        therapistLedAutoPlanExists = true;
+        existingTherapistLedAutoPlanId = therapistLedAutoPlans[0].id;
+        console.log(`[auto-session-plan] Therapist-led auto plan already exists for ${todayPrague}; will still ensure Karel-direct candidate.`);
       }
     }
 
@@ -644,6 +638,45 @@ serve(async (req) => {
       selectedTier = selectedPart.tier;
     }
 
+    // ═══ Resolve canonical crisis_event_id for selected part and ensure supplemental Karel-direct candidate ═══
+    let crisisEventId: string | null = null;
+    try {
+      const { data: openCrisis } = await sb
+        .from("crisis_events")
+        .select("id")
+        .eq("part_name", selectedPart.partName)
+        .not("phase", "in", '("closed","CLOSED")')
+        .order("opened_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      crisisEventId = (openCrisis as any)?.id ?? null;
+    } catch (e) {
+      console.warn("[auto-session-plan] crisis_event resolution skipped:", e);
+    }
+
+    let karelDirectCandidate: { created: boolean; planId?: string; existingPlanId?: string } | null = null;
+    if (!forcePart) {
+      karelDirectCandidate = await ensureKarelDirectCandidate(sb, {
+        userId,
+        todayPrague,
+        selectedPart,
+        forcePart,
+        crisisEventId,
+      });
+
+      if (therapistLedAutoPlanExists) {
+        return new Response(JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: "plan_exists",
+          existingPlanId: existingTherapistLedAutoPlanId,
+          karel_direct_candidate: karelDirectCandidate,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const partReg = registry.find(p => p.part_name === selectedPart.partName);
     const isDormant = partReg?.status !== "active" && partReg?.status !== "aktivní";
 
@@ -827,33 +860,6 @@ ${perplexityResult || "(nedostupná)"}`;
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\n/g, "<br>");
 
-    // ═══ FÁZE 3: resolve canonical crisis_event_id for selected part (open phases only) ═══
-    let crisisEventId: string | null = null;
-    try {
-      const { data: openCrisis } = await sb
-        .from("crisis_events")
-        .select("id")
-        .eq("part_name", selectedPart.partName)
-        .not("phase", "in", '("closed","CLOSED")')
-        .order("opened_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      crisisEventId = (openCrisis as any)?.id ?? null;
-    } catch (e) {
-      console.warn("[auto-session-plan] crisis_event resolution skipped:", e);
-    }
-
-    let karelDirectCandidate: { created: boolean; planId?: string; existingPlanId?: string } | null = null;
-    if (!forcePart) {
-      karelDirectCandidate = await ensureKarelDirectCandidate(sb, {
-        userId,
-        todayPrague,
-        selectedPart,
-        forcePart,
-        crisisEventId,
-      });
-    }
-
     // ═══ SAVE TO DB (INSERT — never delete old plans) ═══
     const generatedBy = forcePart ? "manual" : "auto";
     const urgencyBreakdown = {
@@ -953,6 +959,7 @@ ${perplexityResult || "(nedostupná)"}`;
       sessionLead,
       sessionFormat,
       generatedBy,
+      karel_direct_candidate: karelDirectCandidate,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
