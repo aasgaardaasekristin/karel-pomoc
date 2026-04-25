@@ -346,7 +346,7 @@ async function stampIndexConfirmation(
         await supabase
           .from("did_part_registry")
           .update({ index_confirmed_at: now })
-          .eq("part_id", row.part_id);
+          .eq("part_id", String(row.part_id));
       }
     }
 
