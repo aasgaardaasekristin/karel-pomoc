@@ -254,7 +254,9 @@ function scorePartCandidate(row: any, selectedPart: string): number[] {
   const displayNorm = normalizePartLookupKey(row?.display_name);
   const driveNorm = normalizePartLookupKey(row?.drive_folder_label);
   const statusNorm = normalizePartLookupKey(row?.status);
+  const uppercaseCanonical = row?.part_name === String(row?.part_name ?? "").toUpperCase() && row?.display_name === String(row?.display_name ?? "").toUpperCase();
   return [
+    uppercaseCanonical ? 1 : 0,
     row?.part_name === selectedTrim ? 1 : 0,
     partNorm === selectedNorm ? 1 : 0,
     displayNorm && displayNorm === partNorm && row?.display_name === String(row?.display_name ?? "").toUpperCase() ? 1 : 0,
