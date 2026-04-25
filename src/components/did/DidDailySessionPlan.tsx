@@ -1136,9 +1136,11 @@ const PlanCard = ({
                 Vstup do herny
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={onMarkDone} className="h-6 px-2 text-[10px] border-green-500/40 text-green-700 hover:bg-green-500/10">
-              <CheckCircle2 className="mr-0.5 h-2.5 w-2.5" /> Splněno
-            </Button>
+            {!karelDirect && (
+              <Button variant="outline" size="sm" onClick={onMarkDone} className="h-6 px-2 text-[10px] border-green-500/40 text-green-700 hover:bg-green-500/10">
+                <CheckCircle2 className="mr-0.5 h-2.5 w-2.5" /> Splněno
+              </Button>
+            )}
           </>
         )}
         {plan.status === "in_progress" && !isArchived && (
