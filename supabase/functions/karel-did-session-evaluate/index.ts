@@ -690,6 +690,28 @@ async function persistEvaluation(
     }
   }
 
+  if (reviewStatus !== "failed_analysis" && reviewId) {
+    const projectionTarget = "05A_OPERATIVNI_PLAN";
+    const projectionContent = `<!-- did_session_review:${reviewId} plan:${ctx.plan.id} -->\n\n### Vyhodnocení včerejšího sezení — ${ctx.plan.plan_date} · ${partName}\n\n**Stav review:** ${reviewStatus}\n**Evidence:** ${reviewPayload.source_data_summary}\n\n**Shrnutí:**\n${evaluation.session_arc ?? "nebylo zaznamenáno"}\n\n**Co z toho plyne pro další plán:**\n${evaluation.implications_for_tomorrow ?? "nebylo zaznamenáno"}\n\n**Doporučený další krok:**\n${evaluation.recommended_next_step ?? "doplnit evidenci / ruční poznámku terapeutky"}\n`;
+    const { data: existingWrites } = await sb
+      .from("did_pending_drive_writes")
+      .select("id")
+      .eq("target_document", projectionTarget)
+      .ilike("content", `%did_session_review:${reviewId}%`)
+      .limit(1);
+    if (!existingWrites || existingWrites.length === 0 || force) {
+      await sb.from("did_pending_drive_writes").insert({
+        user_id: userId,
+        target_document: projectionTarget,
+        content: projectionContent,
+        write_type: "append",
+        priority: "high",
+        status: "pending",
+      });
+      await sb.from("did_session_reviews").update({ projection_status: "queued", updated_at: now }).eq("id", reviewId);
+    }
+  }
+
   // 4) did_pantry_packages — session_summary balík → KARTA_<part>
   const cardTarget = `KARTA_${partName.toUpperCase()}`;
   const sessionLogTarget = `KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG`;
