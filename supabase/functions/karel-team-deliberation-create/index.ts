@@ -398,7 +398,9 @@ Deno.serve(async (req: Request) => {
           stop_rules: Array.isArray(rawSp.stop_rules) ? rawSp.stop_rules.map((x: any) => String(x)).slice(0, 8) : [],
           session_mode: rawSp.session_mode ? String(rawSp.session_mode) : "standard",
           first_question: rawSp.first_question ? String(rawSp.first_question).slice(0, 240) : null,
-          last_plan_change_state: "unchanged",
+          last_plan_change_state: ["unchanged", "revised", "deferred", "needs_followup_question"].includes(String(rawSp.last_plan_change_state ?? ""))
+            ? String(rawSp.last_plan_change_state)
+            : "unchanged",
         }
       : {};
 
