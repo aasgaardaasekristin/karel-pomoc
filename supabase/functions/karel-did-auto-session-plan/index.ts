@@ -669,7 +669,7 @@ serve(async (req) => {
           success: true,
           skipped: true,
           reason: "plan_exists",
-          existingPlanId: existingTherapistLedAutoPlanId,
+          existingTherapistLedAutoPlanId,
           karel_direct_candidate: karelDirectCandidate,
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
