@@ -53,26 +53,24 @@ async function generateChildOpener(partName: string, briefingHint: any): Promise
     return defaultChildOpener(partName);
   }
 
-  const addendum = briefingHint?.therapist_addendum?.toString().trim();
+  const firstQuestion = String(briefingHint?.first_question ?? "").trim();
+  const treatmentPhase = String(briefingHint?.treatment_phase ?? "").trim();
+  const readiness = String(briefingHint?.readiness_today ?? "").trim();
 
   // C1 SESSION-LEAD TRUTH PASS (2026-04-22):
   //   `first_draft` (therapist-led plán) NESMÍ vstoupit do hint payloadu —
   //   child-facing opener nesmí leakovat therapist-facing program ani
-  //   implicitně přes hint. Posíláme JEN nechemické metainfo (proč dnes,
-  //   délka) + volitelné doplnění tónu od terapeutky.
+  //   implicitně přes hint. Posíláme JEN povolené child-facing vstupy.
   const hintLines = briefingHint
     ? [
-        `Vnitřní rámec dnešního sezení (NEUKAZUJ to v openeru — slouží jen tvému pochopení):`,
-        `- Proč dnes (interní): ${briefingHint.why_today || "—"}`,
-        `- Délka: ${briefingHint.duration_min || 60} min`,
+        `Povolený child-facing vstup:`,
+        `- part_name: ${partName}`,
+        firstQuestion ? `- first_question: ${firstQuestion}` : `- first_question: Jak ti dnes je, když jsme spolu tady přes obrazovku?`,
+        treatmentPhase ? `- jemný tón podle fáze: ${treatmentPhase}` : null,
+        readiness ? `- jemný tón podle readiness: ${readiness}` : null,
       ]
+        .filter(Boolean) as string[]
     : [`Žádný briefing — udělej krátké uvítací oslovení a 1–2 jemné hravé nabídky.`];
-
-  if (addendum) {
-    hintLines.push("");
-    hintLines.push(`Vnitřní doplnění terapeutky (NEUKAZUJ doslova — jen z toho čerpej tón a opatrnost):`);
-    hintLines.push(addendum);
-  }
 
   const hintText = hintLines.join("\n");
 
