@@ -558,7 +558,7 @@ serve(async (req) => {
           }
 
           // 5. Agenda item
-          if (seg.segment_type !== "background_noise") {
+          if (seg.segment_type) {
             // FÁZE 2.6 session-target gate: non-communicable parts become
             // observation-only items — no related_part, no direct-work appearance
             let agendaPriority = signal.signal_type === "risk" ? "urgent" : "when_appropriate";
@@ -613,7 +613,7 @@ serve(async (req) => {
 
       if (!existingPraise || existingPraise.length === 0) {
         await sb.from("karel_conversation_agenda").insert({
-          therapist: normalizeTherapist(task.assigned_to || "hanka"),
+          therapist: normalizeTherapist((task as any).assigned_to || task.therapist || "hanka"),
           topic: `Pochválit za splněný úkol: ${(task.task || "").slice(0, 100)}`,
           topic_type: "praise",
           priority: "when_appropriate",
@@ -669,12 +669,12 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("[REACTIVE-LOOP] FATAL ERROR:", error?.message || error);
+    console.error("[REACTIVE-LOOP] FATAL ERROR:", error instanceof Error ? error.message : error);
     await sb.from("system_health_log").insert({
       event_type: "reactive_loop_error",
       severity: "error",
       message: error instanceof Error ? error.message : "Unknown error",
-    }).catch(() => {});
+    });
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
