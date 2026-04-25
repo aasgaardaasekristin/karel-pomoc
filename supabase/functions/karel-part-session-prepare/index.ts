@@ -6,10 +6,12 @@
  * NEZAKLÁDÁ NOVÝ DATOVÝ MODEL. Sedí přímo na did_threads:
  *   sub_mode       = "karel_part_session"
  *   workspace_type = "session"
- *   workspace_id   = "kps_<part>_<YYYY-MM-DD>"   ← jeden room na část/den
+ *   workspace_id   = plan_id                      ← idempotence per denní plán
  *
  * Vstup:
- *   { part_name: string, briefing_proposed_session?: object }
+ *   { part_name: string, plan_id?: string, first_question?: string,
+ *     session_actor?: string, session_mode?: string, readiness_today?: string,
+ *     briefing_proposed_session?: object }
  *
  * Výstup (idempotentní):
  *   { thread_id: string, created: boolean }
@@ -160,6 +162,31 @@ function defaultChildOpener(partName: string): string {
 Můžeš mi pro začátek zkusit jednu věc — buď mi napsat (nebo nahrát hlas), jak ti dnes je, anebo mi sem nakreslit jednu čáru, jakou má dnes barvu. Co tě láká víc?`;
 }
 
+function isUuid(value: unknown): value is string {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value ?? ""));
+}
+
+async function createFollowUpQuestion(sb: any, args: { userId: string | null; planId: string | null; partName: string; reason: string }) {
+  const question = `Haničko, ${args.partName} dnes v Karlově přímém kontaktu nebyl dostupný. Viděla jsi dnes známky stažení, únavy nebo přítomnosti jiné části?`;
+  const { data: existing } = await sb
+    .from("did_pending_questions")
+    .select("id")
+    .eq("status", "open")
+    .eq("subject_type", "karel_direct_session")
+    .eq("subject_id", args.planId ?? `${args.partName}:${pragueTodayISO()}`)
+    .limit(1);
+  if (existing?.length) return;
+  await sb.from("did_pending_questions").insert({
+    question,
+    context: `MVP-SESSION-2 follow-up: ${args.reason}`,
+    subject_type: "karel_direct_session",
+    subject_id: args.planId ?? `${args.partName}:${pragueTodayISO()}`,
+    directed_to: "hanka_kata",
+    blocking: "clinical_clarification",
+    status: "open",
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -172,25 +199,30 @@ serve(async (req) => {
     const partName: string = (body.part_name || "").trim();
     if (!partName) return jsonRes({ error: "part_name required" }, 400);
 
-    const briefingHint = body.briefing_proposed_session || null;
+    const planId = isUuid(body?.plan_id) ? String(body.plan_id) : null;
+    const sessionActor = String(body?.session_actor ?? body?.briefing_proposed_session?.session_actor ?? "").trim();
+    const sessionMode = String(body?.session_mode ?? body?.briefing_proposed_session?.session_mode ?? "").trim();
+    const readinessToday = String(body?.readiness_today ?? body?.briefing_proposed_session?.readiness_today ?? "").trim();
+    const briefingHint = {
+      ...(body.briefing_proposed_session || {}),
+      first_question: body?.first_question ?? body?.briefing_proposed_session?.first_question,
+      session_actor: sessionActor || body?.briefing_proposed_session?.session_actor,
+      session_mode: sessionMode || body?.briefing_proposed_session?.session_mode,
+      readiness_today: readinessToday || body?.briefing_proposed_session?.readiness_today,
+    };
 
     const today = pragueTodayISO();
     const dayStart = `${today}T00:00:00.000Z`;
     const dayEnd = `${today}T23:59:59.999Z`;
 
-    // 1) Idempotent lookup — match by sub_mode + part_name + day window.
-    // (workspace_id je UUID, takže nemůžeme použít deterministický string.
-    //  Místo toho dedupe-ujeme přes (sub_mode, part_name, started_at::date).)
-    const existing = await sb
-      .from("did_threads")
-      .select("id, started_at")
-      .eq("sub_mode", "karel_part_session")
-      .ilike("part_name", partName)
-      .gte("started_at", dayStart)
-      .lte("started_at", dayEnd)
-      .order("started_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // 1) Idempotent lookup — primary truth is workspace_type=session + workspace_id=plan_id.
+    let existingQuery = sb.from("did_threads").select("id, started_at").eq("sub_mode", "karel_part_session");
+    if (planId) {
+      existingQuery = existingQuery.eq("workspace_type", "session").eq("workspace_id", planId);
+    } else {
+      existingQuery = existingQuery.ilike("part_name", partName).gte("started_at", dayStart).lte("started_at", dayEnd);
+    }
+    const existing = await existingQuery.order("started_at", { ascending: false }).limit(1).maybeSingle();
 
     if (existing.data?.id) {
       return jsonRes({ thread_id: existing.data.id, created: false });
@@ -206,6 +238,18 @@ serve(async (req) => {
       .maybeSingle();
 
     const userId = anyThread?.user_id ?? null;
+
+    if (sessionActor === "karel_direct" && sessionMode === "deferred") {
+      if (planId) {
+        const { data: plan } = await sb.from("did_daily_session_plans").select("urgency_breakdown").eq("id", planId).maybeSingle();
+        await sb.from("did_daily_session_plans").update({
+          urgency_breakdown: { ...(plan?.urgency_breakdown ?? {}), result_status: "deferred" },
+          updated_at: new Date().toISOString(),
+        }).eq("id", planId);
+      }
+      await createFollowUpQuestion(sb, { userId, planId, partName, reason: "deferred_without_child_session" });
+      return jsonRes({ deferred: true, created: false, reason: "session_mode_deferred" });
+    }
 
     // 3) Generate child-facing opener (AI or fallback).
     //    C0 SESSION-TYPE TRUTH SEPARATION (2026-04-22):
@@ -230,6 +274,10 @@ serve(async (req) => {
       thread_label: threadLabel,
       thread_emoji: "🎲",
     };
+    if (planId) {
+      insertPayload.workspace_type = "session";
+      insertPayload.workspace_id = planId;
+    }
     if (userId) insertPayload.user_id = userId;
 
     const { data: created, error: insErr } = await sb
