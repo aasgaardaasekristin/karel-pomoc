@@ -45,6 +45,8 @@ const corsHeaders = {
 };
 
 type Lane = "fast" | "bulk";
+type WriteResult = { write_id: string; status: "completed" | "skipped" | "failed" | "not_found"; target_document?: string; error?: string };
+
 
 const FAST_PRIORITIES = ["critical", "urgent", "high"];
 const BULK_PRIORITIES = ["normal", "low"];
@@ -160,45 +162,69 @@ Deno.serve(async (req) => {
 
   // ── Determine lane from query param OR body.lane (default bulk for backward compatibility) ──
   const url = new URL(req.url);
-  let lane: Lane = (url.searchParams.get("lane") as Lane) || "bulk";
+  let body: any = {};
   if (req.method === "POST") {
     try {
-      const body = await req.clone().json();
-      if (body?.lane === "fast" || body?.lane === "bulk") {
-        lane = body.lane;
-      }
+      body = await req.clone().json();
     } catch (_) { /* ignore */ }
+  }
+
+  const writeIds = Array.isArray(body?.write_ids)
+    ? body.write_ids.filter((v: unknown) => typeof v === "string" && v.trim()).map((v: string) => v.trim())
+    : [];
+  const scoped = body?.mode === "scoped" || writeIds.length > 0;
+  let lane: Lane = (url.searchParams.get("lane") as Lane) || "bulk";
+  if (body?.lane === "fast" || body?.lane === "bulk") {
+    lane = body.lane;
   }
 
   const lanePriorities = lane === "fast" ? FAST_PRIORITIES : BULK_PRIORITIES;
   const laneLimit = lane === "fast" ? FAST_LIMIT : BULK_LIMIT;
 
-  addLog(`Lane=${lane}, priorities=[${lanePriorities.join(",")}], limit=${laneLimit}`);
+  if (scoped) {
+    addLog(`Scoped mode: write_ids=${writeIds.length}`);
+  } else {
+    addLog(`Lane=${lane}, priorities=[${lanePriorities.join(",")}], limit=${laneLimit}`);
+  }
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, serviceKey);
 
-    // ── Build query ──
-    // Bulk includes NULL priority too (treated as 'normal').
-    let query = sb
-      .from("did_pending_drive_writes")
-      .select("*")
-      .eq("status", "pending")
-      .or("next_retry_at.is.null,next_retry_at.lte." + new Date().toISOString());
-
-    if (lane === "fast") {
-      query = query.in("priority", lanePriorities);
-    } else {
-      // bulk: priority NOT IN fast lane (covers normal, low, NULL)
-      query = query.not("priority", "in", `(${FAST_PRIORITIES.map((p) => `"${p}"`).join(",")})`);
+    if (scoped && writeIds.length === 0) {
+      return new Response(JSON.stringify({ error: "Scoped režim vyžaduje write_ids.", mode: "scoped", log }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const { data: pendingWrites, error: fetchErr } = await query
+    // ── Build query ──
+    // Scoped mode never selects lane/batch writes; it only reads explicit write_ids.
+    let query = sb.from("did_pending_drive_writes").select("*");
+
+    if (scoped) {
+      query = query.in("id", writeIds);
+    } else {
+      query = query
+        .eq("status", "pending")
+        .or("next_retry_at.is.null,next_retry_at.lte." + new Date().toISOString());
+
+      if (lane === "fast") {
+        query = query.in("priority", lanePriorities);
+      } else {
+        // bulk: priority NOT IN fast lane (covers normal, low, NULL)
+        query = query.not("priority", "in", `(${FAST_PRIORITIES.map((p) => `"${p}"`).join(",")})`);
+      }
+    }
+
+    const queryWithOrder = query
       .order("priority", { ascending: false }) // critical/urgent/high first
-      .order("created_at", { ascending: true })
-      .limit(laneLimit);
+      .order("created_at", { ascending: true });
+
+    const { data: pendingWrites, error: fetchErr } = scoped
+      ? await queryWithOrder
+      : await queryWithOrder.limit(laneLimit);
 
     if (fetchErr) {
       addLog(`DB fetch error: ${fetchErr.message}`);
@@ -209,16 +235,24 @@ Deno.serve(async (req) => {
       });
     }
 
+    const writeResults: WriteResult[] = [];
+    const foundIds = new Set((pendingWrites ?? []).map((pw: any) => pw.id));
+    if (scoped) {
+      for (const id of writeIds) {
+        if (!foundIds.has(id)) writeResults.push({ write_id: id, status: "not_found" });
+      }
+    }
+
     if (!pendingWrites || pendingWrites.length === 0) {
-      addLog("No eligible pending writes for this lane.");
-      await heartbeat(sb, lane, 0, 0, 0, 0, Date.now() - startTime, null);
+      addLog(scoped ? "No scoped writes found." : "No eligible pending writes for this lane.");
+      if (!scoped) await heartbeat(sb, lane, 0, 0, 0, 0, Date.now() - startTime, null);
       return new Response(
-        JSON.stringify({ lane, processed: 0, log, duration_ms: Date.now() - startTime }),
+        JSON.stringify({ mode: scoped ? "scoped" : "batch", lane, processed: 0, results: writeResults, log, duration_ms: Date.now() - startTime }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    addLog(`Found ${pendingWrites.length} pending writes for lane=${lane}`);
+    addLog(scoped ? `Found ${pendingWrites.length} scoped writes` : `Found ${pendingWrites.length} pending writes for lane=${lane}`);
 
     const token = await getAccessToken();
     const kartotekaRoot = await resolveKartotekaRoot(token);
@@ -252,6 +286,13 @@ Deno.serve(async (req) => {
       const writeType = pw.write_type || "append";
       const currentRetry = pw.retry_count || 0;
 
+      if (scoped && pw.status !== "pending") {
+        writeResults.push({ write_id: writeId, status: "skipped", target_document: target, error: `status is ${pw.status}` });
+        skipped++;
+        addLog(`SKIP ${writeId}: status '${pw.status}'`);
+        continue;
+      }
+
       // ── Mark attempt start ──
       await sb
         .from("did_pending_drive_writes")
@@ -264,6 +305,7 @@ Deno.serve(async (req) => {
           await markSkipped(sb, writeId, `unsupported write_type '${writeType}'`);
           await audit(sb, { sourceType, sourceId, target, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: "skipped", err: "write_type unsupported" });
           skipped++;
+          writeResults.push({ write_id: writeId, status: "skipped", target_document: target, error: `unsupported write_type '${writeType}'` });
           addLog(`SKIP ${writeId}: write_type '${writeType}'`);
           continue;
         }
@@ -273,6 +315,7 @@ Deno.serve(async (req) => {
           await markSkipped(sb, writeId, "replace not allowed");
           await audit(sb, { sourceType, sourceId, target, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: "skipped", err: "replace not allowed" });
           skipped++;
+          writeResults.push({ write_id: writeId, status: "skipped", target_document: target, error: "replace not allowed" });
           addLog(`SKIP ${writeId}: replace not allowed for '${target}'`);
           continue;
         }
@@ -282,6 +325,7 @@ Deno.serve(async (req) => {
           await markSkipped(sb, writeId, "target not in governance whitelist");
           await audit(sb, { sourceType, sourceId, target, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: "skipped", err: "not in whitelist" });
           skipped++;
+          writeResults.push({ write_id: writeId, status: "skipped", target_document: target, error: "target not in governance whitelist" });
           addLog(`SKIP ${writeId}: '${target}' not in whitelist`);
           continue;
         }
@@ -293,6 +337,7 @@ Deno.serve(async (req) => {
           const result = await markFailedWithRetry(sb, writeId, currentRetry, "target could not be resolved on Drive");
           await audit(sb, { sourceType, sourceId, target, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: result.status, err: "target unresolved" });
           if (result.permanent) permanent++; else failed++;
+          writeResults.push({ write_id: writeId, status: "failed", target_document: target, error: "target could not be resolved on Drive" });
           addLog(`${result.permanent ? "PERMANENT" : "RETRY"} ${writeId}: target '${target}' unresolved (attempt ${currentRetry + 1}/${MAX_RETRIES})`);
           continue;
         }
@@ -327,6 +372,7 @@ Deno.serve(async (req) => {
           .eq("id", writeId);
 
         await audit(sb, { sourceType, sourceId, target, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: true, status: "ok" });
+        writeResults.push({ write_id: writeId, status: "completed", target_document: target });
         addLog(`OK ${writeId}: ${writeType} → '${target}' (file ${resolved.id})`);
         completed++;
       } catch (err) {
@@ -334,20 +380,23 @@ Deno.serve(async (req) => {
         const result = await markFailedWithRetry(sb, writeId, currentRetry, errMsg);
         await audit(sb, { sourceType, sourceId, target, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: result.status, err: errMsg });
         if (result.permanent) permanent++; else failed++;
+        writeResults.push({ write_id: writeId, status: "failed", target_document: target, error: errMsg });
         addLog(`${result.permanent ? "PERMANENT" : "RETRY"} ${writeId}: ${errMsg}`);
       }
     }
 
     const duration = Date.now() - startTime;
-    await heartbeat(sb, lane, pendingWrites.length, completed, failed + permanent, skipped, duration, null);
+    if (!scoped) await heartbeat(sb, lane, pendingWrites.length, completed, failed + permanent, skipped, duration, null);
 
     const summary = {
+      mode: scoped ? "scoped" : "batch",
       lane,
       processed: pendingWrites.length,
       completed,
       failed,
       permanent_failed: permanent,
       skipped,
+      results: writeResults,
       duration_ms: duration,
       log,
     };
