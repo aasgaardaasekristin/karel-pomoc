@@ -95,18 +95,6 @@ async function appendToGoogleDoc(token: string, fileId: string, text: string): P
 
 const truncate = (s: string, max: number) => s.length > max ? s.slice(0, max) + "…" : s;
 const canonicalText = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-const KAREL_DIRECT_IDEMPOTENT_STATUSES = [
-  "pending",
-  "generated",
-  "planned",
-  "in_progress",
-  "awaiting_analysis",
-  "partially_analyzed",
-  "evidence_limited",
-  "analyzed",
-  "completed",
-  "done",
-];
 const KAREL_DIRECT_INACTIVE_STATUSES = new Set(["cancelled", "canceled", "archived"]);
 
 function getPragueDate(): string {
@@ -417,7 +405,9 @@ serve(async (req) => {
       therapistContext = body?.therapistContext || null;
     } catch { /* empty body is fine */ }
 
-    // ═══ CHECK EXISTING THERAPIST-LED AUTO PLAN (only block auto, not manual) ═══
+    // ═══ CHECK EXISTING THERAPIST-LED AUTO PLAN (only blocks therapist-led insert, not Karel-direct candidate) ═══
+    let therapistLedAutoPlanExists = false;
+    let existingTherapistLedAutoPlanId: string | null = null;
     if (!forcePart) {
       const { data: autoPlans } = await sb.from("did_daily_session_plans")
         .select("id, generated_by, urgency_breakdown")
@@ -429,10 +419,9 @@ serve(async (req) => {
       );
 
       if (therapistLedAutoPlans.length > 0) {
-        console.log(`[auto-session-plan] Therapist-led auto plan already exists for ${todayPrague}, skipping.`);
-        return new Response(JSON.stringify({ success: true, skipped: true, reason: "plan_exists" }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        therapistLedAutoPlanExists = true;
+        existingTherapistLedAutoPlanId = therapistLedAutoPlans[0].id;
+        console.log(`[auto-session-plan] Therapist-led auto plan already exists for ${todayPrague}; will still ensure Karel-direct candidate.`);
       }
     }
 
