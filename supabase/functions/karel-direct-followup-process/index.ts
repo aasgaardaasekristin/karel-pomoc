@@ -1,0 +1,264 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+type FollowUpAction =
+  | "retry_same_part_later"
+  | "switch_to_different_part"
+  | "defer_until_more_context"
+  | "therapist_led_check_first"
+  | "close_as_not_available_today";
+
+type Confidence = "low" | "moderate" | "high";
+
+const FORBIDDEN = [
+  "trauma_memory_work",
+  "deep_regression",
+  "unapproved_therapeutic_intervention",
+];
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function normalizeText(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function includesAny(text: string, terms: string[]): boolean {
+  const lower = text.toLowerCase();
+  return terms.some((term) => lower.includes(term.toLowerCase()));
+}
+
+function extractDifferentPart(answer: string, plannedPart: string): string | null {
+  const escapedPlanned = plannedPart.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const patterns = [
+    /(?:byl[ao]?|je|přítomn[áy]|ozval[ao]? se|mluvil[ao]?|vypadalo to na)\s+([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][\p{L}0-9_-]{1,40})/iu,
+    new RegExp(`nebyl[ao]?\\s+${escapedPlanned}[^.]{0,80}(?:ale|spíš|spise|pravděpodobně|pravdepodobne)\\s+([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][\\p{L}0-9_-]{1,40})`, "iu"),
+  ];
+  for (const pattern of patterns) {
+    const match = answer.match(pattern);
+    const candidate = match?.[1]?.trim();
+    if (candidate && candidate.toLowerCase() !== plannedPart.toLowerCase()) return candidate;
+  }
+  return null;
+}
+
+function classifyAnswer(answer: string, plannedPart: string): { action: FollowUpAction; confidence: Confidence; reason: string; nextPart: string; sessionMode: string; allowedDepth: string; firstQuestion: string } {
+  const lower = answer.toLowerCase();
+  const differentPart = extractDifferentPart(answer, plannedPart);
+
+  if (differentPart && includesAny(lower, ["jiná část", "jina cast", "spíš", "spise", "pravděpodobně", "pravdepodobne", "byl", "byla", "ozval", "mluvil", "mluvila"])) {
+    return {
+      action: "switch_to_different_part",
+      confidence: includesAny(lower, ["určitě", "jasně", "potvrzuji", "jsem si jist"]) ? "high" : "moderate",
+      reason: "Odpověď explicitně naznačuje přítomnost jiné části.",
+      nextPart: differentPart,
+      sessionMode: "state_mapping",
+      allowedDepth: "state_mapping",
+      firstQuestion: "Můžu se jen krátce zeptat, kdo je teď nejblíž, bez tlaku na hluboké věci?",
+    };
+  }
+
+  if (includesAny(lower, ["riziko", "nebezpe", "sebepo", "suicid", "ublížit", "ublizit", "nejist", "nevím", "nevim", "ověřit", "overit", "nejdřív hanka", "nejdriv hanka", "nejdřív káťa", "nejdriv kata"])) {
+    return {
+      action: "therapist_led_check_first",
+      confidence: includesAny(lower, ["riziko", "nebezpe", "sebepo", "suicid", "ublížit", "ublizit"]) ? "moderate" : "low",
+      reason: "Odpověď naznačuje nejistotu nebo potřebu lidského ověření před dalším kontaktem.",
+      nextPart: plannedPart,
+      sessionMode: "deferred",
+      allowedDepth: "check_in_only",
+      firstQuestion: "Nejdřív prosím ověřit stav terapeutkou; Karel zatím nespouští přímý kontakt.",
+    };
+  }
+
+  if (includesAny(lower, ["není dostup", "neni dostup", "nemá smysl", "nema smysl", "dnes ne", "nezkoušet", "nezkouset", "zavřít", "zavrit"])) {
+    return {
+      action: "close_as_not_available_today",
+      confidence: includesAny(lower, ["jasně", "určitě", "potvrzuji", "nemá smysl", "nema smysl"]) ? "high" : "moderate",
+      reason: "Terapeutická odpověď jasně uzavírá dnešní dostupnost části.",
+      nextPart: plannedPart,
+      sessionMode: "deferred",
+      allowedDepth: "check_in_only",
+      firstQuestion: "Dnes kontakt nezkoušet; počkat na další bezpečný kontext.",
+    };
+  }
+
+  if (includesAny(lower, ["unaven", "stažen", "stazen", "nepřipraven", "nepripraven", "přetížen", "pretizen", "potřebuje čas", "potrebuje cas", "později", "pozdeji", "zkusit znovu"])) {
+    return {
+      action: "retry_same_part_later",
+      confidence: "moderate",
+      reason: "Odpověď naznačuje dočasnou únavu, stažení nebo nepřipravenost bez důvodu měnit část.",
+      nextPart: plannedPart,
+      sessionMode: "check_in",
+      allowedDepth: "check_in_only",
+      firstQuestion: "Můžu se jen krátce zeptat, jestli je teď o trochu víc prostoru než minule?",
+    };
+  }
+
+  return {
+    action: "defer_until_more_context",
+    confidence: "low",
+    reason: "Odpověď není dostatečně určitá pro bezpečný další Karel-direct krok.",
+    nextPart: plannedPart,
+    sessionMode: "deferred",
+    allowedDepth: "check_in_only",
+    firstQuestion: "Počkat na jasnější kontext od terapeutek; nepokračovat automaticky.",
+  };
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
+
+  try {
+    const body = await req.json().catch(() => ({}));
+    const questionId = normalizeText(body.question_id);
+    if (!questionId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(questionId)) {
+      return jsonResponse({ error: "Invalid question_id" }, 400);
+    }
+
+    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+    const { data: question, error: qErr } = await sb
+      .from("did_pending_questions")
+      .select("*")
+      .eq("id", questionId)
+      .maybeSingle();
+    if (qErr) throw qErr;
+    if (!question) return jsonResponse({ error: "Question not found" }, 404);
+    if (question.subject_type !== "karel_direct_session") return jsonResponse({ error: "Unsupported subject_type" }, 400);
+    if (question.status !== "answered") return jsonResponse({ error: "Question is not answered" }, 400);
+    const answer = normalizeText(question.answer);
+    if (!answer) return jsonResponse({ error: "Answer is empty" }, 400);
+    const sourcePlanId = normalizeText(question.subject_id);
+    if (!sourcePlanId) return jsonResponse({ error: "Missing source plan id" }, 400);
+
+    const { data: sourcePlan, error: planErr } = await sb
+      .from("did_daily_session_plans")
+      .select("*")
+      .eq("id", sourcePlanId)
+      .maybeSingle();
+    if (planErr) throw planErr;
+    if (!sourcePlan) return jsonResponse({ error: "Source plan not found" }, 404);
+
+    const { data: review } = await sb
+      .from("did_session_reviews")
+      .select("id")
+      .eq("plan_id", sourcePlanId)
+      .eq("is_current", true)
+      .maybeSingle();
+
+    const classified = classifyAnswer(answer, sourcePlan.selected_part || "");
+    const now = new Date().toISOString();
+    const nextCandidate = {
+      session_actor: "karel_direct",
+      session_mode: classified.sessionMode,
+      selected_part: classified.nextPart,
+      first_question: classified.firstQuestion,
+      allowed_depth: classified.allowedDepth,
+      forbidden: FORBIDDEN,
+    };
+
+    const followUpResult = {
+      schema: "karel_direct_followup_result.v1",
+      follow_up_action: classified.action,
+      human_review_required: true,
+      action_reason: classified.reason,
+      action_confidence: classified.confidence,
+      linked_plan_id: sourcePlanId,
+      linked_review_id: review?.id ?? null,
+      next_candidate: nextCandidate,
+      processed_at: now,
+    };
+
+    let candidatePlanId: string | null = null;
+    let candidateCreated = false;
+
+    if (classified.action !== "close_as_not_available_today") {
+      const { data: byQuestion } = await sb
+        .from("did_daily_session_plans")
+        .select("id")
+        .contains("urgency_breakdown", { source_question_id: questionId })
+        .limit(1);
+      const { data: bySourcePlan } = await sb
+        .from("did_daily_session_plans")
+        .select("id")
+        .contains("urgency_breakdown", { kind: "karel_direct_followup_candidate", source_plan_id: sourcePlanId })
+        .limit(1);
+
+      const existingId = byQuestion?.[0]?.id ?? bySourcePlan?.[0]?.id ?? null;
+      if (existingId) {
+        candidatePlanId = existingId;
+      } else {
+        const urgencyBreakdown = {
+          kind: "karel_direct_followup_candidate",
+          session_actor: "karel_direct",
+          source_question_id: questionId,
+          source_plan_id: sourcePlanId,
+          source_review_id: review?.id ?? null,
+          follow_up_action: classified.action,
+          human_review_required: true,
+          session_mode: classified.sessionMode,
+          allowed_depth: classified.allowedDepth,
+          forbidden: FORBIDDEN,
+          first_question: classified.firstQuestion,
+          result_status: null,
+        };
+        const markdown = [
+          `## Karel-direct follow-up candidate: ${classified.nextPart}`,
+          "",
+          `Akce: ${classified.action}`,
+          `Režim: ${classified.sessionMode}`,
+          `První bezpečná věta: ${classified.firstQuestion}`,
+          "",
+          "Pouze draft/candidate; vyžaduje lidské potvrzení.",
+        ].join("\n");
+        const { data: inserted, error: insertErr } = await sb
+          .from("did_daily_session_plans")
+          .insert({
+            user_id: sourcePlan.user_id,
+            plan_date: sourcePlan.plan_date,
+            selected_part: classified.nextPart || sourcePlan.selected_part,
+            urgency_score: Math.max(0, Number(sourcePlan.urgency_score ?? 0) - 5),
+            urgency_breakdown: urgencyBreakdown,
+            plan_markdown: markdown,
+            plan_html: markdown.replace(/\n/g, "<br>"),
+            therapist: "karel",
+            status: "generated",
+            generated_by: "karel_direct_followup_process",
+            part_tier: sourcePlan.part_tier || "active",
+            session_lead: "karel",
+            session_format: "direct_contact",
+            crisis_event_id: sourcePlan.crisis_event_id ?? null,
+            lifecycle_status: "planned",
+          })
+          .select("id")
+          .single();
+        if (insertErr) throw insertErr;
+        candidatePlanId = inserted?.id ?? null;
+        candidateCreated = true;
+      }
+    }
+
+    await sb
+      .from("did_pending_questions")
+      .update({
+        follow_up_result: { ...followUpResult, candidate_plan_id: candidatePlanId, candidate_created: candidateCreated },
+        processed_by_reactive: true,
+      })
+      .eq("id", questionId);
+
+    return jsonResponse({ success: true, follow_up_result: followUpResult, candidate_plan_id: candidatePlanId, candidate_created: candidateCreated });
+  } catch (error) {
+    console.error("[karel-direct-followup-process] error", error);
+    return jsonResponse({ error: error instanceof Error ? error.message : "Unknown error" }, 500);
+  }
+});
