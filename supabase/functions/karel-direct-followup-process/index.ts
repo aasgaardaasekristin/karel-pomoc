@@ -132,19 +132,35 @@ function extractDifferentPart(answer: string, plannedPart: string): string | nul
   return null;
 }
 
-function classifyAnswer(answer: string, plannedPart: string): { action: FollowUpAction; confidence: Confidence; reason: string; nextPart: string; sessionMode: string; allowedDepth: string; firstQuestion: string } {
+async function classifyAnswer(sb: ReturnType<typeof createClient>, answer: string, plannedPart: string, userId: string): Promise<ClassifiedAnswer> {
   const lower = answer.toLowerCase();
   const differentPart = extractDifferentPart(answer, plannedPart);
 
-  if (differentPart && includesAny(lower, ["jiná část", "jina cast", "spíš", "spise", "pravděpodobně", "pravdepodobne", "byl", "byla", "ozval", "mluvil", "mluvila"])) {
+  if (differentPart) {
+    const verified = await resolveVerifiedPart(sb, differentPart, userId);
+    if (!verified) {
+      return {
+        action: "defer_until_more_context",
+        confidence: "low",
+        reason: "Odpověď obsahuje možnou identitní formulaci, ale kandidát části není ověřený v registru/alias guardu.",
+        nextPart: plannedPart,
+        sessionMode: "deferred",
+        allowedDepth: "check_in_only",
+        firstQuestion: "Počkat na jasnější kontext od terapeutek; nepokračovat automaticky.",
+        rawCandidatePart: differentPart,
+        entityGuard: { raw_candidate: differentPart, resolution: "uncertain", selected_part: null },
+      };
+    }
     return {
       action: "switch_to_different_part",
       confidence: includesAny(lower, ["určitě", "jasně", "potvrzuji", "jsem si jist"]) ? "high" : "moderate",
       reason: "Odpověď explicitně naznačuje přítomnost jiné části.",
-      nextPart: differentPart,
+      nextPart: verified.selectedPart,
       sessionMode: "state_mapping",
       allowedDepth: "state_mapping",
       firstQuestion: "Můžu se jen krátce zeptat, kdo je teď nejblíž, bez tlaku na hluboké věci?",
+      rawCandidatePart: differentPart,
+      entityGuard: verified.guard,
     };
   }
 
