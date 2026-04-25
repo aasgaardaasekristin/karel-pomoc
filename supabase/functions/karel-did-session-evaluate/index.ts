@@ -436,8 +436,14 @@ function hasEvidence(turnsByBlock: Record<string, any[]>, observationsByBlock: R
     Object.values(observationsByBlock || {}).some(v => String(v || "").trim().length > 0);
 }
 
-function buildEvidenceItems(ctx: { plan: SessionPlan; threads: any[]; partCard: any }, liveProgress: any, turnsByBlock: Record<string, any[]>, observationsByBlock: Record<string, string>) {
+function buildEvidenceItems(ctx: { plan: SessionPlan; threads: any[]; partCard: any; partCardLookup?: PartCardLookup }, liveProgress: any, turnsByBlock: Record<string, any[]>, observationsByBlock: Record<string, string>) {
   const progressItems = Array.isArray(liveProgress?.items) ? liveProgress.items : [];
+  const lookup = ctx.partCardLookup ?? {
+    status: ctx.partCard ? "resolved" : "missing",
+    reason: ctx.partCard ? "legacy_resolved" : "legacy_missing",
+    canonical_part_name: ctx.partCard?.part_name ?? null,
+    registry_id: ctx.partCard?.id ?? null,
+  } as PartCardLookup;
   return [
     { kind: "session_plan", available: !!ctx.plan, source_table: "did_daily_session_plans", source_id: ctx.plan.id, date: ctx.plan.plan_date },
     { kind: "live_progress", available: !!liveProgress, source_table: "did_live_session_progress", source_id: ctx.plan.id, completed_blocks: liveProgress?.completed_blocks ?? null, total_blocks: liveProgress?.total_blocks ?? null },
@@ -445,7 +451,7 @@ function buildEvidenceItems(ctx: { plan: SessionPlan; threads: any[]; partCard: 
     { kind: "turn_by_turn", available: Object.values(turnsByBlock || {}).some((v) => Array.isArray(v) && v.length > 0), block_count: Object.keys(turnsByBlock || {}).length },
     { kind: "observations", available: Object.values(observationsByBlock || {}).some((v) => String(v || "").trim().length > 0), count: Object.values(observationsByBlock || {}).filter((v) => String(v || "").trim().length > 0).length },
     { kind: "thread_transcript", available: (ctx.threads || []).some((t: any) => Array.isArray(t.messages) && t.messages.length > 0), thread_count: ctx.threads?.length ?? 0 },
-    { kind: "part_card", available: !!ctx.partCard, source_table: "did_part_registry", part_name: ctx.plan.selected_part },
+    { kind: "part_card", available: lookup.status === "resolved" && !!ctx.partCard, source_table: "did_part_registry", part_name: ctx.plan.selected_part, canonical_part_name: lookup.canonical_part_name, registry_id: lookup.registry_id, lookup_status: lookup.status, lookup_reason: lookup.reason },
   ];
 }
 
@@ -618,7 +624,7 @@ ${tasksLines || "(žádné)"}
 
 async function persistEvaluation(
   sb: any,
-  ctx: { plan: SessionPlan; existingSession: PartSessionRow | null; threads?: any[]; partCard?: any },
+  ctx: { plan: SessionPlan; existingSession: PartSessionRow | null; threads?: any[]; partCard?: any; partCardLookup?: PartCardLookup },
   evaluation: any,
   markdown: string,
   endedReason: EndedReason,
