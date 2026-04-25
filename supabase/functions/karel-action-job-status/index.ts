@@ -18,7 +18,10 @@ serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const authHeader = req.headers.get("Authorization") || "";
+    const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : "";
+    const isServiceRole = bearerToken === serviceKey || req.headers.get("apikey") === serviceKey;
     const sb = createClient(supabaseUrl, serviceKey);
 
     const body = await req.json().catch(() => ({}));
@@ -27,10 +30,13 @@ serve(async (req: Request) => {
     if (!jobId && !dedupeKey) return json({ ok: false, error: "job_id nebo dedupe_key je povinné" }, 400);
 
     let userId: string | null = null;
-    if (authHeader) {
-      const userClient = createClient(supabaseUrl, serviceKey, { global: { headers: { Authorization: authHeader } } });
-      const { data } = await userClient.auth.getUser();
+    if (!isServiceRole) {
+      if (!authHeader.startsWith("Bearer ")) return json({ ok: false, error: "Job nenalezen" }, 404);
+
+      const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } } });
+      const { data, error: authError } = await userClient.auth.getUser();
       userId = data?.user?.id ?? null;
+      if (authError || !userId) return json({ ok: false, error: "Job nenalezen" }, 404);
     }
 
     let query = sb
@@ -43,7 +49,7 @@ serve(async (req: Request) => {
     const job = rows?.[0] ?? null;
     if (!job) return json({ ok: false, error: "Job nenalezen" }, 404);
 
-    if (userId && job.user_id && job.user_id !== userId) return json({ ok: false, error: "Job nenalezen" }, 404);
+    if (!isServiceRole && job.user_id !== userId) return json({ ok: false, error: "Job nenalezen" }, 404);
 
     return json({
       ok: true,
