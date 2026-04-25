@@ -37,7 +37,7 @@ interface PantryPackage {
 
 type PackageResult = {
   package_id: string;
-  status: "would_enqueue" | "enqueued" | "deduped" | "failed" | "not_found" | "invalid_status";
+  status: "would_enqueue" | "enqueued" | "deduped" | "blocked_existing_failed_write" | "failed" | "not_found" | "invalid_status";
   target_document?: string;
   write_id?: string;
   error?: string;
@@ -115,6 +115,16 @@ async function processPackage(admin: any, pkg: PantryPackage, dryRun: boolean): 
 
   const existing = await findExistingWrite(admin, pkg, targetDoc);
   if (existing) {
+    if (["failed", "failed_permanent", "skipped"].includes(existing.status)) {
+      return {
+        package_id: pkg.id,
+        status: "blocked_existing_failed_write",
+        target_document: targetDoc,
+        write_id: existing.id,
+        error: "Existing write with same pantry_pkg marker is failed/skipped; manual decision required.",
+      };
+    }
+
     if (!dryRun) {
       const { error: updErr } = await admin
         .from("did_pantry_packages")
