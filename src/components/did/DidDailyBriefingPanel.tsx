@@ -244,6 +244,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [openingItemId, setOpeningItemId] = useState<string | null>(null);
+  const [yesterdayFallback, setYesterdayFallback] = useState<YesterdayFallbackReview | null>(null);
   /**
    * THERAPIST-LED TRUTH PASS (2026-04-22) — Duplicity guard.
    * Set obsahuje názvy částí, pro které dnes existuje schválený
@@ -274,6 +275,64 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     }
   }, []);
 
+  const loadYesterdayFallback = useCallback(async () => {
+    try {
+      const yesterday = pragueYesterdayISO();
+      const { data: review } = await (supabase as any)
+        .from("did_session_reviews")
+        .select("part_name,status,clinical_summary,therapeutic_implications,team_implications,next_session_recommendation,evidence_limitations")
+        .eq("session_date", yesterday)
+        .eq("is_current", true)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (review) {
+        setYesterdayFallback({
+          held: true,
+          part_name: review.part_name || undefined,
+          completion: review.status === "analyzed" ? "completed" : review.status === "partially_analyzed" ? "partial" : "abandoned",
+          karel_summary: review.clinical_summary || review.evidence_limitations || "Review existuje, ale klinické shrnutí zatím není uložené.",
+          key_finding_about_part: review.therapeutic_implications || "Závěr je omezen dostupnou evidencí.",
+          implications_for_plan: review.next_session_recommendation || "Doplnit chybějící podklady a navázat v dalším plánování.",
+          team_acknowledgement: review.team_implications || "Děkuji Haničce a Kátě za držení kontinuity; i částečný záznam je pro tým užitečný, když je označen poctivě.",
+          status_label: review.status,
+        });
+        return;
+      }
+      const { data: plan } = await (supabase as any)
+        .from("did_daily_session_plans")
+        .select("selected_part,session_lead,therapist,status,lifecycle_status,plan_markdown")
+        .eq("plan_date", yesterday)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!plan) { setYesterdayFallback(null); return; }
+      const { data: progress } = await (supabase as any)
+        .from("did_live_session_progress")
+        .select("completed_blocks,total_blocks,items")
+        .eq("plan_id", plan.id)
+        .maybeSingle();
+      const completed = progress?.completed_blocks ?? 0;
+      const total = progress?.total_blocks ?? null;
+      setYesterdayFallback({
+        held: true,
+        part_name: plan.selected_part || undefined,
+        lead: String(plan.session_lead || plan.therapist || "").toLowerCase().includes("kat") ? "Káťa" : "Hanička",
+        completion: completed > 0 ? "partial" : "abandoned",
+        karel_summary: completed > 0
+          ? `Včerejší sezení má částečnou evidenci (${completed}${total ? `/${total}` : ""} bodů). Plné klinické review ještě není uložené, proto zatím nebudu předstírat hotový závěr.`
+          : "Včera existoval plán sezení, ale zatím k němu nevidím dost průběhových podkladů pro plné klinické zhodnocení.",
+        key_finding_about_part: "Stav je evidence-limited: sekce zůstává viditelná, ale závěr čeká na review nebo doplnění podkladů.",
+        implications_for_plan: "Karel má sezení předat finalizační cestě; pokud podklady chybí, má vzniknout evidence-limited review místo tichého zmizení sekce.",
+        team_acknowledgement: "Haničko a Káťo, děkuji za udržení rámce — i nedokončené sezení se teď poctivě označí a neztratí se z přehledu.",
+        status_label: plan.lifecycle_status || plan.status,
+      });
+    } catch (e) {
+      console.error("[DidDailyBriefingPanel] loadYesterdayFallback failed:", e);
+      setYesterdayFallback(null);
+    }
+  }, []);
+
   const loadLatest = useCallback(async () => {
     setLoading(true);
     try {
@@ -300,7 +359,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   useEffect(() => {
     loadLatest();
     loadApprovedToday();
-  }, [loadLatest, loadApprovedToday, refreshTrigger]);
+    loadYesterdayFallback();
+  }, [loadLatest, loadApprovedToday, loadYesterdayFallback, refreshTrigger]);
 
   // Auto-refresh při nově vygenerovaném briefingu (realtime) i při focusu okna,
   // aby uživatel neviděl zastaralou verzi po regeneraci v jiné záložce / serveru.
