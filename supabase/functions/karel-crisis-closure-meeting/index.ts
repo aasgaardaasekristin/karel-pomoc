@@ -59,23 +59,29 @@ interface ClosureReadiness {
 }
 
 async function checkClosureReadiness(sb: any, crisisEventId: string): Promise<ClosureReadiness> {
-  const { data: crisis } = await sb.from("crisis_events").select("*").eq("id", crisisEventId).single();
+  const { data: crisis, error: crisisError } = await sb.from("crisis_events").select("*").eq("id", crisisEventId).single();
+  if (crisisError) throw new Error(`db_error:check_crisis:${crisisError.message}`);
   if (!crisis) throw new Error("Crisis not found");
 
-  const { data: interviews } = await sb.from("crisis_karel_interviews")
+  const { data: interviews, error: interviewsError } = await sb.from("crisis_karel_interviews")
     .select("*").eq("crisis_event_id", crisisEventId).order("created_at", { ascending: false }).limit(3);
+  if (interviewsError) throw new Error(`db_error:check_interviews:${interviewsError.message}`);
 
-  const { data: sessions } = await sb.from("did_daily_session_plans")
+  const { data: sessions, error: sessionsError } = await sb.from("did_daily_session_plans")
     .select("*").eq("crisis_event_id", crisisEventId);
+  if (sessionsError) throw new Error(`db_error:check_sessions:${sessionsError.message}`);
 
-  const { data: questions } = await sb.from("crisis_session_questions")
+  const { data: questions, error: questionsError } = await sb.from("crisis_session_questions")
     .select("*").eq("crisis_event_id", crisisEventId);
+  if (questionsError) throw new Error(`db_error:check_questions:${questionsError.message}`);
 
-  const { data: meetings } = await sb.from("did_meetings")
+  const { data: meetings, error: meetingsError } = await sb.from("did_meetings")
     .select("*").eq("crisis_event_id", crisisEventId).eq("is_closure_meeting", true);
+  if (meetingsError) throw new Error(`db_error:check_meetings:${meetingsError.message}`);
 
-  const { data: checklist } = await sb.from("crisis_closure_checklist")
+  const { data: checklist, error: checklistError } = await sb.from("crisis_closure_checklist")
     .select("*").eq("crisis_event_id", crisisEventId).order("created_at", { ascending: false }).limit(1);
+  if (checklistError) throw new Error(`db_error:check_checklist:${checklistError.message}`);
 
   const cl = checklist?.[0];
   const closureMeeting = meetings?.[0];
