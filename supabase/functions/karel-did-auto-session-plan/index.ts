@@ -102,7 +102,7 @@ function getPragueDate(): string {
 
 function deriveKarelDirectContract(selectedPart: UrgencyResult, forcePart: string | null) {
   const readiness_today = selectedPart.breakdown?.crisis ? "red" : selectedPart.score >= 6 ? "amber" : "green";
-  const session_mode = readiness_today === "red"
+  const session_mode: string = readiness_today === "red"
     ? "check_in"
     : selectedPart.breakdown?.fading_alert
       ? "check_in"
