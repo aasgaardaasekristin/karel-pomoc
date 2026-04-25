@@ -98,6 +98,48 @@ const jsonItemCount = (value: unknown): number => {
   return 0;
 };
 
+const getResolvedPartCardEvidence = (review: any): any | null => {
+  const items = Array.isArray(review?.evidence_items) ? review.evidence_items : [];
+  return items.find((item: any) =>
+    item?.kind === "part_card"
+    && item?.available === true
+    && String(item?.lookup_status ?? "").toLowerCase() === "resolved"
+  ) ?? null;
+};
+
+const partCardMissingPattern = /(part\s*card\s*(chyb|missing)|chyb[íi]\s+(?:part\s*card|karta|kartu|karty)|karta\s+[^.!?\n]{0,80}\s+chyb[íi]|absence\s+karty|založit\s+kartu|kartu\s+pro\s+část\s+arthur|je\s+nutn[ée]\s+založit\s+kartu)/i;
+
+const stripContradictoryPartCardText = (value: unknown, partCard: any | null): string => {
+  const text = cleanBlockText(value);
+  if (!text || !partCard) return text;
+  return text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence && !partCardMissingPattern.test(sentence))
+    .join(" ")
+    .trim();
+};
+
+const buildBriefingEvidenceLimitations = (review: any): string => {
+  const partCard = getResolvedPartCardEvidence(review);
+  const base = stripContradictoryPartCardText(review?.evidence_limitations, partCard);
+  const validityLimits = "chybí turn-by-turn data, transcript, observations/audio a plný průběh sezení";
+
+  if (partCard) {
+    const canonical = String(partCard?.canonical_part_name ?? partCard?.part_name ?? review?.part_name ?? "část").trim();
+    return mergeUniqueParagraphs(
+      base,
+      `Karta / registry záznam části byl dohledán jako ${canonical}. Evidence je nadále omezená nikoli kvůli chybějící kartě, ale kvůli tomu, že ${validityLimits}.`,
+      "Evidence-limited hardening: závěry jsou pracovní a Karel nepředstírá plnou analýzu.",
+    );
+  }
+
+  return mergeUniqueParagraphs(
+    base || "Validita je omezená; závěry jsou pracovní hypotézy.",
+    `Evidence-limited hardening: ${validityLimits}; závěry jsou pracovní a Karel nepředstírá plnou analýzu.`,
+  );
+};
+
 function enrichYesterdaySessionReview(payload: any, context: any) {
   const latestSession = Array.isArray(context?.yesterday_sessions) ? context.yesterday_sessions[0] : null;
   const latestReview = Array.isArray(context?.yesterday_session_reviews) ? context.yesterday_session_reviews[0] : null;
@@ -117,9 +159,9 @@ function enrichYesterdaySessionReview(payload: any, context: any) {
   const missingCount = jsonItemCount(latestReview?.missing_checklist_items);
   const totalCount = completedCount + missingCount;
   const evidenceLabel = totalCount > 0 ? `${completedCount}/${totalCount} checklist položek` : undefined;
-  const evidenceLimitBase = latestReview?.evidence_limitations
-    || "Validita je omezená; závěry jsou pracovní hypotézy.";
-  const evidenceLimit = `${evidenceLimitBase}\nEvidence-limited hardening: chybí turn-by-turn data, transcript, observations a part card; závěry jsou pracovní a Karel nepředstírá plnou analýzu.`;
+  const partCard = getResolvedPartCardEvidence(latestReview);
+  const evidenceLimit = latestReview ? buildBriefingEvidenceLimitations(latestReview) : review.evidence_limitations;
+  const clinicalSummary = stripContradictoryPartCardText(latestReview?.clinical_summary, partCard);
   const statusLine = latestReview
     ? `Stav review: ${latestReview.status}; evidence ${evidenceLabel ?? "neúplná"}. ${evidenceLimit}`
     : "";
@@ -142,7 +184,7 @@ function enrichYesterdaySessionReview(payload: any, context: any) {
       latestSession?.karel_notes,
       sessionArc,
       childPerspective,
-      latestReview?.clinical_summary,
+      clinicalSummary,
       review.karel_summary,
     ),
     key_finding_about_part: mergeUniqueParagraphs(
@@ -382,7 +424,7 @@ async function gatherContext(supabase: any) {
   if (yesterdayPlanIds.length > 0) {
     const { data: reviews } = await supabase
       .from("did_session_reviews")
-      .select("id, plan_id, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, completed_checklist_items, missing_checklist_items, source_data_summary, created_at")
+      .select("id, plan_id, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, completed_checklist_items, missing_checklist_items, source_data_summary, created_at")
       .in("plan_id", yesterdayPlanIds)
       .eq("is_current", true)
       .order("created_at", { ascending: false })
