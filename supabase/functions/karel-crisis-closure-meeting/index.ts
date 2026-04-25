@@ -522,3 +522,11 @@ function jsonRes(body: Record<string, unknown>, status = 200) {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
+
+function missingEnvRes(missing: string[]) {
+  return jsonRes({ ok: false, error: "missing_env", missing }, 500);
+}
+
+function dbErrorRes(step: string, error: { message?: string; code?: string }, status = 500) {
+  return jsonRes({ ok: false, error: "db_error", step, message: error.message || "Database operation failed" }, status);
+}
