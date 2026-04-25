@@ -1467,6 +1467,15 @@ Vyhodnoť toto sezení. Drž se pravidel ze system promptu.
     const diagnosticValidity = buildDiagnosticValidityReport(ctx.plan.plan_markdown, turnsByBlock, observationsByBlock, liveProgress);
     const markdown = renderEvaluationMarkdown(evaluation, ctx.plan, endedReason, completedBlocks, totalBlocks, diagnosticValidity);
 
+    if (sessionContract?.session_actor === "karel_direct") {
+      const karelOutcome: KarelDirectOutcome = evaluation.completion_status === "completed" && evidencePresent ? "completed" : "partial";
+      const audit = await persistKarelDirectOutcome(sb, ctx, { outcome: karelOutcome, endedReason, evidencePresent, actualPartIfDiffers: null });
+      return new Response(
+        JSON.stringify({ ok: true, plan_id: planId, part_name: ctx.plan.selected_part, completion_status: karelOutcome, review_status: audit.reviewStatus, post_session_result: audit.postSessionResult, markdown }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const targets = await persistEvaluation(
       sb,
       ctx,
