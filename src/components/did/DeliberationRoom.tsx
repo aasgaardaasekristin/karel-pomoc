@@ -270,12 +270,21 @@ function LiveProgramDraftPanel({
 
 function ClinicalContractPanel({ d }: { d: TeamDeliberation }) {
   const sp = d.session_params && typeof d.session_params === "object" ? d.session_params : {};
+  const planChangeLabel: Record<string, string> = {
+    unchanged: "beze změny",
+    revised: "upraveno",
+    deferred: "odloženo",
+    needs_followup_question: "potřebuje doplňující otázku",
+  };
+  const lastPlanChange = typeof sp.last_plan_change_state === "string"
+    ? (planChangeLabel[sp.last_plan_change_state] ?? sp.last_plan_change_state)
+    : sp.last_plan_change_state;
   const entries = [
     ["Fáze", sp.treatment_phase],
     ["Readiness", sp.readiness_today],
     ["Režim", sp.session_mode],
     ["První otázka", sp.first_question],
-    ["Změna plánu", sp.last_plan_change_state],
+    ["Změna plánu", lastPlanChange],
   ].filter(([, value]) => typeof value === "string" && value.trim().length > 0) as Array<[string, string]>;
   const stopRules = Array.isArray(sp.stop_rules) ? sp.stop_rules.map(String).filter(Boolean).slice(0, 4) : [];
   if (entries.length === 0 && stopRules.length === 0) return null;
