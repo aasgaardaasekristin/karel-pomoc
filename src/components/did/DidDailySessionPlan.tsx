@@ -1053,7 +1053,7 @@ const PlanCard = ({
                  - Když porada neexistuje → "Připravit s týmem" (vytvoří ji)
                  - Když je porada schválená → fallthrough na "Zahájit" níže
                  Mimo Pracovnu (prepGateEnabled=false) se nic z toho nerendrují. */}
-            {prepGateEnabled && prepInProgress && prepRoom && (
+            {prepGateEnabled && !karelDirect && prepInProgress && prepRoom && (
               <Button
                 variant="default"
                 size="sm"
@@ -1064,7 +1064,7 @@ const PlanCard = ({
                 {prepProgress && ` (${prepProgress.signed}/${prepProgress.total})`}
               </Button>
             )}
-            {prepGateEnabled && !prepLoading && !prepRoom && (
+            {prepGateEnabled && !karelDirect && !prepLoading && !prepRoom && (
               <Button
                 variant="default"
                 size="sm"
@@ -1088,7 +1088,7 @@ const PlanCard = ({
                 spustit", aby Hanka neměla dvě konfliktní akce.
                 Když porada NEEXISTUJE (legacy plán bez prep gatu) nebo gate
                 není aktivní, zachováváme staré chování s tlačítkem Zahájit. */}
-            {prepGateEnabled && prepApproved && prepRoom ? (
+            {karelDirect ? null : prepGateEnabled && prepApproved && prepRoom ? (
               <Button
                 variant="outline"
                 size="sm"
