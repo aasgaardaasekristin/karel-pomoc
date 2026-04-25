@@ -181,7 +181,7 @@ async function createFollowUpQuestion(sb: any, args: { userId: string | null; pl
     context: `MVP-SESSION-2 follow-up: ${args.reason}`,
     subject_type: "karel_direct_session",
     subject_id: args.planId ?? `${args.partName}:${pragueTodayISO()}`,
-    directed_to: "hanka_kata",
+    directed_to: "both",
     blocking: "clinical_clarification",
     status: "open",
   });
