@@ -959,6 +959,7 @@ ${perplexityResult || "(nedostupná)"}`;
       sessionLead,
       sessionFormat,
       generatedBy,
+      karel_direct_candidate: karelDirectCandidate,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
