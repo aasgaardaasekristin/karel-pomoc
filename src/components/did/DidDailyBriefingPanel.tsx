@@ -719,6 +719,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   }
 
   const p = briefing.payload;
+  const yesterdayReview = (p.yesterday_session_review && p.yesterday_session_review.held)
+    ? p.yesterday_session_review
+    : yesterdayFallback;
   const hasProposed = !!p.proposed_session?.part_name;
   const proposedPartName = (p.proposed_session?.part_name ?? "").trim();
   const proposedAlreadyApproved =
@@ -784,7 +787,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       )}
 
       {/* 3.5 Vyhodnocení včerejšího sezení (sekce mezi „Z dřívějška" a „Návrh sezení") */}
-      {p.yesterday_session_review && p.yesterday_session_review.held && (
+      {yesterdayReview && yesterdayReview.held && (
         <>
           <NarrativeDivider />
           <SectionHead icon={<Users className="w-3.5 h-3.5 text-primary/70" />}>
@@ -792,38 +795,38 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           </SectionHead>
           <div className="mt-2 p-3 rounded-lg border border-border/60 bg-card/40 space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
-              {p.yesterday_session_review.part_name && (
+              {yesterdayReview.part_name && (
                 <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">
-                  {p.yesterday_session_review.part_name}
+                  {yesterdayReview.part_name}
                 </Badge>
               )}
-              {p.yesterday_session_review.lead && (
+              {yesterdayReview.lead && (
                 <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">
-                  vedla {p.yesterday_session_review.lead}
+                  vedla {yesterdayReview.lead}
                 </Badge>
               )}
-              {p.yesterday_session_review.completion && (
+              {yesterdayReview.completion && (
                 <Badge
                   className={`text-[10px] h-5 px-2 border ${
-                    p.yesterday_session_review.completion === "completed"
+                    yesterdayReview.completion === "completed"
                       ? "bg-emerald-500/15 text-emerald-700 border-emerald-500/30"
-                      : p.yesterday_session_review.completion === "partial"
+                      : yesterdayReview.completion === "partial"
                       ? "bg-amber-500/15 text-amber-700 border-amber-500/30"
                       : "bg-destructive/15 text-destructive border-destructive/30"
                   }`}
                 >
-                  {p.yesterday_session_review.completion === "completed"
+                  {yesterdayReview.completion === "completed"
                     ? "Dokončeno"
-                    : p.yesterday_session_review.completion === "partial"
+                    : yesterdayReview.completion === "partial"
                     ? "Částečně"
                     : "Nedokončeno"}
                 </Badge>
               )}
             </div>
-            {p.yesterday_session_review.karel_summary ? (
+            {yesterdayReview.karel_summary ? (
               <div>
                 <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
-                  {p.yesterday_session_review.karel_summary}
+                  {yesterdayReview.karel_summary}
                 </p>
               </div>
             ) : (
@@ -831,27 +834,27 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                 Karlovo přetlumočení se právě dogeneruvává. Pokud se neobjeví do minuty, klikni „Přegenerovat".
               </div>
             )}
-            {p.yesterday_session_review.key_finding_about_part && (
+            {yesterdayReview.key_finding_about_part && (
               <div>
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co teď víme o části</p>
                 <p className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
-                  {p.yesterday_session_review.key_finding_about_part}
+                  {yesterdayReview.key_finding_about_part}
                 </p>
               </div>
             )}
-            {p.yesterday_session_review.implications_for_plan && (
+            {yesterdayReview.implications_for_plan && (
               <div>
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co z toho plyne pro plán</p>
                 <p className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
-                  {p.yesterday_session_review.implications_for_plan}
+                  {yesterdayReview.implications_for_plan}
                 </p>
               </div>
             )}
-            {p.yesterday_session_review.team_acknowledgement && (
+            {yesterdayReview.team_acknowledgement && (
               <div className="pt-1 border-t border-border/40">
                 <p className="text-[11px] uppercase tracking-wide text-primary/70">Pro tým</p>
                 <p className="text-[12px] leading-relaxed text-foreground/85 italic whitespace-pre-line mt-0.5">
-                  {p.yesterday_session_review.team_acknowledgement}
+                  {yesterdayReview.team_acknowledgement}
                 </p>
               </div>
             )}
