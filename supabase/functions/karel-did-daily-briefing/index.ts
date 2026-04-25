@@ -92,30 +92,56 @@ const mergeUniqueParagraphs = (...chunks: Array<unknown>): string => {
   return out.join("\n\n");
 };
 
+const jsonItemCount = (value: unknown): number => {
+  if (Array.isArray(value)) return value.length;
+  if (value && typeof value === "object") return Object.keys(value as Record<string, unknown>).length;
+  return 0;
+};
+
 function enrichYesterdaySessionReview(payload: any, context: any) {
   const latestSession = Array.isArray(context?.yesterday_sessions) ? context.yesterday_sessions[0] : null;
-  if (!latestSession) return payload;
+  const latestReview = Array.isArray(context?.yesterday_session_reviews) ? context.yesterday_session_reviews[0] : null;
+  if (!latestSession && !latestReview) return payload;
 
   const review = payload?.yesterday_session_review && typeof payload.yesterday_session_review === "object"
     ? { ...payload.yesterday_session_review }
     : {};
 
-  const analysis = String(latestSession.ai_analysis ?? "");
+  const analysis = String(latestSession?.ai_analysis ?? latestReview?.clinical_summary ?? "");
   const sessionArc = extractMarkdownSection(analysis, "Oblouk sezení");
   const childPerspective = extractMarkdownSectionByPrefix(analysis, "Z pohledu");
   const keyInsights = extractMarkdownSection(analysis, "Klíčové závěry");
   const implications = extractMarkdownSection(analysis, "Co z toho plyne pro další postup");
   const therapistWork = extractMarkdownSection(analysis, "Práce terapeutky");
+  const completedCount = jsonItemCount(latestReview?.completed_checklist_items);
+  const missingCount = jsonItemCount(latestReview?.missing_checklist_items);
+  const totalCount = completedCount + missingCount;
+  const evidenceLabel = totalCount > 0 ? `${completedCount}/${totalCount} checklist položek` : undefined;
+  const evidenceLimit = latestReview?.evidence_limitations
+    || "Evidence-limited: chybí turn-by-turn data, transcript, observations a part card; závěry jsou pracovní a Karel nepředstírá plnou analýzu.";
+  const statusLine = latestReview
+    ? `Stav review: ${latestReview.status}; evidence ${evidenceLabel ?? "neúplná"}. ${evidenceLimit}`
+    : "";
 
   payload.yesterday_session_review = {
     held: true,
-    part_name: String(latestSession.part_name ?? review.part_name ?? "").trim() || undefined,
-    lead: normalizeTherapistLabel(latestSession.therapist ?? review.lead) ?? review.lead,
-    completion: review.completion ?? "partial",
+    part_name: String(latestSession?.part_name ?? latestReview?.part_name ?? review.part_name ?? "").trim() || undefined,
+    lead: normalizeTherapistLabel(latestSession?.therapist ?? review.lead) ?? review.lead,
+    review_status: latestReview?.status ?? review.review_status,
+    completion: latestReview?.status === "partially_analyzed" ? "partial" : (review.completion ?? "partial"),
+    completed_checklist_count: latestReview ? completedCount : review.completed_checklist_count,
+    total_checklist_count: latestReview ? totalCount : review.total_checklist_count,
+    evidence_label: evidenceLabel ?? review.evidence_label,
+    evidence_limited: latestReview ? latestReview.status !== "analyzed" : review.evidence_limited,
+    evidence_limitations: latestReview ? evidenceLimit : review.evidence_limitations,
+    review_id: latestReview?.id ?? review.review_id,
+    plan_id: latestReview?.plan_id ?? review.plan_id,
     karel_summary: mergeUniqueParagraphs(
-      latestSession.karel_notes,
+      statusLine,
+      latestSession?.karel_notes,
       sessionArc,
       childPerspective,
+      latestReview?.clinical_summary,
       review.karel_summary,
     ),
     key_finding_about_part: mergeUniqueParagraphs(
@@ -123,12 +149,14 @@ function enrichYesterdaySessionReview(payload: any, context: any) {
       review.key_finding_about_part,
     ),
     implications_for_plan: mergeUniqueParagraphs(
-      latestSession.handoff_note,
+      latestSession?.handoff_note,
       implications,
+      latestReview?.therapeutic_implications,
+      latestReview?.team_implications,
       review.implications_for_plan,
     ),
     team_acknowledgement: mergeUniqueParagraphs(
-      latestSession.karel_therapist_feedback,
+      latestSession?.karel_therapist_feedback,
       therapistWork,
       review.team_acknowledgement,
     ),
