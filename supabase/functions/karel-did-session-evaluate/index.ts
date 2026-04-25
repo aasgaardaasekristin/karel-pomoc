@@ -278,7 +278,7 @@ async function resolveCanonicalPart(sb: any, userId: string, selectedPart: strin
   const selectedNorm = normalizePartLookupKey(selectedPart);
   const { data: registryRows, error } = await sb
     .from("did_part_registry")
-    .select("id, part_name, display_name, status, drive_folder_label, age_estimate, role_in_system, current_state, updated_at")
+    .select("id, part_name, display_name, status, drive_folder_label, age_estimate, role_in_system, last_emotional_state, updated_at")
     .eq("user_id", userId);
   if (error) throw error;
 
@@ -958,7 +958,7 @@ Deno.serve(async (req: Request) => {
     const partInfo = ctx.partCard
       ? `Karta/registry záznam části nalezen: zadané jméno=${ctx.plan.selected_part}, kanonické jméno=${ctx.partCard.part_name}, ` +
         `registry_id=${ctx.partCard.id}, věk≈${ctx.partCard.age_estimate ?? "?"}, role=${ctx.partCard.role_in_system ?? "?"}, ` +
-        `aktuální stav=${ctx.partCard.current_state ?? "?"}. Přímá Drive vazba není v DB uložena, netvrď proto, že karta neexistuje.`
+        `aktuální stav=${ctx.partCard.last_emotional_state ?? "?"}. Přímá Drive vazba není v DB uložena, netvrď proto, že karta neexistuje.`
       : ctx.partCardLookup?.status === "ambiguous"
         ? `(registry lookup části ${ctx.plan.selected_part} je nejednoznačný: ${ctx.partCardLookup.reason}; netvrď, že karta neexistuje)`
         : `(registry záznam části ${ctx.plan.selected_part} v DB nenalezen)`;
