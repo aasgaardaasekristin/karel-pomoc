@@ -615,9 +615,35 @@ function buildDiagnosticValidityReport(planText: string | null, turnsByBlock: Re
   return `### Diagnostická validita\nRozpoznaná metoda: ${methodLine}.\n${missing.length ? `Validita je omezená — chybí: ${missing.join(", ")}. Závěry níže ber jako pracovní hypotézy, ne jako standardizovanou psychodiagnostiku.` : "Minimální důkazní vrstva je přítomná; závěry přesto formuluj jako klinické hypotézy a odděl je od doložených pozorování."}${rorGuard}`;
 }
 
-function evidenceValidityFor(evidencePresent: boolean, completedBlocks?: number, totalBlocks?: number): "low" | "moderate" | "high" {
-  if (!evidencePresent) return "low";
-  const ratio = totalBlocks && totalBlocks > 0 ? (completedBlocks ?? 0) / totalBlocks : 0;
+function countTurnBlocks(turnsByBlock: Record<string, any[]>): number {
+  return Object.values(turnsByBlock || {}).filter((v) => Array.isArray(v) && v.length > 0).length;
+}
+
+function countObservationBlocks(observationsByBlock: Record<string, string>): number {
+  return Object.values(observationsByBlock || {}).filter((v) => String(v || "").trim().length > 0).length;
+}
+
+function countArtifacts(liveProgress: any): number {
+  if (!liveProgress?.artifacts_by_block || typeof liveProgress.artifacts_by_block !== "object") return 0;
+  return Object.values(liveProgress.artifacts_by_block).flat().length;
+}
+
+function hasThreadTranscript(threads: any[] = []): boolean {
+  return threads.some((t: any) => Array.isArray(t.messages) && t.messages.length > 0);
+}
+
+function evidenceValidityFor(args: {
+  completedBlocks?: number;
+  totalBlocks?: number;
+  turnBlocks: number;
+  observationBlocks: number;
+  transcriptAvailable: boolean;
+  provenance: "therapist_entered" | "auto_derived" | "missing";
+}): "low" | "moderate" | "high" {
+  const completed = args.completedBlocks ?? 0;
+  const ratio = args.totalBlocks && args.totalBlocks > 0 ? completed / args.totalBlocks : 0;
+  const hasStrongEvidence = args.turnBlocks > 0 || args.transcriptAvailable || args.observationBlocks > 0 || args.provenance === "therapist_entered";
+  if (completed <= 1 || !hasStrongEvidence || args.provenance !== "therapist_entered") return "low";
   if (ratio >= 0.8) return "high";
   return "moderate";
 }
@@ -631,45 +657,108 @@ function buildStructuredPostSessionResult(args: {
   turnsByBlock: Record<string, any[]>;
   observationsByBlock: Record<string, string>;
   liveProgress: any;
+  transcriptAvailable: boolean;
 }) {
+  const turnBlocks = countTurnBlocks(args.turnsByBlock);
+  const observationBlocks = countObservationBlocks(args.observationsByBlock);
+  const artifactCount = countArtifacts(args.liveProgress);
+  const derivedEvidence = args.evidencePresent || turnBlocks > 0 || observationBlocks > 0 || args.transcriptAvailable || artifactCount > 0;
+  const provenance: "auto_derived" | "missing" = derivedEvidence ? "auto_derived" : "missing";
+  if (provenance === "missing") {
+    return {
+      schema: "post_session_result.v1",
+      provenance,
+      status: "missing",
+      entered_by: null,
+      entered_at: null,
+    };
+  }
   return {
     schema: "post_session_result.v1",
+    provenance,
+    status: "derived",
+    entered_by: null,
+    entered_at: null,
     endedReason: args.endedReason,
     contactOccurred: args.evidencePresent,
     completionStatus: args.evaluation?.completion_status ?? null,
     completedBlocks: args.completedBlocks ?? null,
     totalBlocks: args.totalBlocks ?? null,
-    evidenceValidity: evidenceValidityFor(args.evidencePresent, args.completedBlocks, args.totalBlocks),
+    evidenceValidity: evidenceValidityFor({
+      completedBlocks: args.completedBlocks,
+      totalBlocks: args.totalBlocks,
+      turnBlocks,
+      observationBlocks,
+      transcriptAvailable: args.transcriptAvailable,
+      provenance,
+    }),
     evidenceSignals: {
-      turnBlocks: Object.keys(args.turnsByBlock || {}).length,
-      observationBlocks: Object.values(args.observationsByBlock || {}).filter((v) => String(v || "").trim().length > 0).length,
-      artifactBlocks: args.liveProgress?.artifacts_by_block && typeof args.liveProgress.artifacts_by_block === "object"
-        ? Object.keys(args.liveProgress.artifacts_by_block).length
-        : 0,
+      turnBlocks,
+      observationBlocks,
+      transcriptAvailable: args.transcriptAvailable,
+      artifactCount,
     },
     outcome: args.evaluation?.recommended_next_step ?? null,
   };
 }
 
-function buildAnalysisJson(evaluation: any, diagnosticValidity: string, reviewStatus: ReviewStatus, postSessionResult: any) {
+function buildAnalysisJson(args: {
+  evaluation: any;
+  diagnosticValidity: string;
+  reviewStatus: ReviewStatus;
+  postSessionResult: any;
+  plan: SessionPlan;
+  evidenceItems: any[];
+  checklist: { completed: any[]; missing: any[] };
+  completedBlocks?: number;
+  totalBlocks?: number;
+  turnsByBlock: Record<string, any[]>;
+  observationsByBlock: Record<string, string>;
+  liveProgress: any;
+  threads: any[];
+  partCardLookup?: PartCardLookup;
+}) {
+  const completionRatio = args.totalBlocks && args.totalBlocks > 0 ? (args.completedBlocks ?? 0) / args.totalBlocks : null;
+  const transcriptAvailable = hasThreadTranscript(args.threads);
+  const confirmedFacts = {
+    plan_id: args.plan.id,
+    part_name: args.plan.selected_part,
+    completedBlocks: args.completedBlocks ?? null,
+    totalBlocks: args.totalBlocks ?? null,
+    completion_ratio: completionRatio,
+    contactOccurred: args.postSessionResult?.contactOccurred ?? false,
+    actualPart: args.partCardLookup?.status === "resolved" ? args.partCardLookup.canonical_part_name : null,
+    durationMinutes: null,
+    evidence_availability: {
+      live_progress: args.evidenceItems.find((e) => e.kind === "live_progress")?.available ? "available" : "missing",
+      checklist_count: Array.isArray(args.liveProgress?.items) ? args.liveProgress.items.length : 0,
+      turn_by_turn_count: countTurnBlocks(args.turnsByBlock),
+      observations_count: countObservationBlocks(args.observationsByBlock),
+      transcript: transcriptAvailable ? "available" : "missing",
+      artifacts_count: countArtifacts(args.liveProgress),
+    },
+    review_status: args.reviewStatus,
+  };
   return {
     schema: "did_session_review.analysis.v1",
-    confirmed_facts: [
-      evaluation?.session_arc,
-      evaluation?.child_perspective,
-    ].filter((v) => typeof v === "string" && v.trim().length > 0),
-    working_deductions: Array.isArray(evaluation?.key_insights) ? evaluation.key_insights : [],
+    status: "created",
+    confirmed_facts: confirmedFacts,
+    narrative_summary: {
+      session_arc: args.evaluation?.session_arc ?? null,
+      child_perspective: args.evaluation?.child_perspective ?? null,
+    },
+    working_deductions: Array.isArray(args.evaluation?.key_insights) ? args.evaluation.key_insights : [],
     unknowns: [
-      evaluation?.incomplete_note,
-      diagnosticValidity,
+      args.evaluation?.incomplete_note,
+      args.diagnosticValidity,
     ].filter((v) => typeof v === "string" && v.trim().length > 0),
     writebacks: {
-      therapeutic_implications: evaluation?.implications_for_tomorrow ?? null,
-      team_implications: evaluation?.therapist_motivation ?? null,
-      next_session_recommendation: evaluation?.recommended_next_step ?? null,
+      therapeutic_implications: args.evaluation?.implications_for_tomorrow ?? null,
+      team_implications: args.evaluation?.therapist_motivation ?? null,
+      next_session_recommendation: args.evaluation?.recommended_next_step ?? null,
     },
-    review_status: reviewStatus,
-    post_session_result: postSessionResult,
+    review_status: args.reviewStatus,
+    post_session_result: args.postSessionResult,
   };
 }
 
