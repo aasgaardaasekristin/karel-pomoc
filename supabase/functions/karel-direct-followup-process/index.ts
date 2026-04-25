@@ -15,11 +15,31 @@ type FollowUpAction =
 
 type Confidence = "low" | "moderate" | "high";
 
+type ClassifiedAnswer = {
+  action: FollowUpAction;
+  confidence: Confidence;
+  reason: string;
+  nextPart: string;
+  sessionMode: string;
+  allowedDepth: string;
+  firstQuestion: string;
+  rawCandidatePart?: string | null;
+  entityGuard?: Record<string, unknown> | null;
+};
+
+type DbClient = any;
+
 const FORBIDDEN = [
   "trauma_memory_work",
   "deep_regression",
   "unapproved_therapeutic_intervention",
 ];
+
+const NON_PART_CANDIDATES = new Set([
+  "dnes", "spis", "spise", "stazeny", "stazena", "stazene", "unaveny", "unavena", "unavene",
+  "mimo", "potichu", "smutny", "smutna", "smutne", "nekdo", "jiny", "jina", "cast", "pritomny",
+  "asi", "pravdepodobne", "nevim", "nevi", "později", "pozdeji",
+]);
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -37,37 +57,129 @@ function includesAny(text: string, terms: string[]): boolean {
   return terms.some((term) => lower.includes(term.toLowerCase()));
 }
 
+function normalizeIdentity(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "")
+    .trim();
+}
+
+function cleanCandidate(value: string | undefined): string | null {
+  const candidate = String(value ?? "").replace(/[.,;:!?"'„“”()\[\]]/g, "").trim();
+  if (!candidate) return null;
+  const normalized = normalizeIdentity(candidate);
+  if (!normalized || NON_PART_CANDIDATES.has(normalized)) return null;
+  return candidate;
+}
+
+function hasNegatedDanger(text: string): boolean {
+  return includesAny(text, [
+    "bez známek nebezpečí",
+    "bez znamek nebezpeci",
+    "neviděla jsem známky nebezpečí",
+    "nevidela jsem znamky nebezpeci",
+    "neviděl jsem známky nebezpečí",
+    "nevidel jsem znamky nebezpeci",
+    "ani známky nebezpečí",
+    "ani znamky nebezpeci",
+  ]);
+}
+
+function isActiveCandidate(row: Record<string, unknown>, expectedPart: string): boolean {
+  const status = normalizeText(row.status).toLowerCase();
+  const lifecycle = normalizeText(row.lifecycle_status).toLowerCase();
+  const breakdown = (row.urgency_breakdown ?? {}) as Record<string, unknown>;
+  const selectedPart = normalizeText(row.selected_part);
+  if (status === "cancelled" || lifecycle === "cancelled") return false;
+  if (breakdown.invalidated_reason || breakdown.result_status === "invalidated") return false;
+  if (!selectedPart || NON_PART_CANDIDATES.has(normalizeIdentity(selectedPart))) return false;
+  if (expectedPart && normalizeIdentity(selectedPart) !== normalizeIdentity(expectedPart)) return false;
+  return true;
+}
+
+async function resolveVerifiedPart(sb: DbClient, candidate: string, userId: string): Promise<{ selectedPart: string; guard: Record<string, unknown> } | null> {
+  const candidateNorm = normalizeIdentity(candidate);
+  const { data: parts, error } = await sb
+    .from("did_part_registry")
+    .select("part_name, display_name, status, index_confirmed_at")
+    .eq("user_id", userId)
+    .limit(500);
+  if (error) throw error;
+
+  const matched = ((parts ?? []) as Record<string, unknown>[]).find((part: Record<string, unknown>) => {
+    return [part.part_name, part.display_name].some((value) => normalizeIdentity(String(value ?? "")) === candidateNorm);
+  });
+
+  if (!matched) return null;
+  const selectedPart = normalizeText(matched.display_name) || normalizeText(matched.part_name);
+  if (!selectedPart) return null;
+  return {
+    selectedPart,
+    guard: {
+      raw_candidate: candidate,
+      resolution: "registry_part",
+      selected_part: selectedPart,
+      index_confirmed: Boolean(matched.index_confirmed_at),
+      status: matched.status ?? null,
+    },
+  };
+}
+
 function extractDifferentPart(answer: string, plannedPart: string): string | null {
-  const escapedPlanned = plannedPart.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const patterns = [
-    /(?:byl[ao]?|je|přítomn[áy]|ozval[ao]? se|mluvil[ao]?|vypadalo to na)\s+([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][\p{L}0-9_-]{1,40})/iu,
-    new RegExp(`nebyl[ao]?\\s+${escapedPlanned}[^.]{0,80}(?:ale|spíš|spise|pravděpodobně|pravdepodobne)\\s+([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][\\p{L}0-9_-]{1,40})`, "iu"),
+  const name = "([\\p{L}][\\p{L}0-9_-]{1,40})";
+  const patterns: { pattern: RegExp; index: number }[] = [
+    { pattern: new RegExp(`\\bnebyl[ao]?\\s+to\\s+${name}\\s*[,;:.!?-]+\\s*(?:ale\\s+|spíš\\s+|spise\\s+)?(?:byl[ao]?\\s+to|to\\s+byl[ao]?)\\s+${name}`, "iu"), index: 2 },
+    { pattern: new RegExp(`\\b(?:myslím|myslim)\\s*,?\\s*že\\s+to\\s+byl[ao]?\\s+${name}`, "iu"), index: 1 },
+    { pattern: new RegExp(`\\bbyl[ao]?\\s+to\\s+${name}`, "iu"), index: 1 },
+    { pattern: new RegExp(`\\bto\\s+byl[ao]?\\s+${name}`, "iu"), index: 1 },
+    { pattern: new RegExp(`\\bozval[ao]?\\s+se\\s+${name}(?:\\s*,?\\s*ne\\s+${name})?`, "iu"), index: 1 },
+    { pattern: new RegExp(`\\bmluvil[ao]?\\s+(?:jiná|jina)\\s+(?:část|cast)\\s*[,;:-]?\\s*(?:asi\\s+|pravděpodobně\\s+|pravdepodobne\\s+)?${name}`, "iu"), index: 1 },
+    { pattern: new RegExp(`\\b(?:přítomn[ýá]|pritomn[ya])\\s+byl[ao]?\\s+${name}`, "iu"), index: 1 },
   ];
-  for (const pattern of patterns) {
+  const plannedNorm = normalizeIdentity(plannedPart);
+  for (const { pattern, index } of patterns) {
     const match = answer.match(pattern);
-    const candidate = match?.[1]?.trim();
-    if (candidate && candidate.toLowerCase() !== plannedPart.toLowerCase()) return candidate;
+    const candidate = cleanCandidate(match?.[index]);
+    if (candidate && normalizeIdentity(candidate) !== plannedNorm) return candidate;
   }
   return null;
 }
 
-function classifyAnswer(answer: string, plannedPart: string): { action: FollowUpAction; confidence: Confidence; reason: string; nextPart: string; sessionMode: string; allowedDepth: string; firstQuestion: string } {
+async function classifyAnswer(sb: DbClient, answer: string, plannedPart: string, userId: string): Promise<ClassifiedAnswer> {
   const lower = answer.toLowerCase();
   const differentPart = extractDifferentPart(answer, plannedPart);
 
-  if (differentPart && includesAny(lower, ["jiná část", "jina cast", "spíš", "spise", "pravděpodobně", "pravdepodobne", "byl", "byla", "ozval", "mluvil", "mluvila"])) {
+  if (differentPart) {
+    const verified = await resolveVerifiedPart(sb, differentPart, userId);
+    if (!verified) {
+      return {
+        action: "defer_until_more_context",
+        confidence: "low",
+        reason: "Odpověď obsahuje možnou identitní formulaci, ale kandidát části není ověřený v registru/alias guardu.",
+        nextPart: plannedPart,
+        sessionMode: "deferred",
+        allowedDepth: "check_in_only",
+        firstQuestion: "Počkat na jasnější kontext od terapeutek; nepokračovat automaticky.",
+        rawCandidatePart: differentPart,
+        entityGuard: { raw_candidate: differentPart, resolution: "uncertain", selected_part: null },
+      };
+    }
     return {
       action: "switch_to_different_part",
       confidence: includesAny(lower, ["určitě", "jasně", "potvrzuji", "jsem si jist"]) ? "high" : "moderate",
       reason: "Odpověď explicitně naznačuje přítomnost jiné části.",
-      nextPart: differentPart,
+      nextPart: verified.selectedPart,
       sessionMode: "state_mapping",
       allowedDepth: "state_mapping",
       firstQuestion: "Můžu se jen krátce zeptat, kdo je teď nejblíž, bez tlaku na hluboké věci?",
+      rawCandidatePart: differentPart,
+      entityGuard: verified.guard,
     };
   }
 
-  if (includesAny(lower, ["riziko", "nebezpe", "sebepo", "suicid", "ublížit", "ublizit", "nejist", "nevím", "nevim", "ověřit", "overit", "nejdřív hanka", "nejdriv hanka", "nejdřív káťa", "nejdriv kata"])) {
+  if (includesAny(lower, ["riziko", "nebezpe", "sebepo", "suicid", "ublížit", "ublizit", "nejist", "nevím", "nevim", "ověřit", "overit", "nejdřív hanka", "nejdriv hanka", "nejdřív káťa", "nejdriv kata"]) && !hasNegatedDanger(lower)) {
     return {
       action: "therapist_led_check_first",
       confidence: includesAny(lower, ["riziko", "nebezpe", "sebepo", "suicid", "ublížit", "ublizit"]) ? "moderate" : "low",
@@ -156,7 +268,7 @@ serve(async (req) => {
       .eq("is_current", true)
       .maybeSingle();
 
-    const classified = classifyAnswer(answer, sourcePlan.selected_part || "");
+    const classified = await classifyAnswer(sb, answer, sourcePlan.selected_part || "", sourcePlan.user_id);
     const now = new Date().toISOString();
     const nextCandidate = {
       session_actor: "karel_direct",
@@ -176,6 +288,8 @@ serve(async (req) => {
       linked_plan_id: sourcePlanId,
       linked_review_id: review?.id ?? null,
       next_candidate: nextCandidate,
+      raw_candidate_part: classified.rawCandidatePart ?? null,
+      entity_guard: classified.entityGuard ?? null,
       processed_at: now,
     };
 
@@ -185,16 +299,18 @@ serve(async (req) => {
     if (classified.action !== "close_as_not_available_today") {
       const { data: byQuestion } = await sb
         .from("did_daily_session_plans")
-        .select("id")
+        .select("id, selected_part, status, lifecycle_status, urgency_breakdown")
         .contains("urgency_breakdown", { source_question_id: questionId })
-        .limit(1);
+        .limit(20);
       const { data: bySourcePlan } = await sb
         .from("did_daily_session_plans")
-        .select("id")
+        .select("id, selected_part, status, lifecycle_status, urgency_breakdown")
         .contains("urgency_breakdown", { kind: "karel_direct_followup_candidate", source_plan_id: sourcePlanId })
-        .limit(1);
+        .limit(20);
 
-      const existingId = byQuestion?.[0]?.id ?? bySourcePlan?.[0]?.id ?? null;
+      const existingByQuestion = (byQuestion ?? []).find((row: Record<string, unknown>) => isActiveCandidate(row, classified.nextPart));
+      const existingBySourcePlan = (bySourcePlan ?? []).find((row: Record<string, unknown>) => isActiveCandidate(row, classified.nextPart));
+      const existingId = existingByQuestion?.id ?? existingBySourcePlan?.id ?? null;
       if (existingId) {
         candidatePlanId = existingId;
       } else {
