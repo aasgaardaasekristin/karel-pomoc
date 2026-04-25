@@ -114,6 +114,9 @@ export interface TeamDeliberation {
   final_summary: string | null;
   followup_needed: boolean;
 
+  session_params?: Record<string, unknown> | null;
+  program_draft?: AgendaBlock[] | null;
+
   /**
    * Karlova explicitní syntéza odpovědí Haničky a Káti + discussion_logu.
    * Povinná pro aktivaci Karlova podpisu u typu `crisis`.
