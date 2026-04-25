@@ -417,10 +417,13 @@ serve(async (req) => {
       const { data: autoPlans } = await sb.from("did_daily_session_plans")
         .select("id, generated_by, urgency_breakdown")
         .eq("plan_date", todayPrague)
-        .eq("generated_by", "auto")
-        .not("urgency_breakdown", "cs", JSON.stringify({ session_actor: "karel_direct" }));
+        .eq("generated_by", "auto");
 
-      if (autoPlans && autoPlans.length > 0) {
+      const therapistLedAutoPlans = (autoPlans || []).filter((plan: any) =>
+        plan.urgency_breakdown?.session_actor !== "karel_direct"
+      );
+
+      if (therapistLedAutoPlans.length > 0) {
         console.log(`[auto-session-plan] Therapist-led auto plan already exists for ${todayPrague}, skipping.`);
         return new Response(JSON.stringify({ success: true, skipped: true, reason: "plan_exists" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -840,11 +843,22 @@ ${perplexityResult || "(nedostupná)"}`;
       console.warn("[auto-session-plan] crisis_event resolution skipped:", e);
     }
 
+    let karelDirectCandidate: { created: boolean; planId?: string; existingPlanId?: string } | null = null;
+    if (!forcePart) {
+      karelDirectCandidate = await ensureKarelDirectCandidate(sb, {
+        userId,
+        todayPrague,
+        selectedPart,
+        forcePart,
+        crisisEventId,
+      });
+    }
+
     // ═══ SAVE TO DB (INSERT — never delete old plans) ═══
     const generatedBy = forcePart ? "manual" : "auto";
     const urgencyBreakdown = {
       ...selectedPart.breakdown,
-      ...deriveKarelDirectContract(selectedPart, forcePart),
+      session_actor: "therapist_led",
     };
     const { error: insertErr } = await sb.from("did_daily_session_plans").insert({
       user_id: userId,
