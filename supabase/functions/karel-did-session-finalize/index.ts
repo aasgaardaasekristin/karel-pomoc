@@ -104,7 +104,7 @@ serve(async (req: Request) => {
         updated_at: new Date().toISOString(),
       }).eq("id", planId);
 
-      await sb.from("did_session_reviews").upsert({
+      const failureReview = {
         user_id: plan.user_id,
         plan_id: planId,
         part_name: plan.selected_part,
@@ -116,7 +116,19 @@ serve(async (req: Request) => {
         projection_status: "skipped",
         error_message: message,
         updated_at: new Date().toISOString(),
-      }, { onConflict: "plan_id" });
+      };
+
+      const { data: existingFailureReview } = await sb
+        .from("did_session_reviews")
+        .select("id")
+        .eq("plan_id", planId)
+        .eq("is_current", true)
+        .maybeSingle();
+      if (existingFailureReview?.id) {
+        await sb.from("did_session_reviews").update(failureReview).eq("id", existingFailureReview.id);
+      } else {
+        await sb.from("did_session_reviews").insert(failureReview);
+      }
 
       return new Response(JSON.stringify({ ok: false, error: message }), {
         status: 500,
