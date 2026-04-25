@@ -48,7 +48,7 @@ const corsHeaders = {
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-2.5-pro";
 
-type EndedReason = "completed" | "partial" | "auto_safety_net";
+type EndedReason = "completed" | "partial" | "auto_safety_net" | "manual_end" | "save_transcript" | "exit_session";
 
 const pragueDayISO = (d: Date = new Date()): string =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(d);
@@ -205,6 +205,8 @@ interface SessionPlan {
   crisis_event_id: string | null;
 }
 
+type ReviewStatus = "analyzed" | "partially_analyzed" | "evidence_limited" | "failed_analysis" | "cancelled";
+
 interface PartSessionRow {
   id: string;
   user_id: string;
@@ -325,6 +327,38 @@ function hasEvidence(turnsByBlock: Record<string, any[]>, observationsByBlock: R
   return (completedBlocks ?? 0) > 0 ||
     Object.values(turnsByBlock || {}).some(v => Array.isArray(v) && v.length > 0) ||
     Object.values(observationsByBlock || {}).some(v => String(v || "").trim().length > 0);
+}
+
+function buildEvidenceItems(ctx: { plan: SessionPlan; threads: any[]; partCard: any }, liveProgress: any, turnsByBlock: Record<string, any[]>, observationsByBlock: Record<string, string>) {
+  const progressItems = Array.isArray(liveProgress?.items) ? liveProgress.items : [];
+  return [
+    { kind: "session_plan", available: !!ctx.plan, source_table: "did_daily_session_plans", source_id: ctx.plan.id, date: ctx.plan.plan_date },
+    { kind: "live_progress", available: !!liveProgress, source_table: "did_live_session_progress", source_id: ctx.plan.id, completed_blocks: liveProgress?.completed_blocks ?? null, total_blocks: liveProgress?.total_blocks ?? null },
+    { kind: "checklist", available: progressItems.length > 0, count: progressItems.length },
+    { kind: "turn_by_turn", available: Object.values(turnsByBlock || {}).some((v) => Array.isArray(v) && v.length > 0), block_count: Object.keys(turnsByBlock || {}).length },
+    { kind: "observations", available: Object.values(observationsByBlock || {}).some((v) => String(v || "").trim().length > 0), count: Object.values(observationsByBlock || {}).filter((v) => String(v || "").trim().length > 0).length },
+    { kind: "thread_transcript", available: (ctx.threads || []).some((t: any) => Array.isArray(t.messages) && t.messages.length > 0), thread_count: ctx.threads?.length ?? 0 },
+    { kind: "part_card", available: !!ctx.partCard, source_table: "did_part_registry", part_name: ctx.plan.selected_part },
+  ];
+}
+
+function checklistItems(liveProgress: any) {
+  const items = Array.isArray(liveProgress?.items) ? liveProgress.items : [];
+  const labelOf = (it: any, idx: number) => String(it?.title || it?.label || it?.text || it?.name || `Bod ${idx + 1}`);
+  const done = items.filter((it: any) => it?.done === true || it?.completed === true || it?.status === "done");
+  const missing = items.filter((it: any) => !(it?.done === true || it?.completed === true || it?.status === "done"));
+  return {
+    completed: done.map((it: any, idx: number) => ({ label: labelOf(it, idx), status: it?.status ?? "done" })),
+    missing: missing.map((it: any, idx: number) => ({ label: labelOf(it, idx), status: it?.status ?? "missing" })),
+  };
+}
+
+function reviewStatusFor(evaluation: any, evidencePresent: boolean, completedBlocks?: number, totalBlocks?: number): ReviewStatus {
+  if (!evidencePresent) return "evidence_limited";
+  if (evaluation?.completion_status === "completed") return "analyzed";
+  if ((completedBlocks ?? 0) > 0 || evaluation?.completion_status === "partial") return "partially_analyzed";
+  if (totalBlocks && totalBlocks > 0) return "evidence_limited";
+  return "partially_analyzed";
 }
 
 function sanitizeEvaluation(evaluation: any, endedReason: EndedReason, completedBlocks?: number, totalBlocks?: number) {
@@ -477,13 +511,17 @@ ${tasksLines || "(žádné)"}
 
 async function persistEvaluation(
   sb: any,
-  ctx: { plan: SessionPlan; existingSession: PartSessionRow | null },
+  ctx: { plan: SessionPlan; existingSession: PartSessionRow | null; threads?: any[]; partCard?: any },
   evaluation: any,
   markdown: string,
   endedReason: EndedReason,
   completedBlocks: number | undefined,
   totalBlocks: number | undefined,
   force: boolean,
+  liveProgress: any,
+  turnsByBlock: Record<string, any[]>,
+  observationsByBlock: Record<string, string>,
+  diagnosticValidity: string,
 ) {
   const now = new Date().toISOString();
   const userId = ctx.plan.user_id;
@@ -523,10 +561,68 @@ async function persistEvaluation(
     await sb.from("did_part_sessions").insert(sessionPayload);
   }
 
-  // 2) did_daily_session_plans — status=completed
+  const evidencePresent = hasEvidence(turnsByBlock, observationsByBlock, completedBlocks);
+  const reviewStatus = reviewStatusFor(evaluation, evidencePresent, completedBlocks, totalBlocks);
+  const evidenceItems = buildEvidenceItems(ctx as any, liveProgress, turnsByBlock, observationsByBlock);
+  const checklist = checklistItems(liveProgress);
+
+  const reviewPayload = {
+    user_id: userId,
+    plan_id: ctx.plan.id,
+    part_name: partName,
+    session_date: ctx.plan.plan_date,
+    status: reviewStatus,
+    review_kind: endedReason === "auto_safety_net" ? "calendar_day_safety_net" : "scheduled_session",
+    analysis_version: "did-session-review-v1",
+    source_data_summary: evidenceItems.map((e: any) => `${e.kind}:${e.available ? "available" : "missing"}`).join(", "),
+    evidence_items: evidenceItems,
+    completed_checklist_items: checklist.completed,
+    missing_checklist_items: checklist.missing,
+    transcript_available: evidenceItems.some((e: any) => ["turn_by_turn", "thread_transcript"].includes(e.kind) && e.available),
+    live_progress_available: !!liveProgress,
+    clinical_summary: markdown,
+    therapeutic_implications: evaluation.implications_for_tomorrow ?? null,
+    team_implications: evaluation.therapist_motivation ?? null,
+    next_session_recommendation: evaluation.recommended_next_step ?? null,
+    evidence_limitations: diagnosticValidity,
+    projection_status: reviewStatus === "failed_analysis" ? "skipped" : "queued",
+    error_message: null,
+    updated_at: now,
+  };
+
+  const { data: existingReview } = await sb
+    .from("did_session_reviews")
+    .select("id")
+    .eq("plan_id", ctx.plan.id)
+    .eq("is_current", true)
+    .maybeSingle();
+
+  let reviewId = existingReview?.id as string | undefined;
+  if (reviewId) {
+    await sb.from("did_session_reviews").update(reviewPayload).eq("id", reviewId);
+  } else {
+    const { data: insertedReview, error: reviewErr } = await sb
+      .from("did_session_reviews")
+      .insert(reviewPayload)
+      .select("id")
+      .single();
+    if (reviewErr) throw reviewErr;
+    reviewId = insertedReview?.id;
+  }
+
+  // 2) did_daily_session_plans — auditovatelný lifecycle stav podle review
   await sb
     .from("did_daily_session_plans")
-    .update({ status: "completed", completed_at: now, updated_at: now })
+    .update({
+      status: "done",
+      lifecycle_status: reviewStatus,
+      completed_at: now,
+      finalized_at: now,
+      finalization_source: endedReason,
+      finalization_reason: evaluation.incomplete_note ?? endedReason,
+      analysis_error: null,
+      updated_at: now,
+    })
     .eq("id", ctx.plan.id);
 
   // 3) karel_pantry_b_entries — anti-dup podle source_ref
@@ -594,6 +690,28 @@ async function persistEvaluation(
     }
   }
 
+  if (reviewStatus !== "failed_analysis" && reviewId) {
+    const projectionTarget = "05A_OPERATIVNI_PLAN";
+    const projectionContent = `<!-- did_session_review:${reviewId} plan:${ctx.plan.id} -->\n\n### Vyhodnocení včerejšího sezení — ${ctx.plan.plan_date} · ${partName}\n\n**Stav review:** ${reviewStatus}\n**Evidence:** ${reviewPayload.source_data_summary}\n\n**Shrnutí:**\n${evaluation.session_arc ?? "nebylo zaznamenáno"}\n\n**Co z toho plyne pro další plán:**\n${evaluation.implications_for_tomorrow ?? "nebylo zaznamenáno"}\n\n**Doporučený další krok:**\n${evaluation.recommended_next_step ?? "doplnit evidenci / ruční poznámku terapeutky"}\n`;
+    const { data: existingWrites } = await sb
+      .from("did_pending_drive_writes")
+      .select("id")
+      .eq("target_document", projectionTarget)
+      .ilike("content", `%did_session_review:${reviewId}%`)
+      .limit(1);
+    if (!existingWrites || existingWrites.length === 0 || force) {
+      await sb.from("did_pending_drive_writes").insert({
+        user_id: userId,
+        target_document: projectionTarget,
+        content: projectionContent,
+        write_type: "append",
+        priority: "high",
+        status: "pending",
+      });
+      await sb.from("did_session_reviews").update({ projection_status: "queued", updated_at: now }).eq("id", reviewId);
+    }
+  }
+
   // 4) did_pantry_packages — session_summary balík → KARTA_<part>
   const cardTarget = `KARTA_${partName.toUpperCase()}`;
   const sessionLogTarget = `KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG`;
@@ -654,7 +772,7 @@ async function persistEvaluation(
     status: "pending_drive",
   });
 
-  return { sessionLogTarget, cardTarget };
+  return { sessionLogTarget, cardTarget, reviewId, reviewStatus };
 }
 
 Deno.serve(async (req: Request) => {
@@ -775,6 +893,10 @@ Vyhodnoť toto sezení. Drž se pravidel ze system promptu.
       completedBlocks,
       totalBlocks,
       force,
+      liveProgress,
+      turnsByBlock,
+      observationsByBlock,
+      diagnosticValidity,
     );
 
     return new Response(
@@ -783,6 +905,8 @@ Vyhodnoť toto sezení. Drž se pravidel ze system promptu.
         plan_id: planId,
         part_name: ctx.plan.selected_part,
         completion_status: evaluation.completion_status,
+        review_id: targets.reviewId,
+        review_status: targets.reviewStatus,
         markdown,
         evaluation,
         drive_targets: targets,

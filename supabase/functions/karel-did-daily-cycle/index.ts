@@ -7255,10 +7255,9 @@ Vra\u0165 JSON:
     // ═══ PHASE 8A.5 — SESSION EVALUATION SAFETY NET ═══
     //
     // Pokud Hana zapomene v Pracovně kliknout „Ukončit a vyhodnotit",
-    // zůstane plán v `did_daily_session_plans` ve stavu `in_progress`
-    // a včerejší sezení se nikdy klinicky nevyhodnotí. Tato fáze
-    // automaticky zavolá karel-did-session-evaluate pro každý plán
-    // starší než 18 hodin, který stále nemá `completed_at`.
+    // zůstane včerejší plán bez auditního review. Tato fáze používá
+    // kalendářní den (Praha), nikoli klouzavý 18h cutoff, a předává
+    // včerejší plány bez `did_session_reviews` do samostatného evaluatoru.
     //
     // endedReason='auto_safety_net' v evaluatoru:
     //   - completion_status = 'partial' nebo 'abandoned' (rozhodne AI)
@@ -7267,18 +7266,21 @@ Vra\u0165 JSON:
     //     aby se to objevilo v dnešním Karlově přehledu (yesterday_session_review).
     await setPhase("phase_8a5_session_eval_safety_net", "Fáze 8A.5: Safety-net vyhodnocení sezení");
     try {
-      const cutoffIso = new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString();
+      const pragueToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+      const yesterdayDate = new Date(`${pragueToday}T12:00:00Z`);
+      yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+      const pragueYesterday = yesterdayDate.toISOString().slice(0, 10);
       const { data: stalePlans, error: spErr } = await sb
         .from("did_daily_session_plans")
-        .select("id, plan_date, selected_part, status, created_at, completed_at")
-        .in("status", ["in_progress", "approved", "active"])
-        .is("completed_at", null)
-        .lt("created_at", cutoffIso)
+        .select("id, plan_date, selected_part, status, created_at, completed_at, did_session_reviews!left(id)")
+        .eq("plan_date", pragueYesterday)
+        .in("status", ["in_progress", "approved", "active", "completed", "done", "generated"])
+        .is("did_session_reviews.id", null)
         .limit(10);
       if (spErr) {
         console.warn("[PHASE_8A5] Failed to query stale plans:", spErr.message);
       } else {
-        console.log(`[PHASE_8A5] Found ${stalePlans?.length ?? 0} stale plan(s) older than 18h without completion`);
+        console.log(`[PHASE_8A5] Found ${stalePlans?.length ?? 0} yesterday plan(s) (${pragueYesterday}) without did_session_reviews`);
         for (const plan of stalePlans ?? []) {
           try {
             const { data: liveProgress } = await sb
@@ -7292,7 +7294,7 @@ Vra\u0165 JSON:
                 .map((it: any, idx: number) => [String(idx), String(it?.observation ?? "")])
                 .filter(([, value]: [string, string]) => value.trim().length > 0),
             );
-            const evalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-did-session-evaluate`;
+            const evalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-did-session-finalize`;
             const evalCtl = new AbortController();
             const evalTo = setTimeout(() => evalCtl.abort(), 60000);
             const evalRes = await fetch(evalUrl, {
@@ -7304,7 +7306,8 @@ Vra\u0165 JSON:
               },
               body: JSON.stringify({
                 planId: (plan as any).id,
-                endedReason: "auto_safety_net",
+                source: "auto_safety_net",
+                reason: "calendar_day_safety_net",
                 completedBlocks: (liveProgress as any)?.completed_blocks,
                 totalBlocks: (liveProgress as any)?.total_blocks,
                 turnsByBlock: (liveProgress as any)?.turns_by_block ?? {},

@@ -123,6 +123,10 @@ interface BriefingRow {
   decisions_count: number;
 }
 
+interface YesterdayFallbackReview extends YesterdaySessionReview {
+  status_label?: string;
+}
+
 interface Props {
   refreshTrigger?: number;
   /** Otevře poradní místnost pro daný deliberation. Briefing decisions
@@ -166,6 +170,13 @@ const formatDate = (iso: string): string => {
   } catch {
     return iso;
   }
+};
+
+const pragueYesterdayISO = (): string => {
+  const today = pragueTodayISO();
+  const d = new Date(`${today}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
 };
 
 const SectionHead = ({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) => (
@@ -233,6 +244,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [openingItemId, setOpeningItemId] = useState<string | null>(null);
+  const [yesterdayFallback, setYesterdayFallback] = useState<YesterdayFallbackReview | null>(null);
   /**
    * THERAPIST-LED TRUTH PASS (2026-04-22) — Duplicity guard.
    * Set obsahuje názvy částí, pro které dnes existuje schválený
@@ -263,6 +275,64 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     }
   }, []);
 
+  const loadYesterdayFallback = useCallback(async () => {
+    try {
+      const yesterday = pragueYesterdayISO();
+      const { data: review } = await (supabase as any)
+        .from("did_session_reviews")
+        .select("part_name,status,clinical_summary,therapeutic_implications,team_implications,next_session_recommendation,evidence_limitations")
+        .eq("session_date", yesterday)
+        .eq("is_current", true)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (review) {
+        setYesterdayFallback({
+          held: true,
+          part_name: review.part_name || undefined,
+          completion: review.status === "analyzed" ? "completed" : review.status === "partially_analyzed" ? "partial" : "abandoned",
+          karel_summary: review.clinical_summary || review.evidence_limitations || "Review existuje, ale klinické shrnutí zatím není uložené.",
+          key_finding_about_part: review.therapeutic_implications || "Závěr je omezen dostupnou evidencí.",
+          implications_for_plan: review.next_session_recommendation || "Doplnit chybějící podklady a navázat v dalším plánování.",
+          team_acknowledgement: review.team_implications || "Děkuji Haničce a Kátě za držení kontinuity; i částečný záznam je pro tým užitečný, když je označen poctivě.",
+          status_label: review.status,
+        });
+        return;
+      }
+      const { data: plan } = await (supabase as any)
+        .from("did_daily_session_plans")
+        .select("id,selected_part,session_lead,therapist,status,lifecycle_status,plan_markdown")
+        .eq("plan_date", yesterday)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!plan) { setYesterdayFallback(null); return; }
+      const { data: progress } = await (supabase as any)
+        .from("did_live_session_progress")
+        .select("completed_blocks,total_blocks,items")
+        .eq("plan_id", plan.id)
+        .maybeSingle();
+      const completed = progress?.completed_blocks ?? 0;
+      const total = progress?.total_blocks ?? null;
+      setYesterdayFallback({
+        held: true,
+        part_name: plan.selected_part || undefined,
+        lead: String(plan.session_lead || plan.therapist || "").toLowerCase().includes("kat") ? "Káťa" : "Hanička",
+        completion: completed > 0 ? "partial" : "abandoned",
+        karel_summary: completed > 0
+          ? `Včerejší sezení má částečnou evidenci (${completed}${total ? `/${total}` : ""} bodů). Plné klinické review ještě není uložené, proto zatím nebudu předstírat hotový závěr.`
+          : "Včera existoval plán sezení, ale zatím k němu nevidím dost průběhových podkladů pro plné klinické zhodnocení.",
+        key_finding_about_part: "Stav je evidence-limited: sekce zůstává viditelná, ale závěr čeká na review nebo doplnění podkladů.",
+        implications_for_plan: "Karel má sezení předat finalizační cestě; pokud podklady chybí, má vzniknout evidence-limited review místo tichého zmizení sekce.",
+        team_acknowledgement: "Haničko a Káťo, děkuji za udržení rámce — i nedokončené sezení se teď poctivě označí a neztratí se z přehledu.",
+        status_label: plan.lifecycle_status || plan.status,
+      });
+    } catch (e) {
+      console.error("[DidDailyBriefingPanel] loadYesterdayFallback failed:", e);
+      setYesterdayFallback(null);
+    }
+  }, []);
+
   const loadLatest = useCallback(async () => {
     setLoading(true);
     try {
@@ -289,7 +359,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   useEffect(() => {
     loadLatest();
     loadApprovedToday();
-  }, [loadLatest, loadApprovedToday, refreshTrigger]);
+    loadYesterdayFallback();
+  }, [loadLatest, loadApprovedToday, loadYesterdayFallback, refreshTrigger]);
 
   // Auto-refresh při nově vygenerovaném briefingu (realtime) i při focusu okna,
   // aby uživatel neviděl zastaralou verzi po regeneraci v jiné záložce / serveru.
@@ -648,6 +719,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   }
 
   const p = briefing.payload;
+  const yesterdayReview = (p.yesterday_session_review && p.yesterday_session_review.held)
+    ? p.yesterday_session_review
+    : yesterdayFallback;
   const hasProposed = !!p.proposed_session?.part_name;
   const proposedPartName = (p.proposed_session?.part_name ?? "").trim();
   const proposedAlreadyApproved =
@@ -713,7 +787,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       )}
 
       {/* 3.5 Vyhodnocení včerejšího sezení (sekce mezi „Z dřívějška" a „Návrh sezení") */}
-      {p.yesterday_session_review && p.yesterday_session_review.held && (
+      {yesterdayReview && yesterdayReview.held && (
         <>
           <NarrativeDivider />
           <SectionHead icon={<Users className="w-3.5 h-3.5 text-primary/70" />}>
@@ -721,38 +795,38 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           </SectionHead>
           <div className="mt-2 p-3 rounded-lg border border-border/60 bg-card/40 space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
-              {p.yesterday_session_review.part_name && (
+              {yesterdayReview.part_name && (
                 <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">
-                  {p.yesterday_session_review.part_name}
+                  {yesterdayReview.part_name}
                 </Badge>
               )}
-              {p.yesterday_session_review.lead && (
+              {yesterdayReview.lead && (
                 <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">
-                  vedla {p.yesterday_session_review.lead}
+                  vedla {yesterdayReview.lead}
                 </Badge>
               )}
-              {p.yesterday_session_review.completion && (
+              {yesterdayReview.completion && (
                 <Badge
                   className={`text-[10px] h-5 px-2 border ${
-                    p.yesterday_session_review.completion === "completed"
+                    yesterdayReview.completion === "completed"
                       ? "bg-emerald-500/15 text-emerald-700 border-emerald-500/30"
-                      : p.yesterday_session_review.completion === "partial"
+                      : yesterdayReview.completion === "partial"
                       ? "bg-amber-500/15 text-amber-700 border-amber-500/30"
                       : "bg-destructive/15 text-destructive border-destructive/30"
                   }`}
                 >
-                  {p.yesterday_session_review.completion === "completed"
+                  {yesterdayReview.completion === "completed"
                     ? "Dokončeno"
-                    : p.yesterday_session_review.completion === "partial"
+                    : yesterdayReview.completion === "partial"
                     ? "Částečně"
                     : "Nedokončeno"}
                 </Badge>
               )}
             </div>
-            {p.yesterday_session_review.karel_summary ? (
+            {yesterdayReview.karel_summary ? (
               <div>
                 <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
-                  {p.yesterday_session_review.karel_summary}
+                  {yesterdayReview.karel_summary}
                 </p>
               </div>
             ) : (
@@ -760,27 +834,27 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                 Karlovo přetlumočení se právě dogeneruvává. Pokud se neobjeví do minuty, klikni „Přegenerovat".
               </div>
             )}
-            {p.yesterday_session_review.key_finding_about_part && (
+            {yesterdayReview.key_finding_about_part && (
               <div>
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co teď víme o části</p>
                 <p className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
-                  {p.yesterday_session_review.key_finding_about_part}
+                  {yesterdayReview.key_finding_about_part}
                 </p>
               </div>
             )}
-            {p.yesterday_session_review.implications_for_plan && (
+            {yesterdayReview.implications_for_plan && (
               <div>
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co z toho plyne pro plán</p>
                 <p className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
-                  {p.yesterday_session_review.implications_for_plan}
+                  {yesterdayReview.implications_for_plan}
                 </p>
               </div>
             )}
-            {p.yesterday_session_review.team_acknowledgement && (
+            {yesterdayReview.team_acknowledgement && (
               <div className="pt-1 border-t border-border/40">
                 <p className="text-[11px] uppercase tracking-wide text-primary/70">Pro tým</p>
                 <p className="text-[12px] leading-relaxed text-foreground/85 italic whitespace-pre-line mt-0.5">
-                  {p.yesterday_session_review.team_acknowledgement}
+                  {yesterdayReview.team_acknowledgement}
                 </p>
               </div>
             )}

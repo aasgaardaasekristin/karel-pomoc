@@ -901,15 +901,11 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
       // musí vidět jinak než `in_progress` nebo `done`.
       if (planId) {
         try {
-          await (supabase as any)
-            .from("did_daily_session_plans")
-            .update({
-              status: "awaiting_analysis",
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", planId);
+          await (supabase as any).functions.invoke("karel-did-session-finalize", {
+            body: { planId, source: "save_transcript", reason: "partial" },
+          });
         } catch (planErr) {
-          console.warn("Failed to update plan status to awaiting_analysis:", planErr);
+          console.warn("Failed to finalize plan after transcript save:", planErr);
         }
       }
 
@@ -1283,16 +1279,11 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
     // v Pracovně viditelný jako uzavřený, ne dál jako `in_progress`.
     if (planId) {
       try {
-        await (supabase as any)
-          .from("did_daily_session_plans")
-          .update({
-            status: "done",
-            completed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", planId);
+        await (supabase as any).functions.invoke("karel-did-session-finalize", {
+          body: { planId, source: "completed", reason: skipped ? "partial" : "completed" },
+        });
       } catch (planErr) {
-        console.warn("Failed to update plan status to done:", planErr);
+        console.warn("Failed to finalize plan after analysis:", planErr);
       }
     }
 

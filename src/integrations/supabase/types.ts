@@ -1795,13 +1795,18 @@ export type Database = {
       }
       did_daily_session_plans: {
         Row: {
+          analysis_error: string | null
           completed_at: string | null
           created_at: string
           crisis_event_id: string | null
           distributed_drive: boolean
           distributed_email: boolean
+          finalization_reason: string | null
+          finalization_source: string | null
+          finalized_at: string | null
           generated_by: string
           id: string
+          lifecycle_status: string
           overdue_days: number
           part_tier: string
           plan_date: string
@@ -1818,13 +1823,18 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          analysis_error?: string | null
           completed_at?: string | null
           created_at?: string
           crisis_event_id?: string | null
           distributed_drive?: boolean
           distributed_email?: boolean
+          finalization_reason?: string | null
+          finalization_source?: string | null
+          finalized_at?: string | null
           generated_by?: string
           id?: string
+          lifecycle_status?: string
           overdue_days?: number
           part_tier?: string
           plan_date?: string
@@ -1841,13 +1851,18 @@ export type Database = {
           user_id?: string
         }
         Update: {
+          analysis_error?: string | null
           completed_at?: string | null
           created_at?: string
           crisis_event_id?: string | null
           distributed_drive?: boolean
           distributed_email?: boolean
+          finalization_reason?: string | null
+          finalization_source?: string | null
+          finalized_at?: string | null
           generated_by?: string
           id?: string
+          lifecycle_status?: string
           overdue_days?: number
           part_tier?: string
           plan_date?: string
@@ -3057,6 +3072,98 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      did_session_reviews: {
+        Row: {
+          analysis_version: string
+          clinical_summary: string | null
+          completed_checklist_items: Json
+          created_at: string
+          error_message: string | null
+          evidence_items: Json
+          evidence_limitations: string | null
+          id: string
+          is_current: boolean
+          live_progress_available: boolean
+          missing_checklist_items: Json
+          next_session_recommendation: string | null
+          part_name: string | null
+          plan_id: string
+          projection_status: string
+          retry_count: number
+          review_kind: string
+          session_date: string
+          source_data_summary: string | null
+          status: string
+          team_implications: string | null
+          therapeutic_implications: string | null
+          transcript_available: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          analysis_version?: string
+          clinical_summary?: string | null
+          completed_checklist_items?: Json
+          created_at?: string
+          error_message?: string | null
+          evidence_items?: Json
+          evidence_limitations?: string | null
+          id?: string
+          is_current?: boolean
+          live_progress_available?: boolean
+          missing_checklist_items?: Json
+          next_session_recommendation?: string | null
+          part_name?: string | null
+          plan_id: string
+          projection_status?: string
+          retry_count?: number
+          review_kind?: string
+          session_date: string
+          source_data_summary?: string | null
+          status?: string
+          team_implications?: string | null
+          therapeutic_implications?: string | null
+          transcript_available?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          analysis_version?: string
+          clinical_summary?: string | null
+          completed_checklist_items?: Json
+          created_at?: string
+          error_message?: string | null
+          evidence_items?: Json
+          evidence_limitations?: string | null
+          id?: string
+          is_current?: boolean
+          live_progress_available?: boolean
+          missing_checklist_items?: Json
+          next_session_recommendation?: string | null
+          part_name?: string | null
+          plan_id?: string
+          projection_status?: string
+          retry_count?: number
+          review_kind?: string
+          session_date?: string
+          source_data_summary?: string | null
+          status?: string
+          team_implications?: string | null
+          therapeutic_implications?: string | null
+          transcript_available?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "did_session_reviews_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "did_daily_session_plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       did_supervision_reports: {
         Row: {

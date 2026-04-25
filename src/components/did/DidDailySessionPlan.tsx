@@ -24,6 +24,7 @@ interface SessionPlan {
   plan_markdown: string;
   therapist: string;
   status: string;
+  lifecycle_status?: string;
   distributed_drive: boolean;
   distributed_email: boolean;
   generated_by: string;
@@ -265,16 +266,16 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
   // ═══ MARK AS DONE ═══
   const markDone = useCallback(async (planId: string) => {
     try {
-      await (supabase as any)
-        .from("did_daily_session_plans")
-        .update({ status: "done", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq("id", planId);
-      setPlans(prev => prev.map(p => p.id === planId ? { ...p, status: "done", completed_at: new Date().toISOString() } : p));
-      toast.success("Plán označen jako splněný");
+      const { error } = await (supabase as any).functions.invoke("karel-did-session-finalize", {
+        body: { planId, source: "manual_end", reason: "completed" },
+      });
+      if (error) throw error;
+      await loadTodayPlans();
+      toast.success("Plán předán k vyhodnocení");
     } catch (e) {
-      toast.error("Nepodařilo se označit plán");
+      toast.error("Nepodařilo se spustit vyhodnocení");
     }
-  }, []);
+  }, [loadTodayPlans]);
 
   // ═══ DELETE PLAN ═══
   const deletePlan = useCallback(async (planId: string) => {
@@ -337,7 +338,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
 
       await (supabase as any)
         .from("did_daily_session_plans")
-        .update({ status: "in_progress", updated_at: new Date().toISOString() })
+        .update({ status: "in_progress", lifecycle_status: "in_progress", updated_at: new Date().toISOString() })
         .eq("id", plan.id);
 
       setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, status: "in_progress" } : p));
@@ -370,30 +371,17 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
           .eq("id", sessionRow.id);
       }
 
-      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
-      const driveContent = `## Záznam sezení — ${today}\n**Část:** ${plan.selected_part}\n**Naléhavost:** ${plan.urgency_score}\n**Terapeutka:** ${plan.session_lead === "kata" ? "Káťa" : "Hanka"} (${plan.session_format})\n\n### Plán sezení\n${plan.plan_markdown}\n\n---\n*Záznam vytvořen automaticky při ukončení sezení.*`;
-
-      await supabase
-        .from("did_pending_drive_writes")
-        .insert({
-          target_document: `06_INTERVENCE/${today}_${plan.selected_part}`,
-          content: driveContent,
-          write_type: "create",
-          priority: "high",
-        });
-
-      await (supabase as any)
-        .from("did_daily_session_plans")
-        .update({ status: "done", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq("id", plan.id);
-
-      setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, status: "done", completed_at: new Date().toISOString() } : p));
-      toast.success(`Sezení s ${plan.selected_part} ukončeno — záznam odeslán na Drive`);
+      const { error } = await (supabase as any).functions.invoke("karel-did-session-finalize", {
+        body: { planId: plan.id, source: "manual_end", reason: "partial" },
+      });
+      if (error) throw error;
+      await loadTodayPlans();
+      toast.success(`Sezení s ${plan.selected_part} ukončeno a předáno k vyhodnocení`);
     } catch (e: any) {
       toast.error("Nepodařilo se ukončit sezení");
       console.error(e);
     }
-  }, []);
+  }, [loadTodayPlans]);
 
   // ═══ REVERT STATUS ═══
   const revertStatus = useCallback(async (plan: SessionPlan) => {
