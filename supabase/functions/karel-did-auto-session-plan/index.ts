@@ -367,6 +367,20 @@ serve(async (req) => {
 
     // ═══ CHECK EXISTING AUTO PLAN (only block auto, not manual) ═══
     if (!forcePart) {
+      const { data: karelDirectPlans } = await sb.from("did_daily_session_plans")
+        .select("id")
+        .eq("plan_date", todayPrague)
+        .contains("urgency_breakdown", { session_actor: "karel_direct" })
+        .in("status", ["generated", "in_progress"])
+        .limit(1);
+
+      if (karelDirectPlans && karelDirectPlans.length > 0) {
+        console.log(`[auto-session-plan] Karel-direct candidate already exists for ${todayPrague}, skipping.`);
+        return new Response(JSON.stringify({ success: true, skipped: true, reason: "karel_direct_candidate_exists", existingPlanId: karelDirectPlans[0].id }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const { data: autoPlans } = await sb.from("did_daily_session_plans")
         .select("id, generated_by")
         .eq("plan_date", todayPrague)
@@ -794,12 +808,16 @@ ${perplexityResult || "(nedostupná)"}`;
 
     // ═══ SAVE TO DB (INSERT — never delete old plans) ═══
     const generatedBy = forcePart ? "manual" : "auto";
+    const urgencyBreakdown = {
+      ...selectedPart.breakdown,
+      ...deriveKarelDirectContract(selectedPart, forcePart),
+    };
     const { error: insertErr } = await sb.from("did_daily_session_plans").insert({
       user_id: userId,
       plan_date: todayPrague,
       selected_part: selectedPart.partName,
       urgency_score: selectedPart.score,
-      urgency_breakdown: selectedPart.breakdown,
+      urgency_breakdown: urgencyBreakdown,
       plan_markdown: planMarkdown,
       plan_html: planHtml,
       therapist: sessionLead,
@@ -882,7 +900,7 @@ ${perplexityResult || "(nedostupná)"}`;
       success: true,
       selectedPart: selectedPart.partName,
       urgencyScore: selectedPart.score,
-      breakdown: selectedPart.breakdown,
+      breakdown: urgencyBreakdown,
       stabilizationMode,
       sessionLead,
       sessionFormat,
