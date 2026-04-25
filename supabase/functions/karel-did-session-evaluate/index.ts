@@ -1448,10 +1448,12 @@ Deno.serve(async (req: Request) => {
     if (sessionContract?.session_actor === "karel_direct") {
       const mode = String(sessionContract?.session_mode ?? "");
       const hasPartResponse = karelDirectHasPartResponse(ctx.threads);
+      const evidenceValidity = karelDirectEvidenceValidity({ hasPartResponse, evidencePresent, completedBlocks, totalBlocks, turnsByBlock, observationsByBlock, liveProgress });
+      const supportiveEvidence = countTurnBlocks(turnsByBlock) > 0 || countObservationBlocks(observationsByBlock) > 0 || hasPartResponse || liveProgress?.post_session_result?.provenance === "therapist_entered" || !!liveProgress?.post_session_result?.entered_by;
       const actualPartIfDiffers = inferActualPartIfDiffers(ctx);
       if (mode === "deferred" || actualPartIfDiffers || (!hasPartResponse && !evidencePresent)) {
         const outcome: KarelDirectOutcome = mode === "deferred" ? "deferred" : actualPartIfDiffers ? "actual_part_differs" : "unavailable";
-        const audit = await persistKarelDirectOutcome(sb, ctx, { outcome, endedReason, evidencePresent, actualPartIfDiffers });
+        const audit = await persistKarelDirectOutcome(sb, ctx, { outcome, endedReason, evidencePresent, evidenceValidity, hasPartResponse, supportiveEvidence, createFollowUp: outcome === "deferred" ? !hasKarelDirectDeferredReason(ctx.plan, liveProgress) : true, actualPartIfDiffers });
         return new Response(
           JSON.stringify({ ok: true, plan_id: planId, part_name: ctx.plan.selected_part, completion_status: outcome, review_status: audit.reviewStatus, post_session_result: audit.postSessionResult }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -1509,8 +1511,11 @@ Vyhodnoť toto sezení. Drž se pravidel ze system promptu.
     const markdown = renderEvaluationMarkdown(evaluation, ctx.plan, endedReason, completedBlocks, totalBlocks, diagnosticValidity);
 
     if (sessionContract?.session_actor === "karel_direct") {
-      const karelOutcome: KarelDirectOutcome = evaluation.completion_status === "completed" && evidencePresent ? "completed" : "partial";
-      const audit = await persistKarelDirectOutcome(sb, ctx, { outcome: karelOutcome, endedReason, evidencePresent, actualPartIfDiffers: null });
+      const hasPartResponse = karelDirectHasPartResponse(ctx.threads);
+      const evidenceValidity = karelDirectEvidenceValidity({ hasPartResponse, evidencePresent, completedBlocks, totalBlocks, turnsByBlock, observationsByBlock, liveProgress });
+      const supportiveEvidence = countTurnBlocks(turnsByBlock) > 0 || countObservationBlocks(observationsByBlock) > 0 || hasPartResponse || liveProgress?.post_session_result?.provenance === "therapist_entered" || !!liveProgress?.post_session_result?.entered_by;
+      const karelOutcome: KarelDirectOutcome = evaluation.completion_status === "completed" && evidencePresent && hasPartResponse ? "completed" : "partial";
+      const audit = await persistKarelDirectOutcome(sb, ctx, { outcome: karelOutcome, endedReason, evidencePresent, evidenceValidity, hasPartResponse, supportiveEvidence, actualPartIfDiffers: null });
       return new Response(
         JSON.stringify({ ok: true, plan_id: planId, part_name: ctx.plan.selected_part, completion_status: karelOutcome, review_status: audit.reviewStatus, post_session_result: audit.postSessionResult, markdown }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
