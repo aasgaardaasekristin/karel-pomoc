@@ -121,7 +121,7 @@ function extractDifferentPart(answer: string, plannedPart: string): string | nul
     { pattern: new RegExp(`\\bto\\s+byl[ao]?\\s+${name}`, "iu"), index: 1 },
     { pattern: new RegExp(`\\bozval[ao]?\\s+se\\s+${name}(?:\\s*,?\\s*ne\\s+${name})?`, "iu"), index: 1 },
     { pattern: new RegExp(`\\bmluvil[ao]?\\s+(?:jiná|jina)\\s+(?:část|cast)\\s*[,;:-]?\\s*(?:asi\\s+|pravděpodobně\\s+|pravdepodobne\\s+)?${name}`, "iu"), index: 1 },
-    { pattern: new RegExp(`\\bpřítomn[ýá]|pritomn[ya]\\s+byl[ao]?\\s+${name}`, "iu"), index: 1 },
+    { pattern: new RegExp(`\\b(?:přítomn[ýá]|pritomn[ya])\\s+byl[ao]?\\s+${name}`, "iu"), index: 1 },
   ];
   const plannedNorm = normalizeIdentity(plannedPart);
   for (const { pattern, index } of patterns) {
