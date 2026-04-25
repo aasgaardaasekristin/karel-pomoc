@@ -2060,6 +2060,7 @@ export type Database = {
           last_activity_at: string
           part_name: string
           plan_id: string
+          post_session_result: Json
           therapist: string
           total_blocks: number
           turns_by_block: Json
@@ -2077,6 +2078,7 @@ export type Database = {
           last_activity_at?: string
           part_name?: string
           plan_id: string
+          post_session_result?: Json
           therapist?: string
           total_blocks?: number
           turns_by_block?: Json
@@ -2094,6 +2096,7 @@ export type Database = {
           last_activity_at?: string
           part_name?: string
           plan_id?: string
+          post_session_result?: Json
           therapist?: string
           total_blocks?: number
           turns_by_block?: Json
@@ -3075,6 +3078,7 @@ export type Database = {
       }
       did_session_reviews: {
         Row: {
+          analysis_json: Json
           analysis_version: string
           clinical_summary: string | null
           completed_checklist_items: Json
@@ -3102,6 +3106,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          analysis_json?: Json
           analysis_version?: string
           clinical_summary?: string | null
           completed_checklist_items?: Json
@@ -3129,6 +3134,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          analysis_json?: Json
           analysis_version?: string
           clinical_summary?: string | null
           completed_checklist_items?: Json
