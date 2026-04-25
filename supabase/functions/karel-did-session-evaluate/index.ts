@@ -1012,13 +1012,6 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json().catch(() => ({}));
     const planId = body?.planId as string | undefined;
-    if (!planId) {
-      return new Response(
-        JSON.stringify({ ok: false, error: "planId je povinné" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
     let completedBlocks = typeof body?.completedBlocks === "number" ? body.completedBlocks : undefined;
     let totalBlocks = typeof body?.totalBlocks === "number" ? body.totalBlocks : undefined;
     const endedReason: EndedReason = body?.endedReason ?? "completed";
@@ -1050,6 +1043,13 @@ Deno.serve(async (req: Request) => {
       return new Response(
         JSON.stringify({ ok: true, projection_only: true, review_id: reviewId, projection }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (!planId) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "planId je povinné" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
