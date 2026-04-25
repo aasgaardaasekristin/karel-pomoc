@@ -954,9 +954,12 @@ Deno.serve(async (req: Request) => {
     const threadTranscript = formatThreadMessagesForPrompt(ctx.threads, ctx.plan);
 
     const partInfo = ctx.partCard
-      ? `Karta části: jméno=${ctx.partCard.part_name}, věk≈${ctx.partCard.age_estimate ?? "?"}, ` +
-        `role=${ctx.partCard.role_in_system ?? "?"}, aktuální stav=${ctx.partCard.current_state ?? "?"}`
-      : `(karta části ${ctx.plan.selected_part} v DB nenalezena)`;
+      ? `Karta/registry záznam části nalezen: zadané jméno=${ctx.plan.selected_part}, kanonické jméno=${ctx.partCard.part_name}, ` +
+        `registry_id=${ctx.partCard.id}, věk≈${ctx.partCard.age_estimate ?? "?"}, role=${ctx.partCard.role_in_system ?? "?"}, ` +
+        `aktuální stav=${ctx.partCard.current_state ?? "?"}. Přímá Drive vazba není v DB uložena, netvrď proto, že karta neexistuje.`
+      : ctx.partCardLookup?.status === "ambiguous"
+        ? `(registry lookup části ${ctx.plan.selected_part} je nejednoznačný: ${ctx.partCardLookup.reason}; netvrď, že karta neexistuje)`
+        : `(registry záznam části ${ctx.plan.selected_part} v DB nenalezen)`;
 
     const blockSummary = totalBlocks
       ? `Blocks completed: ${completedBlocks ?? "?"}/${totalBlocks}` +
