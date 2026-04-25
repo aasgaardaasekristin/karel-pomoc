@@ -376,6 +376,18 @@ async function gatherContext(supabase: any) {
   // ── Včerejší sezení (pro yesterday_session_review) ──
   const yesterdaySessions = (yesterdaySessionsRes.data || []) as any[];
   const yesterdayPlans = (yesterdayPlansRes.data || []) as any[];
+  const yesterdayPlanIds = yesterdayPlans.map((p: any) => p?.id).filter((id: any) => typeof id === "string");
+  let yesterdaySessionReviews: any[] = [];
+  if (yesterdayPlanIds.length > 0) {
+    const { data: reviews } = await supabase
+      .from("did_session_reviews")
+      .select("id, plan_id, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, completed_checklist_items, missing_checklist_items, source_data_summary, created_at")
+      .in("plan_id", yesterdayPlanIds)
+      .eq("is_current", true)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    yesterdaySessionReviews = reviews ?? [];
+  }
 
   return {
     today: pragueDayISO(),
@@ -406,6 +418,7 @@ async function gatherContext(supabase: any) {
     })),
     yesterday_sessions: yesterdaySessions,
     yesterday_plans: yesterdayPlans,
+    yesterday_session_reviews: yesterdaySessionReviews,
     pantry_a: pantryA,
     pantry_a_summary: pantryASummary,
     pantry_b_entries: pantryBEntries,
