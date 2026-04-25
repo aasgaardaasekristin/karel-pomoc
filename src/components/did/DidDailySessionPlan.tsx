@@ -795,6 +795,7 @@ const PlanCard = ({
   const prepApproved = prepRoom?.status === "approved";
   const prepInProgress = prepRoom && (prepRoom.status === "active" || prepRoom.status === "awaiting_signoff");
   const prepProgress = prepRoom ? signoffProgress(prepRoom) : null;
+  const karelDirect = isKarelDirectPlan(plan);
   // „Zahájit" je v Pracovně dostupné JEN když je plán schválený přes prep room.
   // Mimo Pracovnu (prepGateEnabled=false) zůstává staré chování.
   const startBlockedByPrep = prepGateEnabled && !prepApproved;
@@ -843,10 +844,19 @@ const PlanCard = ({
         {
           body: {
             part_name: plan.selected_part,
+            plan_id: plan.id,
+            first_question: plan.urgency_breakdown?.first_question || undefined,
+            session_actor: plan.urgency_breakdown?.session_actor || undefined,
+            session_mode: plan.urgency_breakdown?.session_mode || undefined,
+            readiness_today: plan.urgency_breakdown?.readiness_today || undefined,
             briefing_proposed_session: {
               why_today: `Schválené sezení (porada): ${plan.selected_part}`,
               duration_min: 60,
               led_by: plan.session_lead === "kata" ? "Káťa" : plan.session_lead === "obe" ? "společně" : "Hanička",
+              session_actor: plan.urgency_breakdown?.session_actor || undefined,
+              session_mode: plan.urgency_breakdown?.session_mode || undefined,
+              readiness_today: plan.urgency_breakdown?.readiness_today || undefined,
+              first_question: plan.urgency_breakdown?.first_question || undefined,
               therapist_addendum: liveAddendum.trim() || undefined,
             },
           },
@@ -854,6 +864,10 @@ const PlanCard = ({
       );
       if (error) throw error;
       const threadId = (data as any)?.thread_id;
+      if ((data as any)?.deferred) {
+        toast.info("Karlův přímý kontakt je dnes odložený; vznikla doplňující otázka.");
+        return;
+      }
       if (!threadId) throw new Error("Herna nebyla vytvořena.");
       toast.success(`🎲 Herna s ${plan.selected_part} otevřena.`);
       navigate(`/chat?workspace_thread=${threadId}`);
