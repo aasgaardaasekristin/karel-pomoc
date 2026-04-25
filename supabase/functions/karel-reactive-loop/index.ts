@@ -323,6 +323,15 @@ serve(async (req) => {
 
     // --- Zdroj C: zodpovězené otázky ---
     for (const q of answeredQuestions || []) {
+      if (q.subject_type === "karel_direct_session") {
+        console.log(`[REACTIVE-LOOP] Skipping karel_direct_session question ${q.id}; handled by karel-direct-followup-process`);
+        await sb.from("did_pending_questions")
+          .update({ processed_by_reactive: true })
+          .eq("id", q.id);
+        statsC++;
+        continue;
+      }
+
       const answer = q.answer || q.response || "";
       const isCrisis = detectCrisis(answer);
 
