@@ -79,7 +79,7 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
     else setAnswerResponder("hanka");
   };
 
-  const handleAnswer = async (questionId: string) => {
+  const handleAnswer = async (question: PendingQuestion) => {
     if (!answerText.trim()) return;
     setSubmitting(true);
     try {
@@ -91,10 +91,21 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
           answered_by: answerResponder,
           status: "answered",
         })
-        .eq("id", questionId);
+        .eq("id", question.id);
 
       if (error) throw error;
-      toast.success(`Odpověď uložena (${answerResponder === "kata" ? "Káťa" : "Hanka"})`);
+      if (question.subject_type === "karel_direct_session") {
+        const { error: processError } = await supabase.functions.invoke("karel-direct-followup-process", {
+          body: { question_id: question.id },
+        });
+        if (processError) {
+          toast.error("Odpověď je uložená, ale další bezpečný návrh se nepodařilo připravit.");
+        } else {
+          toast.success("Karel z odpovědi připravil další bezpečný návrh postupu.");
+        }
+      } else {
+        toast.success(`Odpověď uložena (${answerResponder === "kata" ? "Káťa" : "Hanka"})`);
+      }
       setAnsweringId(null);
       setAnswerText("");
       await loadQuestions();
@@ -245,7 +256,7 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
                       <div className="flex gap-2 flex-wrap">
                         <Button
                           size="sm"
-                          onClick={() => handleAnswer(q.id)}
+                          onClick={() => handleAnswer(q)}
                           disabled={submitting || !answerText.trim()}
                         >
                           <Send size={12} className="mr-1" />

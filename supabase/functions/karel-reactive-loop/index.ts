@@ -151,7 +151,7 @@ serve(async (req) => {
   try {
     // ── 0. Load entity registry (01_INDEX = sole authority) ──
     // Reactive loop runs frequently — use DB cache as fallback (no Drive token refresh here)
-    const registry = await loadEntityRegistry(sb);
+    const registry = await loadEntityRegistry(sb as any);
     console.log(`[REACTIVE-LOOP] Registry: indexAvailable=${registry.indexAvailable}, entries=${registry.entries.length}`);
 
     // ═══ KROK 1 — Načtení nových zpráv z 5 zdrojů ═══
@@ -323,6 +323,15 @@ serve(async (req) => {
 
     // --- Zdroj C: zodpovězené otázky ---
     for (const q of answeredQuestions || []) {
+      if (q.subject_type === "karel_direct_session") {
+        console.log(`[REACTIVE-LOOP] Skipping karel_direct_session question ${q.id}; handled by karel-direct-followup-process`);
+        await sb.from("did_pending_questions")
+          .update({ processed_by_reactive: true })
+          .eq("id", q.id);
+        statsC++;
+        continue;
+      }
+
       const answer = q.answer || q.response || "";
       const isCrisis = detectCrisis(answer);
 
@@ -378,7 +387,7 @@ serve(async (req) => {
           console.log(`[REACTIVE-LOOP] Uncertain entity "${candidatePart}" in answered question → triggering watchdog`);
           // Import watchdog inline to avoid circular deps at module level
           const { handleUncertainEntity } = await import("../_shared/entityWatchdog.ts");
-          await handleUncertainEntity(sb, resolved, {
+          await handleUncertainEntity(sb as any, resolved, {
             thread_id: q.id,
             thread_label: `answered-question`,
             sub_mode: q.directed_to || "hanka",
@@ -513,7 +522,7 @@ serve(async (req) => {
               // FÁZE 2.6: Uncertain entity in conversation segment → trigger watchdog, no silent skip
               console.log(`[REACTIVE-LOOP] Uncertain entity "${signal.part_name}" in conv segment → triggering watchdog`);
               const { handleUncertainEntity } = await import("../_shared/entityWatchdog.ts");
-              await handleUncertainEntity(sb, partResolved, {
+              await handleUncertainEntity(sb as any, partResolved, {
                 thread_id: conv.id,
                 thread_label: `conv-segment-${seg.segment_type}`,
                 sub_mode: conv.sub_mode || "hanka",
@@ -549,7 +558,7 @@ serve(async (req) => {
           }
 
           // 5. Agenda item
-          if (seg.segment_type !== "background_noise") {
+          if (seg.segment_type) {
             // FÁZE 2.6 session-target gate: non-communicable parts become
             // observation-only items — no related_part, no direct-work appearance
             let agendaPriority = signal.signal_type === "risk" ? "urgent" : "when_appropriate";
@@ -604,7 +613,7 @@ serve(async (req) => {
 
       if (!existingPraise || existingPraise.length === 0) {
         await sb.from("karel_conversation_agenda").insert({
-          therapist: normalizeTherapist(task.assigned_to || "hanka"),
+          therapist: normalizeTherapist((task as any).assigned_to || task.therapist || "hanka"),
           topic: `Pochválit za splněný úkol: ${(task.task || "").slice(0, 100)}`,
           topic_type: "praise",
           priority: "when_appropriate",
@@ -660,12 +669,12 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("[REACTIVE-LOOP] FATAL ERROR:", error?.message || error);
+    console.error("[REACTIVE-LOOP] FATAL ERROR:", error instanceof Error ? error.message : error);
     await sb.from("system_health_log").insert({
       event_type: "reactive_loop_error",
       severity: "error",
       message: error instanceof Error ? error.message : "Unknown error",
-    }).catch(() => {});
+    });
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
