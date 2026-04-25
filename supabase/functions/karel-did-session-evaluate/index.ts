@@ -1373,6 +1373,19 @@ Deno.serve(async (req: Request) => {
     }
 
     const evidencePresent = hasEvidence(turnsByBlock, observationsByBlock, completedBlocks);
+    const sessionContract = ctx.plan.urgency_breakdown && typeof ctx.plan.urgency_breakdown === "object" ? ctx.plan.urgency_breakdown : {};
+    if (sessionContract?.session_actor === "karel_direct") {
+      const mode = String(sessionContract?.session_mode ?? "");
+      const hasThread = Array.isArray(ctx.threads) && ctx.threads.some((t: any) => Array.isArray(t.messages) && t.messages.length > 1);
+      if (mode === "deferred" || (!hasThread && !evidencePresent)) {
+        const outcome = mode === "deferred" ? "deferred" : "unavailable";
+        const audit = await persistKarelDirectNoContact(sb, ctx, outcome, endedReason);
+        return new Response(
+          JSON.stringify({ ok: true, plan_id: planId, part_name: ctx.plan.selected_part, completion_status: outcome, review_status: audit.reviewStatus, post_session_result: audit.postSessionResult }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
     const blockTranscript = formatBlockTurnsForPrompt(turnsByBlock, observationsByBlock);
     const threadTranscript = formatThreadMessagesForPrompt(ctx.threads, ctx.plan);
 
