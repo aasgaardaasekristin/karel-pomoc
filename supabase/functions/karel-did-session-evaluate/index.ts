@@ -210,6 +210,7 @@ interface SessionPlan {
 }
 
 type ReviewStatus = "analyzed" | "partially_analyzed" | "evidence_limited" | "failed_analysis" | "cancelled";
+type KarelDirectOutcome = "completed" | "partial" | "unavailable" | "deferred" | "actual_part_differs";
 
 interface PartSessionRow {
   id: string;
