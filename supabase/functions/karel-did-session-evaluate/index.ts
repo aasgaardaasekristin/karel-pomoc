@@ -511,13 +511,17 @@ ${tasksLines || "(žádné)"}
 
 async function persistEvaluation(
   sb: any,
-  ctx: { plan: SessionPlan; existingSession: PartSessionRow | null },
+  ctx: { plan: SessionPlan; existingSession: PartSessionRow | null; threads?: any[]; partCard?: any },
   evaluation: any,
   markdown: string,
   endedReason: EndedReason,
   completedBlocks: number | undefined,
   totalBlocks: number | undefined,
   force: boolean,
+  liveProgress: any,
+  turnsByBlock: Record<string, any[]>,
+  observationsByBlock: Record<string, string>,
+  diagnosticValidity: string,
 ) {
   const now = new Date().toISOString();
   const userId = ctx.plan.user_id;
@@ -557,10 +561,68 @@ async function persistEvaluation(
     await sb.from("did_part_sessions").insert(sessionPayload);
   }
 
-  // 2) did_daily_session_plans — status=completed
+  const evidencePresent = hasEvidence(turnsByBlock, observationsByBlock, completedBlocks);
+  const reviewStatus = reviewStatusFor(evaluation, evidencePresent, completedBlocks, totalBlocks);
+  const evidenceItems = buildEvidenceItems(ctx as any, liveProgress, turnsByBlock, observationsByBlock);
+  const checklist = checklistItems(liveProgress);
+
+  const reviewPayload = {
+    user_id: userId,
+    plan_id: ctx.plan.id,
+    part_name: partName,
+    session_date: ctx.plan.plan_date,
+    status: reviewStatus,
+    review_kind: endedReason === "auto_safety_net" ? "calendar_day_safety_net" : "scheduled_session",
+    analysis_version: "did-session-review-v1",
+    source_data_summary: evidenceItems.map((e: any) => `${e.kind}:${e.available ? "available" : "missing"}`).join(", "),
+    evidence_items: evidenceItems,
+    completed_checklist_items: checklist.completed,
+    missing_checklist_items: checklist.missing,
+    transcript_available: evidenceItems.some((e: any) => ["turn_by_turn", "thread_transcript"].includes(e.kind) && e.available),
+    live_progress_available: !!liveProgress,
+    clinical_summary: markdown,
+    therapeutic_implications: evaluation.implications_for_tomorrow ?? null,
+    team_implications: evaluation.therapist_motivation ?? null,
+    next_session_recommendation: evaluation.recommended_next_step ?? null,
+    evidence_limitations: diagnosticValidity,
+    projection_status: reviewStatus === "failed_analysis" ? "skipped" : "queued",
+    error_message: null,
+    updated_at: now,
+  };
+
+  const { data: existingReview } = await sb
+    .from("did_session_reviews")
+    .select("id")
+    .eq("plan_id", ctx.plan.id)
+    .eq("is_current", true)
+    .maybeSingle();
+
+  let reviewId = existingReview?.id as string | undefined;
+  if (reviewId) {
+    await sb.from("did_session_reviews").update(reviewPayload).eq("id", reviewId);
+  } else {
+    const { data: insertedReview, error: reviewErr } = await sb
+      .from("did_session_reviews")
+      .insert(reviewPayload)
+      .select("id")
+      .single();
+    if (reviewErr) throw reviewErr;
+    reviewId = insertedReview?.id;
+  }
+
+  // 2) did_daily_session_plans — auditovatelný lifecycle stav podle review
   await sb
     .from("did_daily_session_plans")
-    .update({ status: "completed", completed_at: now, updated_at: now })
+    .update({
+      status: "done",
+      lifecycle_status: reviewStatus,
+      completed_at: now,
+      finalized_at: now,
+      finalization_source: endedReason,
+      finalization_reason: evaluation.incomplete_note ?? endedReason,
+      analysis_error: null,
+      updated_at: now,
+    })
     .eq("id", ctx.plan.id);
 
   // 3) karel_pantry_b_entries — anti-dup podle source_ref
@@ -688,7 +750,7 @@ async function persistEvaluation(
     status: "pending_drive",
   });
 
-  return { sessionLogTarget, cardTarget };
+  return { sessionLogTarget, cardTarget, reviewId, reviewStatus };
 }
 
 Deno.serve(async (req: Request) => {
