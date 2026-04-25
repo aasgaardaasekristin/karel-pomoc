@@ -74,6 +74,19 @@ function cleanCandidate(value: string | undefined): string | null {
   return candidate;
 }
 
+function hasNegatedDanger(text: string): boolean {
+  return includesAny(text, [
+    "bez známek nebezpečí",
+    "bez znamek nebezpeci",
+    "neviděla jsem známky nebezpečí",
+    "nevidela jsem znamky nebezpeci",
+    "neviděl jsem známky nebezpečí",
+    "nevidel jsem znamky nebezpeci",
+    "ani známky nebezpečí",
+    "ani znamky nebezpeci",
+  ]);
+}
+
 function isActiveCandidate(row: Record<string, unknown>, expectedPart: string): boolean {
   const status = normalizeText(row.status).toLowerCase();
   const lifecycle = normalizeText(row.lifecycle_status).toLowerCase();
@@ -166,7 +179,7 @@ async function classifyAnswer(sb: DbClient, answer: string, plannedPart: string,
     };
   }
 
-  if (includesAny(lower, ["riziko", "nebezpe", "sebepo", "suicid", "ublížit", "ublizit", "nejist", "nevím", "nevim", "ověřit", "overit", "nejdřív hanka", "nejdriv hanka", "nejdřív káťa", "nejdriv kata"])) {
+  if (includesAny(lower, ["riziko", "nebezpe", "sebepo", "suicid", "ublížit", "ublizit", "nejist", "nevím", "nevim", "ověřit", "overit", "nejdřív hanka", "nejdriv hanka", "nejdřív káťa", "nejdriv kata"]) && !hasNegatedDanger(lower)) {
     return {
       action: "therapist_led_check_first",
       confidence: includesAny(lower, ["riziko", "nebezpe", "sebepo", "suicid", "ublížit", "ublizit"]) ? "moderate" : "low",
