@@ -3155,7 +3155,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "did_session_reviews_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "did_daily_session_plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       did_supervision_reports: {
         Row: {
