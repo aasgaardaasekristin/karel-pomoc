@@ -492,6 +492,79 @@ function reviewStatusFor(evaluation: any, evidencePresent: boolean, completedBlo
   return "partially_analyzed";
 }
 
+function cleanMemoryLine(value: unknown, max = 520): string {
+  return String(value ?? "")
+    .replace(/<!--[^]*?-->/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
+}
+
+function hasHankaWorkImplication(review: SessionReviewRow, evaluation?: any): boolean {
+  if (review.status === "failed_analysis" || !review.id) return false;
+  const teamText = cleanMemoryLine(review.team_implications ?? evaluation?.therapist_motivation, 900);
+  if (teamText.length < 35) return false;
+  const workSignal = /(hanič|hanka|hana|terapeut|tým|veden[íi]|karel|další pr[aá]c|zp[uů]sob|postup|koordinac|superviz)/i;
+  const clinicalOnly = /(arthur|část|dít[eě]|kluci)/i.test(teamText) && !workSignal.test(teamText);
+  return workSignal.test(teamText) && !clinicalOnly;
+}
+
+function buildPametKarelReviewPayload(review: SessionReviewRow, ctx?: { plan?: SessionPlan }, evaluation?: any): string | null {
+  if (!hasHankaWorkImplication(review, evaluation)) return null;
+  const date = review.session_date || ctx?.plan?.plan_date || pragueDayISO();
+  const partName = review.part_name || ctx?.plan?.selected_part || "část";
+  const teamInsight = cleanMemoryLine(review.team_implications ?? evaluation?.therapist_motivation);
+  const nextStep = cleanMemoryLine(review.next_session_recommendation ?? evaluation?.recommended_next_step ?? "Příště má Karel navázat pracovně opatrně a ověřit, zda se tento závěr potvrzuje v další evidenci.");
+  const verification = cleanMemoryLine(review.evidence_limitations ?? "Validita je omezená podle evidence review; je potřeba doplnit nebo ověřit v dalším kontaktu.", 420);
+
+  return `[${date}] Z review sezení ${partName} plyne pracovní poznatek:
+
+- ${teamInsight}
+- Příště má Karel při vedení Haničky / týmu zohlednit tento pracovní signál: ${nextStep}
+- Ověřit nebo doplnit: ${verification}
+
+Poznámka k jistotě:
+Toto je pracovní dedukce z review, ne tvrdý klinický fakt. Validita je omezená podle evidence review.
+
+Zdroj: did_session_review:${review.id}
+`.trim();
+}
+
+async function projectReviewToPametKarel(sb: any, review: SessionReviewRow, ctx?: { plan?: SessionPlan }, evaluation?: any) {
+  const payload = buildPametKarelReviewPayload(review, ctx, evaluation);
+  if (!payload) return { inserted: false, reason: "no_clear_hanka_work_implication" };
+
+  const marker = `did_session_review:${review.id}`;
+  const { data: existingWrites, error: existingErr } = await sb
+    .from("did_pending_drive_writes")
+    .select("id,status")
+    .eq("target_document", PAMET_KAREL_HANKA_INSIGHTS_TARGET)
+    .in("status", PAMET_KAREL_DEDUPE_STATUSES)
+    .ilike("content", `%${marker}%`)
+    .limit(1);
+  if (existingErr) throw existingErr;
+  if (existingWrites && existingWrites.length > 0) return { inserted: false, reason: "already_projected" };
+
+  const content = encodeGovernedWrite(payload, {
+    source_type: "did_session_review",
+    source_id: review.id,
+    content_type: "therapist_memory_note",
+    subject_type: "therapist",
+    subject_id: "hanka",
+    payload_fingerprint: marker,
+  });
+  const { error: insertErr } = await sb.from("did_pending_drive_writes").insert({
+    user_id: review.user_id,
+    target_document: PAMET_KAREL_HANKA_INSIGHTS_TARGET,
+    content,
+    write_type: "append",
+    priority: "normal",
+    status: "pending",
+  });
+  if (insertErr) throw insertErr;
+  return { inserted: true, target_document: PAMET_KAREL_HANKA_INSIGHTS_TARGET };
+}
+
 function sanitizeEvaluation(evaluation: any, endedReason: EndedReason, completedBlocks?: number, totalBlocks?: number) {
   const ratio = totalBlocks && totalBlocks > 0 ? (completedBlocks ?? 0) / totalBlocks : 0;
   if (ratio >= 0.5 && evaluation.completion_status === "abandoned") {
