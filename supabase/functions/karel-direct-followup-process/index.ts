@@ -27,6 +27,8 @@ type ClassifiedAnswer = {
   entityGuard?: Record<string, unknown> | null;
 };
 
+type DbClient = any;
+
 const FORBIDDEN = [
   "trauma_memory_work",
   "deep_regression",
@@ -84,7 +86,7 @@ function isActiveCandidate(row: Record<string, unknown>, expectedPart: string): 
   return true;
 }
 
-async function resolveVerifiedPart(sb: ReturnType<typeof createClient>, candidate: string, userId: string): Promise<{ selectedPart: string; guard: Record<string, unknown> } | null> {
+async function resolveVerifiedPart(sb: DbClient, candidate: string, userId: string): Promise<{ selectedPart: string; guard: Record<string, unknown> } | null> {
   const candidateNorm = normalizeIdentity(candidate);
   const { data: parts, error } = await sb
     .from("did_part_registry")
@@ -93,7 +95,7 @@ async function resolveVerifiedPart(sb: ReturnType<typeof createClient>, candidat
     .limit(500);
   if (error) throw error;
 
-  const matched = (parts ?? []).find((part: Record<string, unknown>) => {
+  const matched = ((parts ?? []) as Record<string, unknown>[]).find((part: Record<string, unknown>) => {
     return [part.part_name, part.display_name].some((value) => normalizeIdentity(String(value ?? "")) === candidateNorm);
   });
 
@@ -132,7 +134,7 @@ function extractDifferentPart(answer: string, plannedPart: string): string | nul
   return null;
 }
 
-async function classifyAnswer(sb: ReturnType<typeof createClient>, answer: string, plannedPart: string, userId: string): Promise<ClassifiedAnswer> {
+async function classifyAnswer(sb: DbClient, answer: string, plannedPart: string, userId: string): Promise<ClassifiedAnswer> {
   const lower = answer.toLowerCase();
   const differentPart = extractDifferentPart(answer, plannedPart);
 
