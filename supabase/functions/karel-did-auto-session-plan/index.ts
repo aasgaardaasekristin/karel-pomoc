@@ -107,6 +107,7 @@ const KAREL_DIRECT_IDEMPOTENT_STATUSES = [
   "completed",
   "done",
 ];
+const KAREL_DIRECT_INACTIVE_STATUSES = new Set(["cancelled", "canceled", "archived"]);
 
 function getPragueDate(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
@@ -145,15 +146,19 @@ function deriveKarelDirectContract(selectedPart: UrgencyResult, forcePart: strin
 
 async function ensureKarelDirectCandidate(sb: any, args: { userId: string; todayPrague: string; selectedPart: UrgencyResult; forcePart: string | null; crisisEventId?: string | null }) {
   const { data: existing } = await sb.from("did_daily_session_plans")
-    .select("id")
+    .select("id,status,lifecycle_status")
     .eq("plan_date", args.todayPrague)
     .contains("urgency_breakdown", { kind: "karel_direct_session_candidate", session_actor: "karel_direct" })
-    .in("status", KAREL_DIRECT_IDEMPOTENT_STATUSES)
-    .limit(1);
+    .limit(10);
 
-  if (existing?.length) {
+  const activeExisting = (existing || []).find((plan: any) =>
+    !KAREL_DIRECT_INACTIVE_STATUSES.has(String(plan.status || "").toLowerCase()) &&
+    !KAREL_DIRECT_INACTIVE_STATUSES.has(String(plan.lifecycle_status || "").toLowerCase())
+  );
+
+  if (activeExisting) {
     console.log(`[auto-session-plan] Karel-direct candidate already exists for ${args.todayPrague}; continuing therapist-led flow.`);
-    return { created: false, existingPlanId: existing[0].id };
+    return { created: false, existingPlanId: activeExisting.id };
   }
 
   const contract = deriveKarelDirectContract(args.selectedPart, args.forcePart);
