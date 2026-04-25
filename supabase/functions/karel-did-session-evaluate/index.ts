@@ -203,6 +203,7 @@ interface SessionPlan {
   session_lead?: string | null;
   session_format?: string | null;
   plan_markdown: string | null;
+  urgency_breakdown?: Record<string, any> | null;
   status: string;
   completed_at: string | null;
   crisis_event_id: string | null;
@@ -371,15 +372,32 @@ async function loadContext(sb: any, planId: string) {
     .limit(1)
     .maybeSingle();
 
+  const sessionContract = plan.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown : {};
+  let threadCandidates: any[] | null = null;
+  if (sessionContract?.session_actor === "karel_direct") {
+    const { data } = await sb
+      .from("did_threads")
+      .select("id, part_name, sub_mode, started_at, last_activity_at, messages, workspace_type, workspace_id")
+      .eq("workspace_type", "session")
+      .eq("workspace_id", planId)
+      .eq("sub_mode", "karel_part_session")
+      .order("last_activity_at", { ascending: false })
+      .limit(3);
+    threadCandidates = data ?? null;
+  }
+
   // Najít LIVE thread (cast/karel_part_session) pro stejnou část v okně sezení.
-  const { data: threadCandidates } = await sb
+  if (!threadCandidates?.length) {
+  const { data } = await sb
     .from("did_threads")
-    .select("id, part_name, sub_mode, started_at, last_activity_at, messages")
+    .select("id, part_name, sub_mode, started_at, last_activity_at, messages, workspace_type, workspace_id")
     .ilike("part_name", plan.selected_part)
     .gte("last_activity_at", `${plan.plan_date}T00:00:00Z`)
     .lte("last_activity_at", `${plan.plan_date}T23:59:59Z`)
     .order("last_activity_at", { ascending: false })
     .limit(3);
+    threadCandidates = data ?? [];
+  }
 
   // Karta části (DB-side mirror) — deterministický resolver místo nejednoznačného ilike+maybeSingle.
   const { partCard, lookup: partCardLookup } = await resolveCanonicalPart(sb, plan.user_id, plan.selected_part);
@@ -760,6 +778,100 @@ function buildAnalysisJson(args: {
     review_status: args.reviewStatus,
     post_session_result: args.postSessionResult,
   };
+}
+
+async function createKarelDirectFollowUp(sb: any, args: { userId: string; planId: string; partName: string; outcome: string }) {
+  const subjectId = args.planId;
+  const { data: existing } = await sb
+    .from("did_pending_questions")
+    .select("id")
+    .eq("status", "open")
+    .eq("subject_type", "karel_direct_session")
+    .eq("subject_id", subjectId)
+    .limit(1);
+  if (existing?.length) return;
+  await sb.from("did_pending_questions").insert({
+    question: `Haničko, ${args.partName} dnes v Karlově přímém kontaktu nebyl dostupný. Viděla jsi dnes známky stažení, únavy nebo přítomnosti jiné části?`,
+    context: `MVP-SESSION-2 karel_direct outcome: ${args.outcome}`,
+    subject_type: "karel_direct_session",
+    subject_id: subjectId,
+    directed_to: "hanka_kata",
+    blocking: "clinical_clarification",
+    status: "open",
+  });
+}
+
+async function persistKarelDirectNoContact(sb: any, ctx: { plan: SessionPlan; threads?: any[]; partCardLookup?: PartCardLookup }, outcome: "deferred" | "unavailable", endedReason: EndedReason) {
+  const now = new Date().toISOString();
+  const reviewStatus: ReviewStatus = outcome === "deferred" ? "cancelled" : "evidence_limited";
+  const postSessionResult = {
+    schema: "post_session_result.v1",
+    provenance: "auto_derived",
+    status: outcome,
+    entered_by: null,
+    entered_at: null,
+    endedReason,
+    contactOccurred: false,
+    completionStatus: outcome,
+    evidenceValidity: "low",
+  };
+  const analysisJson = {
+    schema: "did_session_review.analysis.v1",
+    status: "created",
+    outcome,
+    confirmed_facts: {
+      plan_id: ctx.plan.id,
+      part_name: ctx.plan.selected_part,
+      completedBlocks: 0,
+      totalBlocks: null,
+      completion_ratio: null,
+      contactOccurred: false,
+      actualPart: ctx.partCardLookup?.status === "resolved" ? ctx.partCardLookup.canonical_part_name : null,
+      durationMinutes: null,
+      evidence_availability: { live_progress: "missing", checklist_count: 0, turn_by_turn_count: 0, observations_count: 0, transcript: "missing", artifacts_count: 0 },
+      review_status: reviewStatus,
+    },
+    narrative_summary: { session_arc: null, child_perspective: null },
+    working_deductions: [],
+    unknowns: [outcome === "deferred" ? "Karlův přímý kontakt byl odložen; důvod je potřeba doplnit terapeutkou." : "Část nebyla v Karlově přímém kontaktu dostupná; nelze předstírat proběhlé sezení."],
+    writebacks: { therapeutic_implications: null, team_implications: null, next_session_recommendation: "Doplnit krátkou odpověď terapeutky a podle ní upravit další plán." },
+    review_status: reviewStatus,
+    post_session_result: postSessionResult,
+  };
+  const reviewPayload = {
+    user_id: ctx.plan.user_id,
+    plan_id: ctx.plan.id,
+    part_name: ctx.plan.selected_part,
+    session_date: ctx.plan.plan_date,
+    status: reviewStatus,
+    review_kind: "karel_direct_session",
+    analysis_version: "did-session-review-v1",
+    source_data_summary: `karel_direct:${outcome}`,
+    evidence_items: [{ kind: "karel_direct_thread", available: false, outcome }],
+    transcript_available: false,
+    live_progress_available: false,
+    clinical_summary: outcome === "deferred" ? "Karlův přímý kontakt byl dnes odložen." : "Část dnes nebyla v Karlově přímém kontaktu dostupná.",
+    evidence_limitations: "Kontakt neproběhl nebo není dostupná průběhová evidence; výstup není terapeutický záznam.",
+    analysis_json: analysisJson,
+    projection_status: "skipped",
+    updated_at: now,
+  };
+  const { data: existingReview } = await sb.from("did_session_reviews").select("id").eq("plan_id", ctx.plan.id).eq("is_current", true).maybeSingle();
+  if (existingReview?.id) await sb.from("did_session_reviews").update(reviewPayload).eq("id", existingReview.id);
+  else await sb.from("did_session_reviews").insert(reviewPayload);
+  await sb.from("did_daily_session_plans").update({
+    status: "done",
+    lifecycle_status: reviewStatus,
+    completed_at: now,
+    finalized_at: now,
+    finalization_source: endedReason,
+    finalization_reason: outcome,
+    urgency_breakdown: { ...(ctx.plan.urgency_breakdown ?? {}), result_status: outcome },
+    updated_at: now,
+  }).eq("id", ctx.plan.id);
+  await sb.from("did_live_session_progress").update({ post_session_result: postSessionResult, updated_at: now }).eq("plan_id", ctx.plan.id);
+  await createKarelDirectFollowUp(sb, { userId: ctx.plan.user_id, planId: ctx.plan.id, partName: ctx.plan.selected_part, outcome });
+  return { reviewStatus, postSessionResult };
 }
 
 async function callAi(prompt: string, apiKey: string): Promise<any> {
@@ -1261,6 +1373,19 @@ Deno.serve(async (req: Request) => {
     }
 
     const evidencePresent = hasEvidence(turnsByBlock, observationsByBlock, completedBlocks);
+    const sessionContract = ctx.plan.urgency_breakdown && typeof ctx.plan.urgency_breakdown === "object" ? ctx.plan.urgency_breakdown : {};
+    if (sessionContract?.session_actor === "karel_direct") {
+      const mode = String(sessionContract?.session_mode ?? "");
+      const hasThread = Array.isArray(ctx.threads) && ctx.threads.some((t: any) => Array.isArray(t.messages) && t.messages.length > 1);
+      if (mode === "deferred" || (!hasThread && !evidencePresent)) {
+        const outcome = mode === "deferred" ? "deferred" : "unavailable";
+        const audit = await persistKarelDirectNoContact(sb, ctx, outcome, endedReason);
+        return new Response(
+          JSON.stringify({ ok: true, plan_id: planId, part_name: ctx.plan.selected_part, completion_status: outcome, review_status: audit.reviewStatus, post_session_result: audit.postSessionResult }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
     const blockTranscript = formatBlockTurnsForPrompt(turnsByBlock, observationsByBlock);
     const threadTranscript = formatThreadMessagesForPrompt(ctx.threads, ctx.plan);
 

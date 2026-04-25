@@ -21,7 +21,7 @@ interface SessionPlan {
   plan_date: string;
   selected_part: string;
   urgency_score: number;
-  urgency_breakdown: Record<string, number>;
+  urgency_breakdown: Record<string, any>;
   plan_markdown: string;
   therapist: string;
   status: string;
@@ -35,6 +35,8 @@ interface SessionPlan {
   overdue_days: number;
   created_at?: string;
 }
+
+const isKarelDirectPlan = (plan: SessionPlan) => plan.urgency_breakdown?.session_actor === "karel_direct";
 
 interface PreviousSession {
   therapist: string;
@@ -793,6 +795,7 @@ const PlanCard = ({
   const prepApproved = prepRoom?.status === "approved";
   const prepInProgress = prepRoom && (prepRoom.status === "active" || prepRoom.status === "awaiting_signoff");
   const prepProgress = prepRoom ? signoffProgress(prepRoom) : null;
+  const karelDirect = isKarelDirectPlan(plan);
   // „Zahájit" je v Pracovně dostupné JEN když je plán schválený přes prep room.
   // Mimo Pracovnu (prepGateEnabled=false) zůstává staré chování.
   const startBlockedByPrep = prepGateEnabled && !prepApproved;
@@ -841,10 +844,19 @@ const PlanCard = ({
         {
           body: {
             part_name: plan.selected_part,
+            plan_id: plan.id,
+            first_question: plan.urgency_breakdown?.first_question || undefined,
+            session_actor: plan.urgency_breakdown?.session_actor || undefined,
+            session_mode: plan.urgency_breakdown?.session_mode || undefined,
+            readiness_today: plan.urgency_breakdown?.readiness_today || undefined,
             briefing_proposed_session: {
               why_today: `Schválené sezení (porada): ${plan.selected_part}`,
               duration_min: 60,
               led_by: plan.session_lead === "kata" ? "Káťa" : plan.session_lead === "obe" ? "společně" : "Hanička",
+              session_actor: plan.urgency_breakdown?.session_actor || undefined,
+              session_mode: plan.urgency_breakdown?.session_mode || undefined,
+              readiness_today: plan.urgency_breakdown?.readiness_today || undefined,
+              first_question: plan.urgency_breakdown?.first_question || undefined,
               therapist_addendum: liveAddendum.trim() || undefined,
             },
           },
@@ -852,6 +864,10 @@ const PlanCard = ({
       );
       if (error) throw error;
       const threadId = (data as any)?.thread_id;
+      if ((data as any)?.deferred) {
+        toast.info("Karlův přímý kontakt je dnes odložený; vznikla doplňující otázka.");
+        return;
+      }
       if (!threadId) throw new Error("Herna nebyla vytvořena.");
       toast.success(`🎲 Herna s ${plan.selected_part} otevřena.`);
       navigate(`/chat?workspace_thread=${threadId}`);
@@ -861,7 +877,7 @@ const PlanCard = ({
     } finally {
       setOpeningPartRoom(false);
     }
-  }, [navigate, openingPartRoom, plan.selected_part, plan.plan_markdown, plan.session_lead, addendumKey, therapistAddendum]);
+  }, [navigate, openingPartRoom, plan.id, plan.selected_part, plan.session_lead, plan.urgency_breakdown, addendumKey, therapistAddendum]);
 
   // Overdue calculation using Prague timezone
   const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
@@ -920,6 +936,11 @@ const PlanCard = ({
         <Badge variant="secondary" className="text-[0.6875rem] h-5 px-2 font-semibold">
           {plan.selected_part}
         </Badge>
+        {karelDirect && (
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-primary/40 text-primary bg-primary/5">
+            <Dices className="mr-0.5 h-2.5 w-2.5" /> Karelův přímý kontakt s částí
+          </Badge>
+        )}
         <span className={`h-2 w-2 rounded-full shrink-0 ${
           plan.urgency_score >= 8 ? "bg-destructive" : plan.urgency_score >= 4 ? "bg-amber-500" : "bg-primary"
         }`} title={`Naléhavost: ${plan.urgency_score}`} />
@@ -1096,7 +1117,7 @@ const PlanCard = ({
                  krizovém kontextu (krize ≠ vyloučení Karlova vlastního sezení).
                  Klik volá `karel-part-session-prepare` (idempotentní) a deep-linkuje
                  do `/chat?workspace_thread=<id>`. */}
-            {prepGateEnabled && prepApproved && (
+            {prepGateEnabled && (prepApproved || karelDirect) && (
               <Button
                 variant="default"
                 size="sm"
