@@ -373,7 +373,8 @@ async function handleTransitionState(sb: any, body: any) {
     return jsonRes({ error: `Invalid state: ${target_state}. Valid: ${VALID_STATES.join(", ")}` }, 400);
   }
 
-  const { data: crisis } = await sb.from("crisis_events").select("*").eq("id", crisis_event_id).single();
+  const { data: crisis, error: crisisError } = await sb.from("crisis_events").select("*").eq("id", crisis_event_id).single();
+  if (crisisError) return dbErrorRes("find_crisis_for_transition", crisisError, crisisError.code === "PGRST116" ? 404 : 500);
   if (!crisis) return jsonRes({ error: "Crisis not found" }, 404);
 
   const currentState = crisis.operating_state || "active";
@@ -425,7 +426,8 @@ async function handleTransitionState(sb: any, body: any) {
     update.closure_proposed_by = "karel_system";
   }
 
-  await sb.from("crisis_events").update(update).eq("id", crisis_event_id);
+  const { error: updateError } = await sb.from("crisis_events").update(update).eq("id", crisis_event_id);
+  if (updateError) return dbErrorRes("transition_state", updateError);
 
   // Fire card propagation for significant transitions
   if (["ready_for_joint_review", "ready_to_close", "closed", "monitoring_post"].includes(target_state)) {
@@ -458,6 +460,7 @@ async function handleTransitionState(sb: any, body: any) {
   }
 
   return jsonRes({
+    ok: true,
     success: true,
     previous_state: currentState,
     new_state: target_state,
@@ -470,9 +473,13 @@ async function handleTransitionState(sb: any, body: any) {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const missing = [!supabaseUrl && "SUPABASE_URL", !serviceRoleKey && "SUPABASE_SERVICE_ROLE_KEY"].filter(Boolean) as string[];
+    if (missing.length > 0) return missingEnvRes(missing);
+
+    const sb = createClient(supabaseUrl!, serviceRoleKey!);
     const body = await req.json();
     const action = body.action;
 
@@ -483,17 +490,19 @@ serve(async (req) => {
         return await handleSubmitPosition(sb, body);
       case "generate_karel_statement":
         return await handleGenerateKarelStatement(sb, body);
+      case "acknowledge_alert":
+        return await handleAcknowledgeAlert(sb, body);
       case "check_closure_readiness":
         if (!body.crisis_event_id) return jsonRes({ error: "crisis_event_id required" }, 400);
         return jsonRes(await checkClosureReadiness(sb, body.crisis_event_id));
       case "transition_state":
         return await handleTransitionState(sb, body);
       default:
-        return jsonRes({ error: "Unknown action. Use: initiate_closure_meeting, submit_position, generate_karel_statement, check_closure_readiness, transition_state" }, 400);
+        return jsonRes({ ok: false, error: "Unknown action. Use: initiate_closure_meeting, submit_position, generate_karel_statement, acknowledge_alert, check_closure_readiness, transition_state" }, 400);
     }
   } catch (err) {
     console.error("[closure-meeting] Error:", err);
-    return jsonRes({ error: String(err) }, 500);
+    return jsonRes({ ok: false, error: "runtime_error", message: err instanceof Error ? err.message : String(err) }, 500);
   }
 });
 
