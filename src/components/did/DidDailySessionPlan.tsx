@@ -936,6 +936,11 @@ const PlanCard = ({
         <Badge variant="secondary" className="text-[0.6875rem] h-5 px-2 font-semibold">
           {plan.selected_part}
         </Badge>
+        {karelDirect && (
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-primary/40 text-primary bg-primary/5">
+            <Dices className="mr-0.5 h-2.5 w-2.5" /> Karelův přímý kontakt s částí
+          </Badge>
+        )}
         <span className={`h-2 w-2 rounded-full shrink-0 ${
           plan.urgency_score >= 8 ? "bg-destructive" : plan.urgency_score >= 4 ? "bg-amber-500" : "bg-primary"
         }`} title={`Naléhavost: ${plan.urgency_score}`} />
@@ -1112,7 +1117,7 @@ const PlanCard = ({
                  krizovém kontextu (krize ≠ vyloučení Karlova vlastního sezení).
                  Klik volá `karel-part-session-prepare` (idempotentní) a deep-linkuje
                  do `/chat?workspace_thread=<id>`. */}
-            {prepGateEnabled && prepApproved && (
+            {prepGateEnabled && (prepApproved || karelDirect) && (
               <Button
                 variant="default"
                 size="sm"
