@@ -21,7 +21,7 @@ interface SessionPlan {
   plan_date: string;
   selected_part: string;
   urgency_score: number;
-  urgency_breakdown: Record<string, number>;
+  urgency_breakdown: Record<string, any>;
   plan_markdown: string;
   therapist: string;
   status: string;
@@ -35,6 +35,8 @@ interface SessionPlan {
   overdue_days: number;
   created_at?: string;
 }
+
+const isKarelDirectPlan = (plan: SessionPlan) => plan.urgency_breakdown?.session_actor === "karel_direct";
 
 interface PreviousSession {
   therapist: string;
