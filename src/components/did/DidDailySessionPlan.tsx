@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import RichMarkdown from "@/components/ui/RichMarkdown";
 import { useSessionPrepRoom } from "@/hooks/useSessionPrepRoom";
 import { signoffProgress } from "@/types/teamDeliberation";
+import { finalizeDidSessionWithJob } from "@/lib/karelFinalizeJobs";
 
 interface SessionPlan {
   id: string;
@@ -266,12 +267,15 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
   // ═══ MARK AS DONE ═══
   const markDone = useCallback(async (planId: string) => {
     try {
-      const { error } = await (supabase as any).functions.invoke("karel-did-session-finalize", {
-        body: { planId, source: "manual_end", reason: "completed" },
+      const result = await finalizeDidSessionWithJob({
+        planId,
+        source: "manual_end",
+        reason: "completed",
+        onAccepted: () => toast.info("Karel dokončuje vyhodnocení. Výsledek se uloží automaticky."),
       });
-      if (error) throw error;
+      if (!result.ok) throw new Error(result.error || "Finalizace selhala");
       await loadTodayPlans();
-      toast.success("Plán předán k vyhodnocení");
+      toast.success(result.status === "already_done" ? "Vyhodnocení už bylo dokončeno" : "Plán předán k vyhodnocení");
     } catch (e) {
       toast.error("Nepodařilo se spustit vyhodnocení");
     }
@@ -371,10 +375,13 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
           .eq("id", sessionRow.id);
       }
 
-      const { error } = await (supabase as any).functions.invoke("karel-did-session-finalize", {
-        body: { planId: plan.id, source: "manual_end", reason: "partial" },
+      const result = await finalizeDidSessionWithJob({
+        planId: plan.id,
+        source: "manual_end",
+        reason: "partial",
+        onAccepted: () => toast.info("Karel dokončuje vyhodnocení. Výsledek se uloží automaticky."),
       });
-      if (error) throw error;
+      if (!result.ok) throw new Error(result.error || "Finalizace selhala");
       await loadTodayPlans();
       toast.success(`Sezení s ${plan.selected_part} ukončeno a předáno k vyhodnocení`);
     } catch (e: any) {
