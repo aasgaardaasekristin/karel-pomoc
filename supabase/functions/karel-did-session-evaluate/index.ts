@@ -461,7 +461,7 @@ function formatThreadMessagesForPrompt(threads: any[], plan: SessionPlan): strin
 async function loadLiveProgress(sb: any, planId: string) {
   const { data } = await sb
     .from("did_live_session_progress")
-    .select("items, turns_by_block, artifacts_by_block, completed_blocks, total_blocks, finalized_reason, last_activity_at")
+    .select("items, turns_by_block, artifacts_by_block, completed_blocks, total_blocks, finalized_reason, post_session_result, last_activity_at")
     .eq("plan_id", planId)
     .maybeSingle();
   return data ?? null;
@@ -489,11 +489,52 @@ function inferActualPartIfDiffers(ctx: { plan: SessionPlan; threads?: any[] }): 
     .join("\n");
   if (!text.trim()) return null;
   const normalized = normalizePartLookupKey(text);
-  if (/\bnejsem\b/.test(normalized) && !normalized.includes(planned)) return "uncertain";
-  const explicit = text.match(/(?:jsem|tady je|oz[ýy]v[áa] se)\s+([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽa-záčďéěíňóřšťúůýž][\p{L}\s-]{1,32})/u);
-  const candidate = explicit?.[1]?.trim();
+  const plannedPattern = planned.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  if (new RegExp(`\\b(?:ja\\s+)?nejsem\\s+${plannedPattern}\\b`).test(normalized)) return "uncertain";
+  if (/\bto\s+nejsem\s+ja\b/.test(normalized)) {
+    const afterCorrection = text.match(/to\s+nejsem\s+j[áa]\s*[,.;:-]?\s*jsem\s+([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][\p{L}\s-]{1,32})/u)?.[1]?.trim();
+    if (afterCorrection && normalizePartLookupKey(afterCorrection) !== planned) return afterCorrection;
+    return "uncertain";
+  }
+  if (/\bnejsem\s+ten\s*,?\s+koho\s+hledas\b/.test(normalized)) return "uncertain";
+  const explicit = text.match(/(?:^|[\n.!?]\s*)(?:j[áa]\s+)?(?:jsem|tady je|oz[ýy]v[áa] se|mluv[íi])\s+([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][\p{L}\s-]{1,32})/u);
+  const candidate = explicit?.[1]?.replace(/[.,;:!?].*$/, "").trim();
   if (candidate && normalizePartLookupKey(candidate) !== planned) return candidate;
   return null;
+}
+
+function karelDirectEvidenceValidity(args: { hasPartResponse: boolean; evidencePresent: boolean; completedBlocks?: number; totalBlocks?: number; turnsByBlock?: Record<string, any[]>; observationsByBlock?: Record<string, string>; liveProgress?: any }): "low" | "moderate" | "high" {
+  const turnBlocks = countTurnBlocks(args.turnsByBlock ?? {});
+  const observationBlocks = countObservationBlocks(args.observationsByBlock ?? {});
+  const transcriptAvailable = args.hasPartResponse;
+  const postSessionResult = args.liveProgress?.post_session_result && typeof args.liveProgress.post_session_result === "object" ? args.liveProgress.post_session_result : null;
+  const therapistEntered = postSessionResult?.provenance === "therapist_entered" || !!postSessionResult?.entered_by;
+  const completed = args.completedBlocks ?? 0;
+  const ratio = args.totalBlocks && args.totalBlocks > 0 ? completed / args.totalBlocks : 0;
+  const supportiveEvidence = turnBlocks > 0 || observationBlocks > 0 || transcriptAvailable || therapistEntered;
+  const strongEvidence = therapistEntered || observationBlocks >= 2 || turnBlocks >= 2 || (transcriptAvailable && completed >= 2);
+  if (!args.hasPartResponse || !args.evidencePresent || !supportiveEvidence) return "low";
+  if (ratio >= 0.8 && completed >= 2 && strongEvidence) return "high";
+  if (supportiveEvidence) return "moderate";
+  return "low";
+}
+
+function reviewStatusForKarelDirect(outcome: KarelDirectOutcome, evidenceValidity: "low" | "moderate" | "high", args: { hasPartResponse: boolean; supportiveEvidence: boolean }): ReviewStatus {
+  if (outcome === "deferred") return "cancelled";
+  if (outcome === "completed") {
+    if (!args.hasPartResponse || evidenceValidity === "low") return args.supportiveEvidence ? "partially_analyzed" : "evidence_limited";
+    if (evidenceValidity === "high" || (evidenceValidity === "moderate" && args.supportiveEvidence)) return "analyzed";
+    return "partially_analyzed";
+  }
+  if (outcome === "partial" && evidenceValidity !== "low" && args.hasPartResponse) return "partially_analyzed";
+  return "evidence_limited";
+}
+
+function hasKarelDirectDeferredReason(plan: SessionPlan, liveProgress?: any): boolean {
+  const contract = plan.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown as Record<string, any> : {};
+  const postSessionResult = liveProgress?.post_session_result && typeof liveProgress.post_session_result === "object" ? liveProgress.post_session_result : null;
+  return [contract.defer_reason, contract.result_reason, contract.reason, postSessionResult?.reason, postSessionResult?.defer_reason, postSessionResult?.result_reason]
+    .some((value) => String(value ?? "").trim().length > 0);
 }
 
 function buildEvidenceItems(ctx: { plan: SessionPlan; threads: any[]; partCard: any; partCardLookup?: PartCardLookup }, liveProgress: any, turnsByBlock: Record<string, any[]>, observationsByBlock: Record<string, string>) {
@@ -828,10 +869,10 @@ async function createKarelDirectFollowUp(sb: any, args: { userId: string; planId
   });
 }
 
-async function persistKarelDirectOutcome(sb: any, ctx: { plan: SessionPlan; threads?: any[]; partCardLookup?: PartCardLookup }, args: { outcome: KarelDirectOutcome; endedReason: EndedReason; evidencePresent: boolean; actualPartIfDiffers?: string | null }) {
+async function persistKarelDirectOutcome(sb: any, ctx: { plan: SessionPlan; threads?: any[]; partCardLookup?: PartCardLookup }, args: { outcome: KarelDirectOutcome; endedReason: EndedReason; evidencePresent: boolean; evidenceValidity: "low" | "moderate" | "high"; hasPartResponse: boolean; supportiveEvidence: boolean; createFollowUp?: boolean; actualPartIfDiffers?: string | null }) {
   const now = new Date().toISOString();
   const outcome = args.outcome;
-  const reviewStatus: ReviewStatus = outcome === "deferred" ? "cancelled" : outcome === "completed" ? "analyzed" : outcome === "partial" && args.evidencePresent ? "partially_analyzed" : "evidence_limited";
+  const reviewStatus: ReviewStatus = reviewStatusForKarelDirect(outcome, args.evidenceValidity, { hasPartResponse: args.hasPartResponse, supportiveEvidence: args.supportiveEvidence });
   const postSessionResult = {
     schema: "post_session_result.v1",
     provenance: "auto_derived",
@@ -839,9 +880,9 @@ async function persistKarelDirectOutcome(sb: any, ctx: { plan: SessionPlan; thre
     entered_by: null,
     entered_at: null,
     endedReason: args.endedReason,
-    contactOccurred: outcome === "completed" || outcome === "partial" || outcome === "actual_part_differs",
+    contactOccurred: args.hasPartResponse && (outcome === "completed" || outcome === "partial" || outcome === "actual_part_differs"),
     completionStatus: outcome,
-    evidenceValidity: outcome === "completed" ? "moderate" : "low",
+    evidenceValidity: args.evidenceValidity,
     actualPart: args.actualPartIfDiffers ?? null,
     actual_part_if_differs: args.actualPartIfDiffers ?? null,
   };
@@ -900,7 +941,7 @@ async function persistKarelDirectOutcome(sb: any, ctx: { plan: SessionPlan; thre
     updated_at: now,
   }).eq("id", ctx.plan.id);
   await sb.from("did_live_session_progress").update({ post_session_result: postSessionResult, updated_at: now }).eq("plan_id", ctx.plan.id);
-  if (["unavailable", "deferred", "actual_part_differs"].includes(outcome)) await createKarelDirectFollowUp(sb, { userId: ctx.plan.user_id, planId: ctx.plan.id, partName: ctx.plan.selected_part, outcome, actualPart: args.actualPartIfDiffers });
+  if ((args.createFollowUp ?? ["unavailable", "actual_part_differs"].includes(outcome)) || (outcome === "deferred" && args.createFollowUp === true)) await createKarelDirectFollowUp(sb, { userId: ctx.plan.user_id, planId: ctx.plan.id, partName: ctx.plan.selected_part, outcome, actualPart: args.actualPartIfDiffers });
   return { reviewStatus, postSessionResult };
 }
 
@@ -1407,10 +1448,12 @@ Deno.serve(async (req: Request) => {
     if (sessionContract?.session_actor === "karel_direct") {
       const mode = String(sessionContract?.session_mode ?? "");
       const hasPartResponse = karelDirectHasPartResponse(ctx.threads);
+      const evidenceValidity = karelDirectEvidenceValidity({ hasPartResponse, evidencePresent, completedBlocks, totalBlocks, turnsByBlock, observationsByBlock, liveProgress });
+      const supportiveEvidence = countTurnBlocks(turnsByBlock) > 0 || countObservationBlocks(observationsByBlock) > 0 || hasPartResponse || liveProgress?.post_session_result?.provenance === "therapist_entered" || !!liveProgress?.post_session_result?.entered_by;
       const actualPartIfDiffers = inferActualPartIfDiffers(ctx);
       if (mode === "deferred" || actualPartIfDiffers || (!hasPartResponse && !evidencePresent)) {
         const outcome: KarelDirectOutcome = mode === "deferred" ? "deferred" : actualPartIfDiffers ? "actual_part_differs" : "unavailable";
-        const audit = await persistKarelDirectOutcome(sb, ctx, { outcome, endedReason, evidencePresent, actualPartIfDiffers });
+        const audit = await persistKarelDirectOutcome(sb, ctx, { outcome, endedReason, evidencePresent, evidenceValidity, hasPartResponse, supportiveEvidence, createFollowUp: outcome === "deferred" ? !hasKarelDirectDeferredReason(ctx.plan, liveProgress) : true, actualPartIfDiffers });
         return new Response(
           JSON.stringify({ ok: true, plan_id: planId, part_name: ctx.plan.selected_part, completion_status: outcome, review_status: audit.reviewStatus, post_session_result: audit.postSessionResult }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -1468,8 +1511,11 @@ Vyhodnoť toto sezení. Drž se pravidel ze system promptu.
     const markdown = renderEvaluationMarkdown(evaluation, ctx.plan, endedReason, completedBlocks, totalBlocks, diagnosticValidity);
 
     if (sessionContract?.session_actor === "karel_direct") {
-      const karelOutcome: KarelDirectOutcome = evaluation.completion_status === "completed" && evidencePresent ? "completed" : "partial";
-      const audit = await persistKarelDirectOutcome(sb, ctx, { outcome: karelOutcome, endedReason, evidencePresent, actualPartIfDiffers: null });
+      const hasPartResponse = karelDirectHasPartResponse(ctx.threads);
+      const evidenceValidity = karelDirectEvidenceValidity({ hasPartResponse, evidencePresent, completedBlocks, totalBlocks, turnsByBlock, observationsByBlock, liveProgress });
+      const supportiveEvidence = countTurnBlocks(turnsByBlock) > 0 || countObservationBlocks(observationsByBlock) > 0 || hasPartResponse || liveProgress?.post_session_result?.provenance === "therapist_entered" || !!liveProgress?.post_session_result?.entered_by;
+      const karelOutcome: KarelDirectOutcome = evaluation.completion_status === "completed" && evidencePresent && hasPartResponse ? "completed" : "partial";
+      const audit = await persistKarelDirectOutcome(sb, ctx, { outcome: karelOutcome, endedReason, evidencePresent, evidenceValidity, hasPartResponse, supportiveEvidence, actualPartIfDiffers: null });
       return new Response(
         JSON.stringify({ ok: true, plan_id: planId, part_name: ctx.plan.selected_part, completion_status: karelOutcome, review_status: audit.reviewStatus, post_session_result: audit.postSessionResult, markdown }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
