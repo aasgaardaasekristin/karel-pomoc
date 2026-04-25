@@ -916,8 +916,24 @@ async function persistEvaluation(
   const reviewStatus = reviewStatusFor(evaluation, evidencePresent, completedBlocks, totalBlocks);
   const evidenceItems = buildEvidenceItems(ctx as any, liveProgress, turnsByBlock, observationsByBlock);
   const checklist = checklistItems(liveProgress);
-  const postSessionResult = buildStructuredPostSessionResult({ evaluation, endedReason, completedBlocks, totalBlocks, evidencePresent, turnsByBlock, observationsByBlock, liveProgress });
-  const analysisJson = buildAnalysisJson(evaluation, diagnosticValidity, reviewStatus, postSessionResult);
+  const transcriptAvailable = hasThreadTranscript(ctx.threads ?? []);
+  const postSessionResult = buildStructuredPostSessionResult({ evaluation, endedReason, completedBlocks, totalBlocks, evidencePresent, turnsByBlock, observationsByBlock, liveProgress, transcriptAvailable });
+  const analysisJson = buildAnalysisJson({
+    evaluation,
+    diagnosticValidity,
+    reviewStatus,
+    postSessionResult,
+    plan: ctx.plan,
+    evidenceItems,
+    checklist,
+    completedBlocks,
+    totalBlocks,
+    turnsByBlock,
+    observationsByBlock,
+    liveProgress,
+    threads: ctx.threads ?? [],
+    partCardLookup: ctx.partCardLookup,
+  });
 
   const reviewPayload = {
     user_id: userId,
