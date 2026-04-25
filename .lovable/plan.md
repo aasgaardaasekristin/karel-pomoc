@@ -1,255 +1,122 @@
-Schvaluji směr opravy, ale plán platí pouze s níže uvedenými závaznými upřesněními. Cílem není lokální záplata `yesterday_session_review`, ale garantovaný lifecycle plánovaného DID sezení podle DOK1/DOK2/DOK3 v omezeném bezpečném rozsahu A–H.
+Schválený cíl: pouze dotáhnout dvě zjištěné nedokončenosti po Arthur 24. 4. backfillu:
 
-## Bezpečný scope této implementace
+1. 05A write nesmí padat na `target not in governance whitelist`.
+2. `yesterday_session_review` musí nést explicitní strojový i textový partial/evidence-limited stav.
 
-Implementovat nyní:
+Bez finalizeru, bez daily-cycle, bez DOK3 refaktoru, bez nového backfillu.
 
-A. Připravit backfill Arthur 24. 4.  
-B. Zavést jednotný lifecycle plánovaného DID sezení  
-C. Zavést jednotnou backend cestu `finalizeDidSession(planId, source, reason)`  
-D. Opravit ranní safety-net podle kalendářního dne  
-E. Opravit briefing fallback, aby sekce včerejšího sezení nemizela  
-F. Zavést `did_session_reviews` jako primární runtime review  
-G. Připravit projekce review přes `did_pending_drive_writes`  
-H. Přidat základní testy
+## Zjištění z read-only kontroly
 
-Neimplementovat teď jako velký refaktor:
-- plný DOK3 dashboard pavouk,
-- kompletní session packet redesign,
-- plnou FACT/INFERENCE/PLAN/UNKNOWN evidence vrstvu,
-- plný freshness/confidence model.
+- Existující 05A canonical target v governance je:
+  `KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN`
+- Skipped write pro Arthur review má ale target:
+  `05A_OPERATIVNI_PLAN`
+- Konkrétní řádek fronty:
+  `7ec60cb4-6ec6-425e-89a6-be8ab659eafc`
+- Marker v contentu:
+  `did_session_review:a86b7399-aef4-48cf-97c0-58b2c3121e9f`
+- Aktuální stav:
+  `status = skipped`, `last_error_message = target not in governance whitelist`, `priority = high`, `write_type = append`
+- Zdroj chyby je v `karel-did-session-evaluate`: projekce používá zkratku `05A_OPERATIVNI_PLAN`, zatímco `isGovernedTarget()` povoluje jen canonical cestu.
+- Drive queue processor nyní neumí vybrat jeden konkrétní write podle id/markeru; zpracovává lane fronty (`fast`/`bulk`) a vybírá pending položky podle priority.
 
-Pro tyto vrstvy se mají připravit jen datové háčky, nikoli velký zásah do dashboardu.
+## Plán implementace
 
-## 1. `karel-did-daily-cycle`: pouze minimální safety-net úprava
+### A. Minimální oprava 05A routingu
 
-V `karel-did-daily-cycle` se smí změnit pouze minimální safety-net logika:
-- nahradit pravidlo „starší než 18 hodin“ pravidlem podle kalendářního dne,
-- najít včerejší plánovaná DID sezení bez review,
-- předat je do samostatné finalizační/evaluační cesty.
+- V `karel-did-session-evaluate` změnit generátor 05A projekce tak, aby nově zapisoval přímo canonical target:
+  `KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN`
+- Zachovat `write_type = append`, `priority = high` a marker `did_session_review:<review_id>`.
+- Nepřidávat široký wildcard allowlist.
+- Nepovolovat obecně `05*` ani libovolné `CENTRUM` targety.
 
-Do daily-cycle se nesmí přidávat nová velká klinická logika. Daily-cycle nesmí dále bobtnat jako monolit.
+Důvod: bezpečnější než rozšiřovat whitelist o alias; nové projekce budou rovnou odpovídat existující governance single source of truth.
 
-Finalizace sezení, sběr evidence, zápis review a projekce patří do:
-- `karel-did-session-finalize`,
-- a/nebo existujícího evaluatoru `karel-did-session-evaluate`, upraveného tak, aby zapisoval `did_session_reviews`.
+### B. Jednorázové narovnání existujícího skipped write
 
-## 2. Lifecycle plánovaného DID sezení
+Protože už existuje konkrétní skipped řádek `7ec60cb4-6ec6-425e-89a6-be8ab659eafc`, bude potřeba úzká databázová oprava přes migraci nebo kontrolovaný update v backendovém režimu:
 
-Sjednotit stavy plánovaného DID sezení:
+- pouze pro řádek s markerem `did_session_review:a86b7399-aef4-48cf-97c0-58b2c3121e9f`
+- nastavit:
+  - `target_document = 'KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN'`
+  - `status = 'pending'`
+  - `last_error_message = null`
+  - `processed_at = null`
+  - `next_retry_at = null`
+- Neměnit žádné jiné položky fronty.
 
-- `planned`
-- `in_progress`
-- `awaiting_analysis`
-- `analyzed`
-- `partially_analyzed`
-- `evidence_limited`
-- `failed_analysis`
-- `cancelled`
+Poté zkusit zpracovat jen `fast` lane. Pokud by processor neuměl bezpečně izolovat tento jeden write kvůli dalším high/urgent pending položkám, zastavit se a nespouštět hromadné zpracování. V takovém případě doporučený doplněk bude přidat do processoru úzký volitelný filtr `write_id`/marker, ale nepoužít ho bez dalšího schválení.
 
-Pravidla:
-- `completed` / `done` bez review není platný klinicky finální stav.
-- Každé sezení s `planId` musí mít po skončení dne auditovatelný výstup nebo explicitní důvod, proč není plná analýza možná.
-- Včerejší `in_progress`, `awaiting_analysis`, `completed` / `done` bez review nesmí zůstat bez zásahu.
-- `evidence_limited` je legitimní klinický stav, nikoli chyba.
-- `failed_analysis` musí mít důvod chyby a možnost retry.
+### C. Zpřesnění `yesterday_session_review` payloadu
 
-## 3. `did_session_reviews` jako primární auditní záznam
+V `karel-did-daily-briefing` upravit jen cílenou část pro enrich `yesterday_session_review`:
 
-Vytvořit / sjednotit primární runtime záznam review v tabulce `did_session_reviews`.
+- načíst k včerejším plánům i odpovídající `did_session_reviews` pro Arthur plán / nejnovější review,
+- do payloadu doplnit strojová pole:
+  - `review_status: 'partially_analyzed'`
+  - `completion: 'partial'`
+  - `completed_checklist_count: 1`
+  - `total_checklist_count: 5`
+  - `evidence_label: '1/5 checklist položek'`
+  - `evidence_limited: true`
+  - `evidence_limitations: ...`
+  - `review_id: 'a86b7399-aef4-48cf-97c0-58b2c3121e9f'`
+  - `plan_id: 'e7875027-b101-4690-9224-df0a6ad66770'`
+- do textů přidat krátkou explicitní formulaci:
+  - `partially_analyzed`
+  - `1/5`
+  - chybí turn-by-turn data, transcript, observations a part card
+  - závěry jsou pracovní / evidence-limited
+  - Karel nepředstírá plnou analýzu
 
-Minimální pole:
-- `id`
-- `user_id`
-- `plan_id`
-- `part_name`
-- `session_date`
-- `status`: `analyzed`, `partially_analyzed`, `evidence_limited`, `failed_analysis`, `cancelled`
-- `review_kind`
-- `analysis_version`
-- `source_data_summary`
-- `evidence_items jsonb`
-- `completed_checklist_items`
-- `missing_checklist_items`
-- `transcript_available`
-- `live_progress_available`
-- `clinical_summary`
-- `therapeutic_implications`
-- `team_implications`
-- `next_session_recommendation`
-- `evidence_limitations`
-- `projection_status`
-- `retry_count`
-- `error_message`
-- `created_at`
-- `updated_at`
+Změna bude omezena na briefing payload; žádný redesign výstupu ani nový FACT/INFERENCE model.
 
-`evidence_items` je povinné auditní pole. Musí zachytit, z čeho review vzniklo, například:
-- plán sezení,
-- checklist,
-- live progress,
-- transcript,
-- turn-by-turn data,
-- terapeutické odpovědi,
-- audio / obrázek / přílohy,
-- dostupnost nebo nedostupnost jednotlivých důkazů.
+### D. Cílená regenerace briefingu 25. 4.
 
-Review nesmí být pouze textové shrnutí bez dohledatelného evidence základu.
+Po úpravách zavolat pouze:
 
-Pro jeden `plan_id` smí existovat maximálně jedno aktuální review. Opakované spuštění finalizace, safety-netu nebo připraveného backfillu nesmí vytvořit duplicitní review, ale musí aktualizovat existující záznam nebo skončit jako idempotentní no-op.
+- funkce: `karel-did-daily-briefing`
+- `force: true`
+- důvod/metoda: `refresh_after_yesterday_session_review_payload_hardening`
 
-## 4. Jednotná backend cesta `finalizeDidSession`
+Nespouštět:
+- `karel-did-session-finalize`
+- `karel-did-daily-cycle`
+- žádný nový backfill
 
-Zavést backend funkci / cestu se semantikou:
+### E. Ověření výsledku
 
-```text
-finalizeDidSession(planId, source, reason)
-```
+Ověřit databázově/payloadově:
 
-Musí:
-1. ověřit existenci `planId`,
-2. načíst plán,
-3. načíst live progress, checklist, transcript a další dostupnou evidenci,
-4. uložit nebo uzavřít live progress,
-5. nastavit plán na `awaiting_analysis`,
-6. spustit evaluator,
-7. vytvořit nebo aktualizovat `did_session_reviews`,
-8. nastavit výsledný auditovatelný stav,
-9. připravit projekce přes frontu,
-10. nikdy nesmí jen změnit stav na `completed` / `done` bez review.
+1. Nejnovější briefing pro `2026-04-25` má `is_stale = false` a nejnovější `generated_at`.
+2. Starší briefingy pro `2026-04-25` jsou `is_stale = true` nebo nejsou vybrané jako aktuální.
+3. Payload obsahuje `yesterday_session_review`.
+4. `review_status = partially_analyzed`.
+5. `completed_checklist_count = 1`.
+6. `total_checklist_count = 5`.
+7. Text obsahuje `1/5`.
+8. Text obsahuje evidence-limited / limit validity formulaci.
+9. Pro `plan_id = e7875027-b101-4690-9224-df0a6ad66770` existuje stále přesně jedno review.
+10. 05A write s markerem `did_session_review:a86b7399-aef4-48cf-97c0-58b2c3121e9f` už není skipped kvůli whitelistu.
+11. Pokud se podaří zpracovat 05A write, vypsat jeho nový stav.
+12. Pokud se nepodaří, zastavit bez dalších zásahů a uvést přesný důvod.
 
-Všechny UI cesty ukončení plánovaného DID sezení s `planId` musí směřovat sem nebo na ekvivalentní jednotnou backend cestu:
-- Ukončit,
-- Ukončit sezení,
-- Ukončit a analyzovat,
-- Uložit transcript,
-- Ukončit live asistenci,
-- Opustit plánované sezení.
+## Deploy / migrace
 
-## 5. Backfill Arthur 24. 4. pouze připravit, nespouštět bez potvrzení
+- Bude potřeba deploy změněných backendových funkcí, protože se mění `karel-did-session-evaluate` a `karel-did-daily-briefing`.
+- Databázová migrace není potřeba pro schéma.
+- Pro existující skipped write je potřeba jednorázová úzká oprava konkrétního řádku fronty; bez ní by starý řádek zůstal se špatným targetem a stavem `skipped`.
 
-Implementace má umět najít Arthurův plán z 24. 4., načíst dostupná data a vytvořit review jako:
-- `partially_analyzed`, pokud existují částečná data,
-- nebo `evidence_limited`, pokud data nestačí.
+## Výstup po provedení
 
-Backfill musí rozlišit:
-- co se skutečně stalo,
-- co se nestihlo / neproběhlo,
-- co nelze bezpečně vyhodnotit,
-- co z toho plyne pro Arthura,
-- co z toho plyne pro další terapeutický plán,
-- co má tým udělat dál.
+Vrátím pouze:
 
-Samotný backfill Arthur 24. 4. a přegenerování dnešního Karlova přehledu se nesmí spustit bez dalšího explicitního potvrzení uživatele.
-
-## 6. Briefing fallback: sekce nesmí zmizet
-
-Karlův přehled nesmí skrýt sekci „Vyhodnocení včerejšího sezení“ jen proto, že hotová analýza chybí.
-
-Fallback pořadí:
-1. najít `did_session_reviews` za včerejšek,
-2. pokud není, najít včerejší session plan,
-3. pokud existuje plan, najít live progress / checklist / transcript,
-4. pokud existuje částečný progress, zobrazit „Vyhodnoceno částečně“ nebo „Čeká na doplnění“,
-5. pokud existuje plan bez dat, zobrazit „Evidence-limited — chybí podklady“,
-6. pokud existuje `awaiting_analysis`, zobrazit „Vyhodnocení čeká / bylo spuštěno automaticky“,
-7. sekci potlačit pouze tehdy, pokud včera neexistoval žádný plán, live sezení ani relevantní progress.
-
-Nadpis sekce nesmí zmizet kvůli chybějícímu řádku ve staré tabulce.
-
-## 7. Projekce do Drive a PAMET_KAREL
-
-Po vytvoření review se projekce připravují přes existující frontu `did_pending_drive_writes`, nikoli přímým nahodilým zápisem.
-
-Cíle projekcí:
-1. karta části: klinická dedukce a implikace, ne syrový přepis,
-2. `05A_OPERATIVNI_PLAN`: konkrétní implikace pro nejbližší dny,
-3. Karlův přehled: sekce včerejšího sezení, doporučení, missing evidence,
-4. `PAMET_KAREL`: pouze relevantní týmová/pracovní paměť.
-
-Závazné omezení pro `PAMET_KAREL`:
-- zapisovat jen závěry o spolupráci Haničky/Káti, zátěži, stylu vedení, týmových vzorcích nebo Karlových pracovních poznatcích,
-- klinické závěry o části patří primárně do review, karty části a 05A,
-- nemíchat osobní/týmovou paměť terapeutek s klinickou pamětí části.
-
-Projekce do Drive, 05A a PAMET_KAREL se vytvářejí pouze z úspěšně uloženého `did_session_reviews` záznamu. Pokud vznikne `failed_analysis`, nesmí se do Drive nebo karty části propsat klinický závěr jako hotová pravda. Smí vzniknout pouze technický záznam o selhání, missing-evidence položka nebo retry úkol.
-
-## 8. Entity guardrails
-
-Při propsání závěrů do karty části musí být část ověřena.
-
-Pravidla:
-- potvrzená část nesmí vzniknout z AI odhadu,
-- musí být ověřena proti registru / indexu / existující kartě / schválené alias vrstvě,
-- neznámá entita nesmí vytvořit novou kartu ani `KARTA_*`,
-- nejasná entita vytvoří follow-up otázku,
-- ne-části patří do kontextu, ne do kartotéky částí.
-
-Povinné příklady:
-- Locík / Locik = pes, nikdy DID část,
-- Zelená vesta = popis / atribut, ne část,
-- Indián = nepotvrzená entita, ověřit otázkou,
-- Lobcang / Lobchang = alias Lobzhang pouze pokud je potvrzen alias vrstvou,
-- diakritika nesmí rozhodovat.
-
-Default: pokud entita není ověřena, je `uncertain_entity`, ne `confirmed_part`.
-
-## 9. Doplňující závazná pravidla
-
-1. Idempotence review:  
-Pro jeden `plan_id` smí existovat maximálně jedno aktuální review. Opakované spuštění `finalizeDidSession`, safety-netu nebo připraveného backfillu nesmí vytvořit duplicitní review. Musí buď aktualizovat existující záznam, nebo skončit jako idempotentní no-op.
-
-2. Projekce jen z uloženého review:  
-Projekce do Drive, 05A a PAMET_KAREL se vytvářejí pouze z úspěšně uloženého `did_session_reviews` záznamu. Pokud vznikne `failed_analysis`, nesmí se do Drive nebo karty části propsat klinický závěr jako hotová pravda. Smí vzniknout pouze technický záznam o selhání, missing-evidence položka nebo retry úkol.
-
-## 10. Testy
-
-Přidat/provést minimálně testy:
-1. včerejší `in_progress` sezení se ráno automaticky předá k analýze,
-2. progress 1/5 vytvoří `partially_analyzed`,
-3. plán bez progressu vytvoří `evidence_limited`,
-4. chyba analýzy vytvoří `failed_analysis`,
-5. Karlův přehled zobrazí sekci i při chybějící hotové analýze,
-6. všechny UI cesty ukončení plánovaného sezení volají jednotnou finalizační cestu,
-7. briefing fallback najde včerejší plan i bez starého `did_part_sessions` review,
-8. review vytvoří projekce přes `did_pending_drive_writes`,
-9. opakované spuštění finalizace nevytvoří duplicitní review,
-10. `failed_analysis` nevytvoří klinickou projekci jako hotový závěr,
-11. neznámá entita nevytvoří `KARTA_*`,
-12. nejistá entita vytvoří follow-up otázku,
-13. Locík se nikdy nezpracuje jako DID část,
-14. Lobcang/Lobchang se mapuje na Lobzhang jen při potvrzené alias vazbě.
-
-## 11. Výstup po implementaci
-
-Po dokončení vypsat pouze:
-1. co přesně bylo změněno,
-2. které soubory / backend funkce / tabulky byly dotčeny,
-3. jaké lifecycle stavy sezení teď existují,
-4. jak funguje `finalizeDidSession`,
-5. jak funguje ranní safety-net,
-6. jak briefing najde nebo zobrazí včerejší sezení,
-7. kam se ukládá primární review,
-8. jaké projekce vznikají do Drive / 05A / PAMET_KAREL,
-9. jaké testy prošly,
-10. co zůstává mimo scope.
-
-## Potvrzení
-
-S těmito závaznými upřesněními je plán schválen k implementaci:
-
-1. `karel-did-daily-cycle` upravit pouze minimálně, bez dalšího bobtnání monolitu.
-2. `did_session_reviews` musí obsahovat auditní `evidence_items jsonb` a provozní pole `review_kind`, `analysis_version`, `projection_status`, `retry_count`.
-3. Pro jeden `plan_id` smí existovat maximálně jedno aktuální review; opakované běhy musí být idempotentní.
-4. Projekce se vytvářejí pouze z úspěšně uloženého review; `failed_analysis` nesmí vytvořit klinický závěr jako hotovou pravdu.
-5. Projekce do `PAMET_KAREL` musí být omezené na týmovou/pracovní paměť, ne klinickou paměť části.
-6. Backfill Arthur 24. 4. a přegenerování dnešního přehledu pouze připravit; nespouštět bez explicitního potvrzení.
-7. Entity guardrails musí zabránit vzniku karet z AI odhadu.
-
-Doplňující závazná pravidla:
-
-1. Idempotence review:
-Pro jeden `plan_id` smí existovat maximálně jedno aktuální review. Opakované spuštění `finalizeDidSession`, safety-netu nebo připraveného backfillu nesmí vytvořit duplicitní review. Musí buď aktualizovat existující záznam, nebo skončit jako idempotentní no-op.
-
-2. Projekce jen z uloženého review:
-Projekce do Drive, 05A a PAMET_KAREL se vytvářejí pouze z úspěšně uloženého `did_session_reviews` záznamu. Pokud vznikne `failed_analysis`, nesmí se do Drive nebo karty části propsat klinický závěr jako hotová pravda. Smí vzniknout pouze technický záznam o selhání, missing-evidence položka nebo retry úkol.
+1. co přesně bylo změněno
+2. zda byla potřeba úprava whitelistu nebo mappingu
+3. jaký canonical target se používá pro 05A
+4. stav 05A write po opravě
+5. id / generated_at nového briefingu
+6. preview `yesterday_session_review`
+7. hodnoty `review_status`, `completion`, `completed_checklist_count`, `total_checklist_count`, `evidence_limited`
+8. zda nevzniklo duplicitní review
+9. co zůstává mimo scope
