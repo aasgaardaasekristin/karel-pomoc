@@ -3860,6 +3860,60 @@ export type Database = {
           },
         ]
       }
+      karel_action_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          dedupe_key: string
+          error_message: string | null
+          id: string
+          job_type: string
+          result_payload: Json | null
+          result_summary: string | null
+          source_function: string | null
+          started_at: string | null
+          status: string
+          target_id: string | null
+          target_type: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          dedupe_key: string
+          error_message?: string | null
+          id?: string
+          job_type: string
+          result_payload?: Json | null
+          result_summary?: string | null
+          source_function?: string | null
+          started_at?: string | null
+          status: string
+          target_id?: string | null
+          target_type?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          dedupe_key?: string
+          error_message?: string | null
+          id?: string
+          job_type?: string
+          result_payload?: Json | null
+          result_summary?: string | null
+          source_function?: string | null
+          started_at?: string | null
+          status?: string
+          target_id?: string | null
+          target_type?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       karel_commitments: {
         Row: {
           commitment_text: string
