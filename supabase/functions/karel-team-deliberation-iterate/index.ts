@@ -69,6 +69,14 @@ function inferInputKind(text: string): "plan_change" | "followup_need" | "conclu
   return "conclusion";
 }
 
+function inferPlanChangeState(inputKind: "plan_change" | "followup_need" | "conclusion", before: AgendaBlock[], after: AgendaBlock[]): "unchanged" | "revised" | "deferred" {
+  const beforeSig = JSON.stringify(before.map((b) => [b.block, b.minutes ?? null, b.detail ?? null, b.tool_id ?? null]));
+  const afterSig = JSON.stringify(after.map((b) => [b.block, b.minutes ?? null, b.detail ?? null, b.tool_id ?? null]));
+  if (beforeSig !== afterSig) return "revised";
+  if (inputKind === "followup_need") return "deferred";
+  return "unchanged";
+}
+
 function buildImplicationText(authorLabel: string, subjectPart: string, question: string | null, text: string): string {
   const q = question ? ` Na otázku „${question}“` : "";
   return `${authorLabel}${q} uvedla: ${text}. Pro plán s částí ${subjectPart} to musí být započítáno jako aktuální týmová informace, ne jako otevřené slepé místo.`;
@@ -249,11 +257,21 @@ PRAVIDLA STRUKTURY:
       { author: "karel", content: karelComment, created_at: nowIso, is_plan_revision: true },
     ];
 
+    const inputKind = inferInputKind(text);
+    const planChangeState = inferPlanChangeState(inputKind, currentProgram, programDraft);
+    const sessionParams = row.session_params && typeof row.session_params === "object"
+      ? { ...(row.session_params as Record<string, any>) }
+      : {};
+    sessionParams.last_plan_change_state = planChangeState;
+    sessionParams.last_plan_change_at = nowIso;
+    sessionParams.last_plan_change_source = `${author}:${fingerprint(text)}`;
+
     // Save program_draft + log; invalidovat starou syntézu (vstup změnil situaci)
     const { error: updErr } = await admin
       .from("did_team_deliberations")
       .update({
         program_draft: programDraft,
+        session_params: sessionParams,
         discussion_log: newLog,
         karel_synthesis: null,
         karel_synthesized_at: null,
@@ -269,7 +287,6 @@ PRAVIDLA STRUKTURY:
     }
 
     try {
-      const inputKind = inferInputKind(text);
       const obsId = await createObservation(admin as any, {
         subject_type: "part",
         subject_id: subjectPart,
@@ -321,22 +338,10 @@ PRAVIDLA STRUKTURY:
         priority: inputKind === "plan_change" ? "high" : "normal",
       });
 
-      const drivePayload = `\n\n## Týmová dohoda / odpověď terapeutky — ${subjectPart} (${new Date().toISOString().slice(0, 10)})\n_Zdroj: týmová porada ${deliberationId.slice(0, 8)}, ${authorLabel}_\n\n${implicationText}\n`;
-      await admin.from("did_pending_drive_writes").insert({
-        user_id: userId,
-        target_document: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
-        write_type: "append",
-        content: encodeGovernedWrite(drivePayload, {
-          source_type: "team_deliberation_answer",
-          source_id: `${deliberationId}:${author}:${fingerprint(text)}`,
-          content_type: inputKind === "plan_change" ? "care_plan_change" : "team_coordination",
-          subject_type: "part",
-          subject_id: subjectPart,
-          payload_fingerprint: fingerprint(drivePayload),
-        }),
-        priority: inputKind === "plan_change" ? "high" : "normal",
-        status: "pending",
-      });
+      // MVP-SESSION-1 guard: iterate is pre-signoff working state. It must not
+      // enqueue a 05A write that can look like approved operational truth.
+      // Durable memory stays in observations/Pantry B/team agreements; 05A is
+      // produced only after signoff by karel-team-deliberation-signoff.
     } catch (memoryErr) {
       console.warn("[delib-iterate] memory write failed (non-fatal):", memoryErr);
     }
@@ -344,6 +349,7 @@ PRAVIDLA STRUKTURY:
     return new Response(JSON.stringify({
       program_draft: programDraft,
       karel_inline_comment: karelComment,
+      last_plan_change_state: planChangeState,
     }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
