@@ -123,6 +123,10 @@ interface BriefingRow {
   decisions_count: number;
 }
 
+interface YesterdayFallbackReview extends YesterdaySessionReview {
+  status_label?: string;
+}
+
 interface Props {
   refreshTrigger?: number;
   /** Otevře poradní místnost pro daný deliberation. Briefing decisions
@@ -166,6 +170,13 @@ const formatDate = (iso: string): string => {
   } catch {
     return iso;
   }
+};
+
+const pragueYesterdayISO = (): string => {
+  const today = pragueTodayISO();
+  const d = new Date(`${today}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
 };
 
 const SectionHead = ({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) => (
