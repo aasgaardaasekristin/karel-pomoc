@@ -1026,6 +1026,33 @@ Deno.serve(async (req: Request) => {
     let observationsByBlock = (body?.observationsByBlock ?? {}) as Record<string, string>;
     const force = body?.force === true;
 
+    if (body?.projection_only === true) {
+      const reviewId = body?.reviewId as string | undefined;
+      if (!reviewId) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "reviewId je povinné pro projection_only" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const { data: review, error: reviewErr } = await sb
+        .from("did_session_reviews")
+        .select("id,user_id,plan_id,part_name,session_date,status,team_implications,therapeutic_implications,next_session_recommendation,evidence_limitations")
+        .eq("id", reviewId)
+        .maybeSingle();
+      if (reviewErr) throw reviewErr;
+      if (!review) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "Review nenalezeno" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const projection = await projectReviewToPametKarel(sb, review as SessionReviewRow);
+      return new Response(
+        JSON.stringify({ ok: true, projection_only: true, review_id: reviewId, projection }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const ctx = await loadContext(sb, planId);
     const liveProgress = await loadLiveProgress(sb, planId);
     if (liveProgress) {
