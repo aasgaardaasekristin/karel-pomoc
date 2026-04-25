@@ -15,11 +15,29 @@ type FollowUpAction =
 
 type Confidence = "low" | "moderate" | "high";
 
+type ClassifiedAnswer = {
+  action: FollowUpAction;
+  confidence: Confidence;
+  reason: string;
+  nextPart: string;
+  sessionMode: string;
+  allowedDepth: string;
+  firstQuestion: string;
+  rawCandidatePart?: string | null;
+  entityGuard?: Record<string, unknown> | null;
+};
+
 const FORBIDDEN = [
   "trauma_memory_work",
   "deep_regression",
   "unapproved_therapeutic_intervention",
 ];
+
+const NON_PART_CANDIDATES = new Set([
+  "dnes", "spis", "spise", "stazeny", "stazena", "stazene", "unaveny", "unavena", "unavene",
+  "mimo", "potichu", "smutny", "smutna", "smutne", "nekdo", "jiny", "jina", "cast", "pritomny",
+  "asi", "pravdepodobne", "nevim", "nevi", "později", "pozdeji",
+]);
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -37,16 +55,39 @@ function includesAny(text: string, terms: string[]): boolean {
   return terms.some((term) => lower.includes(term.toLowerCase()));
 }
 
+function normalizeIdentity(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "")
+    .trim();
+}
+
+function cleanCandidate(value: string | undefined): string | null {
+  const candidate = String(value ?? "").replace(/[.,;:!?"'„“”()\[\]]/g, "").trim();
+  if (!candidate) return null;
+  const normalized = normalizeIdentity(candidate);
+  if (!normalized || NON_PART_CANDIDATES.has(normalized)) return null;
+  return candidate;
+}
+
 function extractDifferentPart(answer: string, plannedPart: string): string | null {
-  const escapedPlanned = plannedPart.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const patterns = [
-    /(?:byl[ao]?|je|přítomn[áy]|ozval[ao]? se|mluvil[ao]?|vypadalo to na)\s+([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][\p{L}0-9_-]{1,40})/iu,
-    new RegExp(`nebyl[ao]?\\s+${escapedPlanned}[^.]{0,80}(?:ale|spíš|spise|pravděpodobně|pravdepodobne)\\s+([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][\\p{L}0-9_-]{1,40})`, "iu"),
+  const name = "([\\p{L}][\\p{L}0-9_-]{1,40})";
+  const patterns: { pattern: RegExp; index: number }[] = [
+    { pattern: new RegExp(`\\bnebyl[ao]?\\s+to\\s+${name}\\s*[,;:.!?-]+\\s*(?:ale\\s+|spíš\\s+|spise\\s+)?(?:byl[ao]?\\s+to|to\\s+byl[ao]?)\\s+${name}`, "iu"), index: 2 },
+    { pattern: new RegExp(`\\b(?:myslím|myslim)\\s*,?\\s*že\\s+to\\s+byl[ao]?\\s+${name}`, "iu"), index: 1 },
+    { pattern: new RegExp(`\\bbyl[ao]?\\s+to\\s+${name}`, "iu"), index: 1 },
+    { pattern: new RegExp(`\\bto\\s+byl[ao]?\\s+${name}`, "iu"), index: 1 },
+    { pattern: new RegExp(`\\bozval[ao]?\\s+se\\s+${name}(?:\\s*,?\\s*ne\\s+${name})?`, "iu"), index: 1 },
+    { pattern: new RegExp(`\\bmluvil[ao]?\\s+(?:jiná|jina)\\s+(?:část|cast)\\s*[,;:-]?\\s*(?:asi\\s+|pravděpodobně\\s+|pravdepodobne\\s+)?${name}`, "iu"), index: 1 },
+    { pattern: new RegExp(`\\bpřítomn[ýá]|pritomn[ya]\\s+byl[ao]?\\s+${name}`, "iu"), index: 1 },
   ];
-  for (const pattern of patterns) {
+  const plannedNorm = normalizeIdentity(plannedPart);
+  for (const { pattern, index } of patterns) {
     const match = answer.match(pattern);
-    const candidate = match?.[1]?.trim();
-    if (candidate && candidate.toLowerCase() !== plannedPart.toLowerCase()) return candidate;
+    const candidate = cleanCandidate(match?.[index]);
+    if (candidate && normalizeIdentity(candidate) !== plannedNorm) return candidate;
   }
   return null;
 }
