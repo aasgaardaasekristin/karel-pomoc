@@ -117,8 +117,9 @@ function enrichYesterdaySessionReview(payload: any, context: any) {
   const missingCount = jsonItemCount(latestReview?.missing_checklist_items);
   const totalCount = completedCount + missingCount;
   const evidenceLabel = totalCount > 0 ? `${completedCount}/${totalCount} checklist položek` : undefined;
-  const evidenceLimit = latestReview?.evidence_limitations
-    || "Evidence-limited: chybí turn-by-turn data, transcript, observations a part card; závěry jsou pracovní a Karel nepředstírá plnou analýzu.";
+  const evidenceLimitBase = latestReview?.evidence_limitations
+    || "Validita je omezená; závěry jsou pracovní hypotézy.";
+  const evidenceLimit = `${evidenceLimitBase}\nEvidence-limited hardening: chybí turn-by-turn data, transcript, observations a part card; závěry jsou pracovní a Karel nepředstírá plnou analýzu.`;
   const statusLine = latestReview
     ? `Stav review: ${latestReview.status}; evidence ${evidenceLabel ?? "neúplná"}. ${evidenceLimit}`
     : "";
