@@ -75,7 +75,7 @@ serve(async (req: Request) => {
     const observationsByBlock = Object.fromEntries(
       items
         .map((it: any, idx: number) => [String(idx), String(it?.observation ?? "")])
-        .filter(([, value]: [string, string]) => value.trim().length > 0),
+        .filter((entry: string[]) => String(entry[1] ?? "").trim().length > 0),
     );
 
     const evalRes = await fetch(`${supabaseUrl}/functions/v1/karel-did-session-evaluate`, {
