@@ -151,7 +151,7 @@ serve(async (req) => {
   try {
     // ── 0. Load entity registry (01_INDEX = sole authority) ──
     // Reactive loop runs frequently — use DB cache as fallback (no Drive token refresh here)
-    const registry = await loadEntityRegistry(sb);
+    const registry = await loadEntityRegistry(sb as any);
     console.log(`[REACTIVE-LOOP] Registry: indexAvailable=${registry.indexAvailable}, entries=${registry.entries.length}`);
 
     // ═══ KROK 1 — Načtení nových zpráv z 5 zdrojů ═══
@@ -387,7 +387,7 @@ serve(async (req) => {
           console.log(`[REACTIVE-LOOP] Uncertain entity "${candidatePart}" in answered question → triggering watchdog`);
           // Import watchdog inline to avoid circular deps at module level
           const { handleUncertainEntity } = await import("../_shared/entityWatchdog.ts");
-          await handleUncertainEntity(sb, resolved, {
+          await handleUncertainEntity(sb as any, resolved, {
             thread_id: q.id,
             thread_label: `answered-question`,
             sub_mode: q.directed_to || "hanka",
@@ -522,7 +522,7 @@ serve(async (req) => {
               // FÁZE 2.6: Uncertain entity in conversation segment → trigger watchdog, no silent skip
               console.log(`[REACTIVE-LOOP] Uncertain entity "${signal.part_name}" in conv segment → triggering watchdog`);
               const { handleUncertainEntity } = await import("../_shared/entityWatchdog.ts");
-              await handleUncertainEntity(sb, partResolved, {
+              await handleUncertainEntity(sb as any, partResolved, {
                 thread_id: conv.id,
                 thread_label: `conv-segment-${seg.segment_type}`,
                 sub_mode: conv.sub_mode || "hanka",
