@@ -142,7 +142,13 @@ const CrisisDailyManagement: React.FC<Props> = ({ card, onRefetch }) => {
 
   const withLoading = async (key: string, fn: () => Promise<void>) => {
     setActionLoading(key);
-    try { await fn(); } finally { setActionLoading(null); }
+    try {
+      await fn();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Akci se nepodařilo provést. Zkus to znovu nebo otevři detail krize.");
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const ActionBtn: React.FC<{ loadingKey: string; onClick: () => void; children: React.ReactNode; disabled?: boolean }> = ({ loadingKey, onClick, children, disabled }) => {
