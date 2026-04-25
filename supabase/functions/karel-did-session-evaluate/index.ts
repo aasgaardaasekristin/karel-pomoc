@@ -691,7 +691,7 @@ async function persistEvaluation(
   }
 
   if (reviewStatus !== "failed_analysis" && reviewId) {
-    const projectionTarget = "05A_OPERATIVNI_PLAN";
+    const projectionTarget = "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN";
     const projectionContent = `<!-- did_session_review:${reviewId} plan:${ctx.plan.id} -->\n\n### Vyhodnocení včerejšího sezení — ${ctx.plan.plan_date} · ${partName}\n\n**Stav review:** ${reviewStatus}\n**Evidence:** ${reviewPayload.source_data_summary}\n\n**Shrnutí:**\n${evaluation.session_arc ?? "nebylo zaznamenáno"}\n\n**Co z toho plyne pro další plán:**\n${evaluation.implications_for_tomorrow ?? "nebylo zaznamenáno"}\n\n**Doporučený další krok:**\n${evaluation.recommended_next_step ?? "doplnit evidenci / ruční poznámku terapeutky"}\n`;
     const { data: existingWrites } = await sb
       .from("did_pending_drive_writes")
