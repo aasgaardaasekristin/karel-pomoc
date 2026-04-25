@@ -503,6 +503,40 @@ function inferActualPartIfDiffers(ctx: { plan: SessionPlan; threads?: any[] }): 
   return null;
 }
 
+function karelDirectEvidenceValidity(args: { hasPartResponse: boolean; evidencePresent: boolean; completedBlocks?: number; totalBlocks?: number; turnsByBlock?: Record<string, any[]>; observationsByBlock?: Record<string, string>; liveProgress?: any }): "low" | "moderate" | "high" {
+  const turnBlocks = countTurnBlocks(args.turnsByBlock ?? {});
+  const observationBlocks = countObservationBlocks(args.observationsByBlock ?? {});
+  const transcriptAvailable = args.hasPartResponse;
+  const postSessionResult = args.liveProgress?.post_session_result && typeof args.liveProgress.post_session_result === "object" ? args.liveProgress.post_session_result : null;
+  const therapistEntered = postSessionResult?.provenance === "therapist_entered" || !!postSessionResult?.entered_by;
+  const completed = args.completedBlocks ?? 0;
+  const ratio = args.totalBlocks && args.totalBlocks > 0 ? completed / args.totalBlocks : 0;
+  const supportiveEvidence = turnBlocks > 0 || observationBlocks > 0 || transcriptAvailable || therapistEntered;
+  const strongEvidence = therapistEntered || observationBlocks >= 2 || turnBlocks >= 2 || (transcriptAvailable && completed >= 2);
+  if (!args.hasPartResponse || !args.evidencePresent || !supportiveEvidence) return "low";
+  if (ratio >= 0.8 && completed >= 2 && strongEvidence) return "high";
+  if (supportiveEvidence) return "moderate";
+  return "low";
+}
+
+function reviewStatusForKarelDirect(outcome: KarelDirectOutcome, evidenceValidity: "low" | "moderate" | "high", args: { hasPartResponse: boolean; supportiveEvidence: boolean }): ReviewStatus {
+  if (outcome === "deferred") return "cancelled";
+  if (outcome === "completed") {
+    if (!args.hasPartResponse || evidenceValidity === "low") return args.supportiveEvidence ? "partially_analyzed" : "evidence_limited";
+    if (evidenceValidity === "high" || (evidenceValidity === "moderate" && args.supportiveEvidence)) return "analyzed";
+    return "partially_analyzed";
+  }
+  if (outcome === "partial" && evidenceValidity !== "low" && args.hasPartResponse) return "partially_analyzed";
+  return "evidence_limited";
+}
+
+function hasKarelDirectDeferredReason(plan: SessionPlan, liveProgress?: any): boolean {
+  const contract = plan.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown as Record<string, any> : {};
+  const postSessionResult = liveProgress?.post_session_result && typeof liveProgress.post_session_result === "object" ? liveProgress.post_session_result : null;
+  return [contract.defer_reason, contract.result_reason, contract.reason, postSessionResult?.reason, postSessionResult?.defer_reason, postSessionResult?.result_reason]
+    .some((value) => String(value ?? "").trim().length > 0);
+}
+
 function buildEvidenceItems(ctx: { plan: SessionPlan; threads: any[]; partCard: any; partCardLookup?: PartCardLookup }, liveProgress: any, turnsByBlock: Record<string, any[]>, observationsByBlock: Record<string, string>) {
   const progressItems = Array.isArray(liveProgress?.items) ? liveProgress.items : [];
   const lookup = ctx.partCardLookup ?? {
