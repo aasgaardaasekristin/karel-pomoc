@@ -39,6 +39,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 import { appendPantryB } from "../_shared/pantryB.ts";
+import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,6 +48,8 @@ const corsHeaders = {
 
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-2.5-pro";
+const PAMET_KAREL_HANKA_INSIGHTS_TARGET = "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY";
+const PAMET_KAREL_DEDUPE_STATUSES = ["pending", "completed", "failed", "failed_permanent", "skipped"];
 
 type EndedReason = "completed" | "partial" | "auto_safety_net" | "manual_end" | "save_transcript" | "exit_session";
 
@@ -221,6 +224,19 @@ interface PartSessionRow {
   karel_therapist_feedback: string | null;
   tasks_assigned: any;
   thread_id: string | null;
+}
+
+interface SessionReviewRow {
+  id: string;
+  user_id: string;
+  plan_id: string | null;
+  part_name: string | null;
+  session_date: string | null;
+  status: ReviewStatus | string;
+  team_implications: string | null;
+  therapeutic_implications: string | null;
+  next_session_recommendation: string | null;
+  evidence_limitations: string | null;
 }
 
 interface PartCardLookup {
