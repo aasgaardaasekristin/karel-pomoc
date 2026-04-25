@@ -95,6 +95,18 @@ async function appendToGoogleDoc(token: string, fileId: string, text: string): P
 
 const truncate = (s: string, max: number) => s.length > max ? s.slice(0, max) + "…" : s;
 const canonicalText = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const KAREL_DIRECT_IDEMPOTENT_STATUSES = [
+  "pending",
+  "generated",
+  "planned",
+  "in_progress",
+  "awaiting_analysis",
+  "partially_analyzed",
+  "evidence_limited",
+  "analyzed",
+  "completed",
+  "done",
+];
 
 function getPragueDate(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
@@ -129,6 +141,41 @@ function deriveKarelDirectContract(selectedPart: UrgencyResult, forcePart: strin
     result_status: null,
     generated_by: forcePart ? "manual_session_plan" : "auto_session_plan",
   };
+}
+
+async function ensureKarelDirectCandidate(sb: any, args: { userId: string; todayPrague: string; selectedPart: UrgencyResult; forcePart: string | null; crisisEventId?: string | null }) {
+  const { data: existing } = await sb.from("did_daily_session_plans")
+    .select("id")
+    .eq("plan_date", args.todayPrague)
+    .contains("urgency_breakdown", { kind: "karel_direct_session_candidate", session_actor: "karel_direct" })
+    .in("status", KAREL_DIRECT_IDEMPOTENT_STATUSES)
+    .limit(1);
+
+  if (existing?.length) {
+    console.log(`[auto-session-plan] Karel-direct candidate already exists for ${args.todayPrague}; continuing therapist-led flow.`);
+    return { created: false, existingPlanId: existing[0].id };
+  }
+
+  const contract = deriveKarelDirectContract(args.selectedPart, args.forcePart);
+  const markdown = `## Karelův přímý kontakt s částí: ${args.selectedPart.partName}\n\nBezpečný doplňkový denní kandidát. Režim: ${contract.session_mode}.\n\nPrvní věta: ${contract.first_question}`;
+  const { data, error } = await sb.from("did_daily_session_plans").insert({
+    user_id: args.userId,
+    plan_date: args.todayPrague,
+    selected_part: args.selectedPart.partName,
+    urgency_score: args.selectedPart.score,
+    urgency_breakdown: { ...args.selectedPart.breakdown, ...contract },
+    plan_markdown: markdown,
+    plan_html: markdown.replace(/\n/g, "<br>"),
+    therapist: "karel",
+    status: "generated",
+    generated_by: "karel_direct_daily_candidate",
+    part_tier: args.selectedPart.tier,
+    session_lead: "karel",
+    session_format: "direct_contact",
+    crisis_event_id: args.crisisEventId ?? null,
+  }).select("id").single();
+  if (error) throw error;
+  return { created: true, planId: data?.id };
 }
 
 // ═══ Urgency scoring v2 ═══
@@ -365,29 +412,19 @@ serve(async (req) => {
       therapistContext = body?.therapistContext || null;
     } catch { /* empty body is fine */ }
 
-    // ═══ CHECK EXISTING AUTO PLAN (only block auto, not manual) ═══
+    // ═══ CHECK EXISTING THERAPIST-LED AUTO PLAN (only block auto, not manual) ═══
     if (!forcePart) {
-      const { data: karelDirectPlans } = await sb.from("did_daily_session_plans")
-        .select("id")
-        .eq("plan_date", todayPrague)
-        .contains("urgency_breakdown", { session_actor: "karel_direct" })
-        .in("status", ["generated", "in_progress"])
-        .limit(1);
-
-      if (karelDirectPlans && karelDirectPlans.length > 0) {
-        console.log(`[auto-session-plan] Karel-direct candidate already exists for ${todayPrague}, skipping.`);
-        return new Response(JSON.stringify({ success: true, skipped: true, reason: "karel_direct_candidate_exists", existingPlanId: karelDirectPlans[0].id }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
       const { data: autoPlans } = await sb.from("did_daily_session_plans")
-        .select("id, generated_by")
+        .select("id, generated_by, urgency_breakdown")
         .eq("plan_date", todayPrague)
         .eq("generated_by", "auto");
 
-      if (autoPlans && autoPlans.length > 0) {
-        console.log(`[auto-session-plan] Auto plan already exists for ${todayPrague}, skipping.`);
+      const therapistLedAutoPlans = (autoPlans || []).filter((plan: any) =>
+        plan.urgency_breakdown?.session_actor !== "karel_direct"
+      );
+
+      if (therapistLedAutoPlans.length > 0) {
+        console.log(`[auto-session-plan] Therapist-led auto plan already exists for ${todayPrague}, skipping.`);
         return new Response(JSON.stringify({ success: true, skipped: true, reason: "plan_exists" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -806,11 +843,22 @@ ${perplexityResult || "(nedostupná)"}`;
       console.warn("[auto-session-plan] crisis_event resolution skipped:", e);
     }
 
+    let karelDirectCandidate: { created: boolean; planId?: string; existingPlanId?: string } | null = null;
+    if (!forcePart) {
+      karelDirectCandidate = await ensureKarelDirectCandidate(sb, {
+        userId,
+        todayPrague,
+        selectedPart,
+        forcePart,
+        crisisEventId,
+      });
+    }
+
     // ═══ SAVE TO DB (INSERT — never delete old plans) ═══
     const generatedBy = forcePart ? "manual" : "auto";
     const urgencyBreakdown = {
       ...selectedPart.breakdown,
-      ...deriveKarelDirectContract(selectedPart, forcePart),
+      session_actor: "therapist_led",
     };
     const { error: insertErr } = await sb.from("did_daily_session_plans").insert({
       user_id: userId,
