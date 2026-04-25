@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { callEdgeFunction } from "@/lib/safeEdgeFunction";
 import type { CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
 import { ALLOWED_TRANSITIONS, STATE_TRANSITION_LABELS } from "@/hooks/useCrisisOperationalState";
 
@@ -40,16 +41,7 @@ const EVENING_DECISIONS = [
   { value: "ready_for_joint_review", label: "Připraveno k review", desc: "Přechod k uzavření" },
 ];
 
-async function callFn(fnName: string, body: Record<string, any>) {
-  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-  const session = (await supabase.auth.getSession()).data.session;
-  const res = await fetch(`https://${projectId}.supabase.co/functions/v1/${fnName}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
-    body: JSON.stringify(body),
-  });
-  return res.json();
-}
+const callFn = callEdgeFunction;
 
 const CrisisDailyManagement: React.FC<Props> = ({ card, onRefetch }) => {
   const navigate = useNavigate();
