@@ -2821,6 +2821,7 @@ export type Database = {
           crisis_event_id: string | null
           directed_to: string | null
           expires_at: string | null
+          follow_up_result: Json | null
           id: string
           processed_by_reactive: boolean | null
           question: string
@@ -2839,6 +2840,7 @@ export type Database = {
           crisis_event_id?: string | null
           directed_to?: string | null
           expires_at?: string | null
+          follow_up_result?: Json | null
           id?: string
           processed_by_reactive?: boolean | null
           question: string
@@ -2857,6 +2859,7 @@ export type Database = {
           crisis_event_id?: string | null
           directed_to?: string | null
           expires_at?: string | null
+          follow_up_result?: Json | null
           id?: string
           processed_by_reactive?: boolean | null
           question?: string
