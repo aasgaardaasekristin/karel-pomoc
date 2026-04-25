@@ -893,6 +893,10 @@ Vyhodnoť toto sezení. Drž se pravidel ze system promptu.
       completedBlocks,
       totalBlocks,
       force,
+      liveProgress,
+      turnsByBlock,
+      observationsByBlock,
+      diagnosticValidity,
     );
 
     return new Response(
@@ -901,6 +905,8 @@ Vyhodnoť toto sezení. Drž se pravidel ze system promptu.
         plan_id: planId,
         part_name: ctx.plan.selected_part,
         completion_status: evaluation.completion_status,
+        review_id: targets.reviewId,
+        review_status: targets.reviewStatus,
         markdown,
         evaluation,
         drive_targets: targets,
