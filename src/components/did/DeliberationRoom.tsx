@@ -268,6 +268,37 @@ function LiveProgramDraftPanel({
   );
 }
 
+function ClinicalContractPanel({ d }: { d: TeamDeliberation }) {
+  const sp = d.session_params && typeof d.session_params === "object" ? d.session_params : {};
+  const entries = [
+    ["Fáze", sp.treatment_phase],
+    ["Readiness", sp.readiness_today],
+    ["Režim", sp.session_mode],
+    ["První otázka", sp.first_question],
+    ["Změna plánu", sp.last_plan_change_state],
+  ].filter(([, value]) => typeof value === "string" && value.trim().length > 0) as Array<[string, string]>;
+  const stopRules = Array.isArray(sp.stop_rules) ? sp.stop_rules.map(String).filter(Boolean).slice(0, 4) : [];
+  if (entries.length === 0 && stopRules.length === 0) return null;
+  return (
+    <section className="rounded-lg border border-border/60 bg-card/40 p-3 space-y-2">
+      <h4 className="text-[11px] font-semibold text-foreground">Klinický kontrakt</h4>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+        {entries.map(([label, value]) => (
+          <div key={label} className="text-[10.5px]">
+            <span className="text-muted-foreground">{label}: </span>
+            <span className="text-foreground/90">{value}</span>
+          </div>
+        ))}
+      </div>
+      {stopRules.length > 0 && (
+        <ul className="list-disc pl-4 text-[10.5px] text-foreground/85 space-y-0.5">
+          {stopRules.map((rule, idx) => <li key={idx}>{rule}</li>)}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 /**
  * @deprecated SESSION-PLAN cesta je nahrazená iterativní logikou
  * (`karel-team-deliberation-iterate`). Tento blok zůstává jen pro typ
@@ -637,6 +668,10 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
 
   const sp = d ? signoffProgress(d) : { signed: 0, total: 2, missing: [] };
   const isReadOnly = d?.status === "approved";
+  const sessionParams = d?.session_params && typeof d.session_params === "object" ? d.session_params : {};
+  const readinessRedBlocked = d?.deliberation_type === "session_plan"
+    && String(sessionParams.readiness_today ?? "").toLowerCase() === "red"
+    && !["stabilization_checkin", "deferred", "human_review_required"].includes(String(sessionParams.session_mode ?? "standard").toLowerCase());
   // PER-THERAPIST LOCK — pokud Hanka podepsala, její sekce read-only,
   // ale Káťa může pořád odpovídat / přidávat podněty (a obráceně).
   const hankaLocked = !!d?.hanka_signed_at;
@@ -746,6 +781,8 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                   lastIterateComment={lastIterateComment}
                 />
               )}
+
+              {d.deliberation_type === "session_plan" && <ClinicalContractPanel d={d} />}
 
               {/* SLICE 3 — Statická Agenda / minutáž — POUZE pro non-session_plan
                   typy (krize, supervize, …), kde iterativní program_draft nemá smysl. */}
@@ -901,7 +938,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                       d.deliberation_type === "crisis" &&
                       otherSigned &&
                       (!crisisAnswersReady || !d.karel_synthesis);
-                    const disabled = !!signed || signing === who || crisisGateBlocked || isReadOnly;
+                    const disabled = !!signed || signing === who || crisisGateBlocked || readinessRedBlocked || isReadOnly;
                     const label = who === "hanka" ? "Hanička" : "Káťa";
                     return (
                       <Button
@@ -911,6 +948,8 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                         disabled={disabled}
                         title={crisisGateBlocked
                           ? 'Karel musí (znovu) syntetizovat odpovědi terapeutek — viz tlačítko „Spustit Karlovu syntézu".'
+                          : readinessRedBlocked
+                            ? "Readiness red blokuje standardní sezení; zvol stabilizační/deferred/human-review režim."
                           : undefined}
                         className="h-8 text-[11px] flex-1"
                         onClick={() => handleSign(who)}

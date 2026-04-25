@@ -615,6 +615,64 @@ function buildDiagnosticValidityReport(planText: string | null, turnsByBlock: Re
   return `### Diagnostická validita\nRozpoznaná metoda: ${methodLine}.\n${missing.length ? `Validita je omezená — chybí: ${missing.join(", ")}. Závěry níže ber jako pracovní hypotézy, ne jako standardizovanou psychodiagnostiku.` : "Minimální důkazní vrstva je přítomná; závěry přesto formuluj jako klinické hypotézy a odděl je od doložených pozorování."}${rorGuard}`;
 }
 
+function evidenceValidityFor(evidencePresent: boolean, completedBlocks?: number, totalBlocks?: number): "low" | "moderate" | "high" {
+  if (!evidencePresent) return "low";
+  const ratio = totalBlocks && totalBlocks > 0 ? (completedBlocks ?? 0) / totalBlocks : 0;
+  if (ratio >= 0.8) return "high";
+  return "moderate";
+}
+
+function buildStructuredPostSessionResult(args: {
+  evaluation: any;
+  endedReason: EndedReason;
+  completedBlocks?: number;
+  totalBlocks?: number;
+  evidencePresent: boolean;
+  turnsByBlock: Record<string, any[]>;
+  observationsByBlock: Record<string, string>;
+  liveProgress: any;
+}) {
+  return {
+    schema: "post_session_result.v1",
+    endedReason: args.endedReason,
+    contactOccurred: args.evidencePresent,
+    completionStatus: args.evaluation?.completion_status ?? null,
+    completedBlocks: args.completedBlocks ?? null,
+    totalBlocks: args.totalBlocks ?? null,
+    evidenceValidity: evidenceValidityFor(args.evidencePresent, args.completedBlocks, args.totalBlocks),
+    evidenceSignals: {
+      turnBlocks: Object.keys(args.turnsByBlock || {}).length,
+      observationBlocks: Object.values(args.observationsByBlock || {}).filter((v) => String(v || "").trim().length > 0).length,
+      artifactBlocks: args.liveProgress?.artifacts_by_block && typeof args.liveProgress.artifacts_by_block === "object"
+        ? Object.keys(args.liveProgress.artifacts_by_block).length
+        : 0,
+    },
+    outcome: args.evaluation?.recommended_next_step ?? null,
+  };
+}
+
+function buildAnalysisJson(evaluation: any, diagnosticValidity: string, reviewStatus: ReviewStatus, postSessionResult: any) {
+  return {
+    schema: "did_session_review.analysis.v1",
+    confirmed_facts: [
+      evaluation?.session_arc,
+      evaluation?.child_perspective,
+    ].filter((v) => typeof v === "string" && v.trim().length > 0),
+    working_deductions: Array.isArray(evaluation?.key_insights) ? evaluation.key_insights : [],
+    unknowns: [
+      evaluation?.incomplete_note,
+      diagnosticValidity,
+    ].filter((v) => typeof v === "string" && v.trim().length > 0),
+    writebacks: {
+      therapeutic_implications: evaluation?.implications_for_tomorrow ?? null,
+      team_implications: evaluation?.therapist_motivation ?? null,
+      next_session_recommendation: evaluation?.recommended_next_step ?? null,
+    },
+    review_status: reviewStatus,
+    post_session_result: postSessionResult,
+  };
+}
+
 async function callAi(prompt: string, apiKey: string): Promise<any> {
   const res = await fetch(AI_URL, {
     method: "POST",
@@ -769,6 +827,8 @@ async function persistEvaluation(
   const reviewStatus = reviewStatusFor(evaluation, evidencePresent, completedBlocks, totalBlocks);
   const evidenceItems = buildEvidenceItems(ctx as any, liveProgress, turnsByBlock, observationsByBlock);
   const checklist = checklistItems(liveProgress);
+  const postSessionResult = buildStructuredPostSessionResult({ evaluation, endedReason, completedBlocks, totalBlocks, evidencePresent, turnsByBlock, observationsByBlock, liveProgress });
+  const analysisJson = buildAnalysisJson(evaluation, diagnosticValidity, reviewStatus, postSessionResult);
 
   const reviewPayload = {
     user_id: userId,
@@ -789,6 +849,7 @@ async function persistEvaluation(
     team_implications: evaluation.therapist_motivation ?? null,
     next_session_recommendation: evaluation.recommended_next_step ?? null,
     evidence_limitations: diagnosticValidity,
+    analysis_json: analysisJson,
     projection_status: reviewStatus === "failed_analysis" ? "skipped" : "queued",
     error_message: null,
     updated_at: now,
@@ -848,6 +909,13 @@ async function persistEvaluation(
       updated_at: now,
     })
     .eq("id", ctx.plan.id);
+
+  if (liveProgress) {
+    await sb
+      .from("did_live_session_progress")
+      .update({ post_session_result: postSessionResult, updated_at: now })
+      .eq("plan_id", ctx.plan.id);
+  }
 
   // 3) karel_pantry_b_entries — anti-dup podle source_ref
   const sourceRef = `session-evaluate:${ctx.plan.id}`;

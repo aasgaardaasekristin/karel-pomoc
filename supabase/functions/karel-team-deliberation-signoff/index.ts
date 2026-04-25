@@ -20,6 +20,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
+const RED_ALLOWED_SESSION_MODES = new Set(["stabilization_checkin", "deferred", "human_review_required"]);
+
 function buildApprovedSessionPlanMarkdown(updated: Record<string, any>) {
   const sp = updated.session_params && typeof updated.session_params === "object"
     ? updated.session_params as Record<string, any>
@@ -129,6 +131,25 @@ Deno.serve(async (req: Request) => {
           status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+    }
+
+    const rowSessionParams = row.session_params && typeof row.session_params === "object"
+      ? row.session_params as Record<string, any>
+      : {};
+    const readinessToday = String(rowSessionParams.readiness_today ?? "").trim().toLowerCase();
+    const sessionMode = String(rowSessionParams.session_mode ?? "standard").trim().toLowerCase();
+    if (
+      row.deliberation_type === "session_plan" &&
+      readinessToday === "red" &&
+      !RED_ALLOWED_SESSION_MODES.has(sessionMode)
+    ) {
+      return new Response(JSON.stringify({
+        error: "readiness_red_blocks_standard_session",
+        message: "readiness_today=red blokuje schválení standardního sezení. Povolené režimy: stabilization_checkin, deferred, human_review_required.",
+        allowed_modes: Array.from(RED_ALLOWED_SESSION_MODES),
+      }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const nowIso = new Date().toISOString();
@@ -517,7 +538,7 @@ Deno.serve(async (req: Request) => {
           destinations.push("crisis_event_update");
         }
 
-        await appendPantryB(admin, {
+        await appendPantryB(admin as any, {
           user_id: userId,
           entry_kind: updated.deliberation_type === "crisis" ? "state_change" : "conclusion",
           source_kind: "team_deliberation",

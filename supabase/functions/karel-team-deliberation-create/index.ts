@@ -392,6 +392,13 @@ Deno.serve(async (req: Request) => {
           duration_min: typeof rawSp.duration_min === "number" ? rawSp.duration_min : null,
           why_today: rawSp.why_today ? String(rawSp.why_today) : null,
           kata_involvement: rawSp.kata_involvement ? String(rawSp.kata_involvement) : null,
+          treatment_phase: rawSp.treatment_phase ? String(rawSp.treatment_phase) : null,
+          readiness_today: rawSp.readiness_today ? String(rawSp.readiness_today) : null,
+          risk_gate: rawSp.risk_gate && typeof rawSp.risk_gate === "object" ? rawSp.risk_gate : null,
+          stop_rules: Array.isArray(rawSp.stop_rules) ? rawSp.stop_rules.map((x: any) => String(x)).slice(0, 8) : [],
+          session_mode: rawSp.session_mode ? String(rawSp.session_mode) : "standard",
+          first_question: rawSp.first_question ? String(rawSp.first_question).slice(0, 240) : null,
+          last_plan_change_state: "unchanged",
         }
       : {};
 
