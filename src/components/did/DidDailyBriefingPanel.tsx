@@ -301,7 +301,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       }
       const { data: plan } = await (supabase as any)
         .from("did_daily_session_plans")
-        .select("selected_part,session_lead,therapist,status,lifecycle_status,plan_markdown")
+        .select("id,selected_part,session_lead,therapist,status,lifecycle_status,plan_markdown")
         .eq("plan_date", yesterday)
         .order("created_at", { ascending: false })
         .limit(1)
