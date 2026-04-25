@@ -827,6 +827,8 @@ async function persistEvaluation(
   const reviewStatus = reviewStatusFor(evaluation, evidencePresent, completedBlocks, totalBlocks);
   const evidenceItems = buildEvidenceItems(ctx as any, liveProgress, turnsByBlock, observationsByBlock);
   const checklist = checklistItems(liveProgress);
+  const postSessionResult = buildStructuredPostSessionResult({ evaluation, endedReason, completedBlocks, totalBlocks, evidencePresent, turnsByBlock, observationsByBlock, liveProgress });
+  const analysisJson = buildAnalysisJson(evaluation, diagnosticValidity, reviewStatus, postSessionResult);
 
   const reviewPayload = {
     user_id: userId,
@@ -847,6 +849,7 @@ async function persistEvaluation(
     team_implications: evaluation.therapist_motivation ?? null,
     next_session_recommendation: evaluation.recommended_next_step ?? null,
     evidence_limitations: diagnosticValidity,
+    analysis_json: analysisJson,
     projection_status: reviewStatus === "failed_analysis" ? "skipped" : "queued",
     error_message: null,
     updated_at: now,
@@ -906,6 +909,13 @@ async function persistEvaluation(
       updated_at: now,
     })
     .eq("id", ctx.plan.id);
+
+  if (liveProgress) {
+    await sb
+      .from("did_live_session_progress")
+      .update({ post_session_result: postSessionResult, updated_at: now })
+      .eq("plan_id", ctx.plan.id);
+  }
 
   // 3) karel_pantry_b_entries — anti-dup podle source_ref
   const sourceRef = `session-evaluate:${ctx.plan.id}`;
