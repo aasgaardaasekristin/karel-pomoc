@@ -493,8 +493,8 @@ serve(async (req) => {
       case "acknowledge_alert":
         return await handleAcknowledgeAlert(sb, body);
       case "check_closure_readiness":
-        if (!body.crisis_event_id) return jsonRes({ error: "crisis_event_id required" }, 400);
-        return jsonRes(await checkClosureReadiness(sb, body.crisis_event_id));
+        if (!body.crisis_event_id) return jsonRes({ ok: false, error: "crisis_event_id required" }, 400);
+        return jsonRes({ ok: true, success: true, readiness: await checkClosureReadiness(sb, body.crisis_event_id) });
       case "transition_state":
         return await handleTransitionState(sb, body);
       default:
