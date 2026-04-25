@@ -638,6 +638,45 @@ serve(async (req) => {
       selectedTier = selectedPart.tier;
     }
 
+    // ═══ Resolve canonical crisis_event_id for selected part and ensure supplemental Karel-direct candidate ═══
+    let crisisEventId: string | null = null;
+    try {
+      const { data: openCrisis } = await sb
+        .from("crisis_events")
+        .select("id")
+        .eq("part_name", selectedPart.partName)
+        .not("phase", "in", '("closed","CLOSED")')
+        .order("opened_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      crisisEventId = (openCrisis as any)?.id ?? null;
+    } catch (e) {
+      console.warn("[auto-session-plan] crisis_event resolution skipped:", e);
+    }
+
+    let karelDirectCandidate: { created: boolean; planId?: string; existingPlanId?: string } | null = null;
+    if (!forcePart) {
+      karelDirectCandidate = await ensureKarelDirectCandidate(sb, {
+        userId,
+        todayPrague,
+        selectedPart,
+        forcePart,
+        crisisEventId,
+      });
+
+      if (therapistLedAutoPlanExists) {
+        return new Response(JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: "plan_exists",
+          existingPlanId: existingTherapistLedAutoPlanId,
+          karel_direct_candidate: karelDirectCandidate,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const partReg = registry.find(p => p.part_name === selectedPart.partName);
     const isDormant = partReg?.status !== "active" && partReg?.status !== "aktivní";
 
