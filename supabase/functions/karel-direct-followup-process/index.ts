@@ -301,12 +301,12 @@ serve(async (req) => {
         .from("did_daily_session_plans")
         .select("id, selected_part, status, lifecycle_status, urgency_breakdown")
         .contains("urgency_breakdown", { source_question_id: questionId })
-        .limit(1);
+        .limit(20);
       const { data: bySourcePlan } = await sb
         .from("did_daily_session_plans")
         .select("id, selected_part, status, lifecycle_status, urgency_breakdown")
         .contains("urgency_breakdown", { kind: "karel_direct_followup_candidate", source_plan_id: sourcePlanId })
-        .limit(1);
+        .limit(20);
 
       const existingByQuestion = (byQuestion ?? []).find((row: Record<string, unknown>) => isActiveCandidate(row, classified.nextPart));
       const existingBySourcePlan = (bySourcePlan ?? []).find((row: Record<string, unknown>) => isActiveCandidate(row, classified.nextPart));
