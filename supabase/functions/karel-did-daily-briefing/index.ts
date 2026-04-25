@@ -424,7 +424,7 @@ async function gatherContext(supabase: any) {
   if (yesterdayPlanIds.length > 0) {
     const { data: reviews } = await supabase
       .from("did_session_reviews")
-      .select("id, plan_id, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, completed_checklist_items, missing_checklist_items, source_data_summary, created_at")
+      .select("id, plan_id, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, completed_checklist_items, missing_checklist_items, source_data_summary, created_at")
       .in("plan_id", yesterdayPlanIds)
       .eq("is_current", true)
       .order("created_at", { ascending: false })
