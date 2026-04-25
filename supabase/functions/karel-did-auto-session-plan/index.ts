@@ -519,9 +519,9 @@ serve(async (req) => {
       let entityRegistryForForce;
       try {
         const driveToken = await getAccessToken();
-        entityRegistryForForce = await loadEntityRegistry(sb, driveToken);
+        entityRegistryForForce = await loadEntityRegistry(sb as any, driveToken);
       } catch {
-        entityRegistryForForce = await loadEntityRegistry(sb);
+        entityRegistryForForce = await loadEntityRegistry(sb as any);
       }
 
       // Identity gate: override can bypass can_be_session_target, but NOT identity confirmation
@@ -573,9 +573,9 @@ serve(async (req) => {
       let entityRegistry;
       try {
         const driveToken = await getAccessToken();
-        entityRegistry = await loadEntityRegistry(sb, driveToken);
+        entityRegistry = await loadEntityRegistry(sb as any, driveToken);
       } catch {
-        entityRegistry = await loadEntityRegistry(sb);
+        entityRegistry = await loadEntityRegistry(sb as any);
       }
 
       // Try candidates in urgency order until one passes session-target gate
