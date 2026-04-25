@@ -1406,10 +1406,11 @@ Deno.serve(async (req: Request) => {
     const sessionContract = ctx.plan.urgency_breakdown && typeof ctx.plan.urgency_breakdown === "object" ? ctx.plan.urgency_breakdown : {};
     if (sessionContract?.session_actor === "karel_direct") {
       const mode = String(sessionContract?.session_mode ?? "");
-      const hasThread = Array.isArray(ctx.threads) && ctx.threads.some((t: any) => Array.isArray(t.messages) && t.messages.length > 1);
-      if (mode === "deferred" || (!hasThread && !evidencePresent)) {
-        const outcome = mode === "deferred" ? "deferred" : "unavailable";
-        const audit = await persistKarelDirectNoContact(sb, ctx, outcome, endedReason);
+      const hasPartResponse = karelDirectHasPartResponse(ctx.threads);
+      const actualPartIfDiffers = inferActualPartIfDiffers(ctx);
+      if (mode === "deferred" || actualPartIfDiffers || (!hasPartResponse && !evidencePresent)) {
+        const outcome: KarelDirectOutcome = mode === "deferred" ? "deferred" : actualPartIfDiffers ? "actual_part_differs" : "unavailable";
+        const audit = await persistKarelDirectOutcome(sb, ctx, { outcome, endedReason, evidencePresent, actualPartIfDiffers });
         return new Response(
           JSON.stringify({ ok: true, plan_id: planId, part_name: ctx.plan.selected_part, completion_status: outcome, review_status: audit.reviewStatus, post_session_result: audit.postSessionResult }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
