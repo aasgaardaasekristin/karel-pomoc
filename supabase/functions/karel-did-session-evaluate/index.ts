@@ -869,10 +869,10 @@ async function createKarelDirectFollowUp(sb: any, args: { userId: string; planId
   });
 }
 
-async function persistKarelDirectOutcome(sb: any, ctx: { plan: SessionPlan; threads?: any[]; partCardLookup?: PartCardLookup }, args: { outcome: KarelDirectOutcome; endedReason: EndedReason; evidencePresent: boolean; actualPartIfDiffers?: string | null }) {
+async function persistKarelDirectOutcome(sb: any, ctx: { plan: SessionPlan; threads?: any[]; partCardLookup?: PartCardLookup }, args: { outcome: KarelDirectOutcome; endedReason: EndedReason; evidencePresent: boolean; evidenceValidity: "low" | "moderate" | "high"; hasPartResponse: boolean; supportiveEvidence: boolean; createFollowUp?: boolean; actualPartIfDiffers?: string | null }) {
   const now = new Date().toISOString();
   const outcome = args.outcome;
-  const reviewStatus: ReviewStatus = outcome === "deferred" ? "cancelled" : outcome === "completed" ? "analyzed" : outcome === "partial" && args.evidencePresent ? "partially_analyzed" : "evidence_limited";
+  const reviewStatus: ReviewStatus = reviewStatusForKarelDirect(outcome, args.evidenceValidity, { hasPartResponse: args.hasPartResponse, supportiveEvidence: args.supportiveEvidence });
   const postSessionResult = {
     schema: "post_session_result.v1",
     provenance: "auto_derived",
@@ -880,9 +880,9 @@ async function persistKarelDirectOutcome(sb: any, ctx: { plan: SessionPlan; thre
     entered_by: null,
     entered_at: null,
     endedReason: args.endedReason,
-    contactOccurred: outcome === "completed" || outcome === "partial" || outcome === "actual_part_differs",
+    contactOccurred: args.hasPartResponse && (outcome === "completed" || outcome === "partial" || outcome === "actual_part_differs"),
     completionStatus: outcome,
-    evidenceValidity: outcome === "completed" ? "moderate" : "low",
+    evidenceValidity: args.evidenceValidity,
     actualPart: args.actualPartIfDiffers ?? null,
     actual_part_if_differs: args.actualPartIfDiffers ?? null,
   };
@@ -941,7 +941,7 @@ async function persistKarelDirectOutcome(sb: any, ctx: { plan: SessionPlan; thre
     updated_at: now,
   }).eq("id", ctx.plan.id);
   await sb.from("did_live_session_progress").update({ post_session_result: postSessionResult, updated_at: now }).eq("plan_id", ctx.plan.id);
-  if (["unavailable", "deferred", "actual_part_differs"].includes(outcome)) await createKarelDirectFollowUp(sb, { userId: ctx.plan.user_id, planId: ctx.plan.id, partName: ctx.plan.selected_part, outcome, actualPart: args.actualPartIfDiffers });
+  if ((args.createFollowUp ?? ["unavailable", "actual_part_differs"].includes(outcome)) || (outcome === "deferred" && args.createFollowUp === true)) await createKarelDirectFollowUp(sb, { userId: ctx.plan.user_id, planId: ctx.plan.id, partName: ctx.plan.selected_part, outcome, actualPart: args.actualPartIfDiffers });
   return { reviewStatus, postSessionResult };
 }
 
