@@ -814,6 +814,26 @@ async function persistEvaluation(
     reviewId = insertedReview?.id;
   }
 
+  if (reviewId) {
+    await projectReviewToPametKarel(
+      sb,
+      {
+        id: reviewId,
+        user_id: userId,
+        plan_id: ctx.plan.id,
+        part_name: partName,
+        session_date: ctx.plan.plan_date,
+        status: reviewStatus,
+        team_implications: reviewPayload.team_implications,
+        therapeutic_implications: reviewPayload.therapeutic_implications,
+        next_session_recommendation: reviewPayload.next_session_recommendation,
+        evidence_limitations: reviewPayload.evidence_limitations,
+      },
+      ctx,
+      evaluation,
+    );
+  }
+
   // 2) did_daily_session_plans — auditovatelný lifecycle stav podle review
   await sb
     .from("did_daily_session_plans")
