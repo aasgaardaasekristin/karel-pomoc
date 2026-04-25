@@ -877,7 +877,7 @@ const PlanCard = ({
     } finally {
       setOpeningPartRoom(false);
     }
-  }, [navigate, openingPartRoom, plan.selected_part, plan.plan_markdown, plan.session_lead, addendumKey, therapistAddendum]);
+  }, [navigate, openingPartRoom, plan.id, plan.selected_part, plan.session_lead, plan.urgency_breakdown, addendumKey, therapistAddendum]);
 
   // Overdue calculation using Prague timezone
   const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
