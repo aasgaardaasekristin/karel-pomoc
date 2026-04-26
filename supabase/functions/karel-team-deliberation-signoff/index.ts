@@ -136,8 +136,11 @@ Deno.serve(async (req: Request) => {
     const rowSessionParams = row.session_params && typeof row.session_params === "object"
       ? row.session_params as Record<string, any>
       : {};
-    const readinessToday = String(rowSessionParams.readiness_today ?? "").trim().toLowerCase();
-    const sessionMode = String(rowSessionParams.session_mode ?? "standard").trim().toLowerCase();
+    const hybridContract = rowSessionParams.hybrid_contract && typeof rowSessionParams.hybrid_contract === "object"
+      ? rowSessionParams.hybrid_contract as Record<string, any>
+      : {};
+    const readinessToday = String(rowSessionParams.readiness_today ?? hybridContract.readiness_today ?? "").trim().toLowerCase();
+    const sessionMode = String(rowSessionParams.session_mode ?? hybridContract.session_mode ?? hybridContract.therapist_led_vs_karel_only ?? "standard").trim().toLowerCase();
     if (
       row.deliberation_type === "session_plan" &&
       readinessToday === "red" &&

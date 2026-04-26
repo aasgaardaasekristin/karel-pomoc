@@ -223,6 +223,33 @@ async function callAI(prompt: string): Promise<any> {
   return JSON.parse(clean);
 }
 
+function toAgendaBlocks(value: unknown): Array<{ block: string; minutes: number | null; detail: string | null; tool_id?: string | null }> {
+  return (Array.isArray(value) ? value : [])
+    .slice(0, 8)
+    .map((b: any) => ({
+      block: String(b?.block ?? "").slice(0, 120).trim(),
+      minutes: typeof b?.minutes === "number" ? b.minutes : null,
+      detail: b?.detail ? String(b.detail).slice(0, 400).trim() : null,
+      tool_id: b?.tool_id ? String(b.tool_id).slice(0, 40).trim() : null,
+    }))
+    .filter((b) => b.block.length > 0);
+}
+
+function fallbackSessionProgramDraft(subjectParts: string[]) {
+  const partName = subjectParts[0] ?? "část";
+  return [{
+    block: "Evidence-limited bezpečné ověření připravenosti",
+    minutes: 10,
+    detail: `Pracovní fallback pro ${partName}: nejprve si od Haničky/Káti vyžádat aktuální stav, rizika a hranice kontaktu. Bez terapeutčina potvrzení nedělat klinické závěry, fyzické/testové prvky ani hlubší práci; režim needs_therapist_input.`,
+    tool_id: "needs_therapist_input",
+  }];
+}
+
+function nonEmptyString(value: unknown): string | null {
+  const text = String(value ?? "").trim();
+  return text ? text : null;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -384,6 +411,9 @@ Deno.serve(async (req: Request) => {
     // Schválené parametry sezení (Slice 3 hardening) — uloženy autoritativně,
     // bridge do did_daily_session_plans je čte odsud místo hardcoded "hanka".
     const rawSp = (prefill as any)?.session_params;
+    const hybridContract = rawSp?.hybrid_contract && typeof rawSp.hybrid_contract === "object"
+      ? rawSp.hybrid_contract as Record<string, any>
+      : null;
     const sessionParams = (rawSp && typeof rawSp === "object")
       ? {
           part_name: rawSp.part_name ? String(rawSp.part_name) : (subjectParts[0] ?? null),
@@ -392,18 +422,25 @@ Deno.serve(async (req: Request) => {
           duration_min: typeof rawSp.duration_min === "number" ? rawSp.duration_min : null,
           why_today: rawSp.why_today ? String(rawSp.why_today) : null,
           kata_involvement: rawSp.kata_involvement ? String(rawSp.kata_involvement) : null,
-          treatment_phase: rawSp.treatment_phase ? String(rawSp.treatment_phase) : null,
-          readiness_today: rawSp.readiness_today ? String(rawSp.readiness_today) : null,
-          risk_gate: rawSp.risk_gate && typeof rawSp.risk_gate === "object" ? rawSp.risk_gate : null,
-          stop_rules: Array.isArray(rawSp.stop_rules) ? rawSp.stop_rules.map((x: any) => String(x)).slice(0, 8) : [],
-          session_mode: rawSp.session_mode ? String(rawSp.session_mode) : "standard",
+          treatment_phase: nonEmptyString(rawSp.treatment_phase) ?? nonEmptyString(hybridContract?.treatment_phase),
+          readiness_today: nonEmptyString(rawSp.readiness_today) ?? nonEmptyString(hybridContract?.readiness_today),
+          risk_gate: rawSp.risk_gate ?? hybridContract?.risk_gate ?? null,
+          stop_rules: Array.isArray(rawSp.stop_rules) && rawSp.stop_rules.length > 0
+            ? rawSp.stop_rules.map((x: any) => String(x)).slice(0, 8)
+            : (Array.isArray(hybridContract?.stop_rules) ? hybridContract.stop_rules.map((x: any) => String(x)).slice(0, 8) : []),
+          session_mode: nonEmptyString(rawSp.session_mode) ?? nonEmptyString(hybridContract?.session_mode) ?? nonEmptyString(hybridContract?.therapist_led_vs_karel_only) ?? "standard",
           first_question: rawSp.first_question ? String(rawSp.first_question).slice(0, 240) : null,
           last_plan_change_state: ["unchanged", "revised", "deferred", "needs_followup_question"].includes(String(rawSp.last_plan_change_state ?? ""))
             ? String(rawSp.last_plan_change_state)
             : "unchanged",
-          hybrid_contract: rawSp.hybrid_contract && typeof rawSp.hybrid_contract === "object" ? rawSp.hybrid_contract : null,
+          hybrid_contract: hybridContract,
         }
       : {};
+
+    const agendaOutline = toAgendaBlocks(aiContent?.agenda_outline);
+    const programDraft = type === "session_plan"
+      ? (agendaOutline.length > 0 ? agendaOutline : fallbackSessionProgramDraft(subjectParts))
+      : [];
 
     const insertRow = {
       user_id: userId,
@@ -417,14 +454,8 @@ Deno.serve(async (req: Request) => {
       created_by: "karel",
       initial_karel_brief: String(aiContent?.initial_karel_brief ?? ""),
       karel_proposed_plan: String(aiContent?.karel_proposed_plan ?? ""),
-      agenda_outline: (Array.isArray(aiContent?.agenda_outline) ? aiContent.agenda_outline : [])
-        .slice(0, 8)
-        .map((b: any) => ({
-          block: String(b?.block ?? "").slice(0, 120),
-          minutes: typeof b?.minutes === "number" ? b.minutes : null,
-          detail: b?.detail ? String(b.detail).slice(0, 400) : null,
-        }))
-        .filter((b: any) => b.block.length > 0),
+      agenda_outline: agendaOutline.map(({ tool_id: _toolId, ...block }) => block),
+      program_draft: programDraft,
       questions_for_hanka: (Array.isArray(aiContent?.questions_for_hanka) ? aiContent.questions_for_hanka : [])
         .slice(0, 3)
         .map((q: any) => typeof q === "string"
