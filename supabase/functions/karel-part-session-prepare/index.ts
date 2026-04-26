@@ -209,11 +209,11 @@ serve(async (req) => {
         .maybeSingle();
       if (planErr) return jsonRes({ ok: false, error: planErr.message }, 500);
       planContract = plan?.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown : {};
-      if (planContract.kind === "karel_direct_followup_candidate" && planContract.approved_for_child_session !== true) {
+      if (planContract.approved_for_child_session !== true) {
         return jsonRes({
           ok: false,
           error: "human_review_required",
-          message: "Tento Karel-direct follow-up návrh musí nejdřív projít lidským schválením.",
+          message: "Karlova herna se může otevřít až po schválení terapeutkami.",
         }, 403);
       }
     }
