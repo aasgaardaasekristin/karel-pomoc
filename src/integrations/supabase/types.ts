@@ -910,6 +910,8 @@ export type Database = {
           closure_meeting_id: string | null
           closure_proposed_at: string | null
           closure_proposed_by: string | null
+          closure_readiness_checked_at: string | null
+          closure_readiness_snapshot: Json | null
           closure_reason: string | null
           closure_statement: string | null
           created_at: string | null
@@ -966,6 +968,8 @@ export type Database = {
           closure_meeting_id?: string | null
           closure_proposed_at?: string | null
           closure_proposed_by?: string | null
+          closure_readiness_checked_at?: string | null
+          closure_readiness_snapshot?: Json | null
           closure_reason?: string | null
           closure_statement?: string | null
           created_at?: string | null
@@ -1022,6 +1026,8 @@ export type Database = {
           closure_meeting_id?: string | null
           closure_proposed_at?: string | null
           closure_proposed_by?: string | null
+          closure_readiness_checked_at?: string | null
+          closure_readiness_snapshot?: Json | null
           closure_reason?: string | null
           closure_statement?: string | null
           created_at?: string | null
