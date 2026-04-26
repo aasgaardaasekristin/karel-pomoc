@@ -223,6 +223,33 @@ async function callAI(prompt: string): Promise<any> {
   return JSON.parse(clean);
 }
 
+function toAgendaBlocks(value: unknown): Array<{ block: string; minutes: number | null; detail: string | null; tool_id?: string | null }> {
+  return (Array.isArray(value) ? value : [])
+    .slice(0, 8)
+    .map((b: any) => ({
+      block: String(b?.block ?? "").slice(0, 120).trim(),
+      minutes: typeof b?.minutes === "number" ? b.minutes : null,
+      detail: b?.detail ? String(b.detail).slice(0, 400).trim() : null,
+      tool_id: b?.tool_id ? String(b.tool_id).slice(0, 40).trim() : null,
+    }))
+    .filter((b) => b.block.length > 0);
+}
+
+function fallbackSessionProgramDraft(subjectParts: string[]) {
+  const partName = subjectParts[0] ?? "část";
+  return [{
+    block: "Evidence-limited bezpečné ověření připravenosti",
+    minutes: 10,
+    detail: `Pracovní fallback pro ${partName}: nejprve si od Haničky/Káti vyžádat aktuální stav, rizika a hranice kontaktu. Bez terapeutčina potvrzení nedělat klinické závěry, fyzické/testové prvky ani hlubší práci; režim needs_therapist_input.`,
+    tool_id: "needs_therapist_input",
+  }];
+}
+
+function nonEmptyString(value: unknown): string | null {
+  const text = String(value ?? "").trim();
+  return text ? text : null;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
