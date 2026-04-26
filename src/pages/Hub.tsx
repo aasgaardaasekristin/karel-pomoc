@@ -10,6 +10,7 @@ import HanaPinScreen from "@/components/hana/HanaPinScreen";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { clearActiveWorkStorageForLogout, isExplicitLogoutActive, markExplicitLogout } from "@/lib/chatHelpers";
 
 const CORRECT_PIN = "0126";
 const HANA_PIN_KEY = "karel_hana_pin_verified";
@@ -93,17 +94,26 @@ const Hub = () => {
       if (redirectTimer !== null) window.clearTimeout(redirectTimer);
       redirectTimer = window.setTimeout(async () => {
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session && !hasActiveStoredWork()) navigate("/", { replace: true });
+        if (!session && (isExplicitLogoutActive() || !hasActiveStoredWork())) navigate("/", { replace: true });
       }, AUTH_REDIRECT_DELAY_MS);
     };
 
     const checkAuth = async () => {
+      if (isExplicitLogoutActive()) {
+        navigate("/", { replace: true });
+        return;
+      }
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) scheduleRedirect();
       else setAuthChecked(true);
     };
     checkAuth();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (isExplicitLogoutActive()) {
+        if (redirectTimer !== null) window.clearTimeout(redirectTimer);
+        navigate("/", { replace: true });
+        return;
+      }
       if (!session) scheduleRedirect();
       else {
         if (redirectTimer !== null) window.clearTimeout(redirectTimer);
@@ -117,12 +127,14 @@ const Hub = () => {
   }, [navigate]);
 
   const handleLogout = async () => {
+    markExplicitLogout();
+    clearActiveWorkStorageForLogout();
     try {
       sessionStorage.removeItem(HANA_PIN_KEY);
       sessionStorage.removeItem("karel_hana_pin_access_token");
     } catch {}
     await supabase.auth.signOut();
-    navigate("/");
+    navigate("/", { replace: true });
   };
 
   const handleSectionClick = (key: string) => {

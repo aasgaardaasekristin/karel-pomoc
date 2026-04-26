@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
+import { isExplicitLogoutActive } from "@/lib/chatHelpers";
 
 const AUTH_REDIRECT_DELAY_MS = 1200;
 
@@ -30,6 +31,10 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   useEffect(() => {
     let mounted = true;
     let redirectTimer: number | null = null;
+    if (isExplicitLogoutActive()) {
+      setStatus("unauthenticated");
+      return;
+    }
 
     const clearRedirectTimer = () => {
       if (redirectTimer !== null) {
@@ -43,13 +48,18 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
       redirectTimer = window.setTimeout(async () => {
         const { data: { session } } = await supabase.auth.getSession();
         if (!mounted) return;
-        setStatus(session ? "authenticated" : hasActiveStoredWork() ? "loading" : "unauthenticated");
+        setStatus(session && !isExplicitLogoutActive() ? "authenticated" : "unauthenticated");
       }, AUTH_REDIRECT_DELAY_MS);
     };
 
     const check = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!mounted) return;
+      if (isExplicitLogoutActive()) {
+        clearRedirectTimer();
+        setStatus("unauthenticated");
+        return;
+      }
       if (session) {
         clearRedirectTimer();
         setStatus("authenticated");
@@ -66,6 +76,11 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
+      if (isExplicitLogoutActive()) {
+        clearRedirectTimer();
+        setStatus("unauthenticated");
+        return;
+      }
       if (session) {
         clearRedirectTimer();
         setStatus("authenticated");
@@ -73,6 +88,7 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
       }
       if (hasActiveStoredWork()) {
         setStatus("loading");
+        scheduleUnauthenticated();
         return;
       }
       scheduleUnauthenticated();
