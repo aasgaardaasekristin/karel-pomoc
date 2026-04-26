@@ -200,15 +200,32 @@ serve(async (req) => {
     if (!partName) return jsonRes({ error: "part_name required" }, 400);
 
     const planId = isUuid(body?.plan_id) ? String(body.plan_id) : null;
-    const sessionActor = String(body?.session_actor ?? body?.briefing_proposed_session?.session_actor ?? "").trim();
-    const sessionMode = String(body?.session_mode ?? body?.briefing_proposed_session?.session_mode ?? "").trim();
-    const readinessToday = String(body?.readiness_today ?? body?.briefing_proposed_session?.readiness_today ?? "").trim();
+    let planContract: Record<string, unknown> = {};
+    if (planId) {
+      const { data: plan, error: planErr } = await sb
+        .from("did_daily_session_plans")
+        .select("urgency_breakdown")
+        .eq("id", planId)
+        .maybeSingle();
+      if (planErr) return jsonRes({ ok: false, error: planErr.message }, 500);
+      planContract = plan?.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown : {};
+      if (planContract.kind === "karel_direct_followup_candidate" && planContract.approved_for_child_session !== true) {
+        return jsonRes({
+          ok: false,
+          error: "human_review_required",
+          message: "Tento Karel-direct follow-up návrh musí nejdřív projít lidským schválením.",
+        }, 403);
+      }
+    }
+
+    const sessionActor = String(planContract.session_actor ?? body?.session_actor ?? body?.briefing_proposed_session?.session_actor ?? "").trim();
+    const sessionMode = String(planContract.session_mode ?? body?.session_mode ?? body?.briefing_proposed_session?.session_mode ?? "").trim();
+    const readinessToday = String(planContract.readiness_today ?? body?.readiness_today ?? body?.briefing_proposed_session?.readiness_today ?? "").trim();
     const briefingHint = {
-      ...(body.briefing_proposed_session || {}),
-      first_question: body?.first_question ?? body?.briefing_proposed_session?.first_question,
-      session_actor: sessionActor || body?.briefing_proposed_session?.session_actor,
-      session_mode: sessionMode || body?.briefing_proposed_session?.session_mode,
-      readiness_today: readinessToday || body?.briefing_proposed_session?.readiness_today,
+      first_question: planContract.first_question ?? body?.first_question ?? body?.briefing_proposed_session?.first_question,
+      session_actor: sessionActor || undefined,
+      session_mode: sessionMode || undefined,
+      readiness_today: readinessToday || undefined,
     };
 
     const today = pragueTodayISO();
