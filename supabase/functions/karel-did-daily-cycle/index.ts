@@ -7272,7 +7272,7 @@ Vra\u0165 JSON:
       const pragueYesterday = yesterdayDate.toISOString().slice(0, 10);
       const { data: stalePlans, error: spErr } = await sb
         .from("did_daily_session_plans")
-        .select("id, plan_date, selected_part, status, created_at, completed_at, urgency_breakdown, did_session_reviews!left(id)")
+        .select("id, plan_date, selected_part, status, created_at, completed_at, generated_by, urgency_breakdown, did_session_reviews!left(id)")
         .eq("plan_date", pragueYesterday)
         .in("status", ["in_progress", "approved", "active", "completed", "done", "generated"])
         .is("did_session_reviews.id", null)
@@ -7310,8 +7310,10 @@ Vra\u0165 JSON:
             const sessionStarted = ((liveProgress as any)?.completed_blocks ?? 0) > 0 || hasTurns || hasObservations || artifactCount > 0 || hasThreadUserResponse;
             const contract = (plan as any).urgency_breakdown && typeof (plan as any).urgency_breakdown === "object" ? (plan as any).urgency_breakdown : {};
             const isKarelDirect = contract.session_actor === "karel_direct";
+            const generatedBy = String((plan as any).generated_by ?? "");
+            const legacyGenerated = ["auto", "manual", "analyst_loop", "recovery_mode", "karel-did-apply-analysis", "crisis-retroactive-scan"].includes(generatedBy);
             const isCancelledOrDeferred = ["cancelled", "deferred"].includes(String((plan as any).status ?? "")) || String(contract.session_mode ?? "") === "deferred";
-            if (!sessionStarted && !isKarelDirect && !isCancelledOrDeferred) {
+            if (!sessionStarted && (!isKarelDirect || legacyGenerated) && !isCancelledOrDeferred) {
               await sb.from("did_daily_session_plans").update({
                 lifecycle_status: "evidence_limited",
                 urgency_breakdown: { ...contract, result_status: "planned_not_started", session_started_evidence: false },

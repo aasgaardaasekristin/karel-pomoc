@@ -37,6 +37,21 @@ interface SessionPlan {
 }
 
 const isKarelDirectPlan = (plan: SessionPlan) => plan.urgency_breakdown?.session_actor === "karel_direct";
+const LEGACY_PLAN_GENERATORS = new Set(["auto", "manual"]);
+const ANALYTIC_PLAN_GENERATORS = new Set(["analyst_loop", "recovery_mode", "karel-did-apply-analysis", "crisis-retroactive-scan"]);
+
+const hasExplicitRoleContract = (plan: SessionPlan) =>
+  ["therapist_led", "karel_direct"].includes(String(plan.urgency_breakdown?.session_actor ?? "")) &&
+  plan.urgency_breakdown?.human_review_required === true;
+
+const isKarelDirectApprovedForHerna = (plan: SessionPlan) =>
+  isKarelDirectPlan(plan) &&
+  plan.urgency_breakdown?.human_review_required === true &&
+  plan.urgency_breakdown?.approved_for_child_session === true;
+
+const isQuarantinedPlan = (plan: SessionPlan) =>
+  LEGACY_PLAN_GENERATORS.has(plan.generated_by) ||
+  (ANALYTIC_PLAN_GENERATORS.has(plan.generated_by) && !hasExplicitRoleContract(plan));
 
 interface PreviousSession {
   therapist: string;
@@ -117,7 +132,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
 
   // First pending plan TODAY only (no stale plans from yesterday allowed as "today's reality")
   const firstPendingPlan = plans.find(
-    p => (p.status === "generated" || p.status === "in_progress") && p.plan_date === todayPragueKey
+    p => (p.status === "generated" || p.status === "in_progress") && p.plan_date === todayPragueKey && !isQuarantinedPlan(p)
   ) || null;
 
   const loadTodayPlans = useCallback(async () => {
@@ -484,8 +499,9 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
     );
   }
 
-  // Split plans into pending and archived
-  const pendingPlans = plans.filter(p => p.status === "generated" || p.status === "in_progress");
+  // Split plans into runtime, quarantine, and archived.
+  const pendingPlans = plans.filter(p => (p.status === "generated" || p.status === "in_progress") && !isQuarantinedPlan(p));
+  const quarantinedPlans = plans.filter(p => ["pending", "generated", "in_progress"].includes(p.status) && isQuarantinedPlan(p));
   const archivedPlans = plans.filter(p => p.status === "done" || p.status === "skipped");
 
   return (
@@ -646,6 +662,34 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
           />
         ))}
 
+        {/* ═══ QUARANTINED LEGACY / ANALYTIC DRAFTS ═══ */}
+        {quarantinedPlans.length > 0 && (
+          <div className="mt-3 space-y-1.5 rounded-md border border-dashed border-border/70 bg-muted/20 p-2.5">
+            <p className="text-[0.5625rem] text-muted-foreground font-medium uppercase tracking-wider">
+              Karanténa návrhů
+            </p>
+            {quarantinedPlans.map((plan) => (
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                isExpanded={expandedPlanId === plan.id}
+                onToggleExpand={() => setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)}
+                onStartSession={() => {}}
+                onEndSession={() => {}}
+                onRevert={() => revertStatus(plan)}
+                onMarkDone={() => {}}
+                onDelete={() => deletePlan(plan.id)}
+                onRegenerate={() => handlePartSelected(plan.selected_part)}
+                onOpenLive={() => {}}
+                prevSession={null}
+                isArchived
+                compact={compact}
+                onOpenPrepRoom={undefined}
+              />
+            ))}
+          </div>
+        )}
+
         {/* ═══ ARCHIVED PLANS (done/skipped) ═══ */}
         {archivedPlans.length > 0 && (
           <div className="mt-3 space-y-1.5">
@@ -796,6 +840,10 @@ const PlanCard = ({
   const prepInProgress = prepRoom && (prepRoom.status === "active" || prepRoom.status === "awaiting_signoff");
   const prepProgress = prepRoom ? signoffProgress(prepRoom) : null;
   const karelDirect = isKarelDirectPlan(plan);
+  const legacyDraft = LEGACY_PLAN_GENERATORS.has(plan.generated_by);
+  const analyticDraftWithoutContract = ANALYTIC_PLAN_GENERATORS.has(plan.generated_by) && !hasExplicitRoleContract(plan);
+  const quarantinedDraft = legacyDraft || analyticDraftWithoutContract;
+  const hernaApproved = isKarelDirectApprovedForHerna(plan);
   // „Zahájit" je v Pracovně dostupné JEN když je plán schválený přes prep room.
   // Mimo Pracovnu (prepGateEnabled=false) zůstává staré chování.
   const startBlockedByPrep = prepGateEnabled && !prepApproved && !karelDirect;
@@ -830,6 +878,10 @@ const PlanCard = ({
 
   const onOpenPartRoom = useCallback(async () => {
     if (openingPartRoom) return;
+    if (!hernaApproved) {
+      toast.info("Čeká na lidské schválení před otevřením herny.");
+      return;
+    }
     setOpeningPartRoom(true);
     try {
       // Vždy načteme aktuální verzi addenda z localStorage, aby se nezapomněla
@@ -877,7 +929,7 @@ const PlanCard = ({
     } finally {
       setOpeningPartRoom(false);
     }
-  }, [navigate, openingPartRoom, plan.id, plan.selected_part, plan.session_lead, plan.urgency_breakdown, addendumKey, therapistAddendum]);
+  }, [navigate, openingPartRoom, hernaApproved, plan.id, plan.selected_part, plan.session_lead, plan.urgency_breakdown, addendumKey, therapistAddendum]);
 
   // Overdue calculation using Prague timezone
   const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
@@ -941,10 +993,20 @@ const PlanCard = ({
             <Dices className="mr-0.5 h-2.5 w-2.5" /> Karelův přímý kontakt s částí
           </Badge>
         )}
+        {legacyDraft && (
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-muted-foreground/40 text-muted-foreground bg-muted/30">
+            Legacy inspirační návrh — nepoužívat jako sezení
+          </Badge>
+        )}
+        {analyticDraftWithoutContract && (
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/40 text-amber-700 bg-amber-500/5">
+            Operační/analytický návrh — vyžaduje převod do schvalovacího sezení
+          </Badge>
+        )}
         <span className={`h-2 w-2 rounded-full shrink-0 ${
           plan.urgency_score >= 8 ? "bg-destructive" : plan.urgency_score >= 4 ? "bg-amber-500" : "bg-primary"
         }`} title={`Naléhavost: ${plan.urgency_score}`} />
-        {!karelDirect && (
+        {!karelDirect && !quarantinedDraft && (
           <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-600/40 text-amber-700 bg-amber-500/5">
             <Users className="mr-0.5 h-2.5 w-2.5" /> VEDE: {leadLabel} ({formatLabel})
           </Badge>
@@ -997,7 +1059,7 @@ const PlanCard = ({
 
         {/* SESSION PREP ROOM PASS — stav přípravné místnosti.
             Renderuje se jen když je gate aktivní (Pracovna). */}
-        {prepGateEnabled && !karelDirect && plan.status === "generated" && !isArchived && (
+        {prepGateEnabled && !karelDirect && !quarantinedDraft && plan.status === "generated" && !isArchived && (
           prepLoading ? (
             <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-muted-foreground/30 text-muted-foreground">
               <Loader2 className="mr-0.5 h-2.5 w-2.5 animate-spin" /> Příprava…
@@ -1029,7 +1091,7 @@ const PlanCard = ({
            Renderuje se POUZE když je prep gate aktivní (Pracovna), plán je
            naplánovaný (status=generated) a NENÍ schválený poradou. Hanka tak
            okamžitě vidí, co chybí, a nemusí hádat z disabled tlačítka. */}
-      {prepGateEnabled && !karelDirect && plan.status === "generated" && !isArchived && !prepLoading && !prepApproved && (
+      {prepGateEnabled && !karelDirect && !quarantinedDraft && plan.status === "generated" && !isArchived && !prepLoading && !prepApproved && (
         <div className="mb-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5">
           <p className="text-[0.625rem] leading-4 text-amber-800 dark:text-amber-300">
             <Lock className="mr-1 inline h-2.5 w-2.5 -mt-px" />
@@ -1043,10 +1105,18 @@ const PlanCard = ({
           </p>
         </div>
       )}
+      {karelDirect && !hernaApproved && plan.status === "generated" && !isArchived && (
+        <div className="mb-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5">
+          <p className="text-[0.625rem] leading-4 text-amber-800 dark:text-amber-300">
+            <Lock className="mr-1 inline h-2.5 w-2.5 -mt-px" />
+            Čeká na lidské schválení před otevřením herny.
+          </p>
+        </div>
+      )}
 
       {/* ═══ ACTION BUTTONS ═══ */}
       <div className="flex flex-wrap items-center gap-1 mb-1.5">
-        {plan.status === "generated" && !isArchived && (
+        {plan.status === "generated" && !isArchived && !quarantinedDraft && (
           <>
             {/* SESSION PREP ROOM PASS — primární akce v Pracovně:
                  - Když existuje rozpracovaná porada → "Otevřít přípravu"
@@ -1119,12 +1189,12 @@ const PlanCard = ({
                  krizovém kontextu (krize ≠ vyloučení Karlova vlastního sezení).
                  Klik volá `karel-part-session-prepare` (idempotentní) a deep-linkuje
                  do `/chat?workspace_thread=<id>`. */}
-            {prepGateEnabled && (prepApproved || karelDirect) && (
+            {prepGateEnabled && hernaApproved && (
               <Button
                 variant="default"
                 size="sm"
                 onClick={onOpenPartRoom}
-                disabled={openingPartRoom}
+                disabled={openingPartRoom || (karelDirect && !hernaApproved)}
                 className="h-6 px-2 text-[10px]"
                 title={`Otevřít hernu s ${plan.selected_part}`}
               >
@@ -1182,7 +1252,7 @@ const PlanCard = ({
                Renderuje se v Pracovně (prepGateEnabled) a jen u plánů, které
                ještě nejsou ukončené. Text se ukládá do localStorage per plan.id
                a předává se do `karel-part-session-prepare` jako součást briefingu. */}
-          {prepGateEnabled && !isArchived && plan.status !== "done" && (
+          {prepGateEnabled && !quarantinedDraft && !isArchived && plan.status !== "done" && (
             <div className="rounded-md border border-primary/20 bg-primary/5 p-3 space-y-2">
               <div className="flex items-center gap-1.5">
                 <PenLine className="w-3 h-3 text-primary" />
