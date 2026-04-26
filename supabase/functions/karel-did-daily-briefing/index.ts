@@ -696,10 +696,17 @@ DNEŠNÍ NAVRŽENÉ SEZENÍ:
 PROGRAM SEZENÍ — HRAVOST JE POVINNÁ:
 - agenda_outline NESMÍ být generická („úvod / práce s emocemi / uzávěr"). MUSÍ obsahovat alespoň 2 KONKRÉTNÍ nástroje z TERAPEUTICKÉHO ARZENÁLU (asociační test, Rorschach lite, aktivní imaginace, mandala, kresba dne, „co kdyby", 3 dveře, atd.).
 - Každý blok agenda_outline má hravý název („Asociační otevření — 8 slov o tátovi", ne „úvodní rozhovor"), 3-5 vět detailu a pokud možno tool_id.
-- VŠE remote-native — žádné fyzické pomůcky. Karel pracuje skrz chat, hlas, foto kresby, screen canvas, posílání obrázků (Rorschach lite, TAT lite).
+- Rozlišuj therapist-led vs Karel-only Herna v hybrid_contract. Therapist-led smí obsahovat fyzické pomůcky, kresbu, knihu, hračky, pohybové/somatické prvky, latence, afekt a neverbální pozorování; musí ale říct, co má terapeutka sledovat a dodat jako validní evidenci.
+- Karel-only Herna smí obsahovat jen bezpečný check-in, grounding, resource-building, symbolickou hru přes chat, příběhové mapování a nízkorizikové pozorování z textových odpovědí. Nesmí předstírat validní psychodiagnostiku, fyzické měření latencí, neverbální diagnostiku ani hlubokou práci s traumatickou pamětí.
+- Pokud metoda vyžaduje fyzického pozorovatele, napiš výslovně: „Tuto část nemůže Karel validně provést sám v herně; vyžaduje fyzickou terapeutku kvůli pozorování latencí, afektu a neverbálních projevů."
 - playful_hooks: 2-4 konkrétní hravé háčky („Co by řekl tomu obrazu Tundrupkův drak?"), pro spontánnost.
-- materials_needed: digitální příprava (sada slov pro WAT, obrázek skvrny, scéna pro TAT), žádné fyzické věci.
+- materials_needed / materials_or_props: fyzické věci pouze u therapist-led; u Karel-only jen digitální/chatové prostředky.
 - Inspirace JUNG: aktivní imaginace, Word Association Test, mandala jako Self-symbolika, dialog s vnitřními postavami.
+
+HYBRIDNÍ KONTRAKT:
+- proposed_session.hybrid_contract je povinný a ukládá klinický cíl, léčebnou fázi, záměr, risk gate, readiness_today, hravý obal, stop rules, fallback, data pro validní review a writeback_target.
+- Preference a témata smíš použít jen pokud jsou potvrzená kartou části, odpovědí terapeutky nebo jinou explicitní evidencí. Jinak napiš theme_source="unknown" nebo "neutral_choice" a nabídni neutrální volbu. Tundrupek hory/draci/tibetská tematika a Arthur Gruffalo/kniha jen pokud jsou v evidenci — nikdy nehalucinuj.
+- Program nesmí být suchý seznam: vždy musí mít název, proč dnes, terapeutický cíl, klinický důvod, hravý obal, bloky po minutách, konkrétní věty, co sledovat, co zaznamenat, stop pravidla, fallback a výsledek pro review.
 
 ROZDĚLENÍ ASKS:
 - Hanička dostává JINÉ otázky než Káťa. Ne stejné body s prohozeným jménem.
