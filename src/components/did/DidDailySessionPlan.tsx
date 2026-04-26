@@ -848,6 +848,7 @@ const PlanCard = ({
   const analyticDraftWithoutContract = ANALYTIC_PLAN_GENERATORS.has(plan.generated_by) && !hasExplicitRoleContract(plan);
   const quarantinedDraft = legacyDraft || analyticDraftWithoutContract;
   const hernaApproved = isKarelDirectApprovedForHerna(plan);
+  const hernaStatusLabel = hernaApproved ? "Herna otevřena" : "Čeká na schválení terapeutkami";
   // „Zahájit" je v Pracovně dostupné JEN když je plán schválený přes prep room.
   // Mimo Pracovnu (prepGateEnabled=false) zůstává staré chování.
   const startBlockedByPrep = prepGateEnabled && !prepApproved && !karelDirect;
@@ -994,7 +995,7 @@ const PlanCard = ({
         </Badge>
         {karelDirect && (
           <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-primary/40 text-primary bg-primary/5">
-            <Dices className="mr-0.5 h-2.5 w-2.5" /> Karelův přímý kontakt s částí
+            <Dices className="mr-0.5 h-2.5 w-2.5" /> Karlova herna
           </Badge>
         )}
         {legacyDraft && (
@@ -1030,7 +1031,12 @@ const PlanCard = ({
         )}
 
         {/* Status badges */}
-        {plan.status === "generated" && !isOverdue && (
+        {karelDirect && plan.status === "generated" && !isOverdue && (
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-primary/40 text-primary bg-primary/5">
+            {hernaStatusLabel}
+          </Badge>
+        )}
+        {!karelDirect && plan.status === "generated" && !isOverdue && (
           <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/50 text-amber-600">
             <Clock className="mr-0.5 h-2.5 w-2.5" /> Naplánováno
           </Badge>
