@@ -49,7 +49,7 @@ import {
   type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
   STORAGE_KEY_PREFIX, ACTIVE_MODE_KEY, DID_DOCS_LOADED_KEY, DID_SESSION_ID_KEY, HANA_PIN_KEY, HANA_PIN_ACCESS_TOKEN_KEY,
   getRandomCastGreeting, saveMessages, loadMessages, clearMessages, handleApiError,
-  parseSSEStream, WELCOME_MESSAGES,
+  parseSSEStream, WELCOME_MESSAGES, clearActiveWorkStorageForLogout, isExplicitLogoutActive, markExplicitLogout,
 } from "@/lib/chatHelpers";
 
 const LoadingSkeleton = () => (
@@ -176,8 +176,11 @@ const Chat = () => {
   const [didLivePartContext, setDidLivePartContext] = useState<string>("");
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const explicitLogoutActive = isExplicitLogoutActive();
+
   const hasStoredDidWork = (() => {
     try {
+      if (explicitLogoutActive) return false;
       return (
         localStorage.getItem(ACTIVE_MODE_KEY) === "childcare" ||
         localStorage.getItem("karel_did_submode") !== null ||
@@ -205,17 +208,17 @@ const Chat = () => {
     searchParams.get("session_part"),
   );
 
-  const hasActiveWork = Boolean(
+  const hasActiveWork = !explicitLogoutActive && Boolean(
     mode === "childcare" ||
-    didSubMode !== null ||
-    didFlowState !== "entry" ||
-    activeThread !== null ||
-    activeSession !== null ||
-    activeResearchThread !== null ||
-    messages.length > 0 ||
-    input.trim().length > 0 ||
-    hasStoredDidWork ||
-    hasWorkspaceContext,
+      didSubMode !== null ||
+      didFlowState !== "entry" ||
+      activeThread !== null ||
+      activeSession !== null ||
+      activeResearchThread !== null ||
+      messages.length > 0 ||
+      input.trim().length > 0 ||
+      hasStoredDidWork ||
+      hasWorkspaceContext,
   );
 
   const draftKey = `chat_draft:${hubSection ?? "none"}:${mode}:${didSubMode ?? "none"}:${activeThread?.id ?? activeThread?.workspaceId ?? activeResearchThread?.id ?? meetingIdFromUrl ?? dailyPlanIdFromUrl ?? "none"}`;
@@ -224,6 +227,7 @@ const Chat = () => {
 
   const lastDraftKeyRef = useRef(draftKey);
   useEffect(() => {
+    if (isExplicitLogoutActive()) return;
     try {
       if (lastDraftKeyRef.current !== draftKey && input.trim()) {
         sessionStorage.setItem(lastDraftKeyRef.current, input);
@@ -235,6 +239,7 @@ const Chat = () => {
   }, [draftKey]);
 
   useEffect(() => {
+    if (isExplicitLogoutActive()) return;
     try {
       if (input.trim()) sessionStorage.setItem(draftKey, input);
       else sessionStorage.removeItem(draftKey);
