@@ -949,7 +949,7 @@ Karel doporučení přirozeně začlení do rozhovoru, ne jako seznam.`;
     // ═══ LANGUAGE ADAPTATION for "cast" mode ═══
     // Detect language of last user message and enforce matching response language
     let detectedLang = "";
-    if (didSubMode === "cast" && messages.length >= 1) {
+    if (isDirectChildSubMode && messages.length >= 1) {
       const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
       const lastUserText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
       if (lastUserText.length > 0) {
@@ -1099,7 +1099,7 @@ Odpověz v češtině. Buď stručný a praktický. Max 500 slov.`,
     }
 
     // ═══ SWITCHING DETECTION (F2) ═══
-    if (didSubMode === "cast" && didPartName && messages.length >= 2) {
+    if (isDirectChildSubMode && didPartName && messages.length >= 2) {
       try {
         const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
         const lastUserText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
@@ -1367,7 +1367,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         // Phase 2: cast (přímá konverzace s dítětem) je nově zapojen — sensitivity
         // guard a evidence quality guard nadále chrání co kam smí.
         const isHanaPersonal = mode === "childcare" && didSubMode === "general";
-        const isCastMode = didSubMode === "cast";
+        const isCastMode = isDirectChildSubMode;
         const isMemoryMode = isHanaPersonal || didSubMode === "mamka" || didSubMode === "kata" || isCastMode;
 
         if (isMemoryMode && fullResponse.length > 30) {
