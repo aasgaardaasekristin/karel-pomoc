@@ -176,7 +176,70 @@ const Chat = () => {
   const [didLivePartContext, setDidLivePartContext] = useState<string>("");
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const hasStoredDidWork = (() => {
+    try {
+      return (
+        localStorage.getItem(ACTIVE_MODE_KEY) === "childcare" ||
+        localStorage.getItem("karel_did_submode") !== null ||
+        localStorage.getItem(DID_SESSION_ID_KEY) !== null ||
+        sessionStorage.getItem("karel_hub_section") === "did" ||
+        sessionStorage.getItem("karel_open_deliberation_id") !== null ||
+        sessionStorage.getItem("karel_meeting_seed") !== null
+      );
+    } catch {
+      return false;
+    }
+  })();
+
+  const hasWorkspaceContext = Boolean(
+    activeThread?.id ||
+    activeThread?.workspaceId ||
+    activeResearchThread?.id ||
+    meetingIdFromUrl ||
+    dailyPlanIdFromUrl ||
+    searchParams.get("workspace_thread") ||
+    searchParams.get("deliberation_id") ||
+    searchParams.get("daily_plan_id") ||
+    searchParams.get("task_id") ||
+    searchParams.get("question_id") ||
+    searchParams.get("session_part"),
+  );
+
+  const hasActiveWork = Boolean(
+    mode === "childcare" ||
+    didSubMode !== null ||
+    didFlowState !== "entry" ||
+    activeThread !== null ||
+    activeSession !== null ||
+    activeResearchThread !== null ||
+    messages.length > 0 ||
+    input.trim().length > 0 ||
+    hasStoredDidWork ||
+    hasWorkspaceContext,
+  );
+
+  const draftKey = `chat_draft:${hubSection ?? "none"}:${mode}:${didSubMode ?? "none"}:${activeThread?.id ?? activeThread?.workspaceId ?? activeResearchThread?.id ?? meetingIdFromUrl ?? dailyPlanIdFromUrl ?? "none"}`;
+
   const { history, saveConversation, loadConversation, deleteConversation, refreshHistory } = useConversationHistory();
+
+  const lastDraftKeyRef = useRef(draftKey);
+  useEffect(() => {
+    try {
+      if (lastDraftKeyRef.current !== draftKey && input.trim()) {
+        sessionStorage.setItem(lastDraftKeyRef.current, input);
+      }
+      const savedDraft = sessionStorage.getItem(draftKey) || "";
+      setInput(savedDraft);
+      lastDraftKeyRef.current = draftKey;
+    } catch {}
+  }, [draftKey]);
+
+  useEffect(() => {
+    try {
+      if (input.trim()) sessionStorage.setItem(draftKey, input);
+      else sessionStorage.removeItem(draftKey);
+    } catch {}
+  }, [draftKey, input]);
 
   // Manual update hook
   const manualUpdate = useManualUpdate({
@@ -286,7 +349,14 @@ const Chat = () => {
     };
 
     const checkAuth = async () => {
-      if (!session) navigate("/", { replace: true });
+      if (!session) {
+        if (hasActiveWork) {
+          setAuthChecked(true);
+          return;
+        }
+        navigate("/", { replace: true });
+        return;
+      }
       else {
         // BUGFIX (spontaneous reset): once the user has been admitted into a
         // DID workspace, do NOT bounce them to /hub on subsequent auth
@@ -300,7 +370,7 @@ const Chat = () => {
           didFlowState === "did-kartoteka" || didFlowState === "dashboard" ||
           didFlowState === "terapeut"
         );
-        if (!hubSection && !activeSession && !inLiveDidFlow) {
+        if (!hubSection && !activeSession && !inLiveDidFlow && !hasActiveWork) {
           navigate("/hub", { replace: true });
           return;
         }
@@ -310,10 +380,18 @@ const Chat = () => {
             const hasFreshAccessToken = hasValidHanaPinToken();
             console.warn(`[F15-debug] Hana gate: pinToken=${hasFreshAccessToken ? "exists" : "null"}, supabaseSession=${session ? "exists" : "null"}`);
             if (!hasVerifiedPin || !hasFreshAccessToken) {
+              if (hasActiveWork) {
+                setAuthChecked(true);
+                return;
+              }
               navigate("/hub", { replace: true });
               return;
             }
           } catch {
+            if (hasActiveWork) {
+              setAuthChecked(true);
+              return;
+            }
             navigate("/hub", { replace: true });
             return;
           }
@@ -330,7 +408,7 @@ const Chat = () => {
       }
     };
     void checkAuth();
-  }, [isAuthReady, session, navigate, hubSection, activeSession, mode, setMode, researchThreads, didFlowState]);
+  }, [isAuthReady, session, navigate, hubSection, activeSession, mode, setMode, researchThreads, didFlowState, hasActiveWork]);
 
   // ═══ Crisis deep-link handler ═══
   // Accepts BOTH:
@@ -411,10 +489,10 @@ const Chat = () => {
   }, [authChecked, session, searchParams]);
 
   useEffect(() => {
-    if (authChecked && !session) {
+    if (authChecked && !session && !hasActiveWork) {
       navigate("/", { replace: true });
     }
-  }, [authChecked, session, navigate]);
+  }, [authChecked, session, navigate, hasActiveWork]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -499,6 +577,11 @@ const Chat = () => {
 
     const welcomeMessages = WELCOME_MESSAGES;
 
+    if (prevModeRef.current === "childcare" && mode !== "childcare" && hasActiveWork) {
+      prevModeRef.current = mode;
+      return;
+    }
+
     if (mode !== "childcare") {
       setDidSubMode(null);
       setDidInitialContext("");
@@ -559,7 +642,7 @@ const Chat = () => {
       else setMessages([{ role: "assistant", content: welcomeMessages[mode] }]);
     }
     prevModeRef.current = mode;
-  }, [mode, setMessages, pendingHandoffToChat, setDidSubMode, setDidInitialContext]);
+  }, [mode, setMessages, pendingHandoffToChat, setDidSubMode, setDidInitialContext, hasActiveWork]);
 
   useEffect(() => {
     if (pendingHandoffToChat && mainMode === "chat") {
@@ -1766,7 +1849,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     if ((!input.trim() && attachments.length === 0) || isLoading) return;
     const userMessage = input.trim();
     const currentAttachments = [...attachments];
-    setInput("");
+    const currentDraftKey = draftKey;
     clearAttachments();
     const userContent = buildAttachmentContent(userMessage, currentAttachments);
     setMessages((prev) => [...prev, { role: "user", content: userContent as any }]);
@@ -1913,6 +1996,8 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           messages.length <= 2 && userMessage.length > 5) {
         enrichContextForSubMode(userMessage);
       }
+      setInput("");
+      try { sessionStorage.removeItem(currentDraftKey); } catch {}
     } catch (error) {
       console.error("Chat error:", error, "mode:", mode, "didSubMode:", didSubMode);
       const errMsg = error instanceof Error ? error.message : "Chyba při komunikaci";

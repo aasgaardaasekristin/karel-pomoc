@@ -14,6 +14,22 @@ import { Loader2 } from "lucide-react";
 const CORRECT_PIN = "0126";
 const HANA_PIN_KEY = "karel_hana_pin_verified";
 const THEME_STORAGE_KEY = "theme_hub";
+const AUTH_REDIRECT_DELAY_MS = 1200;
+
+const hasActiveStoredWork = () => {
+  try {
+    return (
+      localStorage.getItem("karel_active_mode") === "childcare" ||
+      localStorage.getItem("karel_did_submode") !== null ||
+      localStorage.getItem("karel_did_session_id") !== null ||
+      sessionStorage.getItem("karel_hub_section") === "did" ||
+      sessionStorage.getItem("karel_open_deliberation_id") !== null ||
+      sessionStorage.getItem("karel_meeting_seed") !== null
+    );
+  } catch {
+    return false;
+  }
+};
 
 type HanaPinPhase = "video" | "fading" | "pin" | "done";
 
@@ -72,16 +88,32 @@ const Hub = () => {
   }, []);
 
   useEffect(() => {
+    let redirectTimer: number | null = null;
+    const scheduleRedirect = () => {
+      if (redirectTimer !== null) window.clearTimeout(redirectTimer);
+      redirectTimer = window.setTimeout(async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session && !hasActiveStoredWork()) navigate("/", { replace: true });
+      }, AUTH_REDIRECT_DELAY_MS);
+    };
+
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) navigate("/", { replace: true });
+      if (!session) scheduleRedirect();
       else setAuthChecked(true);
     };
     checkAuth();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) navigate("/", { replace: true });
+      if (!session) scheduleRedirect();
+      else {
+        if (redirectTimer !== null) window.clearTimeout(redirectTimer);
+        setAuthChecked(true);
+      }
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      if (redirectTimer !== null) window.clearTimeout(redirectTimer);
+      subscription.unsubscribe();
+    };
   }, [navigate]);
 
   const handleLogout = async () => {
