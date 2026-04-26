@@ -579,6 +579,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           duration_min: typeof s.duration_min === "number" ? s.duration_min : null,
           why_today: s.why_today ?? null,
           kata_involvement: s.kata_involvement ?? null,
+          hybrid_contract: (s as any).hybrid_contract && typeof (s as any).hybrid_contract === "object"
+            ? (s as any).hybrid_contract
+            : null,
         };
 
         const prefill = {

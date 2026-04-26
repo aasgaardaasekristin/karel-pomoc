@@ -178,6 +178,9 @@ ${currentProgram.length > 0
 NOVÝ VSTUP OD ${authorLabel.toUpperCase()}:
 "${text}"
 
+AKTUÁLNÍ HYBRIDNÍ KONTRAKT:
+${row.session_params?.hybrid_contract ? JSON.stringify(row.session_params.hybrid_contract, null, 2) : "(zatím není uložený — vytvoř ho podle pravidel níže)"}
+
 ${summarizeToolboxForPrompt()}
 
 ÚKOL:
@@ -191,11 +194,32 @@ Zapracuj tento vstup do programu. Můžeš:
 PRAVIDLA HRAVOSTI (POVINNÁ):
 - Žádný blok nesmí mít generický název („úvod", „práce s emocemi", „uzávěr"). VŽDY pojmenuj konkrétní nástroj z arzenálu.
 - Program po každé iteraci musí obsahovat alespoň 2 nástroje z arzenálu.
-- Vše REMOTE (chat / hlas / foto kresby / screen canvas / posílání obrázků). NIKDY fyzické pomůcky.
-- detail = 3-5 vět: jakou má Karel připravit pomůcku (digitální), jaký prompt řekne, čeho si všímá v reakci.
+- Rozlišuj therapist-led vs Karel-only Herna. Therapist-led smí používat fyzické pomůcky, hračky, kresbu, knihu, pohybové/somatické prvky, asociační/projektivní prvky, latence, afekt, hlas a neverbální projevy — ale vždy napiš, co má Hanička/Káťa sledovat, co je validní evidence, co je jen dojem, kdy zastavit a fallback.
+- Karel-only Herna smí používat jen bezpečný check-in, grounding, resource-building, symbolickou hru přes chat, příběhové mapování, imaginativní bezpečné prvky a nízkorizikové pozorování z textových odpovědí. NIKDY fyzické pomůcky, validní měření latencí, neverbální diagnostiku, hlubokou traumatickou práci ani pseudo-diagnostická tvrzení.
+- Pokud blok vyžaduje fyzickou terapeutku, napiš výslovně: „Tuto část nemůže Karel validně provést sám v herně; vyžaduje fyzickou terapeutku kvůli pozorování latencí, afektu a neverbálních projevů."
+- detail = 3-5 vět: klinický záměr, hravá forma, přesná věta, co sledovat, co zaznamenat, stop pravidlo a fallback.
+- Témata/preference použij jen pokud jsou potvrzené kartou části, terapeutčinou odpovědí nebo jinou explicitní evidencí. Tundrupek hory/draci/tibetská tematika a Arthur Gruffalo/kniha jen jako potvrzené; jinak neutrální volba a theme_source="unknown" nebo "neutral_choice".
 
 Vrať VÝHRADNĚ JSON (bez markdownu, bez fences):
 {
+  "hybrid_contract": {
+    "clinical_goal": "",
+    "treatment_phase": "stabilization|processing|integration|monitoring",
+    "diagnostic_or_therapeutic_intent": "",
+    "risk_gate": "",
+    "readiness_today": "green|amber|red",
+    "playful_theme": "",
+    "theme_source": "confirmed_part_card|therapist_answer|neutral_choice|unknown",
+    "confirmed_preferences_only": true,
+    "therapist_led_vs_karel_only": "therapist_led|karel_only|tandem",
+    "materials_or_props": [],
+    "what_therapist_says": [],
+    "what_therapist_observes": [],
+    "data_needed_for_valid_review": [],
+    "stop_rules": [],
+    "fallback": "",
+    "writeback_target": ["review"]
+  },
   "program_draft": [
     { "block": "konkrétní hravý název (max 100 znaků)", "minutes": 10, "detail": "3-5 vět: digitální pomůcka, Karlův prompt, co sledovat", "tool_id": "wat | rorschach_lite | active_imagination | …" }
   ],
@@ -268,6 +292,9 @@ PRAVIDLA STRUKTURY:
     sessionParams.last_plan_change_state = planChangeState;
     sessionParams.last_plan_change_at = nowIso;
     sessionParams.last_plan_change_source = `${author}:${fingerprint(text)}`;
+    if (parsed.hybrid_contract && typeof parsed.hybrid_contract === "object") {
+      sessionParams.hybrid_contract = parsed.hybrid_contract;
+    }
 
     // Save program_draft + log; invalidovat starou syntézu (vstup změnil situaci)
     const { error: updErr } = await admin

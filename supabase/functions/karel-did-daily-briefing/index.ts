@@ -599,6 +599,30 @@ const BRIEFING_TOOL = {
               items: { type: "string" },
               maxItems: 6,
             },
+            hybrid_contract: {
+              type: "object",
+              description: "SESSION-QUALITY-1 hybridní kontrakt. Klinická přesnost + hravost + evidence guardy. Nevymýšlej preference: téma použij jen z karty části, terapeutčiny odpovědi nebo jiné explicitní evidence; jinak theme_source='unknown' nebo 'neutral_choice'.",
+              properties: {
+                clinical_goal: { type: "string" },
+                treatment_phase: { type: "string", enum: ["stabilization", "processing", "integration", "monitoring"] },
+                diagnostic_or_therapeutic_intent: { type: "string" },
+                risk_gate: { type: "string" },
+                readiness_today: { type: "string", enum: ["green", "amber", "red"] },
+                playful_theme: { type: "string" },
+                theme_source: { type: "string", enum: ["confirmed_part_card", "therapist_answer", "neutral_choice", "unknown"] },
+                confirmed_preferences_only: { type: "boolean" },
+                therapist_led_vs_karel_only: { type: "string", enum: ["therapist_led", "karel_only", "tandem"] },
+                materials_or_props: { type: "array", items: { type: "string" }, maxItems: 8 },
+                what_therapist_says: { type: "array", items: { type: "string" }, maxItems: 8 },
+                what_therapist_observes: { type: "array", items: { type: "string" }, maxItems: 10 },
+                data_needed_for_valid_review: { type: "array", items: { type: "string" }, maxItems: 10 },
+                stop_rules: { type: "array", items: { type: "string" }, maxItems: 8 },
+                fallback: { type: "string" },
+                writeback_target: { type: "array", items: { type: "string", enum: ["review", "05A", "part_card", "05C"] }, maxItems: 4 },
+              },
+              required: ["clinical_goal", "treatment_phase", "diagnostic_or_therapeutic_intent", "risk_gate", "readiness_today", "playful_theme", "theme_source", "confirmed_preferences_only", "therapist_led_vs_karel_only", "data_needed_for_valid_review", "stop_rules", "fallback", "writeback_target"],
+              additionalProperties: false,
+            },
             questions_for_hanka: {
               type: "array",
               description: "1-3 konkrétní otázky pro Haničku ohledně tohoto sezení (její perspektiva: matka, primární terapeutka).",
@@ -612,7 +636,7 @@ const BRIEFING_TOOL = {
               maxItems: 3,
             },
           },
-          required: ["part_name", "why_today", "led_by", "first_draft", "agenda_outline", "questions_for_hanka", "questions_for_kata"],
+          required: ["part_name", "why_today", "led_by", "first_draft", "agenda_outline", "hybrid_contract", "questions_for_hanka", "questions_for_kata"],
           additionalProperties: false,
         },
         ask_hanka: {
@@ -672,10 +696,17 @@ DNEŠNÍ NAVRŽENÉ SEZENÍ:
 PROGRAM SEZENÍ — HRAVOST JE POVINNÁ:
 - agenda_outline NESMÍ být generická („úvod / práce s emocemi / uzávěr"). MUSÍ obsahovat alespoň 2 KONKRÉTNÍ nástroje z TERAPEUTICKÉHO ARZENÁLU (asociační test, Rorschach lite, aktivní imaginace, mandala, kresba dne, „co kdyby", 3 dveře, atd.).
 - Každý blok agenda_outline má hravý název („Asociační otevření — 8 slov o tátovi", ne „úvodní rozhovor"), 3-5 vět detailu a pokud možno tool_id.
-- VŠE remote-native — žádné fyzické pomůcky. Karel pracuje skrz chat, hlas, foto kresby, screen canvas, posílání obrázků (Rorschach lite, TAT lite).
+- Rozlišuj therapist-led vs Karel-only Herna v hybrid_contract. Therapist-led smí obsahovat fyzické pomůcky, kresbu, knihu, hračky, pohybové/somatické prvky, latence, afekt a neverbální pozorování; musí ale říct, co má terapeutka sledovat a dodat jako validní evidenci.
+- Karel-only Herna smí obsahovat jen bezpečný check-in, grounding, resource-building, symbolickou hru přes chat, příběhové mapování a nízkorizikové pozorování z textových odpovědí. Nesmí předstírat validní psychodiagnostiku, fyzické měření latencí, neverbální diagnostiku ani hlubokou práci s traumatickou pamětí.
+- Pokud metoda vyžaduje fyzického pozorovatele, napiš výslovně: „Tuto část nemůže Karel validně provést sám v herně; vyžaduje fyzickou terapeutku kvůli pozorování latencí, afektu a neverbálních projevů."
 - playful_hooks: 2-4 konkrétní hravé háčky („Co by řekl tomu obrazu Tundrupkův drak?"), pro spontánnost.
-- materials_needed: digitální příprava (sada slov pro WAT, obrázek skvrny, scéna pro TAT), žádné fyzické věci.
+- materials_needed / materials_or_props: fyzické věci pouze u therapist-led; u Karel-only jen digitální/chatové prostředky.
 - Inspirace JUNG: aktivní imaginace, Word Association Test, mandala jako Self-symbolika, dialog s vnitřními postavami.
+
+HYBRIDNÍ KONTRAKT:
+- proposed_session.hybrid_contract je povinný a ukládá klinický cíl, léčebnou fázi, záměr, risk gate, readiness_today, hravý obal, stop rules, fallback, data pro validní review a writeback_target.
+- Preference a témata smíš použít jen pokud jsou potvrzená kartou části, odpovědí terapeutky nebo jinou explicitní evidencí. Jinak napiš theme_source="unknown" nebo "neutral_choice" a nabídni neutrální volbu. Tundrupek hory/draci/tibetská tematika a Arthur Gruffalo/kniha jen pokud jsou v evidenci — nikdy nehalucinuj.
+- Program nesmí být suchý seznam: vždy musí mít název, proč dnes, terapeutický cíl, klinický důvod, hravý obal, bloky po minutách, konkrétní věty, co sledovat, co zaznamenat, stop pravidla, fallback a výsledek pro review.
 
 ROZDĚLENÍ ASKS:
 - Hanička dostává JINÉ otázky než Káťa. Ne stejné body s prohozeným jménem.
