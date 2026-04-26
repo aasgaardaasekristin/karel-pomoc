@@ -162,7 +162,6 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
 
         <header className="space-y-1 text-center">
           <h1 className="text-3xl font-serif text-foreground">Herna</h1>
-          <p className="text-sm text-muted-foreground">Dnes je tu místo pro {targetPart}</p>
         </header>
 
         <section className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
@@ -170,33 +169,27 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,hsl(var(--primary)/0.22),transparent_38%),linear-gradient(180deg,hsl(var(--secondary)/0.72),hsl(var(--background)))]" />
             <div className="relative z-10 space-y-5">
               <div className="mx-auto h-20 w-20 rounded-full border border-primary/35 bg-primary/15 shadow-[0_0_42px_hsl(var(--primary)/0.32)]" aria-label="klidné modré světýlko" />
-              <div className="rounded-lg border border-border/70 bg-background/70 p-4 backdrop-blur-sm">
-                <p className="text-sm leading-relaxed text-foreground">
-                  {themeSource === "confirmed_part_card" ? "Je tu" : "Může tu být"} {themeText}.
-                </p>
-                <p className="mt-2 text-sm text-muted-foreground">Je tu i volné místo pro symbol, který si {targetPart} vybere až tady.</p>
+              <div className="mx-auto max-w-md rounded-lg border border-border/70 bg-background/70 p-5 text-center backdrop-blur-sm">
+                <p className="text-base leading-relaxed text-foreground">Ahoj, {childAddress}.</p>
+                <p className="mt-3 text-base leading-relaxed text-foreground">Dnes tu nemusíš nic dokazovat.</p>
+                <p className="mt-3 text-base leading-relaxed text-foreground">Můžu být jen chvíli poblíž?</p>
               </div>
 
-              {(openingScene || safeObjects.length > 0 || symbols.length > 0 || exitSymbol) && (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {openingScene && <RoomTile icon={<Sparkles className="h-4 w-4" />} text={openingScene} />}
-                  {safeObjects.map((item) => <RoomTile key={item} text={item} />)}
-                  {symbols.map((item) => <RoomTile key={item} text={item} />)}
-                  {exitSymbol && <RoomTile icon={<DoorOpen className="h-4 w-4" />} text={exitSymbol} />}
+              {!thread && (
+                <div className="mx-auto grid max-w-md grid-cols-2 gap-2">
+                  {firstChoices.map((choice) => (
+                    <Button key={choice} variant="secondary" onClick={() => enterPlayroom(choice)} disabled={opening}>
+                      {opening ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      {choice}
+                    </Button>
+                  ))}
                 </div>
               )}
             </div>
           </div>
         </section>
 
-        {!thread ? (
-          <div className="flex justify-center">
-            <Button onClick={enterPlayroom} disabled={opening} className="min-w-44">
-              {opening ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <DoorOpen className="mr-2 h-4 w-4" />}
-              Vstup do herny
-            </Button>
-          </div>
-        ) : (
+        {thread ? (
           <section className="space-y-3 rounded-lg border border-border bg-card p-4 shadow-sm">
             <div className="space-y-3">
               {thread.messages.map((message, index) => (
@@ -212,17 +205,10 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
               <Button variant="outline" onClick={onBack} disabled={saving}><XCircle className="mr-2 h-4 w-4" />Skončit</Button>
             </div>
           </section>
-        )}
+        ) : null}
       </div>
     </div>
   );
 };
-
-const RoomTile = ({ text, icon }: { text: string; icon?: React.ReactNode }) => (
-  <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground backdrop-blur-sm">
-    {icon || <span className="h-2 w-2 rounded-full bg-primary/70" />}
-    <span>{text}</span>
-  </div>
-);
 
 export default DidKidsPlayroom;
