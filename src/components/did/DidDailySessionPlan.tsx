@@ -1115,7 +1115,7 @@ const PlanCard = ({
 
       {/* ═══ ACTION BUTTONS ═══ */}
       <div className="flex flex-wrap items-center gap-1 mb-1.5">
-        {plan.status === "generated" && !isArchived && (
+        {plan.status === "generated" && !isArchived && !quarantinedDraft && (
           <>
             {/* SESSION PREP ROOM PASS — primární akce v Pracovně:
                  - Když existuje rozpracovaná porada → "Otevřít přípravu"
@@ -1188,12 +1188,12 @@ const PlanCard = ({
                  krizovém kontextu (krize ≠ vyloučení Karlova vlastního sezení).
                  Klik volá `karel-part-session-prepare` (idempotentní) a deep-linkuje
                  do `/chat?workspace_thread=<id>`. */}
-            {prepGateEnabled && (prepApproved || karelDirect) && (
+            {prepGateEnabled && (prepApproved || hernaApproved) && (
               <Button
                 variant="default"
                 size="sm"
                 onClick={onOpenPartRoom}
-                disabled={openingPartRoom}
+                disabled={openingPartRoom || (karelDirect && !hernaApproved)}
                 className="h-6 px-2 text-[10px]"
                 title={`Otevřít hernu s ${plan.selected_part}`}
               >
@@ -1251,7 +1251,7 @@ const PlanCard = ({
                Renderuje se v Pracovně (prepGateEnabled) a jen u plánů, které
                ještě nejsou ukončené. Text se ukládá do localStorage per plan.id
                a předává se do `karel-part-session-prepare` jako součást briefingu. */}
-          {prepGateEnabled && !isArchived && plan.status !== "done" && (
+          {prepGateEnabled && !quarantinedDraft && !isArchived && plan.status !== "done" && (
             <div className="rounded-md border border-primary/20 bg-primary/5 p-3 space-y-2">
               <div className="flex items-center gap-1.5">
                 <PenLine className="w-3 h-3 text-primary" />
