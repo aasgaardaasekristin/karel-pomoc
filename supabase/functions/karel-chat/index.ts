@@ -469,7 +469,10 @@ INSTRUKCE: Přirozeně vpletej tato témata do konverzace. NEŘÍKEJ "mám v age
       // ═══ IDENTITA ČÁSTI — injekce do kontextu ═══
       if (isDirectChildSubMode && didPartName) {
         const label = didThreadLabel || didEnteredName || didPartName;
-        systemPrompt += `\n\n═══ IDENTIFIKOVANÉ DÍTĚ (z registru) ═══\n⚠️ Toto dítě BYLO DETEKOVÁNO z registru PŘED zahájením hovoru. Karel VÍ kdo s ním mluví.\n• Kanonické jméno: ${didPartName}\n• Představilo se jako: ${label}\n\nKRITICKÉ PRAVIDLO: NEPTEJ SE znovu „Jak ti říkají?" ani „Jsi Arthur?". Dítě již bylo identifikováno. Rovnou navazuj s plnou návazností z karty. Oslovuj jménem „${label}".`;
+        const playroomIdentityRule = isPlayroomMode
+          ? `\nHERNA OSLOVENÍ: Oslovuj pouze jménem „${didPartName}". Neříkej „Herna ${didPartName}" ani název místnosti jako oslovení.`
+          : "";
+        systemPrompt += `\n\n═══ IDENTIFIKOVANÉ DÍTĚ (z registru) ═══\n⚠️ Toto dítě BYLO DETEKOVÁNO z registru PŘED zahájením hovoru. Karel VÍ kdo s ním mluví.\n• Kanonické jméno: ${didPartName}\n• Představilo se jako: ${label}\n\nKRITICKÉ PRAVIDLO: NEPTEJ SE znovu „Jak ti říkají?" ani „Jsi Arthur?". Dítě již bylo identifikováno. Rovnou navazuj s plnou návazností z karty. Oslovuj jménem „${isPlayroomMode ? didPartName : label}".${playroomIdentityRule}`;
         console.log(`[karel-chat] Part identity injected: canonical=${didPartName}, label=${label}`);
       }
     }
