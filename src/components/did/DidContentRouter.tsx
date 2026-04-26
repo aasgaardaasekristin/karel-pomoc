@@ -661,6 +661,11 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     return (
       <ScrollArea className="flex-1">
         <div className="wizarding-world min-h-full">
+          <div className="mx-auto max-w-3xl px-4 pt-4">
+            <Button variant="secondary" className="w-full justify-start" onClick={() => { setDidSubMode("playroom"); setDidFlowState("playroom"); }}>
+              🚪 Herna
+            </Button>
+          </div>
           <DidThreadList
             threads={didThreads.threads}
             onSelectThread={handleSelectThread}
@@ -672,6 +677,20 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
               ← Zpět
             </Button>
           </div>
+        </div>
+      </ScrollArea>
+    );
+  }
+
+  if (didFlowState === "playroom" && didSubMode === "playroom") {
+    return (
+      <ScrollArea className="flex-1">
+        <div className="wizarding-world min-h-full">
+          <DidKidsPlayroom onBack={async () => {
+            setDidSubMode("cast");
+            setDidFlowState("thread-list");
+            await didThreads.fetchActiveThreads("cast");
+          }} />
         </div>
       </ScrollArea>
     );
