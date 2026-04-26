@@ -501,7 +501,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
 
   // Split plans into runtime, quarantine, and archived.
   const pendingPlans = plans.filter(p => (p.status === "generated" || p.status === "in_progress") && !isQuarantinedPlan(p));
-  const quarantinedPlans = plans.filter(p => (p.status === "generated" || p.status === "in_progress") && isQuarantinedPlan(p));
+  const quarantinedPlans = plans.filter(p => ["pending", "generated", "in_progress"].includes(p.status) && isQuarantinedPlan(p));
   const archivedPlans = plans.filter(p => p.status === "done" || p.status === "skipped");
 
   return (
