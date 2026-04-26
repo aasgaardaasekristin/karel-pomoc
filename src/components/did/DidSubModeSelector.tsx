@@ -1,7 +1,7 @@
-import { Feather, MessageCircle, ArrowLeft, BookOpen, Flower2, Search } from "lucide-react";
+import { Feather, MessageCircle, ArrowLeft, BookOpen, Flower2, Search, DoorOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export type DidSubMode = "mamka" | "cast" | "kata" | "general" | "research";
+export type DidSubMode = "mamka" | "cast" | "playroom" | "kata" | "general" | "research";
 
 interface DidSubModeSelectorProps {
   onSelect: (subMode: DidSubMode) => void;
@@ -15,6 +15,12 @@ const DidSubModeSelector = ({ onSelect, onBack }: DidSubModeSelectorProps) => {
       icon: MessageCircle,
       label: "Část mluví s Karlem",
       description: "Každá část má vlastní vlákno s 24h pamětí. Karel přizpůsobí jazyk a věk.",
+    },
+    {
+      id: "playroom" as const,
+      icon: DoorOpen,
+      label: "Herna",
+      description: "Samostatná místnost pro schválené Karlovo sezení s částí.",
     },
     {
       // "mamka" is a legacy routing token; user-facing label is "Hanička"
