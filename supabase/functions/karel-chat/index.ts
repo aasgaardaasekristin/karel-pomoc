@@ -469,7 +469,10 @@ INSTRUKCE: Přirozeně vpletej tato témata do konverzace. NEŘÍKEJ "mám v age
       // ═══ IDENTITA ČÁSTI — injekce do kontextu ═══
       if (isDirectChildSubMode && didPartName) {
         const label = didThreadLabel || didEnteredName || didPartName;
-        systemPrompt += `\n\n═══ IDENTIFIKOVANÉ DÍTĚ (z registru) ═══\n⚠️ Toto dítě BYLO DETEKOVÁNO z registru PŘED zahájením hovoru. Karel VÍ kdo s ním mluví.\n• Kanonické jméno: ${didPartName}\n• Představilo se jako: ${label}\n\nKRITICKÉ PRAVIDLO: NEPTEJ SE znovu „Jak ti říkají?" ani „Jsi Arthur?". Dítě již bylo identifikováno. Rovnou navazuj s plnou návazností z karty. Oslovuj jménem „${label}".`;
+        const playroomIdentityRule = isPlayroomMode
+          ? `\nHERNA OSLOVENÍ: Oslovuj pouze jménem „${didPartName}". Neříkej „Herna ${didPartName}" ani název místnosti jako oslovení.`
+          : "";
+        systemPrompt += `\n\n═══ IDENTIFIKOVANÉ DÍTĚ (z registru) ═══\n⚠️ Toto dítě BYLO DETEKOVÁNO z registru PŘED zahájením hovoru. Karel VÍ kdo s ním mluví.\n• Kanonické jméno: ${didPartName}\n• Představilo se jako: ${label}\n\nKRITICKÉ PRAVIDLO: NEPTEJ SE znovu „Jak ti říkají?" ani „Jsi Arthur?". Dítě již bylo identifikováno. Rovnou navazuj s plnou návazností z karty. Oslovuj jménem „${isPlayroomMode ? didPartName : label}".${playroomIdentityRule}`;
         console.log(`[karel-chat] Part identity injected: canonical=${didPartName}, label=${label}`);
       }
     }
@@ -1003,6 +1006,10 @@ This overrides ALL other language instructions.
       systemPrompt += `\n\n═══ HERNA — POVINNÝ REŽIM VEDENÍ SEZENÍ ═══
 Toto NENÍ běžný chat ani vlákno pro vzkazy. Jsi v dětské Herně a vedeš právě schválené strukturované sezení.
 
+ABSOLUTNÍ PRIORITA: tento blok přepisuje obecný režim "cast" i všechna pravidla o běžném chatu, vzkazech a deníku. V Herně nejsi kamarádský chat; jsi profesionální klinický průvodce v krátkém, nízkoprahovém sezení podle schváleného programu.
+
+Zdrojem programu je výhradně RUNTIME KONTEXT Z APLIKACE obsahující PLAN_ID, REVIEW_STATE, POVOLENOU HLOUBKU, STRUKTUROVANÝ PROGRAM a AKTUÁLNÍ KROK. Když tyto údaje chybí, nepředstírej program a drž jen bezpečný minimální check-in.
+
 Povinná struktura každé odpovědi:
 1. Nejprve krátce zareaguj na skutečný vstup dítěte nebo přílohu.
 2. Potom udělej jeden konkrétní krok ze schváleného programu.
@@ -1012,8 +1019,10 @@ Povinná struktura každé odpovědi:
 
 Zakázáno v Herně:
 - Nenabízej sám posílání vzkazů mamince/Haničce/Kátě.
+- Neříkej „pošleme mamince vzkaz“, „chceš to poslat mamce“, „napíšu Haničce“, ani žádnou variantu, pokud dítě samo výslovně nepožádá o předání nebo nejde o bezprostřední bezpečnost.
 - Neříkej dítěti interní formulace jako terapeutický plán, diagnostika, program, schválení, terapeutky.
-- Neodpovídej pasivně a obecně. Každá odpověď musí nést konkrétní terapeutický krok.`;
+- Neodpovídej pasivně a obecně. Každá odpověď musí nést konkrétní terapeutický krok.
+- Neodhaluj klinické názvy metod; dítě dostane jen jednoduchý zážitek, volbu a bezpečný krok.`;
     }
 
     // ═══ AUTO-PERPLEXITY FOR KATA MODE ═══
@@ -1216,7 +1225,6 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
       },
       body: JSON.stringify({
         model: primaryModel,
-        ...(isPlayroomMode ? { reasoning: { effort: "xhigh" } } : {}),
         messages: [
           { role: "system", content: systemPrompt },
           ...messages.map((m: any) => {

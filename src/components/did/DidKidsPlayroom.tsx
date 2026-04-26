@@ -68,26 +68,67 @@ const cleanPlanForPlayroom = (markdown?: string) => (markdown || "")
   .join("\n")
   .trim();
 
-const planContract = (plan: PlayroomPlanRow | null) => `SCHVÁLENÝ PROGRAM HERNY PRO DNEŠEK — AKTIVNÍ, ODSOUHLASENÝ TERAPEUTKAMI.
+const getProgramSteps = (plan: PlayroomPlanRow | null) => {
+  const steps = plan?.urgency_breakdown?.playroom_plan?.therapeutic_program;
+  return Array.isArray(steps) ? steps : [];
+};
+
+const stepLine = (step: any) => [
+  `${step.step || "?"}. ${step.title || "krok"}`,
+  step.method ? `metoda: ${step.method}` : null,
+  step.child_facing_prompt_draft ? `dětská replika: ${step.child_facing_prompt_draft}` : null,
+  step.karel_response_strategy ? `strategie: ${step.karel_response_strategy}` : null,
+  Array.isArray(step.expected_response_range) ? `možné reakce: ${step.expected_response_range.join(", ")}` : null,
+  Array.isArray(step.stop_if) ? `stop při: ${step.stop_if.join(", ")}` : null,
+  step.fallback ? `fallback: ${step.fallback}` : null,
+].filter(Boolean).join(" | ");
+
+const currentStepForThread = (plan: PlayroomPlanRow | null, currentThread?: PlayroomThread | null) => {
+  const steps = getProgramSteps(plan);
+  if (!steps.length) return null;
+  const userTurns = currentThread?.messages?.filter((message) => message.role === "user").length || 1;
+  return steps[Math.min(Math.max(userTurns, 1) - 1, steps.length - 1)];
+};
+
+const planContract = (plan: PlayroomPlanRow | null, currentThread?: PlayroomThread | null) => {
+  const steps = getProgramSteps(plan);
+  const currentStep = currentStepForThread(plan, currentThread);
+  return `SCHVÁLENÝ PROGRAM HERNY PRO DNEŠEK — AKTIVNÍ, ODSOUHLASENÝ TERAPEUTKAMI.
 PLAN_ID: ${plan?.id || "neznámý"}
 ČÁST: ${plan?.selected_part || plan?.urgency_breakdown?.target_part || "neznámá"}
+REVIEW_STATE: ${plan?.urgency_breakdown?.review_state || plan?.urgency_breakdown?.approval?.review_state || "neznámý"}
+POVOLENÁ HLOUBKA: ${plan?.urgency_breakdown?.allowed_depth || plan?.urgency_breakdown?.playroom_plan?.allowed_depth || "check_in_only"}
 
 ${cleanPlanForPlayroom(plan?.plan_markdown)}
+
+STRUKTUROVANÝ PROGRAM — POUŽIJ JAKO SKRYTÝ ŘÍDICÍ PLÁN, NEUKAZUJ DÍTĚTI:
+${steps.length ? steps.map(stepLine).join("\n") : "Programové kroky nejsou ve strukturovaných datech; drž se plan_markdown a nejnižší možné hloubky."}
+
+AKTUÁLNÍ KROK TEĎ:
+${currentStep ? stepLine(currentStep) : "krok 1: bezpečný vstup a volba vzdálenosti"}
 
 HERNA KONTRAKT PRO KARLA:
 - Nejde o běžné vlákno. Vedeš strukturované terapeutické Herna sezení podle schváleného programu.
 - V každé odpovědi zvol konkrétní další krok programu, ale ihned ho přizpůsob aktuálnímu stavu dítěte.
 - Každá replika má mít: 1) naladění na odpověď nebo přílohu, 2) jemnou motivaci, 3) jednu konkrétní mikro-aktivitu / test / volbu A/B.
 - Nesmíš být pasivní. Neptej se prázdně „co chceš dělat“. Veď, ale nech kontrolu dítěti.
+- Odpověď má být krátká, konkrétní a profesionální: max 5 krátkých vět, vždy jeden krok, nikdy obecné povídání.
 - Nikdy dítěti neukazuj interní plán, názvy diagnostiky, terapeutek ani technické vrstvy.
-- Nikdy sám nenabízej posílání vzkazů mamince/Haničce/Kátě/e-mailem. Jen pokud si o to dítě výslovně řekne nebo je bezpečnostní riziko.
-- Reaguj na text, hlas, fotku, video, screenshot i dokument jako na materiál ze sezení, ne jako na běžnou přílohu.`;
+- Nikdy sám nenabízej posílání vzkazů mamince/Haničce/Kátě/e-mailem. Jen pokud si o to dítě výslovně řekne nebo je bezprostřední bezpečnostní riziko.
+- Reaguj na text, hlas, fotku, video, screenshot i dokument jako na materiál ze sezení, ne jako na běžnou přílohu.
+- U obrázku/screenshotu můžeš reagovat na viditelný obsah; u hlasu, videa a dokumentu nikdy nepředstírej obsah, pokud ho v datech nevidíš — reaguj na odeslání materiálu a udělej bezpečný další krok.`;
+};
 
 const getRoomTone = (plan: PlayroomPlanRow | null, thread: PlayroomThread | null) => {
   const raw = `${plan?.urgency_breakdown?.readiness_today || ""} ${plan?.urgency_breakdown?.playroom_theme || ""} ${contentText(thread?.messages?.at(-1)?.content)}`.toLocaleLowerCase("cs-CZ");
   if (/nejde|ticho|stop|unaven|strach|red|kriz/.test(raw)) return "quiet";
   if (/jde|hra|zvědav|aktiv|green|kontakt/.test(raw)) return "open";
   return "listening";
+};
+
+const getStepPrompt = (plan: PlayroomPlanRow | null, thread: PlayroomThread | null) => {
+  const step = currentStepForThread(plan, thread);
+  return childSafe(step?.child_facing_prompt_draft) || "Mám být blíž, dál, nebo úplně potichu u dveří?";
 };
 
 const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
@@ -108,6 +149,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const roomBackground = useMemo(() => getRoomBackground(targetPart), [targetPart]);
   const roomTone = useMemo(() => getRoomTone(plan, thread), [plan, thread]);
   const opener = useMemo(() => childSafe(contentText(thread?.messages?.find((message) => message.role === "assistant")?.content)) || "Jsem tady. Zkusíme dnes jen jeden malý krok.", [thread]);
+  const stepPrompt = useMemo(() => getStepPrompt(plan, thread), [plan, thread]);
 
   const loadApprovedPlan = useCallback(async () => {
     setLoading(true);
@@ -184,8 +226,8 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         mode: "childcare",
         didSubMode: "playroom",
         didPartName: targetPart,
-        didThreadLabel: `Herna ${targetPart}`,
-        didInitialContext: planContract(plan),
+        didThreadLabel: targetPart,
+        didInitialContext: planContract(plan, currentThread),
       };
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`, { method: "POST", headers, body: JSON.stringify(body) });
       if (!response.ok) handleApiError(response);
@@ -273,6 +315,12 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
                 </>}
               </div>
 
+              {thread ? (
+                <div className="rounded-lg border border-border/20 bg-background/20 px-3 py-2 text-sm text-foreground/62 backdrop-blur-[2px]">
+                  {stepPrompt}
+                </div>
+              ) : null}
+
               {!thread && (
                 <div className="grid grid-cols-2 gap-2 pt-2">
                   {firstChoices.map((choice) => (
@@ -287,16 +335,21 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
           </div>
 
         {thread ? (
-          <section className="mt-auto space-y-3 rounded-lg border border-border/35 bg-background/34 p-3 shadow-sm backdrop-blur-[3px]">
+          <section className="mt-auto space-y-3 rounded-lg border border-border/25 bg-background/22 p-3 shadow-sm backdrop-blur-[2px]">
             <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
               {thread.messages.slice(1).map((message, index) => (
-                <div key={`${index}-${message.role}`} className={message.role === "assistant" ? "mr-12 rounded-lg bg-secondary/45 p-3 text-sm text-secondary-foreground/74" : "ml-12 rounded-lg bg-primary/48 p-3 text-sm text-primary-foreground/82"}>
+                <div key={`${index}-${message.role}`} className={message.role === "assistant" ? "mr-12 rounded-lg bg-secondary/24 p-3 text-sm text-secondary-foreground/66 backdrop-blur-[1px]" : "ml-12 rounded-lg bg-primary/34 p-3 text-sm text-primary-foreground/78 backdrop-blur-[1px]"}>
                   {contentText(message.content) || (saving && message.role === "assistant" ? "…" : "")}
                 </div>
               ))}
             </div>
             <div className="space-y-2">
-              <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Napiš, nahraj hlas, video, fotku, screenshot nebo dokument." className="min-h-20 resize-none border-border/25 bg-background/28 text-foreground/72 placeholder:text-muted-foreground/55 backdrop-blur-[2px]" />
+              <div className="flex gap-2">
+                <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Napiš, nahraj hlas, video, fotku, screenshot nebo dokument." className="min-h-16 resize-none border-border/20 bg-background/18 text-foreground/68 placeholder:text-muted-foreground/50 backdrop-blur-[2px]" />
+                <Button size="icon" onClick={() => sendReply(reply)} disabled={saving || uploads.attachments.some((attachment) => attachment.uploading) || (!reply.trim() && uploads.attachments.length === 0)} className="h-16 w-16 shrink-0 bg-primary/72 text-primary-foreground/90 backdrop-blur-[2px]" aria-label="Odeslat">
+                  {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+                </Button>
+              </div>
               <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(event) => handlePickedFiles(event, "image")} />
               <input ref={videoInputRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={(event) => handlePickedFiles(event, "video")} />
               <input ref={documentInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.json,.xml" multiple className="hidden" onChange={(event) => handlePickedFiles(event, "document")} />
@@ -319,7 +372,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
               <Button variant="secondary" onClick={() => documentInputRef.current?.click()} disabled={saving} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><FileText className="mr-2 h-4 w-4" />Dokument</Button>
               {recorder.state === "recording" ? <Button variant="secondary" onClick={recorder.stopRecording} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><Square className="mr-2 h-4 w-4" />Zastavit hlas</Button> : <Button variant="secondary" onClick={recorder.startRecording} disabled={saving} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><Mic className="mr-2 h-4 w-4" />Hlas</Button>}
               {recorder.state === "recorded" ? <Button variant="outline" onClick={attachRecording} className="bg-background/22 text-foreground/72 backdrop-blur-[2px]"><Mic className="mr-2 h-4 w-4" />Přiložit hlas</Button> : null}
-              <Button onClick={() => sendReply(reply)} disabled={saving || (!reply.trim() && uploads.attachments.length === 0)}><Send className="mr-2 h-4 w-4" />Odpovědět</Button>
+              <Button onClick={() => sendReply(reply)} disabled={saving || uploads.attachments.some((attachment) => attachment.uploading) || (!reply.trim() && uploads.attachments.length === 0)} className="bg-primary/62 text-primary-foreground/88 backdrop-blur-[2px]"><Send className="mr-2 h-4 w-4" />Odeslat</Button>
               <Button variant="secondary" onClick={() => sendReply("Dnes nechci.")} disabled={saving}>Dnes nechci</Button>
               <Button variant="outline" onClick={onBack} disabled={saving}><XCircle className="mr-2 h-4 w-4" />Skončit</Button>
             </div>
