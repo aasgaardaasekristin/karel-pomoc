@@ -1119,7 +1119,15 @@ const PlanCard = ({
         <div className="mb-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5">
           <p className="text-[0.625rem] leading-4 text-amber-800 dark:text-amber-300">
             <Lock className="mr-1 inline h-2.5 w-2.5 -mt-px" />
-            Čeká na lidské schválení před otevřením herny.
+            Čeká na schválení terapeutkami.
+          </p>
+        </div>
+      )}
+      {karelDirect && hernaApproved && plan.status === "generated" && !isArchived && (
+        <div className="mb-1.5 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1.5">
+          <p className="text-[0.625rem] leading-4 text-primary">
+            <Dices className="mr-1 inline h-2.5 w-2.5 -mt-px" />
+            Pro: <strong>{plan.selected_part}</strong> · Herna otevřena
           </p>
         </div>
       )}
