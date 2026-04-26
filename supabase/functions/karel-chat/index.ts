@@ -586,7 +586,7 @@ ${lastAssessment?.next_day_plan?.focus_areas ? lastAssessment.next_day_plan.focu
 
     // ═══ THERAPIST NOTES INJECTION ═══
     // Load unread offline observations from therapists
-    if ((mode === "childcare" || effectiveMode === "kata") && didSubMode === "cast" && didPartName) {
+    if ((mode === "childcare" || effectiveMode === "kata") && isDirectChildSubMode && didPartName) {
       try {
         const { createClient: createSbNotes } = await import("https://esm.sh/@supabase/supabase-js@2");
         const sbNotes = createSbNotes(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -626,7 +626,7 @@ ${lastAssessment?.next_day_plan?.focus_areas ? lastAssessment.next_day_plan.focu
     }
 
     // ═══ METRICS CONTEXT INJECTION ═══
-    if ((mode === "childcare" || effectiveMode === "kata") && didSubMode === "cast" && didPartName) {
+    if ((mode === "childcare" || effectiveMode === "kata") && isDirectChildSubMode && didPartName) {
       try {
         const { createClient: createSbMetrics } = await import("https://esm.sh/@supabase/supabase-js@2");
         const sbMetrics = createSbMetrics(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -670,7 +670,7 @@ POKYN: Pokud valence klesá (↓), buď citlivější. Pokud spolupráce roste (
     }
 
     // ═══ GOALS INJECTION ═══
-    if ((mode === "childcare" || effectiveMode === "kata") && didSubMode === "cast" && didPartName) {
+    if ((mode === "childcare" || effectiveMode === "kata") && isDirectChildSubMode && didPartName) {
       try {
         const { createClient: createSbGoals } = await import("https://esm.sh/@supabase/supabase-js@2");
         const sbGoals = createSbGoals(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
