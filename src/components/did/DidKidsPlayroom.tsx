@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Loader2, Mic, Paperclip, Send, Square, XCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { ArrowLeft, Camera, FileText, Image as ImageIcon, Loader2, Mic, Send, Square, Video, X, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,7 +7,6 @@ import { getAuthHeaders } from "@/lib/auth";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import { toast } from "sonner";
 import tundrupekPlayroomBg from "@/assets/tundrupek-playroom-bg.jpg";
-import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
 import { buildAttachmentContent, useUniversalUpload, type PendingAttachment } from "@/hooks/useUniversalUpload";
 import { handleApiError, parseSSEStream } from "@/lib/chatHelpers";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
@@ -55,6 +54,35 @@ const contentText = (content: any) => {
   return "";
 };
 
+const attachmentLabel: Record<PendingAttachment["category"], string> = {
+  image: "fotka",
+  audio: "hlas",
+  video: "video",
+  document: "soubor",
+  screenshot: "screenshot",
+};
+
+const cleanPlanForPlayroom = (markdown?: string) => (markdown || "")
+  .split("\n")
+  .filter((line) => !/čeká\s+na\s+schválení|nesmí\s+otevřít|účel\s+dokumentu|nikoli\s+child-facing/i.test(line))
+  .join("\n")
+  .trim();
+
+const planContract = (plan: PlayroomPlanRow | null) => `SCHVÁLENÝ PROGRAM HERNY PRO DNEŠEK — AKTIVNÍ, ODSOUHLASENÝ TERAPEUTKAMI.
+PLAN_ID: ${plan?.id || "neznámý"}
+ČÁST: ${plan?.selected_part || plan?.urgency_breakdown?.target_part || "neznámá"}
+
+${cleanPlanForPlayroom(plan?.plan_markdown)}
+
+HERNA KONTRAKT PRO KARLA:
+- Nejde o běžné vlákno. Vedeš strukturované terapeutické Herna sezení podle schváleného programu.
+- V každé odpovědi zvol konkrétní další krok programu, ale ihned ho přizpůsob aktuálnímu stavu dítěte.
+- Každá replika má mít: 1) naladění na odpověď nebo přílohu, 2) jemnou motivaci, 3) jednu konkrétní mikro-aktivitu / test / volbu A/B.
+- Nesmíš být pasivní. Neptej se prázdně „co chceš dělat“. Veď, ale nech kontrolu dítěti.
+- Nikdy dítěti neukazuj interní plán, názvy diagnostiky, terapeutek ani technické vrstvy.
+- Nikdy sám nenabízej posílání vzkazů mamince/Haničce/Kátě/e-mailem. Jen pokud si o to dítě výslovně řekne nebo je bezpečnostní riziko.
+- Reaguj na text, hlas, fotku, video, screenshot i dokument jako na materiál ze sezení, ne jako na běžnou přílohu.`;
+
 const getRoomTone = (plan: PlayroomPlanRow | null, thread: PlayroomThread | null) => {
   const raw = `${plan?.urgency_breakdown?.readiness_today || ""} ${plan?.urgency_breakdown?.playroom_theme || ""} ${contentText(thread?.messages?.at(-1)?.content)}`.toLocaleLowerCase("cs-CZ");
   if (/nejde|ticho|stop|unaven|strach|red|kriz/.test(raw)) return "quiet";
@@ -71,6 +99,9 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const [saving, setSaving] = useState(false);
   const uploads = useUniversalUpload();
   const recorder = useAudioRecorder();
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
 
   const targetPart = plan?.selected_part || plan?.urgency_breakdown?.target_part || "";
   const childAddress = useMemo(() => getChildAddress(targetPart), [targetPart]);
@@ -154,7 +185,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         didSubMode: "playroom",
         didPartName: targetPart,
         didThreadLabel: `Herna ${targetPart}`,
-        didInitialContext: `SCHVÁLENÝ PROGRAM HERNY PRO DNEŠEK (interní kontext pro Karla, dítěti ho neukazuj doslovně):\n${plan?.plan_markdown || ""}\n\nKONTRAKT: Vedeš dynamickou DID/CAN terapii v Herna UI. Reaguj na text, hlas, obraz, video i dokument. Vždy pokračuj podle schváleného plánu, ale přizpůsob krok aktuálnímu stavu dítěte. Žádné meta-vysvětlování programu, žádná pasivita, vždy jedna bezpečná konkrétní intervence nebo volba A/B.`,
+        didInitialContext: planContract(plan),
       };
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`, { method: "POST", headers, body: JSON.stringify(body) });
       if (!response.ok) handleApiError(response);
@@ -186,6 +217,11 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
     if (!base64) return;
     uploads.addAttachment({ id: `voice-${Date.now()}`, name: "hlas_tundrupka.webm", type: "audio/webm", size: Math.round(base64.length * 0.75), category: "audio", dataUrl: `data:audio/webm;base64,${base64}` });
     recorder.discardRecording();
+  };
+
+  const handlePickedFiles = (event: ChangeEvent<HTMLInputElement>, category?: PendingAttachment["category"]) => {
+    Array.from(event.target.files || []).forEach((file) => void uploads.processFile(file, category));
+    event.target.value = "";
   };
 
   if (loading) {
@@ -259,13 +295,30 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
                 </div>
               ))}
             </div>
-            <div className="relative">
-              <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Napiš, nahraj hlas, video, fotku, screenshot nebo dokument." className="min-h-20 resize-none bg-background/46 text-foreground/78 placeholder:text-muted-foreground/62" />
-              <UniversalAttachmentBar attachments={uploads.attachments} onRemove={uploads.removeAttachment} onOpenFilePicker={uploads.openFilePicker} onCaptureScreenshot={uploads.captureScreenshot} onOpenDrivePicker={uploads.openFilePicker} onAutoAnalyze={() => sendReply(reply || "Podívej se prosím na přílohu.")} disabled={saving} fileInputRef={uploads.fileInputRef} onFileChange={uploads.handleFileChange} isAnalyzing={saving} />
+            <div className="space-y-2">
+              <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Napiš, nahraj hlas, video, fotku, screenshot nebo dokument." className="min-h-20 resize-none border-border/25 bg-background/28 text-foreground/72 placeholder:text-muted-foreground/55 backdrop-blur-[2px]" />
+              <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(event) => handlePickedFiles(event, "image")} />
+              <input ref={videoInputRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={(event) => handlePickedFiles(event, "video")} />
+              <input ref={documentInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.json,.xml" multiple className="hidden" onChange={(event) => handlePickedFiles(event, "document")} />
             </div>
+            {uploads.attachments.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {uploads.attachments.map((attachment) => (
+                  <button key={attachment.id} type="button" onClick={() => uploads.removeAttachment(attachment.id)} className="inline-flex items-center gap-1.5 rounded-md border border-border/25 bg-background/24 px-2.5 py-1.5 text-xs text-foreground/70 backdrop-blur-[2px]">
+                    <span>{attachmentLabel[attachment.category]}</span>
+                    <span className="max-w-32 truncate">{attachment.name}</span>
+                    {attachment.uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <div className="flex flex-wrap gap-2">
-              {recorder.state === "recording" ? <Button variant="secondary" onClick={recorder.stopRecording}><Square className="mr-2 h-4 w-4" />Zastavit hlas</Button> : <Button variant="secondary" onClick={recorder.startRecording}><Mic className="mr-2 h-4 w-4" />Hlas</Button>}
-              {recorder.state === "recorded" ? <Button variant="outline" onClick={attachRecording}><Paperclip className="mr-2 h-4 w-4" />Přiložit hlas</Button> : null}
+              <Button variant="secondary" onClick={() => photoInputRef.current?.click()} disabled={saving} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><ImageIcon className="mr-2 h-4 w-4" />Fotka</Button>
+              <Button variant="secondary" onClick={() => videoInputRef.current?.click()} disabled={saving} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><Video className="mr-2 h-4 w-4" />Video</Button>
+              <Button variant="secondary" onClick={uploads.captureScreenshot} disabled={saving} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><Camera className="mr-2 h-4 w-4" />Screenshot</Button>
+              <Button variant="secondary" onClick={() => documentInputRef.current?.click()} disabled={saving} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><FileText className="mr-2 h-4 w-4" />Dokument</Button>
+              {recorder.state === "recording" ? <Button variant="secondary" onClick={recorder.stopRecording} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><Square className="mr-2 h-4 w-4" />Zastavit hlas</Button> : <Button variant="secondary" onClick={recorder.startRecording} disabled={saving} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><Mic className="mr-2 h-4 w-4" />Hlas</Button>}
+              {recorder.state === "recorded" ? <Button variant="outline" onClick={attachRecording} className="bg-background/22 text-foreground/72 backdrop-blur-[2px]"><Mic className="mr-2 h-4 w-4" />Přiložit hlas</Button> : null}
               <Button onClick={() => sendReply(reply)} disabled={saving || (!reply.trim() && uploads.attachments.length === 0)}><Send className="mr-2 h-4 w-4" />Odpovědět</Button>
               <Button variant="secondary" onClick={() => sendReply("Dnes nechci.")} disabled={saving}>Dnes nechci</Button>
               <Button variant="outline" onClick={onBack} disabled={saving}><XCircle className="mr-2 h-4 w-4" />Skončit</Button>

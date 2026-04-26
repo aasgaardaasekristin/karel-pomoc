@@ -41,6 +41,7 @@ const CHILDCARE_SUB_MODE_MAP: Record<string, { domain: KarelDomain; audience: Ka
   mamka:    { domain: "did_terapeut",  audience: "hanicka" },
   kata:     { domain: "did_terapeut",  audience: "kata" },
   cast:     { domain: "did_deti",      audience: "dite" },
+  playroom: { domain: "did_deti",      audience: "dite" },
   general:  { domain: "hana_osobni",   audience: "hanicka" },
   form:     { domain: "did_terapeut",  audience: "general" },
   freetext: { domain: "did_terapeut",  audience: "general" },
