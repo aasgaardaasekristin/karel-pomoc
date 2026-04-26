@@ -69,17 +69,21 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const [thread, setThread] = useState<PlayroomThread | null>(null);
   const [reply, setReply] = useState("");
   const [saving, setSaving] = useState(false);
+  const uploads = useUniversalUpload();
+  const recorder = useAudioRecorder();
 
   const targetPart = plan?.selected_part || plan?.urgency_breakdown?.target_part || "";
   const childAddress = useMemo(() => getChildAddress(targetPart), [targetPart]);
   const roomBackground = useMemo(() => getRoomBackground(targetPart), [targetPart]);
+  const roomTone = useMemo(() => getRoomTone(plan, thread), [plan, thread]);
+  const opener = useMemo(() => childSafe(contentText(thread?.messages?.find((message) => message.role === "assistant")?.content)) || "Jsem tady. Zkusíme dnes jen jeden malý krok.", [thread]);
 
   const loadApprovedPlan = useCallback(async () => {
     setLoading(true);
     try {
       const { data, error } = await (supabase as any)
         .from("did_daily_session_plans")
-        .select("id, selected_part, urgency_breakdown, created_at")
+        .select("id, selected_part, urgency_breakdown, plan_markdown, created_at")
         .eq("plan_date", pragueTodayISO())
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -121,7 +125,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         .eq("id", payload.thread_id)
         .maybeSingle();
       if (error || !data) throw error || new Error("Vlákno Herny se nenašlo.");
-      const loadedThread = { id: data.id, messages: ((data.messages || []) as PlayroomThread["messages"]).map((message) => ({ ...message, content: childSafe(message.content) || "Jsem tady. Můžeme zůstat potichu." })) };
+      const loadedThread = { id: data.id, messages: ((data.messages || []) as PlayroomThread["messages"]).map((message) => ({ ...message, content: childSafe(contentText(message.content)) || "Jsem tady. Můžeme zůstat potichu." })) };
       setThread(loadedThread);
       if (firstReply) {
         await saveReply(loadedThread, firstReply);
@@ -133,25 +137,40 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
     }
   };
 
-  const saveReply = async (currentThread: PlayroomThread, content: string) => {
-    if (!content.trim()) return;
+  const saveReply = async (currentThread: PlayroomThread, content: string, currentAttachments: PendingAttachment[] = []) => {
+    if (!content.trim() && currentAttachments.length === 0) return;
     setSaving(true);
+    const userContent = buildAttachmentContent(content.trim() || "Posílám přílohu.", currentAttachments);
     const nextMessages: PlayroomThread["messages"] = [
       ...currentThread.messages,
-      { role: "user", content: content.trim() },
-      { role: "assistant", content: "Děkuju. Můžeme zůstat jen u tohohle a nemusíme nikam spěchat. Chceš ještě jedno slovo, barvu, nebo dnes končíme?" },
+      { role: "user", content: userContent },
     ];
     try {
-      const { error } = await (supabase as any)
-        .from("did_threads")
-        .update({ messages: nextMessages, last_activity_at: new Date().toISOString(), is_processed: false })
-        .eq("id", currentThread.id);
+      setThread({ ...currentThread, messages: [...nextMessages, { role: "assistant", content: "" }] });
+      const headers = await getAuthHeaders();
+      const body = {
+        messages: nextMessages.slice(-18),
+        mode: "childcare",
+        didSubMode: "playroom",
+        didPartName: targetPart,
+        didThreadLabel: `Herna ${targetPart}`,
+        didInitialContext: `SCHVÁLENÝ PROGRAM HERNY PRO DNEŠEK (interní kontext pro Karla, dítěti ho neukazuj doslovně):\n${plan?.plan_markdown || ""}\n\nKONTRAKT: Vedeš dynamickou DID/CAN terapii v Herna UI. Reaguj na text, hlas, obraz, video i dokument. Vždy pokračuj podle schváleného plánu, ale přizpůsob krok aktuálnímu stavu dítěte. Žádné meta-vysvětlování programu, žádná pasivita, vždy jedna bezpečná konkrétní intervence nebo volba A/B.`,
+      };
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`, { method: "POST", headers, body: JSON.stringify(body) });
+      if (!response.ok) handleApiError(response);
+      if (!response.body) throw new Error("Karel neodpověděl.");
+      const assistantContent = await parseSSEStream(response.body, (partial) => {
+        setThread((prev) => prev ? { ...prev, messages: [...nextMessages, { role: "assistant", content: childSafe(partial) || partial }] } : prev);
+      });
+      const savedMessages = [...nextMessages, { role: "assistant" as const, content: childSafe(assistantContent) || assistantContent }];
+      const { error } = await (supabase as any).from("did_threads").update({ messages: savedMessages, last_activity_at: new Date().toISOString(), is_processed: false }).eq("id", currentThread.id);
       if (error) throw error;
-      setThread({ ...currentThread, messages: nextMessages });
+      setThread({ ...currentThread, messages: savedMessages });
       setReply("");
+      uploads.clearAttachments();
     } catch (error) {
       console.error("[DidKidsPlayroom] message save failed", error);
-      toast.error("Odpověď se nepodařilo uložit.");
+      toast.error(error instanceof Error ? error.message : "Odpověď se nepodařilo uložit.");
     } finally {
       setSaving(false);
     }
@@ -159,7 +178,14 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
 
   const sendReply = async (content: string) => {
     if (!thread) return;
-    await saveReply(thread, content);
+    await saveReply(thread, content, uploads.attachments);
+  };
+
+  const attachRecording = async () => {
+    const base64 = await recorder.getBase64();
+    if (!base64) return;
+    uploads.addAttachment({ id: `voice-${Date.now()}`, name: "hlas_tundrupka.webm", type: "audio/webm", size: Math.round(base64.length * 0.75), category: "audio", dataUrl: `data:audio/webm;base64,${base64}` });
+    recorder.discardRecording();
   };
 
   if (loading) {
