@@ -226,7 +226,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         mode: "childcare",
         didSubMode: "playroom",
         didPartName: targetPart,
-        didThreadLabel: `Herna ${targetPart}`,
+        didThreadLabel: targetPart,
         didInitialContext: planContract(plan, currentThread),
       };
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`, { method: "POST", headers, body: JSON.stringify(body) });
