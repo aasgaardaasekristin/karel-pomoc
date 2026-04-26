@@ -99,6 +99,9 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const [saving, setSaving] = useState(false);
   const uploads = useUniversalUpload();
   const recorder = useAudioRecorder();
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
 
   const targetPart = plan?.selected_part || plan?.urgency_breakdown?.target_part || "";
   const childAddress = useMemo(() => getChildAddress(targetPart), [targetPart]);
@@ -182,7 +185,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         didSubMode: "playroom",
         didPartName: targetPart,
         didThreadLabel: `Herna ${targetPart}`,
-        didInitialContext: `SCHVÁLENÝ PROGRAM HERNY PRO DNEŠEK (interní kontext pro Karla, dítěti ho neukazuj doslovně):\n${plan?.plan_markdown || ""}\n\nKONTRAKT: Vedeš dynamickou DID/CAN terapii v Herna UI. Reaguj na text, hlas, obraz, video i dokument. Vždy pokračuj podle schváleného plánu, ale přizpůsob krok aktuálnímu stavu dítěte. Žádné meta-vysvětlování programu, žádná pasivita, vždy jedna bezpečná konkrétní intervence nebo volba A/B.`,
+        didInitialContext: planContract(plan),
       };
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`, { method: "POST", headers, body: JSON.stringify(body) });
       if (!response.ok) handleApiError(response);
@@ -214,6 +217,11 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
     if (!base64) return;
     uploads.addAttachment({ id: `voice-${Date.now()}`, name: "hlas_tundrupka.webm", type: "audio/webm", size: Math.round(base64.length * 0.75), category: "audio", dataUrl: `data:audio/webm;base64,${base64}` });
     recorder.discardRecording();
+  };
+
+  const handlePickedFiles = (event: React.ChangeEvent<HTMLInputElement>, category?: PendingAttachment["category"]) => {
+    Array.from(event.target.files || []).forEach((file) => void uploads.processFile(file, category));
+    event.target.value = "";
   };
 
   if (loading) {
