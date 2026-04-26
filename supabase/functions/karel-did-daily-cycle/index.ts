@@ -3832,6 +3832,14 @@ Datum: ${dateStr}` },
       compileDataKeepAlive = undefined;
     }
 
+    await setPhase("closure_readiness_daily", "Denní kontrola closure readiness před Karlovým přehledem");
+    try {
+      const readinessStats = await refreshDailyClosureReadinessSnapshots(sb);
+      console.log(`[closure-readiness-daily] checked=${readinessStats.checked}, updated=${readinessStats.updated}, errors=${readinessStats.errors}`);
+    } catch (e) {
+      console.warn("[closure-readiness-daily] skipped:", e);
+    }
+
     await setPhase("ai_analysis", "Fáze 3b: AI analýza A–M");
     // 3. AI ANALÝZA – full A-M decomposition
     const existingCardsContext = Object.entries(existingCards).map(([name, content]) =>
