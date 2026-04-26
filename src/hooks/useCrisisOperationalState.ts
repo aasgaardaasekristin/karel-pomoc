@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { cleanDisplayName } from "@/lib/didPartNaming";
 import { safeEdgeFunction } from "@/lib/safeEdgeFunction";
@@ -238,6 +238,10 @@ export interface AuditEntry {
   status: "ok" | "failed" | "pending" | "unknown";
   detail: string | null;
 }
+
+const READINESS_CACHE_TTL_MS = 60_000;
+const readinessCache = new Map<string, { value: ClosureReadiness4Layer; expiresAt: number }>();
+const readinessInFlight = new Map<string, Promise<ClosureReadiness4Layer | null>>();
 
 // ── Helpers ────────────────────────────────────────────────────
 
