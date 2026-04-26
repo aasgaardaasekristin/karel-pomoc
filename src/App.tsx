@@ -4,7 +4,7 @@ import CrisisAlert from "@/components/karel/CrisisAlert";
 import CrisisDetailWorkspace from "@/components/karel/CrisisDetailWorkspace";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { ChatProvider } from "@/contexts/ChatContext";
 import { CrisisSupervisionProvider } from "@/contexts/CrisisSupervisionContext";
 import { CrisisDetailProvider } from "@/contexts/CrisisDetailContext";
@@ -20,11 +20,32 @@ import Kartoteka from "./pages/Kartoteka";
 import Zklidneni from "./pages/Zklidneni";
 import Pomoc from "./pages/Pomoc";
 import NotFound from "./pages/NotFound";
+import { useAuthReady } from "@/hooks/useAuthReady";
+import { isExplicitLogoutActive } from "@/lib/chatHelpers";
 
 const queryClient = new QueryClient();
 
 // Detect if running on pomoc.* subdomain
 const isPomocSubdomain = window.location.hostname.startsWith("pomoc.");
+
+const AuthenticatedCrisisSurfaces = () => {
+  const location = useLocation();
+  const { session, isAuthReady } = useAuthReady();
+  const isAuthenticatedAppSurface = ["/hub", "/chat", "/kartoteka", "/calm"].some((path) =>
+    location.pathname === path || location.pathname.startsWith(`${path}/`),
+  );
+
+  if (!isAuthReady || !session || location.pathname === "/" || !isAuthenticatedAppSurface || isExplicitLogoutActive()) {
+    return null;
+  }
+
+  return (
+    <>
+      <CrisisAlert />
+      <CrisisDetailWorkspace />
+    </>
+  );
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -37,8 +58,7 @@ const App = () => (
         <Toaster />
         <Sonner position="top-right" richColors closeButton />
         <BrowserRouter>
-          <CrisisAlert />
-          <CrisisDetailWorkspace />
+          <AuthenticatedCrisisSurfaces />
           <MobileSwipeBack />
           <Routes>
             {isPomocSubdomain ? (
