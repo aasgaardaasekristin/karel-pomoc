@@ -1506,6 +1506,11 @@ const Chat = () => {
       return;
     }
 
+    if (subMode === "playroom") {
+      setDidFlowState("playroom");
+      return;
+    }
+
     if (subMode === "research") {
       if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
       setDidDocsLoaded(true);
