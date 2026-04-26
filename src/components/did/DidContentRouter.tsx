@@ -27,6 +27,7 @@ import DidTherapistThreadsContainer from "@/components/did/DidTherapistThreadsCo
 import DidThreadList from "@/components/did/DidThreadList";
 import DidPartIdentifier from "@/components/did/DidPartIdentifier";
 import DidKidsThemeEditor from "@/components/did/DidKidsThemeEditor";
+import DidKidsPlayroom from "@/components/did/DidKidsPlayroom";
 import DidActionButtons from "@/components/did/DidActionButtons";
 import QuickNoteDialog from "@/components/did/QuickNoteDialog";
 import KarelPartSessionBanner from "@/components/did/KarelPartSessionBanner";
@@ -38,7 +39,7 @@ import type { DidFlowState } from "@/lib/chatHelpers";
 import type { SyncProgress } from "@/hooks/useManualUpdate";
 import { useCrisisOperationalState } from "@/hooks/useCrisisOperationalState";
 
-type DidSubMode = "mamka" | "cast" | "kata" | "form" | "freetext" | "general" | "research" | null;
+type DidSubMode = "mamka" | "cast" | "playroom" | "kata" | "form" | "freetext" | "general" | "research" | null;
 import type { ConversationMode } from "@/lib/chatHelpers";
 
 const LoadingSkeleton = () => (

@@ -9,7 +9,7 @@ const LAST_CAST_GREETING_INDEX_KEY = "karel_last_cast_greeting_index";
 
 export type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
 export type HubSection = "did" | "hana" | "research" | null;
-export type DidFlowState = "entry" | "terapeut" | "pin-entry" | "therapist-threads" | "dashboard" | "submode-select" | "thread-list" | "part-identify" | "chat" | "loading" | "meeting" | "live-session" | "did-kartoteka";
+export type DidFlowState = "entry" | "terapeut" | "pin-entry" | "therapist-threads" | "dashboard" | "submode-select" | "thread-list" | "playroom" | "part-identify" | "chat" | "loading" | "meeting" | "live-session" | "did-kartoteka";
 export type ResearchFlowState = "thread-list" | "new-topic" | "chat";
 
 export const HANA_PIN_KEY = "karel_hana_pin_verified";
