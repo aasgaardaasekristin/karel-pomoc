@@ -223,26 +223,58 @@ async function callAI(prompt: string): Promise<any> {
   return JSON.parse(clean);
 }
 
-function toAgendaBlocks(value: unknown): Array<{ block: string; minutes: number | null; detail: string | null; tool_id?: string | null }> {
+function asStringArray(value: unknown, fallback: string[] = []): string[] {
+  const source = Array.isArray(value) && value.length > 0 ? value : fallback;
+  return source.map((x: any) => String(x ?? "").trim()).filter(Boolean).slice(0, 8);
+}
+
+function sanitizeHybridContract(contract: Record<string, any> | null, therapistAnswered: boolean): Record<string, any> | null {
+  if (!contract) return null;
+  const next = { ...contract };
+  if (next.theme_source === "therapist_answer" && !therapistAnswered) next.theme_source = "neutral_choice";
+  if (!["confirmed_part_card", "therapist_answer", "neutral_choice", "unknown"].includes(String(next.theme_source ?? ""))) next.theme_source = "unknown";
+  return next;
+}
+
+function normalizeProgramBlock(raw: any, hybridContract: Record<string, any> | null) {
+  const mode = String(hybridContract?.therapist_led_vs_karel_only ?? hybridContract?.session_mode ?? "karel_only");
+  const therapistLed = mode === "therapist_led" || mode === "tandem";
+  const clinicalIntent = nonEmptyString(raw?.clinical_intent) ?? nonEmptyString(hybridContract?.clinical_goal) ?? nonEmptyString(hybridContract?.diagnostic_or_therapeutic_intent) ?? "Evidence-limited bezpečné ověření aktuální připravenosti bez klinických závěrů.";
+  const playfulForm = nonEmptyString(raw?.playful_form) ?? nonEmptyString(hybridContract?.playful_theme) ?? "neutrální bezpečná symbolická volba";
+  const script = nonEmptyString(raw?.script) ?? asStringArray(hybridContract?.what_therapist_says)[0] ?? "Můžeme u toho zůstat jen krátce a bezpečně; kdykoli můžeme přestat.";
+  return {
+    block: String(raw?.block ?? "").slice(0, 120).trim(),
+    minutes: typeof raw?.minutes === "number" ? raw.minutes : 10,
+    detail: raw?.detail ? String(raw.detail).slice(0, 400).trim() : null,
+    tool_id: raw?.tool_id ? String(raw.tool_id).slice(0, 40).trim() : null,
+    clinical_intent: clinicalIntent,
+    playful_form: therapistLed ? playfulForm : String(playfulForm).replace(/fyzick\S*|latenc\S*|neverb\S*/gi, "textově-symbolické"),
+    script,
+    observe: therapistLed ? asStringArray(raw?.observe, asStringArray(hybridContract?.what_therapist_observes)) : ["textovou odpověď", "míru bezpečného zapojení", "přání pokračovat nebo skončit"],
+    evidence_to_record: asStringArray(raw?.evidence_to_record, asStringArray(hybridContract?.data_needed_for_valid_review, ["co bylo skutečně řečeno", "co zůstalo nejasné", "zda kontakt zůstal bezpečný"])),
+    stop_if: asStringArray(raw?.stop_if, asStringArray(hybridContract?.stop_rules, ["úzkost", "odmítnutí pokračovat", "ztráta bezpečí"])),
+    fallback: nonEmptyString(raw?.fallback) ?? nonEmptyString(hybridContract?.fallback) ?? "Zastavit program a vrátit se k jednoduchému bezpečnému check-inu.",
+    requires_physical_therapist: therapistLed ? Boolean(raw?.requires_physical_therapist ?? true) : false,
+    karel_can_do_alone: therapistLed ? Boolean(raw?.karel_can_do_alone ?? false) : true,
+  };
+}
+
+function toAgendaBlocks(value: unknown, hybridContract: Record<string, any> | null): Array<Record<string, any>> {
   return (Array.isArray(value) ? value : [])
     .slice(0, 8)
-    .map((b: any) => ({
-      block: String(b?.block ?? "").slice(0, 120).trim(),
-      minutes: typeof b?.minutes === "number" ? b.minutes : null,
-      detail: b?.detail ? String(b.detail).slice(0, 400).trim() : null,
-      tool_id: b?.tool_id ? String(b.tool_id).slice(0, 40).trim() : null,
-    }))
+    .map((b: any) => normalizeProgramBlock(b, hybridContract))
     .filter((b) => b.block.length > 0);
 }
 
-function fallbackSessionProgramDraft(subjectParts: string[]) {
+function fallbackSessionProgramDraft(subjectParts: string[], hybridContract: Record<string, any> | null) {
   const partName = subjectParts[0] ?? "část";
-  return [{
+  return [normalizeProgramBlock({
     block: "Evidence-limited bezpečné ověření připravenosti",
     minutes: 10,
     detail: `Pracovní fallback pro ${partName}: nejprve si od Haničky/Káti vyžádat aktuální stav, rizika a hranice kontaktu. Bez terapeutčina potvrzení nedělat klinické závěry, fyzické/testové prvky ani hlubší práci; režim needs_therapist_input.`,
     tool_id: "needs_therapist_input",
-  }];
+    script: `Haničko/Káťo, prosím nejdřív potvrď, jestli je dnes bezpečné ${partName} vůbec zvát ke kontaktu.`,
+  }, hybridContract)];
 }
 
 function nonEmptyString(value: unknown): string | null {
@@ -411,9 +443,12 @@ Deno.serve(async (req: Request) => {
     // Schválené parametry sezení (Slice 3 hardening) — uloženy autoritativně,
     // bridge do did_daily_session_plans je čte odsud místo hardcoded "hanka".
     const rawSp = (prefill as any)?.session_params;
-    const hybridContract = rawSp?.hybrid_contract && typeof rawSp.hybrid_contract === "object"
-      ? rawSp.hybrid_contract as Record<string, any>
-      : null;
+    const hasTherapistAnswer = [...(Array.isArray(aiContent?.questions_for_hanka) ? aiContent.questions_for_hanka : []), ...(Array.isArray(aiContent?.questions_for_kata) ? aiContent.questions_for_kata : [])]
+      .some((q: any) => nonEmptyString(q?.answer));
+    const hybridContract = sanitizeHybridContract(
+      rawSp?.hybrid_contract && typeof rawSp.hybrid_contract === "object" ? rawSp.hybrid_contract as Record<string, any> : null,
+      hasTherapistAnswer,
+    );
     const sessionParams = (rawSp && typeof rawSp === "object")
       ? {
           part_name: rawSp.part_name ? String(rawSp.part_name) : (subjectParts[0] ?? null),
@@ -437,9 +472,9 @@ Deno.serve(async (req: Request) => {
         }
       : {};
 
-    const agendaOutline = toAgendaBlocks(aiContent?.agenda_outline);
+    const agendaOutline = toAgendaBlocks(aiContent?.agenda_outline, hybridContract);
     const programDraft = type === "session_plan"
-      ? (agendaOutline.length > 0 ? agendaOutline : fallbackSessionProgramDraft(subjectParts))
+      ? (agendaOutline.length > 0 ? agendaOutline : fallbackSessionProgramDraft(subjectParts, hybridContract))
       : [];
 
     const insertRow = {

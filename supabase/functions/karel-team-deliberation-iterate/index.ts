@@ -85,6 +85,37 @@ function buildImplicationText(authorLabel: string, subjectPart: string, question
   return `${authorLabel}${q} uvedla: ${text}. Pro plán s částí ${subjectPart} to musí být započítáno jako aktuální týmová informace, ne jako otevřené slepé místo.`;
 }
 
+function asStringArray(value: unknown, fallback: string[] = []): string[] {
+  const source = Array.isArray(value) && value.length > 0 ? value : fallback;
+  return source.map((x: any) => String(x ?? "").trim()).filter(Boolean).slice(0, 8);
+}
+
+function nonEmptyString(value: unknown): string | null {
+  const text = String(value ?? "").trim();
+  return text ? text : null;
+}
+
+function normalizeProgramBlock(raw: any, hybridContract: Record<string, any> | null): AgendaBlock & Record<string, any> {
+  const mode = String(hybridContract?.therapist_led_vs_karel_only ?? hybridContract?.session_mode ?? "karel_only");
+  const therapistLed = mode === "therapist_led" || mode === "tandem";
+  const playfulForm = nonEmptyString(raw?.playful_form) ?? nonEmptyString(hybridContract?.playful_theme) ?? "neutrální bezpečná symbolická volba";
+  return {
+    block: String(raw?.block ?? "").slice(0, 140).trim(),
+    minutes: typeof raw?.minutes === "number" ? raw.minutes : null,
+    detail: raw?.detail ? String(raw.detail).slice(0, 380) : null,
+    tool_id: raw?.tool_id ? String(raw.tool_id).slice(0, 40).trim() : null,
+    clinical_intent: nonEmptyString(raw?.clinical_intent) ?? nonEmptyString(hybridContract?.clinical_goal) ?? nonEmptyString(hybridContract?.diagnostic_or_therapeutic_intent) ?? "Evidence-limited bezpečné ověření bez klinických závěrů.",
+    playful_form: therapistLed ? playfulForm : String(playfulForm).replace(/fyzick\S*|latenc\S*|neverb\S*/gi, "textově-symbolické"),
+    script: nonEmptyString(raw?.script) ?? asStringArray(hybridContract?.what_therapist_says)[0] ?? "Můžeme u toho zůstat jen krátce a bezpečně; kdykoli můžeme přestat.",
+    observe: therapistLed ? asStringArray(raw?.observe, asStringArray(hybridContract?.what_therapist_observes)) : ["textovou odpověď", "míru bezpečného zapojení", "přání pokračovat nebo skončit"],
+    evidence_to_record: asStringArray(raw?.evidence_to_record, asStringArray(hybridContract?.data_needed_for_valid_review, ["co bylo skutečně řečeno", "co zůstalo nejasné", "zda kontakt zůstal bezpečný"])),
+    stop_if: asStringArray(raw?.stop_if, asStringArray(hybridContract?.stop_rules, ["úzkost", "odmítnutí pokračovat", "ztráta bezpečí"])),
+    fallback: nonEmptyString(raw?.fallback) ?? nonEmptyString(hybridContract?.fallback) ?? "Zastavit program a vrátit se k jednoduchému bezpečnému check-inu.",
+    requires_physical_therapist: therapistLed ? Boolean(raw?.requires_physical_therapist ?? true) : false,
+    karel_can_do_alone: therapistLed ? Boolean(raw?.karel_can_do_alone ?? false) : true,
+  };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -266,14 +297,12 @@ PRAVIDLA STRUKTURY:
       });
     }
 
-    const programDraft: AgendaBlock[] = Array.isArray(parsed.program_draft)
-      ? parsed.program_draft.slice(0, 8).map((b: any) => ({
-          block: String(b?.block ?? "").slice(0, 140).trim(),
-          minutes: typeof b?.minutes === "number" ? b.minutes : null,
-          detail: b?.detail ? String(b.detail).slice(0, 380) : null,
-          tool_id: b?.tool_id ? String(b.tool_id).slice(0, 40).trim() : null,
-        })).filter((b: AgendaBlock) => b.block.length > 0)
-      : [];
+    const parsedHybrid = parsed.hybrid_contract && typeof parsed.hybrid_contract === "object"
+      ? parsed.hybrid_contract as Record<string, any>
+      : (row.session_params?.hybrid_contract && typeof row.session_params.hybrid_contract === "object" ? row.session_params.hybrid_contract as Record<string, any> : null);
+    const programDraft: Array<AgendaBlock & Record<string, any>> = Array.isArray(parsed.program_draft)
+      ? parsed.program_draft.slice(0, 8).map((b: any) => normalizeProgramBlock(b, parsedHybrid)).filter((b: AgendaBlock) => b.block.length > 0)
+      : currentProgram.map((b: any) => normalizeProgramBlock(b, parsedHybrid)).filter((b: AgendaBlock) => b.block.length > 0);
     const karelComment = String(parsed.karel_inline_comment ?? "").slice(0, 600);
 
     // Append to discussion_log: terapeutčin vstup + Karlova reakce
