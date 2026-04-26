@@ -148,8 +148,23 @@ function buildApprovedLivePlanMarkdown(source: LiveDeliberationSource | null | u
       if (!title) return;
       const minutes = typeof block?.minutes === "number" && block.minutes > 0 ? ` (${block.minutes} min)` : "";
       lines.push(`${index + 1}. **${title}**${minutes}`);
-      if (typeof block?.detail === "string" && block.detail.trim()) {
+      const hasStructured = hasStructuredProgramFields(block);
+      if (!hasStructured && typeof block?.detail === "string" && block.detail.trim()) {
         lines.push(`   ${block.detail.trim()}`);
+      }
+      PROGRAM_TEXT_FIELDS.forEach(([key, label]) => {
+        const value = textValue(block[key]);
+        if (value) lines.push(`   - **${label}:** ${value}`);
+      });
+      PROGRAM_LIST_FIELDS.forEach(([key, label]) => {
+        const values = listValue(block[key]);
+        if (values.length > 0) lines.push(`   - **${label}:** ${values.join("; ")}`);
+      });
+      if (typeof block.requires_physical_therapist === "boolean") {
+        lines.push(`   - **Vyžaduje fyzickou terapeutku:** ${yesNo(block.requires_physical_therapist)}`);
+      }
+      if (typeof block.karel_can_do_alone === "boolean") {
+        lines.push(`   - **Karel může sám:** ${yesNo(block.karel_can_do_alone)}`);
       }
       lines.push("");
     });
