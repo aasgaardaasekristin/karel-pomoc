@@ -64,7 +64,7 @@ interface ContextBlob {
 }
 
 async function gatherContext(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   userId: string,
   subjectParts: string[],
 ): Promise<ContextBlob> {
