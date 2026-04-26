@@ -122,6 +122,7 @@ serve(async (req) => {
 
   try {
     const { messages, mode, didInitialContext, didSubMode, notebookProject, didPartName, didThreadLabel, didEnteredName, didContextPrimeCache } = await req.json();
+    const isDirectChildSubMode = didSubMode === "cast" || didSubMode === "playroom";
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
@@ -465,7 +466,7 @@ INSTRUKCE: Přirozeně vpletej tato témata do konverzace. NEŘÍKEJ "mám v age
       systemPrompt += `\n\n═══ AKTIVNÍ PODREŽIM ═══\nAktuální didSubMode: "${didSubMode}"`;
 
       // ═══ IDENTITA ČÁSTI — injekce do kontextu ═══
-      if (didSubMode === "cast" && didPartName) {
+      if (isDirectChildSubMode && didPartName) {
         const label = didThreadLabel || didEnteredName || didPartName;
         systemPrompt += `\n\n═══ IDENTIFIKOVANÉ DÍTĚ (z registru) ═══\n⚠️ Toto dítě BYLO DETEKOVÁNO z registru PŘED zahájením hovoru. Karel VÍ kdo s ním mluví.\n• Kanonické jméno: ${didPartName}\n• Představilo se jako: ${label}\n\nKRITICKÉ PRAVIDLO: NEPTEJ SE znovu „Jak ti říkají?" ani „Jsi Arthur?". Dítě již bylo identifikováno. Rovnou navazuj s plnou návazností z karty. Oslovuj jménem „${label}".`;
         console.log(`[karel-chat] Part identity injected: canonical=${didPartName}, label=${label}`);
@@ -474,7 +475,7 @@ INSTRUKCE: Přirozeně vpletej tato témata do konverzace. NEŘÍKEJ "mám v age
 
     // ═══ SESSION MEMORY INJECTION ═══
     // Load structured short-term memory from previous sessions with this part
-    if ((mode === "childcare" || effectiveMode === "kata") && didSubMode === "cast" && didPartName) {
+    if ((mode === "childcare" || effectiveMode === "kata") && isDirectChildSubMode && didPartName) {
       try {
         const { createClient: createSbMem } = await import("https://esm.sh/@supabase/supabase-js@2");
         const sbMem = createSbMem(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -522,7 +523,7 @@ INSTRUKCE: Přirozeně vpletej tato témata do konverzace. NEŘÍKEJ "mám v age
 
     // ═══ CRISIS CONTEXT INJECTION ═══
     // If the part has an active crisis, inject crisis context into system prompt
-    if ((mode === "childcare" || effectiveMode === "kata") && didSubMode === "cast" && didPartName) {
+    if ((mode === "childcare" || effectiveMode === "kata") && isDirectChildSubMode && didPartName) {
       try {
         const { createClient: createSbCrisisCtx } = await import("https://esm.sh/@supabase/supabase-js@2");
         const sbCrisisCtx = createSbCrisisCtx(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
