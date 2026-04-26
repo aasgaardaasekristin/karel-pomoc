@@ -871,6 +871,11 @@ const PlanCard = ({
     return localStorage.getItem(addendumKey) ?? "";
   });
   const [addendumSavedAt, setAddendumSavedAt] = useState<string | null>(null);
+  const [reviewBusy, setReviewBusy] = useState<"approve" | "defer" | "reject" | null>(null);
+  const playroomPlan = plan.urgency_breakdown?.playroom_plan && typeof plan.urgency_breakdown.playroom_plan === "object"
+    ? plan.urgency_breakdown.playroom_plan
+    : null;
+  const therapeuticProgram = Array.isArray(playroomPlan?.therapeutic_program) ? playroomPlan.therapeutic_program : [];
   const onSaveAddendum = useCallback(() => {
     try {
       localStorage.setItem(addendumKey, therapistAddendum);
@@ -880,6 +885,44 @@ const PlanCard = ({
       toast.error("Nepodařilo se uložit doplnění.");
     }
   }, [addendumKey, therapistAddendum]);
+
+  const updateHernaReview = useCallback(async (action: "approve" | "defer" | "reject") => {
+    if (reviewBusy) return;
+    setReviewBusy(action);
+    try {
+      const nextBreakdown = {
+        ...plan.urgency_breakdown,
+        approved_for_child_session: action === "approve",
+        review_state: action === "approve" ? "approved" : action === "defer" ? "deferred" : "rejected",
+        human_review_required: action !== "approve",
+        approval: {
+          ...(plan.urgency_breakdown?.approval ?? {}),
+          required: action !== "approve",
+          approved_for_child_session: action === "approve",
+          review_state: action === "approve" ? "approved" : action === "defer" ? "deferred" : "rejected",
+        },
+        playroom_plan: playroomPlan ? {
+          ...playroomPlan,
+          approval: {
+            ...(playroomPlan.approval ?? {}),
+            required: action !== "approve",
+            approved_for_child_session: action === "approve",
+            review_state: action === "approve" ? "approved" : action === "defer" ? "deferred" : "rejected",
+          },
+        } : undefined,
+      };
+      const { error } = await (supabase as any)
+        .from("did_daily_session_plans")
+        .update({ urgency_breakdown: nextBreakdown, status: action === "reject" ? "skipped" : plan.status })
+        .eq("id", plan.id);
+      if (error) throw error;
+      toast.success(action === "approve" ? "Herna schválena." : action === "defer" ? "Herna odložena." : "Herna odmítnuta.");
+    } catch (e: any) {
+      toast.error(e?.message || "Nepodařilo se uložit rozhodnutí.");
+    } finally {
+      setReviewBusy(null);
+    }
+  }, [plan.id, plan.status, plan.urgency_breakdown, playroomPlan, reviewBusy]);
 
   const onOpenPartRoom = useCallback(async () => {
     if (openingPartRoom) return;
@@ -1168,6 +1211,23 @@ const PlanCard = ({
                 Připravit s týmem
               </Button>
             )}
+            {karelDirect && !hernaApproved && (
+              <>
+                <Button variant="default" size="sm" onClick={() => updateHernaReview("approve")} disabled={!!reviewBusy} className="h-6 px-2 text-[10px]">
+                  {reviewBusy === "approve" ? <Loader2 className="mr-0.5 h-2.5 w-2.5 animate-spin" /> : <CheckCircle2 className="mr-0.5 h-2.5 w-2.5" />}
+                  Schválit hernu
+                </Button>
+                <Button variant="outline" size="sm" onClick={onToggleExpand} className="h-6 px-2 text-[10px]">
+                  <PenLine className="mr-0.5 h-2.5 w-2.5" /> Upravit / poznámka pro Karla
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => updateHernaReview("defer")} disabled={!!reviewBusy} className="h-6 px-2 text-[10px]">
+                  Odložit
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => updateHernaReview("reject")} disabled={!!reviewBusy} className="h-6 px-2 text-[10px] border-destructive/40 text-destructive hover:bg-destructive/10">
+                  Odmítnout
+                </Button>
+              </>
+            )}
             {/* SPUSTIT-SEZENI MIGRACE (2026-04-23):
                 Když je porada schválená, Spustit sezení žije VÝHRADNĚ v ní
                 (DeliberationRoom má dedikované tlačítko, které propíše živý
@@ -1262,7 +1322,42 @@ const PlanCard = ({
       {isExpanded && (
         <div className="mt-2 space-y-3 max-h-[31.25rem] overflow-y-auto">
           <div className="rounded-md border border-border/60 bg-background/40 p-3 session-plan-content">
-            <RichMarkdown compact>{plan.plan_markdown}</RichMarkdown>
+            {karelDirect && playroomPlan ? (
+              <div className="space-y-3 text-[0.6875rem] leading-relaxed">
+                <div>
+                  <p className="font-semibold text-foreground">Návrh programu pro terapeuty</p>
+                  <p className="text-muted-foreground">Pro: <strong>{plan.selected_part}</strong> · Stav: {hernaStatusLabel}</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <p><strong>Proč dnes:</strong> {playroomPlan.why_this_part_today}</p>
+                  <p><strong>Cíl:</strong> {playroomPlan.clinical_goal}</p>
+                  <p><strong>Rámec:</strong> {playroomPlan.therapeutic_frame}</p>
+                  <p><strong>Riziko:</strong> {playroomPlan.risk_assessment}</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground mb-1">Místnost</p>
+                  <p>{playroomPlan.room_design?.visual_theme}</p>
+                  <p className="text-muted-foreground">Vstup: {playroomPlan.room_design?.opening_scene} · Konec: {playroomPlan.room_design?.exit_symbol}</p>
+                </div>
+                <div className="space-y-2">
+                  <p className="font-semibold text-foreground">Terapeutický program ({therapeuticProgram.length} kroků)</p>
+                  {therapeuticProgram.map((step: any, index: number) => (
+                    <div key={`${step.step ?? index}-${step.title ?? "krok"}`} className="rounded-md border border-border/50 bg-background/50 p-2">
+                      <p className="font-medium text-foreground">{step.step}. {step.title}</p>
+                      <p><strong>Cíl:</strong> {step.clinical_intent}</p>
+                      <p><strong>Metoda:</strong> {step.method} — {step.why_this_method}</p>
+                      <p><strong>Karel interně:</strong> {step.karel_internal_instruction}</p>
+                      <p><strong>Draft promptu:</strong> {step.child_facing_prompt_draft}</p>
+                      <p><strong>Sledovat v textu:</strong> {(step.text_signals_to_observe ?? []).join(", ")}</p>
+                      <p><strong>Stop:</strong> {(step.stop_if ?? []).join(", ")}</p>
+                      <p><strong>Fallback:</strong> {step.fallback}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <RichMarkdown compact>{plan.plan_markdown}</RichMarkdown>
+            )}
           </div>
 
           {/* KAREL+ČÁST IN DNES TRUTH PASS (2026-04-22):
