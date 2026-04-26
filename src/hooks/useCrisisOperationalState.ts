@@ -346,6 +346,19 @@ function parseDailyChecklist(raw: any): DailyChecklist {
   return { statusChecked: !!raw.statusChecked, lastUpdateVerified: !!raw.lastUpdateVerified, safetyConfirmed: !!raw.safetyConfirmed, contactCompleted: !!raw.contactCompleted, interventionRecorded: !!raw.interventionRecorded, therapistsResponded: !!raw.therapistsResponded, nextStepDetermined: !!raw.nextStepDetermined, decisionMade: !!raw.decisionMade };
 }
 
+function parseClosureReadinessSnapshot(raw: any): ClosureReadiness4Layer | null {
+  if (!raw || typeof raw !== "object") return null;
+  if (!raw.clinical || !raw.process || !raw.team || !raw.operational) return null;
+  return {
+    clinical: { met: !!raw.clinical.met, blockers: raw.clinical.blockers || [] },
+    process: { met: !!raw.process.met, blockers: raw.process.blockers || [] },
+    team: { met: !!raw.team.met, blockers: raw.team.blockers || [] },
+    operational: { met: !!raw.operational.met, blockers: raw.operational.blockers || [] },
+    overallReady: !!(raw.overallReady ?? raw.overall_ready),
+    allBlockers: raw.allBlockers || raw.all_blockers || [],
+  };
+}
+
 function parseRequiredOutputs(raw: any): Array<{ label: string; fulfilled: boolean }> {
   if (!Array.isArray(raw)) return [];
   return raw.filter((r: any) => r && typeof r.label === "string").map((r: any) => ({ label: r.label, fulfilled: !!r.fulfilled }));
