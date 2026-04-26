@@ -68,20 +68,56 @@ const cleanPlanForPlayroom = (markdown?: string) => (markdown || "")
   .join("\n")
   .trim();
 
-const planContract = (plan: PlayroomPlanRow | null) => `SCHVÁLENÝ PROGRAM HERNY PRO DNEŠEK — AKTIVNÍ, ODSOUHLASENÝ TERAPEUTKAMI.
+const getProgramSteps = (plan: PlayroomPlanRow | null) => {
+  const steps = plan?.urgency_breakdown?.playroom_plan?.therapeutic_program;
+  return Array.isArray(steps) ? steps : [];
+};
+
+const stepLine = (step: any) => [
+  `${step.step || "?"}. ${step.title || "krok"}`,
+  step.method ? `metoda: ${step.method}` : null,
+  step.child_facing_prompt_draft ? `dětská replika: ${step.child_facing_prompt_draft}` : null,
+  step.karel_response_strategy ? `strategie: ${step.karel_response_strategy}` : null,
+  Array.isArray(step.expected_response_range) ? `možné reakce: ${step.expected_response_range.join(", ")}` : null,
+  Array.isArray(step.stop_if) ? `stop při: ${step.stop_if.join(", ")}` : null,
+  step.fallback ? `fallback: ${step.fallback}` : null,
+].filter(Boolean).join(" | ");
+
+const currentStepForThread = (plan: PlayroomPlanRow | null, currentThread?: PlayroomThread | null) => {
+  const steps = getProgramSteps(plan);
+  if (!steps.length) return null;
+  const userTurns = currentThread?.messages?.filter((message) => message.role === "user").length || 1;
+  return steps[Math.min(Math.max(userTurns, 1) - 1, steps.length - 1)];
+};
+
+const planContract = (plan: PlayroomPlanRow | null, currentThread?: PlayroomThread | null) => {
+  const steps = getProgramSteps(plan);
+  const currentStep = currentStepForThread(plan, currentThread);
+  return `SCHVÁLENÝ PROGRAM HERNY PRO DNEŠEK — AKTIVNÍ, ODSOUHLASENÝ TERAPEUTKAMI.
 PLAN_ID: ${plan?.id || "neznámý"}
 ČÁST: ${plan?.selected_part || plan?.urgency_breakdown?.target_part || "neznámá"}
+REVIEW_STATE: ${plan?.urgency_breakdown?.review_state || plan?.urgency_breakdown?.approval?.review_state || "neznámý"}
+POVOLENÁ HLOUBKA: ${plan?.urgency_breakdown?.allowed_depth || plan?.urgency_breakdown?.playroom_plan?.allowed_depth || "check_in_only"}
 
 ${cleanPlanForPlayroom(plan?.plan_markdown)}
+
+STRUKTUROVANÝ PROGRAM — POUŽIJ JAKO SKRYTÝ ŘÍDICÍ PLÁN, NEUKAZUJ DÍTĚTI:
+${steps.length ? steps.map(stepLine).join("\n") : "Programové kroky nejsou ve strukturovaných datech; drž se plan_markdown a nejnižší možné hloubky."}
+
+AKTUÁLNÍ KROK TEĎ:
+${currentStep ? stepLine(currentStep) : "krok 1: bezpečný vstup a volba vzdálenosti"}
 
 HERNA KONTRAKT PRO KARLA:
 - Nejde o běžné vlákno. Vedeš strukturované terapeutické Herna sezení podle schváleného programu.
 - V každé odpovědi zvol konkrétní další krok programu, ale ihned ho přizpůsob aktuálnímu stavu dítěte.
 - Každá replika má mít: 1) naladění na odpověď nebo přílohu, 2) jemnou motivaci, 3) jednu konkrétní mikro-aktivitu / test / volbu A/B.
 - Nesmíš být pasivní. Neptej se prázdně „co chceš dělat“. Veď, ale nech kontrolu dítěti.
+- Odpověď má být krátká, konkrétní a profesionální: max 5 krátkých vět, vždy jeden krok, nikdy obecné povídání.
 - Nikdy dítěti neukazuj interní plán, názvy diagnostiky, terapeutek ani technické vrstvy.
-- Nikdy sám nenabízej posílání vzkazů mamince/Haničce/Kátě/e-mailem. Jen pokud si o to dítě výslovně řekne nebo je bezpečnostní riziko.
-- Reaguj na text, hlas, fotku, video, screenshot i dokument jako na materiál ze sezení, ne jako na běžnou přílohu.`;
+- Nikdy sám nenabízej posílání vzkazů mamince/Haničce/Kátě/e-mailem. Jen pokud si o to dítě výslovně řekne nebo je bezprostřední bezpečnostní riziko.
+- Reaguj na text, hlas, fotku, video, screenshot i dokument jako na materiál ze sezení, ne jako na běžnou přílohu.
+- U obrázku/screenshotu můžeš reagovat na viditelný obsah; u hlasu, videa a dokumentu nikdy nepředstírej obsah, pokud ho v datech nevidíš — reaguj na odeslání materiálu a udělej bezpečný další krok.`;
+};
 
 const getRoomTone = (plan: PlayroomPlanRow | null, thread: PlayroomThread | null) => {
   const raw = `${plan?.urgency_breakdown?.readiness_today || ""} ${plan?.urgency_breakdown?.playroom_theme || ""} ${contentText(thread?.messages?.at(-1)?.content)}`.toLocaleLowerCase("cs-CZ");
