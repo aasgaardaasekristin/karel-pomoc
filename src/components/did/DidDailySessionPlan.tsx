@@ -837,6 +837,10 @@ const PlanCard = ({
   // Když není dodán `onOpenPrepRoom` (komponenta žije mimo Pracovnu — např.
   // session prep wizard), prep gate se přeskakuje a UI je legacy chování.
   const prepGateEnabled = !!onOpenPrepRoom;
+  const [localHernaApproved, setLocalHernaApproved] = useState(() => isKarelDirectApprovedForHerna(plan));
+  useEffect(() => {
+    setLocalHernaApproved(isKarelDirectApprovedForHerna(plan));
+  }, [plan.id, plan.urgency_breakdown]);
   const { deliberation: prepRoom, loading: prepLoading, createForExistingPlan } =
     useSessionPrepRoom(prepGateEnabled ? plan.id : null);
   const [creatingPrep, setCreatingPrep] = useState(false);
@@ -847,8 +851,8 @@ const PlanCard = ({
   const legacyDraft = LEGACY_PLAN_GENERATORS.has(plan.generated_by);
   const analyticDraftWithoutContract = ANALYTIC_PLAN_GENERATORS.has(plan.generated_by) && !hasExplicitRoleContract(plan);
   const quarantinedDraft = legacyDraft || analyticDraftWithoutContract;
-  const hernaApproved = isKarelDirectApprovedForHerna(plan);
-  const hernaStatusLabel = hernaApproved ? "Herna otevřena" : "Čeká na schválení terapeutkami";
+  const hernaApproved = localHernaApproved;
+  const hernaStatusLabel = hernaApproved ? "Schváleno" : "Čeká na schválení terapeutkami";
   // „Zahájit" je v Pracovně dostupné JEN když je plán schválený přes prep room.
   // Mimo Pracovnu (prepGateEnabled=false) zůstává staré chování.
   const startBlockedByPrep = prepGateEnabled && !prepApproved && !karelDirect;
@@ -916,6 +920,7 @@ const PlanCard = ({
         .update({ urgency_breakdown: nextBreakdown, status: action === "reject" ? "skipped" : plan.status })
         .eq("id", plan.id);
       if (error) throw error;
+      setLocalHernaApproved(action === "approve");
       toast.success(action === "approve" ? "Herna schválena." : action === "defer" ? "Herna odložena." : "Herna odmítnuta.");
     } catch (e: any) {
       toast.error(e?.message || "Nepodařilo se uložit rozhodnutí.");
@@ -1075,7 +1080,11 @@ const PlanCard = ({
 
         {/* Status badges */}
         {karelDirect && plan.status === "generated" && !isOverdue && (
-          <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-primary/40 text-primary bg-primary/5">
+          <Badge
+            variant="outline"
+            className={`text-[10px] h-5 px-1.5 ${hernaApproved ? "border-primary/40 text-primary bg-primary/10" : "border-amber-500/50 text-amber-700 bg-amber-500/10"}`}
+          >
+            {hernaApproved ? <CheckCircle2 className="mr-0.5 h-2.5 w-2.5" /> : <Lock className="mr-0.5 h-2.5 w-2.5" />}
             {hernaStatusLabel}
           </Badge>
         )}
@@ -1169,8 +1178,8 @@ const PlanCard = ({
       {karelDirect && hernaApproved && plan.status === "generated" && !isArchived && (
         <div className="mb-1.5 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1.5">
           <p className="text-[0.625rem] leading-4 text-primary">
-            <Dices className="mr-1 inline h-2.5 w-2.5 -mt-px" />
-            Pro: <strong>{plan.selected_part}</strong> · Herna otevřena
+            <CheckCircle2 className="mr-1 inline h-2.5 w-2.5 -mt-px" />
+            Schváleno pro: <strong>{plan.selected_part}</strong>
           </p>
         </div>
       )}
