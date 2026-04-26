@@ -499,7 +499,10 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
     );
   }
 
-  // Split plans into runtime, quarantine, and archived.
+  const showLegacyDrafts = typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("showLegacyDrafts") === "true";
+
+  // Split plans into runtime, hidden legacy/analytic drafts, and archived.
   const pendingPlans = plans.filter(p => (p.status === "generated" || p.status === "in_progress") && !isQuarantinedPlan(p));
   const quarantinedPlans = plans.filter(p => ["pending", "generated", "in_progress"].includes(p.status) && isQuarantinedPlan(p));
   const archivedPlans = plans.filter(p => p.status === "done" || p.status === "skipped");
@@ -629,7 +632,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
           </div>
         )}
 
-        {plans.length === 0 && !generating && (
+        {pendingPlans.length === 0 && archivedPlans.length === 0 && !generating && (
           <div className="rounded-md border border-dashed border-border/50 bg-background/30 p-3">
             <p className="text-[0.6875rem] text-muted-foreground leading-relaxed">
               Dnes zatím není žádné schválené sezení.
@@ -662,8 +665,8 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
           />
         ))}
 
-        {/* ═══ QUARANTINED LEGACY / ANALYTIC DRAFTS ═══ */}
-        {quarantinedPlans.length > 0 && (
+        {/* ═══ DEBUG-ONLY LEGACY / ANALYTIC DRAFTS ═══ */}
+        {showLegacyDrafts && quarantinedPlans.length > 0 && (
           <div className="mt-3 space-y-1.5 rounded-md border border-dashed border-border/70 bg-muted/20 p-2.5">
             <p className="text-[0.5625rem] text-muted-foreground font-medium uppercase tracking-wider">
               Karanténa návrhů
