@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { cleanDisplayName } from "@/lib/didPartNaming";
-import { safeEdgeFunction } from "@/lib/safeEdgeFunction";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -239,10 +238,6 @@ export interface AuditEntry {
   detail: string | null;
 }
 
-const READINESS_CACHE_TTL_MS = 60_000;
-const readinessCache = new Map<string, { value: ClosureReadiness4Layer; expiresAt: number }>();
-const readinessInFlight = new Map<string, Promise<ClosureReadiness4Layer | null>>();
-
 // ── Helpers ────────────────────────────────────────────────────
 
 function computeTrend(assessments: any[]): CrisisOperationalCard["trend48h"] {
@@ -349,6 +344,19 @@ function deriveTherapists(ev: any, tasks: any[]): { primary: string; secondary: 
 function parseDailyChecklist(raw: any): DailyChecklist {
   if (!raw || typeof raw !== "object") return { statusChecked: false, lastUpdateVerified: false, safetyConfirmed: false, contactCompleted: false, interventionRecorded: false, therapistsResponded: false, nextStepDetermined: false, decisionMade: false };
   return { statusChecked: !!raw.statusChecked, lastUpdateVerified: !!raw.lastUpdateVerified, safetyConfirmed: !!raw.safetyConfirmed, contactCompleted: !!raw.contactCompleted, interventionRecorded: !!raw.interventionRecorded, therapistsResponded: !!raw.therapistsResponded, nextStepDetermined: !!raw.nextStepDetermined, decisionMade: !!raw.decisionMade };
+}
+
+function parseClosureReadinessSnapshot(raw: any): ClosureReadiness4Layer | null {
+  if (!raw || typeof raw !== "object") return null;
+  if (!raw.clinical || !raw.process || !raw.team || !raw.operational) return null;
+  return {
+    clinical: { met: !!raw.clinical.met, blockers: raw.clinical.blockers || [] },
+    process: { met: !!raw.process.met, blockers: raw.process.blockers || [] },
+    team: { met: !!raw.team.met, blockers: raw.team.blockers || [] },
+    operational: { met: !!raw.operational.met, blockers: raw.operational.blockers || [] },
+    overallReady: !!(raw.overallReady ?? raw.overall_ready),
+    allBlockers: raw.allBlockers || raw.all_blockers || [],
+  };
 }
 
 function parseRequiredOutputs(raw: any): Array<{ label: string; fulfilled: boolean }> {
@@ -566,6 +574,7 @@ export function useCrisisOperationalState() {
         const openTasks = tasks.map((t: any) => ({ id: t.id, title: t.title, assignedTo: t.assigned_to, priority: t.priority, status: t.status }));
         const karelRequires = computeKarelRequires(isStale, hoursStale, displayName, latest?.assessment_date || null, closureChecklistState, openTasks, ev.phase);
         const { score: closureReadinessScore, canPropose, ready: closureReady } = computeClosureReadiness(closureChecklistState);
+        const closureReadinessSnapshot = parseClosureReadinessSnapshot((ev as any).closure_readiness_snapshot);
         const { primary: primaryTherapist, secondary: secondaryTherapist, source: ownershipSource } = deriveTherapists(ev, tasks);
 
         const lastInterventionType = latestIntervention?.session_type ?? null;
@@ -631,7 +640,7 @@ export function useCrisisOperationalState() {
           closureChecklistState,
           canProposeClosing: canPropose,
           closureReady,
-          closureReadiness4Layer: null, // will be populated after initial fetch
+          closureReadiness4Layer: closureReadinessSnapshot,
           canEvaluate: !!ev.id,
           lastEntryBy: latest ? (latest.therapist_hana_input ? "Hanička" : latest.therapist_kata_input ? "Káťa" : null) : null,
           lastEntrySummary: latest?.part_interview_summary ?? null,
@@ -694,20 +703,8 @@ export function useCrisisOperationalState() {
       const builtCards = Array.from(cardMap.values());
       setCards(builtCards);
 
-      // Backend readiness is intentionally throttled/deduped; firing it for every
-      // realtime refresh in parallel can overload the crisis function and surface as 503.
-      for (const c of builtCards.filter(c => c.eventId).slice(0, 2)) {
-        if (!c.eventId) continue;
-        fetchBackendReadiness(c.eventId).then(r => {
-          if (!r) return;
-          setCards(prev => prev.map(pc => {
-            if (pc.eventId !== c.eventId) return pc;
-            const updated = { ...pc, closureReadiness4Layer: r, closureBlockerSummary: computeClosureBlockerSummary(r) };
-            updated.computedCTAs = computeCTAs(updated);
-            return updated;
-          }));
-        }).catch(() => {});
-      }
+      // Closure readiness is no longer computed from the UI. It is written once
+      // per day by the daily backend cycle before Karlův přehled is updated.
 
       // Therapist profiles now live in PAMET_KAREL only — removed from UI
 
@@ -762,44 +759,6 @@ export function useCrisisOperationalState() {
   }, [fetchAll]);
 
   return { cards, loading, refetch: fetchAll, globalUnreadBriefCount };
-}
-
-// ── Backend readiness fetcher ──────────────────────────────────
-
-async function fetchBackendReadiness(crisisEventId: string): Promise<ClosureReadiness4Layer | null> {
-  const now = Date.now();
-  const cached = readinessCache.get(crisisEventId);
-  if (cached && cached.expiresAt > now) return cached.value;
-
-  const existing = readinessInFlight.get(crisisEventId);
-  if (existing) return existing;
-
-  const request = fetchBackendReadinessUncached(crisisEventId).finally(() => {
-    readinessInFlight.delete(crisisEventId);
-  });
-  readinessInFlight.set(crisisEventId, request);
-  return request;
-}
-
-async function fetchBackendReadinessUncached(crisisEventId: string): Promise<ClosureReadiness4Layer | null> {
-  const result = await safeEdgeFunction("karel-crisis-closure-meeting", { action: "check_closure_readiness", crisis_event_id: crisisEventId });
-  if (!result.ok) return null;
-  const r = result.data?.readiness || result.data;
-  if (!r?.clinical || !r?.process || !r?.team || !r?.operational) return null;
-  try {
-    const value = {
-      clinical: { met: r.clinical.met, blockers: r.clinical.blockers || [] },
-      process: { met: r.process.met, blockers: r.process.blockers || [] },
-      team: { met: r.team.met, blockers: r.team.blockers || [] },
-      operational: { met: r.operational.met, blockers: r.operational.blockers || [] },
-      overallReady: r.overall_ready,
-      allBlockers: r.all_blockers || [],
-    };
-    readinessCache.set(crisisEventId, { value, expiresAt: Date.now() + READINESS_CACHE_TTL_MS });
-    return value;
-  } catch {
-    return null;
-  }
 }
 
 // Therapist profiles removed from UI — data lives in PAMET_KAREL only
