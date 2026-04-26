@@ -506,14 +506,15 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
   const pendingPlans = plans.filter(p => (p.status === "generated" || p.status === "in_progress") && !isQuarantinedPlan(p));
   const quarantinedPlans = plans.filter(p => ["pending", "generated", "in_progress"].includes(p.status) && isQuarantinedPlan(p));
   const archivedPlans = plans.filter(p => p.status === "done" || p.status === "skipped");
+  const hasKarelDirectPlan = pendingPlans.some(isKarelDirectPlan);
 
   return (
     <>
       <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
-            <Target className="w-3.5 h-3.5 text-primary" />
-            Plán dnešního sezení
+            {hasKarelDirectPlan ? <Dices className="w-3.5 h-3.5 text-primary" /> : <Target className="w-3.5 h-3.5 text-primary" />}
+            {hasKarelDirectPlan ? "Karlova herna" : "Plán dnešního sezení"}
           </h4>
           <div className="flex items-center gap-1.5">
             {!generating && !compact && (
@@ -635,7 +636,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
         {pendingPlans.length === 0 && archivedPlans.length === 0 && !generating && (
           <div className="rounded-md border border-dashed border-border/50 bg-background/30 p-3">
             <p className="text-[0.6875rem] text-muted-foreground leading-relaxed">
-              Dnes zatím není žádné schválené sezení.
+              Dnes zatím není otevřená žádná Karlova herna ani schválené sezení.
               <br />
               <span className="text-muted-foreground/70">
                 Karlův návrh sezení vzniká v <strong>Společné poradě týmu</strong> (návrh → otázky → podpisy).
