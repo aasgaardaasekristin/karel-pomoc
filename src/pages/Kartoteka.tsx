@@ -46,6 +46,7 @@ import SessionIntakePanel from "@/components/report/SessionIntakePanel";
 import ClientTasksPanel from "@/components/report/ClientTasksPanel";
 import CardAnalysisPanel from "@/components/report/CardAnalysisPanel";
 import LiveSessionPanel from "@/components/report/LiveSessionPanel";
+import { clearActiveWorkStorageForLogout, markExplicitLogout } from "@/lib/chatHelpers";
 
 type Client = {
   id: string;
@@ -391,8 +392,10 @@ const Kartoteka = () => {
   };
 
   const handleLogout = async () => {
+    markExplicitLogout();
+    clearActiveWorkStorageForLogout();
     await supabase.auth.signOut();
-    navigate("/");
+    navigate("/", { replace: true });
   };
 
   // ─── CLIENT LIST VIEW ───
