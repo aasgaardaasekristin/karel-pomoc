@@ -1216,7 +1216,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
       },
       body: JSON.stringify({
         model: primaryModel,
-        ...(isPlayroomMode ? { reasoning: { effort: "high" } } : {}),
+        ...(isPlayroomMode ? { reasoning: { effort: "xhigh" } } : {}),
         messages: [
           { role: "system", content: systemPrompt },
           ...messages.map((m: any) => {
