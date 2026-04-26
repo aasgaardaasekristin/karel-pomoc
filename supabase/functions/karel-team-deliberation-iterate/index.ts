@@ -297,14 +297,12 @@ PRAVIDLA STRUKTURY:
       });
     }
 
-    const programDraft: AgendaBlock[] = Array.isArray(parsed.program_draft)
-      ? parsed.program_draft.slice(0, 8).map((b: any) => ({
-          block: String(b?.block ?? "").slice(0, 140).trim(),
-          minutes: typeof b?.minutes === "number" ? b.minutes : null,
-          detail: b?.detail ? String(b.detail).slice(0, 380) : null,
-          tool_id: b?.tool_id ? String(b.tool_id).slice(0, 40).trim() : null,
-        })).filter((b: AgendaBlock) => b.block.length > 0)
-      : [];
+    const parsedHybrid = parsed.hybrid_contract && typeof parsed.hybrid_contract === "object"
+      ? parsed.hybrid_contract as Record<string, any>
+      : (row.session_params?.hybrid_contract && typeof row.session_params.hybrid_contract === "object" ? row.session_params.hybrid_contract as Record<string, any> : null);
+    const programDraft: Array<AgendaBlock & Record<string, any>> = Array.isArray(parsed.program_draft)
+      ? parsed.program_draft.slice(0, 8).map((b: any) => normalizeProgramBlock(b, parsedHybrid)).filter((b: AgendaBlock) => b.block.length > 0)
+      : currentProgram.map((b: any) => normalizeProgramBlock(b, parsedHybrid)).filter((b: AgendaBlock) => b.block.length > 0);
     const karelComment = String(parsed.karel_inline_comment ?? "").slice(0, 600);
 
     // Append to discussion_log: terapeutčin vstup + Karlova reakce
