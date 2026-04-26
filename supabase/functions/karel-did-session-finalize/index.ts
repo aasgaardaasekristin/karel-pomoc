@@ -17,6 +17,93 @@ const json = (payload: Record<string, unknown>, status = 200) =>
 
 const isUniqueViolation = (error: any) => String(error?.code || "") === "23505";
 
+function hasNonEmptyTurns(turnsByBlock: Record<string, any> = {}) {
+  return Object.values(turnsByBlock || {}).some((value: any) => Array.isArray(value) && value.length > 0);
+}
+
+function hasNonEmptyObservations(items: any[] = []) {
+  return items.some((item: any) => String(item?.observation ?? "").trim().length > 0);
+}
+
+function hasThreadUserResponse(threads: any[] = []) {
+  return threads.some((thread: any) => {
+    const messages = Array.isArray(thread?.messages) ? thread.messages : [];
+    return messages.slice(1).some((m: any) => String(m?.role ?? "").toLowerCase() === "user" && String(m?.content ?? "").trim().length > 0);
+  });
+}
+
+async function persistPlannedNotStarted(sb: any, plan: any, jobBase: Record<string, unknown>, jobId: string, reason: string) {
+  const now = new Date().toISOString();
+  const text = "Sezení bylo naplánováno, ale v evidenci není záznam, že začalo. Nelze z toho odvozovat stav části. Je potřeba ověřit u terapeutky, zda se pokus skutečně odehrál.";
+  const analysisJson = {
+    outcome: "planned_not_started",
+    post_session_result: { status: "planned_not_started", contactOccurred: false },
+    evidence_basis: "planned_only",
+    confirmed_facts: {
+      plan_id: plan.id,
+      part_name: plan.selected_part,
+      plan_existed: true,
+      no_live_progress: true,
+      no_matching_thread: true,
+      no_user_response: true,
+    },
+    unknowns: ["zda se pokus o sezení vůbec odehrál"],
+    reason,
+  };
+  const reviewPayload = {
+    user_id: plan.user_id,
+    plan_id: plan.id,
+    part_name: plan.selected_part,
+    session_date: plan.plan_date,
+    status: "evidence_limited",
+    review_kind: "calendar_day_safety_net",
+    analysis_version: "did-session-review-v1-planned-not-started",
+    source_data_summary: "planned_only:no_session_started_evidence",
+    evidence_items: [
+      { kind: "session_plan", available: true, source_table: "did_daily_session_plans", source_id: plan.id, date: plan.plan_date },
+      { kind: "session_started_evidence", available: false },
+    ],
+    completed_checklist_items: [],
+    missing_checklist_items: [],
+    transcript_available: false,
+    live_progress_available: false,
+    clinical_summary: text,
+    therapeutic_implications: "Ověřit u terapeutky, zda se pokus o sezení skutečně odehrál.",
+    team_implications: null,
+    next_session_recommendation: "Neodvozovat klinické závěry z plánu; nejprve ověřit realitu sezení.",
+    evidence_limitations: "Existuje plán, ale chybí evidence zahájení: žádné completed blocks, turn-by-turn data, observations, artifacts ani odpověď části v threadu navázaném na tento plan_id.",
+    analysis_json: analysisJson,
+    projection_status: "skipped",
+    error_message: null,
+    is_current: true,
+    updated_at: now,
+  };
+  const { data: existingReview } = await sb.from("did_session_reviews").select("id").eq("plan_id", plan.id).eq("is_current", true).maybeSingle();
+  let reviewId = existingReview?.id ?? null;
+  if (reviewId) await sb.from("did_session_reviews").update(reviewPayload).eq("id", reviewId);
+  else {
+    const { data: inserted } = await sb.from("did_session_reviews").insert(reviewPayload).select("id").single();
+    reviewId = inserted?.id ?? null;
+  }
+  await sb.from("did_daily_session_plans").update({
+    lifecycle_status: "evidence_limited",
+    urgency_breakdown: { ...(plan.urgency_breakdown ?? {}), result_status: "planned_not_started", session_started_evidence: false },
+    finalized_at: now,
+    finalization_source: "auto_safety_net",
+    finalization_reason: reason,
+    updated_at: now,
+  }).eq("id", plan.id);
+  const resultPayload = { plan_id: plan.id, review_id: reviewId, review_status: "evidence_limited", outcome: "planned_not_started" };
+  await sb.from("karel_action_jobs").update({
+    status: "completed",
+    completed_at: now,
+    result_summary: "Session planned but not started",
+    result_payload: resultPayload,
+    error_message: null,
+  }).eq("id", jobId);
+  return resultPayload;
+}
+
 async function upsertTerminalJob(sb: any, base: Record<string, unknown>, status: JobStatus, payload: Record<string, unknown>) {
   const now = new Date().toISOString();
   const row = {
@@ -66,7 +153,7 @@ serve(async (req: Request) => {
 
     const { data: plan, error: planErr } = await sb
       .from("did_daily_session_plans")
-      .select("id, user_id, plan_date, selected_part, lifecycle_status")
+      .select("id, user_id, plan_date, selected_part, lifecycle_status, urgency_breakdown")
       .eq("id", planId)
       .maybeSingle();
     if (planErr) throw planErr;
@@ -152,19 +239,18 @@ serve(async (req: Request) => {
     const jobId = insertedJob.id;
 
     try {
-      await sb.from("did_daily_session_plans").update({
-        lifecycle_status: "awaiting_analysis",
-        finalized_at: now,
-        finalization_source: source,
-        finalization_reason: reason,
-        updated_at: now,
-      }).eq("id", planId);
-
       const { data: liveProgress } = await sb
         .from("did_live_session_progress")
-        .select("items, turns_by_block, completed_blocks, total_blocks")
+        .select("items, turns_by_block, artifacts_by_block, completed_blocks, total_blocks")
         .eq("plan_id", planId)
         .maybeSingle();
+
+      const { data: matchingThreads } = await sb
+        .from("did_threads")
+        .select("id, messages, workspace_type, workspace_id")
+        .eq("workspace_type", "session")
+        .eq("workspace_id", planId)
+        .limit(3);
 
       const items = Array.isArray(liveProgress?.items) ? liveProgress.items : [];
       const observationsByBlock = Object.fromEntries(
@@ -172,6 +258,21 @@ serve(async (req: Request) => {
           .map((it: any, idx: number) => [String(idx), String(it?.observation ?? "")])
           .filter((entry: string[]) => String(entry[1] ?? "").trim().length > 0),
       );
+      const artifactCount = Object.values(liveProgress?.artifacts_by_block ?? {}).reduce((sum: number, value: any) => sum + (Array.isArray(value) ? value.length : value && typeof value === "object" ? Object.keys(value).length : 0), 0);
+      const sessionStarted = (liveProgress?.completed_blocks ?? 0) > 0 || hasNonEmptyTurns(liveProgress?.turns_by_block ?? {}) || hasNonEmptyObservations(items) || artifactCount > 0 || hasThreadUserResponse(matchingThreads ?? []);
+      const sessionActor = plan.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown.session_actor : null;
+      if (source === "auto_safety_net" && !sessionStarted && sessionActor !== "karel_direct") {
+        const resultPayload = await persistPlannedNotStarted(sb, plan, jobBase, jobId, reason);
+        return json({ ok: true, job_id: jobId, job_status: "completed", dedupe_key: dedupeKey, ...resultPayload });
+      }
+
+      await sb.from("did_daily_session_plans").update({
+        lifecycle_status: "awaiting_analysis",
+        finalized_at: now,
+        finalization_source: source,
+        finalization_reason: reason,
+        updated_at: now,
+      }).eq("id", planId);
 
       const evalRes = await fetch(`${supabaseUrl}/functions/v1/karel-did-session-evaluate`, {
         method: "POST",
