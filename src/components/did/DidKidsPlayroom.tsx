@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Loader2, Send, XCircle } from "lucide-react";
+import { ArrowLeft, Loader2, Mic, Paperclip, Send, Square, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,6 +7,10 @@ import { getAuthHeaders } from "@/lib/auth";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import { toast } from "sonner";
 import tundrupekPlayroomBg from "@/assets/tundrupek-playroom-bg.jpg";
+import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
+import { buildAttachmentContent, useUniversalUpload, type PendingAttachment } from "@/hooks/useUniversalUpload";
+import { handleApiError, parseSSEStream } from "@/lib/chatHelpers";
+import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 
 const PREFERRED_PLAN_ID = "8d2deb4f-4e9e-48a2-8abc-c3f5be8d7914";
 
@@ -14,12 +18,13 @@ interface PlayroomPlanRow {
   id: string;
   selected_part: string;
   urgency_breakdown: Record<string, any>;
+  plan_markdown?: string;
   created_at?: string;
 }
 
 interface PlayroomThread {
   id: string;
-  messages: { role: "user" | "assistant"; content: string }[];
+  messages: { role: "user" | "assistant"; content: any }[];
 }
 
 const blockedChildText = /(Karel-only|DID\/Kluci\/Herna|M[ůu][žz]e\s+tu\s+b[ýy]t|konkr[ée]tn[íi]\s+motivy|nab[íi]dka,?\s+ne\s+jako\s+tvrzen[íi]|preference|voln[ée]\s+m[íi]sto\s+pro\s+symbol|Karel\s+je\s+v\s+m[íi]stnosti\s+p[řr][íi]tomen|theme_source|playroom_plan|clinical_goal|evidence|diagnostik|trauma|terapeutick[ýy]\s+pl[áa]n|Hani[čc]ka|K[áa][ťt]a|intern[íi]|writeback|risk_assessment|forbidden_methods)/i;
@@ -42,6 +47,19 @@ const firstChoices = ["jde to", "nejde to", "nevím", "chci jen ticho"];
 const getRoomBackground = (partName: string) => {
   if (partName.toLocaleUpperCase("cs-CZ") === "TUNDRUPEK") return tundrupekPlayroomBg;
   return tundrupekPlayroomBg;
+};
+
+const contentText = (content: any) => {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return content.map((part) => part?.text || (part?.image_url ? "Přiložený obrázek" : "Příloha")).filter(Boolean).join("\n");
+  return "";
+};
+
+const getRoomTone = (plan: PlayroomPlanRow | null, thread: PlayroomThread | null) => {
+  const raw = `${plan?.urgency_breakdown?.readiness_today || ""} ${plan?.urgency_breakdown?.playroom_theme || ""} ${contentText(thread?.messages?.at(-1)?.content)}`.toLocaleLowerCase("cs-CZ");
+  if (/nejde|ticho|stop|unaven|strach|red|kriz/.test(raw)) return "quiet";
+  if (/jde|hra|zvědav|aktiv|green|kontakt/.test(raw)) return "open";
+  return "listening";
 };
 
 const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
