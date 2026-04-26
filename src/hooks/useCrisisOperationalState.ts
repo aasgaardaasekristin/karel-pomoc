@@ -767,12 +767,27 @@ export function useCrisisOperationalState() {
 // ── Backend readiness fetcher ──────────────────────────────────
 
 async function fetchBackendReadiness(crisisEventId: string): Promise<ClosureReadiness4Layer | null> {
+  const now = Date.now();
+  const cached = readinessCache.get(crisisEventId);
+  if (cached && cached.expiresAt > now) return cached.value;
+
+  const existing = readinessInFlight.get(crisisEventId);
+  if (existing) return existing;
+
+  const request = fetchBackendReadinessUncached(crisisEventId).finally(() => {
+    readinessInFlight.delete(crisisEventId);
+  });
+  readinessInFlight.set(crisisEventId, request);
+  return request;
+}
+
+async function fetchBackendReadinessUncached(crisisEventId: string): Promise<ClosureReadiness4Layer | null> {
   const result = await safeEdgeFunction("karel-crisis-closure-meeting", { action: "check_closure_readiness", crisis_event_id: crisisEventId });
   if (!result.ok) return null;
   const r = result.data?.readiness || result.data;
   if (!r?.clinical || !r?.process || !r?.team || !r?.operational) return null;
   try {
-    return {
+    const value = {
       clinical: { met: r.clinical.met, blockers: r.clinical.blockers || [] },
       process: { met: r.process.met, blockers: r.process.blockers || [] },
       team: { met: r.team.met, blockers: r.team.blockers || [] },
@@ -780,6 +795,8 @@ async function fetchBackendReadiness(crisisEventId: string): Promise<ClosureRead
       overallReady: r.overall_ready,
       allBlockers: r.all_blockers || [],
     };
+    readinessCache.set(crisisEventId, { value, expiresAt: Date.now() + READINESS_CACHE_TTL_MS });
+    return value;
   } catch {
     return null;
   }
