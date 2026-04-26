@@ -2262,6 +2262,50 @@ async function sendOrQueueEmail(
   }
 }
 
+async function refreshDailyClosureReadinessSnapshots(sb: any): Promise<{ checked: number; updated: number; errors: number }> {
+  const { data: crises, error } = await sb.from("crisis_events")
+    .select("id, indicator_safety, trigger_resolved, stable_since, daily_checklist, last_evening_decision_at, intervention_result_completeness, closure_reason")
+    .not("phase", "in", '("closed","CLOSED")');
+  if (error) throw new Error(`closure_readiness_load_crises:${error.message}`);
+
+  let updated = 0;
+  let errors = 0;
+  for (const crisis of crises || []) {
+    try {
+      const [sessionsRes, questionsRes, meetingsRes, checklistRes, interviewsRes] = await Promise.all([
+        sb.from("did_daily_session_plans").select("id").eq("crisis_event_id", crisis.id),
+        sb.from("crisis_session_questions").select("id, answered_at").eq("crisis_event_id", crisis.id),
+        sb.from("did_meetings").select("hanka_position, kata_position, karel_final_statement, closure_recommendation").eq("crisis_event_id", crisis.id).eq("is_closure_meeting", true).limit(1),
+        sb.from("crisis_closure_checklist").select("no_risk_signals, trigger_managed, emotional_stable_days, relapse_plan_exists").eq("crisis_event_id", crisis.id).order("created_at", { ascending: false }).limit(1),
+        sb.from("crisis_karel_interviews").select("observed_regulation, observed_trust").eq("crisis_event_id", crisis.id).order("created_at", { ascending: false }).limit(1),
+      ]);
+
+      const cl = checklistRes.data?.[0] || {};
+      const meeting = meetingsRes.data?.[0] || null;
+      const interview = interviewsRes.data?.[0] || {};
+      const noRisk = cl.no_risk_signals === true || crisis.indicator_safety >= 7;
+      const triggerManaged = crisis.trigger_resolved === true || cl.trigger_managed === true;
+      const lastContactStable = (interview.observed_regulation ?? 0) >= 6 && (interview.observed_trust ?? 0) >= 5;
+      const emotionalStable = (cl.emotional_stable_days ?? 0) >= 2 || (crisis.stable_since && Math.floor((Date.now() - new Date(crisis.stable_since).getTime()) / 86400000) >= 2);
+      const unanswered = (questionsRes.data || []).filter((q: any) => !q.answered_at);
+      const today = new Date().toISOString().slice(0, 10);
+      const clinicalBlockers = [!noRisk && "Aktivní rizikové signály", !triggerManaged && "Trigger není pod kontrolou", !lastContactStable && "Poslední kontakt nepotvrzuje stabilizaci", !emotionalStable && "Méně než 2 dny emoční stability"].filter(Boolean);
+      const processBlockers = [!(sessionsRes.data?.length >= 1) && "Žádná proběhlá sezení", !((crisis.intervention_result_completeness ?? 0) >= 70) && "Neúplné výsledky intervencí", unanswered.length > 0 && `${unanswered.length} nezodpovězených otázek`, !crisis.daily_checklist && "Chybí dnešní hodnocení", !(crisis.last_evening_decision_at && String(crisis.last_evening_decision_at).slice(0, 10) === today) && "Chybí evening decision"].filter(Boolean);
+      const teamBlockers = [!meeting && "Closure meeting nebyl založen", meeting && !meeting.hanka_position && "Chybí stanovisko Hanky", meeting && !meeting.kata_position && "Chybí stanovisko Káti", meeting && !meeting.karel_final_statement && "Chybí Karlův finální statement", meeting && !meeting.closure_recommendation && "Chybí closure recommendation"].filter(Boolean);
+      const operationalBlockers = [!(crisis.closure_reason || cl.relapse_plan_exists === true) && "Chybí plán monitoringu", cl.relapse_plan_exists !== true && "Chybí relapse plán"].filter(Boolean);
+      const allBlockers = [...clinicalBlockers, ...processBlockers, ...teamBlockers, ...operationalBlockers];
+      const snapshot = { checked_at: new Date().toISOString(), source: "karel-did-daily-cycle:pre_dashboard", clinical: { met: clinicalBlockers.length === 0, blockers: clinicalBlockers }, process: { met: processBlockers.length === 0, blockers: processBlockers }, team: { met: teamBlockers.length === 0, blockers: teamBlockers }, operational: { met: operationalBlockers.length === 0, blockers: operationalBlockers }, overall_ready: allBlockers.length === 0, all_blockers: allBlockers };
+      const { error: updateError } = await sb.from("crisis_events").update({ closure_readiness_snapshot: snapshot, closure_readiness_checked_at: snapshot.checked_at }).eq("id", crisis.id);
+      if (updateError) throw updateError;
+      updated++;
+    } catch (e) {
+      errors++;
+      console.warn(`[closure-readiness-daily] Failed for crisis ${crisis.id}:`, e);
+    }
+  }
+  return { checked: crises?.length || 0, updated, errors };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
