@@ -1849,7 +1849,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     if ((!input.trim() && attachments.length === 0) || isLoading) return;
     const userMessage = input.trim();
     const currentAttachments = [...attachments];
-    setInput("");
+    const currentDraftKey = draftKey;
     clearAttachments();
     const userContent = buildAttachmentContent(userMessage, currentAttachments);
     setMessages((prev) => [...prev, { role: "user", content: userContent as any }]);
@@ -1996,6 +1996,8 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           messages.length <= 2 && userMessage.length > 5) {
         enrichContextForSubMode(userMessage);
       }
+      setInput("");
+      try { sessionStorage.removeItem(currentDraftKey); } catch {}
     } catch (error) {
       console.error("Chat error:", error, "mode:", mode, "didSubMode:", didSubMode);
       const errMsg = error instanceof Error ? error.message : "Chyba při komunikaci";
