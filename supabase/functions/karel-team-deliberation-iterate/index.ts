@@ -230,7 +230,7 @@ ${row.karel_proposed_plan ?? "(bez návrhu)"}
 
 AKTUÁLNÍ PROGRAM (bod po bodu):
 ${currentProgram.length > 0
-  ? currentProgram.map((b, i) => `${i + 1}. ${b.block}${b.minutes ? ` (${b.minutes} min)` : ""}${b.detail ? ` — ${b.detail}` : ""}`).join("\n")
+  ? JSON.stringify(currentProgram, null, 2)
   : "(zatím žádné body)"}
 
 NOVÝ VSTUP OD ${authorLabel.toUpperCase()}:
@@ -279,16 +279,15 @@ Vrať VÝHRADNĚ JSON (bez markdownu, bez fences):
     "writeback_target": ["review"]
   },
   "program_draft": [
-    { "block": "konkrétní hravý název (max 100 znaků)", "minutes": 10, "detail": "3-5 vět: digitální pomůcka, Karlův prompt, co sledovat", "tool_id": "wat | rorschach_lite | active_imagination | …" }
+    { "block": "konkrétní hravý název (max 100 znaků)", "minutes": 10, "clinical_intent": "klinický záměr", "playful_form": "hravá forma", "script": "přesná bezpečná věta", "observe": ["co sledovat"], "evidence_to_record": ["co zapsat jako evidenci"], "stop_if": ["kdy zastavit"], "fallback": "bezpečný fallback", "requires_physical_therapist": false, "karel_can_do_alone": true }
   ],
   "karel_inline_comment": "1-2 věty terapeutkám: co konkrétně jsi v programu změnil podle jejich vstupu, a jaký nástroj jsi použil/přesunul."
 }
 
 PRAVIDLA STRUKTURY:
 - max 8 bloků celkem
-- každý detail max 320 znaků
-- tool_id volitelný, ale doporučený
-- minutáž volitelná
+- zachovej plnou strukturu každého bloku; nikdy nevracej jen block/detail
+- minutáž volitelná, ale preferovaně číslo
 - žádné prázdné bloky`;
 
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
