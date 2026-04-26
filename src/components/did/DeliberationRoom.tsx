@@ -50,7 +50,50 @@ type LiveProgramBlock = {
   block?: string | null;
   minutes?: number | null;
   detail?: string | null;
+  clinical_intent?: string | null;
+  playful_form?: string | null;
+  script?: string | null;
+  observe?: string[] | string | null;
+  evidence_to_record?: string[] | string | null;
+  stop_if?: string[] | string | null;
+  fallback?: string | null;
+  requires_physical_therapist?: boolean | null;
+  karel_can_do_alone?: boolean | null;
 };
+
+const PROGRAM_TEXT_FIELDS: Array<[keyof LiveProgramBlock, string]> = [
+  ["clinical_intent", "Záměr"],
+  ["playful_form", "Hravá forma"],
+  ["script", "Věta"],
+  ["fallback", "Fallback"],
+];
+
+const PROGRAM_LIST_FIELDS: Array<[keyof LiveProgramBlock, string]> = [
+  ["observe", "Sledovat"],
+  ["evidence_to_record", "Zapsat pro Karla"],
+  ["stop_if", "Zastavit když"],
+];
+
+function textValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function listValue(value: unknown) {
+  if (Array.isArray(value)) return value.map((item) => String(item ?? "").trim()).filter(Boolean);
+  const single = textValue(value);
+  return single ? [single] : [];
+}
+
+function hasStructuredProgramFields(block: LiveProgramBlock) {
+  return [...PROGRAM_TEXT_FIELDS, ...PROGRAM_LIST_FIELDS].some(([key]) => {
+    const value = block[key];
+    return Array.isArray(value) ? listValue(value).length > 0 : textValue(value).length > 0;
+  }) || typeof block.requires_physical_therapist === "boolean" || typeof block.karel_can_do_alone === "boolean";
+}
+
+function yesNo(value: boolean) {
+  return value ? "Ano" : "Ne";
+}
 
 type LiveDeliberationSource = Pick<
   TeamDeliberation,
