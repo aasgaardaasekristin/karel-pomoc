@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import { toast } from "sonner";
+import tundrupekPlayroomBg from "@/assets/tundrupek-playroom-bg.jpg";
 
 const PREFERRED_PLAN_ID = "8d2deb4f-4e9e-48a2-8abc-c3f5be8d7914";
 
@@ -38,6 +39,11 @@ const getChildAddress = (partName: string) => partName.toLocaleUpperCase("cs-CZ"
 
 const firstChoices = ["jde to", "nejde to", "nevím", "chci jen ticho"];
 
+const getRoomBackground = (partName: string) => {
+  if (partName.toLocaleUpperCase("cs-CZ") === "TUNDRUPEK") return tundrupekPlayroomBg;
+  return tundrupekPlayroomBg;
+};
+
 const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const [plan, setPlan] = useState<PlayroomPlanRow | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,6 +54,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
 
   const targetPart = plan?.selected_part || plan?.urgency_breakdown?.target_part || "";
   const childAddress = useMemo(() => getChildAddress(targetPart), [targetPart]);
+  const roomBackground = useMemo(() => getRoomBackground(targetPart), [targetPart]);
 
   const loadApprovedPlan = useCallback(async () => {
     setLoading(true);
