@@ -295,6 +295,17 @@ PRAVIDLA STRUKTURY:
     if (parsed.hybrid_contract && typeof parsed.hybrid_contract === "object") {
       sessionParams.hybrid_contract = parsed.hybrid_contract;
     }
+    const hybridContract = sessionParams.hybrid_contract && typeof sessionParams.hybrid_contract === "object"
+      ? sessionParams.hybrid_contract as Record<string, any>
+      : null;
+    if (hybridContract) {
+      sessionParams.readiness_today = String(sessionParams.readiness_today ?? hybridContract.readiness_today ?? "").trim() || null;
+      sessionParams.risk_gate = sessionParams.risk_gate ?? hybridContract.risk_gate ?? null;
+      sessionParams.stop_rules = Array.isArray(sessionParams.stop_rules) && sessionParams.stop_rules.length > 0
+        ? sessionParams.stop_rules
+        : (Array.isArray(hybridContract.stop_rules) ? hybridContract.stop_rules.map((x: any) => String(x)).slice(0, 8) : []);
+      sessionParams.session_mode = String(sessionParams.session_mode ?? hybridContract.session_mode ?? hybridContract.therapist_led_vs_karel_only ?? "standard").trim() || "standard";
+    }
 
     // Save program_draft + log; invalidovat starou syntézu (vstup změnil situaci)
     const { error: updErr } = await admin
