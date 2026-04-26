@@ -122,6 +122,7 @@ serve(async (req) => {
 
   try {
     const { messages, mode, didInitialContext, didSubMode, notebookProject, didPartName, didThreadLabel, didEnteredName, didContextPrimeCache } = await req.json();
+    const isDirectChildSubMode = didSubMode === "cast" || didSubMode === "playroom";
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
@@ -465,7 +466,7 @@ INSTRUKCE: Přirozeně vpletej tato témata do konverzace. NEŘÍKEJ "mám v age
       systemPrompt += `\n\n═══ AKTIVNÍ PODREŽIM ═══\nAktuální didSubMode: "${didSubMode}"`;
 
       // ═══ IDENTITA ČÁSTI — injekce do kontextu ═══
-      if (didSubMode === "cast" && didPartName) {
+      if (isDirectChildSubMode && didPartName) {
         const label = didThreadLabel || didEnteredName || didPartName;
         systemPrompt += `\n\n═══ IDENTIFIKOVANÉ DÍTĚ (z registru) ═══\n⚠️ Toto dítě BYLO DETEKOVÁNO z registru PŘED zahájením hovoru. Karel VÍ kdo s ním mluví.\n• Kanonické jméno: ${didPartName}\n• Představilo se jako: ${label}\n\nKRITICKÉ PRAVIDLO: NEPTEJ SE znovu „Jak ti říkají?" ani „Jsi Arthur?". Dítě již bylo identifikováno. Rovnou navazuj s plnou návazností z karty. Oslovuj jménem „${label}".`;
         console.log(`[karel-chat] Part identity injected: canonical=${didPartName}, label=${label}`);
@@ -474,7 +475,7 @@ INSTRUKCE: Přirozeně vpletej tato témata do konverzace. NEŘÍKEJ "mám v age
 
     // ═══ SESSION MEMORY INJECTION ═══
     // Load structured short-term memory from previous sessions with this part
-    if ((mode === "childcare" || effectiveMode === "kata") && didSubMode === "cast" && didPartName) {
+    if ((mode === "childcare" || effectiveMode === "kata") && isDirectChildSubMode && didPartName) {
       try {
         const { createClient: createSbMem } = await import("https://esm.sh/@supabase/supabase-js@2");
         const sbMem = createSbMem(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -522,7 +523,7 @@ INSTRUKCE: Přirozeně vpletej tato témata do konverzace. NEŘÍKEJ "mám v age
 
     // ═══ CRISIS CONTEXT INJECTION ═══
     // If the part has an active crisis, inject crisis context into system prompt
-    if ((mode === "childcare" || effectiveMode === "kata") && didSubMode === "cast" && didPartName) {
+    if ((mode === "childcare" || effectiveMode === "kata") && isDirectChildSubMode && didPartName) {
       try {
         const { createClient: createSbCrisisCtx } = await import("https://esm.sh/@supabase/supabase-js@2");
         const sbCrisisCtx = createSbCrisisCtx(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -585,7 +586,7 @@ ${lastAssessment?.next_day_plan?.focus_areas ? lastAssessment.next_day_plan.focu
 
     // ═══ THERAPIST NOTES INJECTION ═══
     // Load unread offline observations from therapists
-    if ((mode === "childcare" || effectiveMode === "kata") && didSubMode === "cast" && didPartName) {
+    if ((mode === "childcare" || effectiveMode === "kata") && isDirectChildSubMode && didPartName) {
       try {
         const { createClient: createSbNotes } = await import("https://esm.sh/@supabase/supabase-js@2");
         const sbNotes = createSbNotes(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -625,7 +626,7 @@ ${lastAssessment?.next_day_plan?.focus_areas ? lastAssessment.next_day_plan.focu
     }
 
     // ═══ METRICS CONTEXT INJECTION ═══
-    if ((mode === "childcare" || effectiveMode === "kata") && didSubMode === "cast" && didPartName) {
+    if ((mode === "childcare" || effectiveMode === "kata") && isDirectChildSubMode && didPartName) {
       try {
         const { createClient: createSbMetrics } = await import("https://esm.sh/@supabase/supabase-js@2");
         const sbMetrics = createSbMetrics(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -669,7 +670,7 @@ POKYN: Pokud valence klesá (↓), buď citlivější. Pokud spolupráce roste (
     }
 
     // ═══ GOALS INJECTION ═══
-    if ((mode === "childcare" || effectiveMode === "kata") && didSubMode === "cast" && didPartName) {
+    if ((mode === "childcare" || effectiveMode === "kata") && isDirectChildSubMode && didPartName) {
       try {
         const { createClient: createSbGoals } = await import("https://esm.sh/@supabase/supabase-js@2");
         const sbGoals = createSbGoals(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -948,7 +949,7 @@ Karel doporučení přirozeně začlení do rozhovoru, ne jako seznam.`;
     // ═══ LANGUAGE ADAPTATION for "cast" mode ═══
     // Detect language of last user message and enforce matching response language
     let detectedLang = "";
-    if (didSubMode === "cast" && messages.length >= 1) {
+    if (isDirectChildSubMode && messages.length >= 1) {
       const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
       const lastUserText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
       if (lastUserText.length > 0) {
@@ -1098,7 +1099,7 @@ Odpověz v češtině. Buď stručný a praktický. Max 500 slov.`,
     }
 
     // ═══ SWITCHING DETECTION (F2) ═══
-    if (didSubMode === "cast" && didPartName && messages.length >= 2) {
+    if (isDirectChildSubMode && didPartName && messages.length >= 2) {
       try {
         const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
         const lastUserText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
@@ -1366,7 +1367,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         // Phase 2: cast (přímá konverzace s dítětem) je nově zapojen — sensitivity
         // guard a evidence quality guard nadále chrání co kam smí.
         const isHanaPersonal = mode === "childcare" && didSubMode === "general";
-        const isCastMode = didSubMode === "cast";
+        const isCastMode = isDirectChildSubMode;
         const isMemoryMode = isHanaPersonal || didSubMode === "mamka" || didSubMode === "kata" || isCastMode;
 
         if (isMemoryMode && fullResponse.length > 30) {
@@ -1629,7 +1630,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         }
 
         // ═══ SAFETY CHECK (fire-and-forget via separate edge function) ═══
-        if (didSubMode === "cast" && didPartName) {
+        if (isDirectChildSubMode && didPartName) {
           const lastUserMsg = (messages as any[]).filter((m: any) => m.role === "user").pop();
           const userText = typeof lastUserMsg?.content === "string" ? lastUserMsg.content : "";
           if (userText.length > 5) {
@@ -1646,7 +1647,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
 
         // ═══ ASYNC CRISIS CONVERSATION ANALYSIS (fire-and-forget) ═══
         // If the part has an active crisis, analyze each exchange for risk signals
-        if (didSubMode === "cast" && didPartName && fullResponse.length > 10) {
+        if (isDirectChildSubMode && didPartName && fullResponse.length > 10) {
           try {
             const { createClient: createSbCrisisPost } = await import("https://esm.sh/@supabase/supabase-js@2");
             const sbCrisisPost = createSbCrisisPost(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -1753,7 +1754,7 @@ Odpověz v JSON:
 
         // ═══ ASYNC CRISIS DETECTOR (non-blocking) ═══
         // Runs for every "cast" message — detects crisis signals in conversation
-        if (didSubMode === "cast" && fullResponse.length > 10) {
+        if (isDirectChildSubMode && fullResponse.length > 10) {
           try {
             // Build last 6-10 messages for analysis
             const recentMessages = (messages as any[]).slice(-10).map((m: any) => {

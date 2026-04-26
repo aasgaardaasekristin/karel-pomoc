@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Loader2, Send, XCircle } from "lucide-react";
+import { ArrowLeft, Loader2, Mic, Paperclip, Send, Square, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,6 +7,10 @@ import { getAuthHeaders } from "@/lib/auth";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import { toast } from "sonner";
 import tundrupekPlayroomBg from "@/assets/tundrupek-playroom-bg.jpg";
+import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
+import { buildAttachmentContent, useUniversalUpload, type PendingAttachment } from "@/hooks/useUniversalUpload";
+import { handleApiError, parseSSEStream } from "@/lib/chatHelpers";
+import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 
 const PREFERRED_PLAN_ID = "8d2deb4f-4e9e-48a2-8abc-c3f5be8d7914";
 
@@ -14,12 +18,13 @@ interface PlayroomPlanRow {
   id: string;
   selected_part: string;
   urgency_breakdown: Record<string, any>;
+  plan_markdown?: string;
   created_at?: string;
 }
 
 interface PlayroomThread {
   id: string;
-  messages: { role: "user" | "assistant"; content: string }[];
+  messages: { role: "user" | "assistant"; content: any }[];
 }
 
 const blockedChildText = /(Karel-only|DID\/Kluci\/Herna|M[ůu][žz]e\s+tu\s+b[ýy]t|konkr[ée]tn[íi]\s+motivy|nab[íi]dka,?\s+ne\s+jako\s+tvrzen[íi]|preference|voln[ée]\s+m[íi]sto\s+pro\s+symbol|Karel\s+je\s+v\s+m[íi]stnosti\s+p[řr][íi]tomen|theme_source|playroom_plan|clinical_goal|evidence|diagnostik|trauma|terapeutick[ýy]\s+pl[áa]n|Hani[čc]ka|K[áa][ťt]a|intern[íi]|writeback|risk_assessment|forbidden_methods)/i;
@@ -44,6 +49,19 @@ const getRoomBackground = (partName: string) => {
   return tundrupekPlayroomBg;
 };
 
+const contentText = (content: any) => {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return content.map((part) => part?.text || (part?.image_url ? "Přiložený obrázek" : "Příloha")).filter(Boolean).join("\n");
+  return "";
+};
+
+const getRoomTone = (plan: PlayroomPlanRow | null, thread: PlayroomThread | null) => {
+  const raw = `${plan?.urgency_breakdown?.readiness_today || ""} ${plan?.urgency_breakdown?.playroom_theme || ""} ${contentText(thread?.messages?.at(-1)?.content)}`.toLocaleLowerCase("cs-CZ");
+  if (/nejde|ticho|stop|unaven|strach|red|kriz/.test(raw)) return "quiet";
+  if (/jde|hra|zvědav|aktiv|green|kontakt/.test(raw)) return "open";
+  return "listening";
+};
+
 const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const [plan, setPlan] = useState<PlayroomPlanRow | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,17 +69,21 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const [thread, setThread] = useState<PlayroomThread | null>(null);
   const [reply, setReply] = useState("");
   const [saving, setSaving] = useState(false);
+  const uploads = useUniversalUpload();
+  const recorder = useAudioRecorder();
 
   const targetPart = plan?.selected_part || plan?.urgency_breakdown?.target_part || "";
   const childAddress = useMemo(() => getChildAddress(targetPart), [targetPart]);
   const roomBackground = useMemo(() => getRoomBackground(targetPart), [targetPart]);
+  const roomTone = useMemo(() => getRoomTone(plan, thread), [plan, thread]);
+  const opener = useMemo(() => childSafe(contentText(thread?.messages?.find((message) => message.role === "assistant")?.content)) || "Jsem tady. Zkusíme dnes jen jeden malý krok.", [thread]);
 
   const loadApprovedPlan = useCallback(async () => {
     setLoading(true);
     try {
       const { data, error } = await (supabase as any)
         .from("did_daily_session_plans")
-        .select("id, selected_part, urgency_breakdown, created_at")
+        .select("id, selected_part, urgency_breakdown, plan_markdown, created_at")
         .eq("plan_date", pragueTodayISO())
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -103,7 +125,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         .eq("id", payload.thread_id)
         .maybeSingle();
       if (error || !data) throw error || new Error("Vlákno Herny se nenašlo.");
-      const loadedThread = { id: data.id, messages: ((data.messages || []) as PlayroomThread["messages"]).map((message) => ({ ...message, content: childSafe(message.content) || "Jsem tady. Můžeme zůstat potichu." })) };
+      const loadedThread = { id: data.id, messages: ((data.messages || []) as PlayroomThread["messages"]).map((message) => ({ ...message, content: childSafe(contentText(message.content)) || "Jsem tady. Můžeme zůstat potichu." })) };
       setThread(loadedThread);
       if (firstReply) {
         await saveReply(loadedThread, firstReply);
@@ -115,25 +137,40 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
     }
   };
 
-  const saveReply = async (currentThread: PlayroomThread, content: string) => {
-    if (!content.trim()) return;
+  const saveReply = async (currentThread: PlayroomThread, content: string, currentAttachments: PendingAttachment[] = []) => {
+    if (!content.trim() && currentAttachments.length === 0) return;
     setSaving(true);
+    const userContent = buildAttachmentContent(content.trim() || "Posílám přílohu.", currentAttachments);
     const nextMessages: PlayroomThread["messages"] = [
       ...currentThread.messages,
-      { role: "user", content: content.trim() },
-      { role: "assistant", content: "Děkuju. Můžeme zůstat jen u tohohle a nemusíme nikam spěchat. Chceš ještě jedno slovo, barvu, nebo dnes končíme?" },
+      { role: "user", content: userContent },
     ];
     try {
-      const { error } = await (supabase as any)
-        .from("did_threads")
-        .update({ messages: nextMessages, last_activity_at: new Date().toISOString(), is_processed: false })
-        .eq("id", currentThread.id);
+      setThread({ ...currentThread, messages: [...nextMessages, { role: "assistant", content: "" }] });
+      const headers = await getAuthHeaders();
+      const body = {
+        messages: nextMessages.slice(-18),
+        mode: "childcare",
+        didSubMode: "playroom",
+        didPartName: targetPart,
+        didThreadLabel: `Herna ${targetPart}`,
+        didInitialContext: `SCHVÁLENÝ PROGRAM HERNY PRO DNEŠEK (interní kontext pro Karla, dítěti ho neukazuj doslovně):\n${plan?.plan_markdown || ""}\n\nKONTRAKT: Vedeš dynamickou DID/CAN terapii v Herna UI. Reaguj na text, hlas, obraz, video i dokument. Vždy pokračuj podle schváleného plánu, ale přizpůsob krok aktuálnímu stavu dítěte. Žádné meta-vysvětlování programu, žádná pasivita, vždy jedna bezpečná konkrétní intervence nebo volba A/B.`,
+      };
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`, { method: "POST", headers, body: JSON.stringify(body) });
+      if (!response.ok) handleApiError(response);
+      if (!response.body) throw new Error("Karel neodpověděl.");
+      const assistantContent = await parseSSEStream(response.body, (partial) => {
+        setThread((prev) => prev ? { ...prev, messages: [...nextMessages, { role: "assistant", content: childSafe(partial) || partial }] } : prev);
+      });
+      const savedMessages = [...nextMessages, { role: "assistant" as const, content: childSafe(assistantContent) || assistantContent }];
+      const { error } = await (supabase as any).from("did_threads").update({ messages: savedMessages, last_activity_at: new Date().toISOString(), is_processed: false }).eq("id", currentThread.id);
       if (error) throw error;
-      setThread({ ...currentThread, messages: nextMessages });
+      setThread({ ...currentThread, messages: savedMessages });
       setReply("");
+      uploads.clearAttachments();
     } catch (error) {
       console.error("[DidKidsPlayroom] message save failed", error);
-      toast.error("Odpověď se nepodařilo uložit.");
+      toast.error(error instanceof Error ? error.message : "Odpověď se nepodařilo uložit.");
     } finally {
       setSaving(false);
     }
@@ -141,7 +178,14 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
 
   const sendReply = async (content: string) => {
     if (!thread) return;
-    await saveReply(thread, content);
+    await saveReply(thread, content, uploads.attachments);
+  };
+
+  const attachRecording = async () => {
+    const base64 = await recorder.getBase64();
+    if (!base64) return;
+    uploads.addAttachment({ id: `voice-${Date.now()}`, name: "hlas_tundrupka.webm", type: "audio/webm", size: Math.round(base64.length * 0.75), category: "audio", dataUrl: `data:audio/webm;base64,${base64}` });
+    recorder.discardRecording();
   };
 
   if (loading) {
@@ -173,26 +217,30 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
           height={768}
           fetchPriority="high"
         />
-        <div className="absolute inset-0 bg-background/20" />
-        <div className="relative z-10 mx-auto flex min-h-[calc(100vh-6.5rem)] max-w-3xl flex-col space-y-4">
-          <Button variant="secondary" size="sm" onClick={onBack} className="w-fit bg-background/75 backdrop-blur-sm"><ArrowLeft className="mr-2 h-4 w-4" />Zpět</Button>
+        <div className={roomTone === "quiet" ? "absolute inset-0 bg-background/12" : roomTone === "open" ? "absolute inset-0 bg-primary/5" : "absolute inset-0 bg-background/8"} />
+        <div className="relative z-10 mx-auto flex min-h-[calc(100vh-6.5rem)] max-w-4xl flex-col space-y-3">
+          <Button variant="secondary" size="sm" onClick={onBack} className="w-fit bg-background/45 text-foreground/70 backdrop-blur-sm"><ArrowLeft className="mr-2 h-4 w-4" />Zpět</Button>
 
           <header className="space-y-1 text-center drop-shadow-sm">
             <h1 className="text-3xl font-serif text-foreground">Herna</h1>
           </header>
 
-          <div className="flex flex-1 items-center justify-center pb-10 pt-4">
-            <div className="w-full max-w-md space-y-4 rounded-lg border border-border/70 bg-background/72 p-5 text-center shadow-sm backdrop-blur-md">
-              <div className="space-y-3">
-                <p className="text-base leading-relaxed text-foreground">Ahoj, {childAddress}.</p>
-                <p className="text-base leading-relaxed text-foreground">Dnes tu nemusíš nic dokazovat.</p>
-                <p className="text-base leading-relaxed text-foreground">Můžu být jen chvíli poblíž?</p>
+          <div className="flex flex-1 items-center justify-center pb-8 pt-3">
+            <div className="w-full max-w-lg space-y-4 rounded-lg border border-border/35 bg-background/38 p-5 text-center shadow-sm backdrop-blur-[3px]">
+              <div className="space-y-3 text-foreground/72">
+                {thread ? opener.split("\n").filter(Boolean).slice(0, 4).map((line, index) => (
+                  <p key={index} className="text-base leading-relaxed">{line}</p>
+                )) : <>
+                  <p className="text-base leading-relaxed">Ahoj, {childAddress}.</p>
+                  <p className="text-base leading-relaxed">Dnes tu nemusíš nic dokazovat.</p>
+                  <p className="text-base leading-relaxed">Můžu být jen chvíli poblíž?</p>
+                </>}
               </div>
 
               {!thread && (
                 <div className="grid grid-cols-2 gap-2 pt-2">
                   {firstChoices.map((choice) => (
-                    <Button key={choice} variant="secondary" onClick={() => enterPlayroom(choice)} disabled={opening} className="bg-card/85 backdrop-blur-sm">
+                    <Button key={choice} variant="secondary" onClick={() => enterPlayroom(choice)} disabled={opening} className="bg-card/58 text-foreground/78 backdrop-blur-sm">
                       {opening ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                       {choice}
                     </Button>
@@ -203,17 +251,22 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
           </div>
 
         {thread ? (
-          <section className="space-y-3 rounded-lg border border-border/70 bg-background/78 p-4 shadow-sm backdrop-blur-md">
-            <div className="space-y-3">
-              {thread.messages.map((message, index) => (
-                <div key={`${index}-${message.role}`} className={message.role === "assistant" ? "mr-8 rounded-lg bg-secondary p-3 text-sm text-secondary-foreground" : "ml-8 rounded-lg bg-primary p-3 text-sm text-primary-foreground"}>
-                  {message.content}
+          <section className="mt-auto space-y-3 rounded-lg border border-border/35 bg-background/34 p-3 shadow-sm backdrop-blur-[3px]">
+            <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+              {thread.messages.slice(1).map((message, index) => (
+                <div key={`${index}-${message.role}`} className={message.role === "assistant" ? "mr-12 rounded-lg bg-secondary/45 p-3 text-sm text-secondary-foreground/74" : "ml-12 rounded-lg bg-primary/48 p-3 text-sm text-primary-foreground/82"}>
+                  {contentText(message.content) || (saving && message.role === "assistant" ? "…" : "")}
                 </div>
               ))}
             </div>
-            <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Můžeš napsat jedno slovo, barvu, nebo jen jde to / nejde to / nevím." className="min-h-24 resize-none" />
+            <div className="relative">
+              <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Napiš, nahraj hlas, video, fotku, screenshot nebo dokument." className="min-h-20 resize-none bg-background/46 text-foreground/78 placeholder:text-muted-foreground/62" />
+              <UniversalAttachmentBar attachments={uploads.attachments} onRemove={uploads.removeAttachment} onOpenFilePicker={uploads.openFilePicker} onCaptureScreenshot={uploads.captureScreenshot} onOpenDrivePicker={uploads.openFilePicker} onAutoAnalyze={() => sendReply(reply || "Podívej se prosím na přílohu.")} disabled={saving} fileInputRef={uploads.fileInputRef} onFileChange={uploads.handleFileChange} isAnalyzing={saving} />
+            </div>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => sendReply(reply)} disabled={saving || !reply.trim()}><Send className="mr-2 h-4 w-4" />Odpovědět</Button>
+              {recorder.state === "recording" ? <Button variant="secondary" onClick={recorder.stopRecording}><Square className="mr-2 h-4 w-4" />Zastavit hlas</Button> : <Button variant="secondary" onClick={recorder.startRecording}><Mic className="mr-2 h-4 w-4" />Hlas</Button>}
+              {recorder.state === "recorded" ? <Button variant="outline" onClick={attachRecording}><Paperclip className="mr-2 h-4 w-4" />Přiložit hlas</Button> : null}
+              <Button onClick={() => sendReply(reply)} disabled={saving || (!reply.trim() && uploads.attachments.length === 0)}><Send className="mr-2 h-4 w-4" />Odpovědět</Button>
               <Button variant="secondary" onClick={() => sendReply("Dnes nechci.")} disabled={saving}>Dnes nechci</Button>
               <Button variant="outline" onClick={onBack} disabled={saving}><XCircle className="mr-2 h-4 w-4" />Skončit</Button>
             </div>
