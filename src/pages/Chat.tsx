@@ -577,6 +577,11 @@ const Chat = () => {
 
     const welcomeMessages = WELCOME_MESSAGES;
 
+    if (prevModeRef.current === "childcare" && mode !== "childcare" && hasActiveWork) {
+      prevModeRef.current = mode;
+      return;
+    }
+
     if (mode !== "childcare") {
       setDidSubMode(null);
       setDidInitialContext("");
@@ -637,7 +642,7 @@ const Chat = () => {
       else setMessages([{ role: "assistant", content: welcomeMessages[mode] }]);
     }
     prevModeRef.current = mode;
-  }, [mode, setMessages, pendingHandoffToChat, setDidSubMode, setDidInitialContext]);
+  }, [mode, setMessages, pendingHandoffToChat, setDidSubMode, setDidInitialContext, hasActiveWork]);
 
   useEffect(() => {
     if (pendingHandoffToChat && mainMode === "chat") {
