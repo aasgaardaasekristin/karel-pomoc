@@ -301,6 +301,7 @@ const Chat = () => {
 
   // Restore interrupted DID flow
   useEffect(() => {
+    if (isExplicitLogoutActive()) return;
     try {
       const savedMode = localStorage.getItem(ACTIVE_MODE_KEY) as ConversationMode | null;
       if (savedMode !== "childcare") return;
@@ -338,6 +339,11 @@ const Chat = () => {
 
   useEffect(() => {
     if (!isAuthReady) return;
+    if (isExplicitLogoutActive()) {
+      setAuthChecked(false);
+      navigate("/", { replace: true });
+      return;
+    }
 
     const hasValidHanaPinToken = () => {
       try {
@@ -494,6 +500,10 @@ const Chat = () => {
   }, [authChecked, session, searchParams]);
 
   useEffect(() => {
+    if (isExplicitLogoutActive()) {
+      navigate("/", { replace: true });
+      return;
+    }
     if (authChecked && !session && !hasActiveWork) {
       navigate("/", { replace: true });
     }
@@ -660,8 +670,17 @@ const Chat = () => {
   }, [pendingHandoffToChat, mainMode, lastReportText, setMessages, setPendingHandoffToChat]);
 
   const handleLogout = async () => {
+    markExplicitLogout();
+    clearActiveWorkStorageForLogout();
+    setMessages([]);
+    setInput("");
+    setDidSubMode(null);
+    setDidInitialContext("");
+    setDidSessionId(null);
+    setDidFlowState("entry");
+    setActiveThread(null);
     await supabase.auth.signOut();
-    navigate("/");
+    navigate("/", { replace: true });
   };
 
   const handleNewConversation = useCallback(() => {
