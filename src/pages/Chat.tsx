@@ -222,6 +222,25 @@ const Chat = () => {
 
   const { history, saveConversation, loadConversation, deleteConversation, refreshHistory } = useConversationHistory();
 
+  const lastDraftKeyRef = useRef(draftKey);
+  useEffect(() => {
+    try {
+      if (lastDraftKeyRef.current !== draftKey && input.trim()) {
+        sessionStorage.setItem(lastDraftKeyRef.current, input);
+      }
+      const savedDraft = sessionStorage.getItem(draftKey) || "";
+      setInput(savedDraft);
+      lastDraftKeyRef.current = draftKey;
+    } catch {}
+  }, [draftKey]);
+
+  useEffect(() => {
+    try {
+      if (input.trim()) sessionStorage.setItem(draftKey, input);
+      else sessionStorage.removeItem(draftKey);
+    } catch {}
+  }, [draftKey, input]);
+
   // Manual update hook
   const manualUpdate = useManualUpdate({
     activeThread, messages, didSubMode, didInitialContext, didSessionId,
