@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, DoorOpen, Loader2, Send, Sparkles, XCircle } from "lucide-react";
+import { ArrowLeft, Loader2, Send, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
@@ -21,7 +21,7 @@ interface PlayroomThread {
   messages: { role: "user" | "assistant"; content: string }[];
 }
 
-const blockedChildText = /(Karel-only|DID\/Kluci\/Herna|clinical_goal|evidence|diagnostik|trauma|terapeutick[ýy]\s+pl[áa]n|Hani[čc]ka|intern[íi]|writeback|risk_assessment|forbidden_methods)/i;
+const blockedChildText = /(Karel-only|DID\/Kluci\/Herna|M[ůu][žz]e\s+tu\s+b[ýy]t|konkr[ée]tn[íi]\s+motivy|nab[íi]dka,?\s+ne\s+jako\s+tvrzen[íi]|preference|voln[ée]\s+m[íi]sto\s+pro\s+symbol|Karel\s+je\s+v\s+m[íi]stnosti\s+p[řr][íi]tomen|theme_source|playroom_plan|clinical_goal|evidence|diagnostik|trauma|terapeutick[ýy]\s+pl[áa]n|Hani[čc]ka|K[áa][ťt]a|intern[íi]|writeback|risk_assessment|forbidden_methods)/i;
 
 const childSafe = (value: unknown) => {
   const text = String(value ?? "").trim();
@@ -34,15 +34,9 @@ const toList = (value: unknown) => {
   return safe ? [safe] : [];
 };
 
-const getRoomDesign = (plan: PlayroomPlanRow | null) => {
-  const playroomPlan = plan?.urgency_breakdown?.playroom_plan ?? {};
-  return playroomPlan?.room_design && typeof playroomPlan.room_design === "object" ? playroomPlan.room_design : {};
-};
+const getChildAddress = (partName: string) => partName.toLocaleUpperCase("cs-CZ") === "TUNDRUPEK" ? "TUNDRUPKU" : partName;
 
-const getThemeText = (plan: PlayroomPlanRow | null) => {
-  const playroomPlan = plan?.urgency_breakdown?.playroom_plan ?? {};
-  return childSafe(playroomPlan.playroom_theme) || "bezpečné útočiště s klidným světýlkem";
-};
+const firstChoices = ["jde to", "nejde to", "nevím", "chci jen ticho"];
 
 const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const [plan, setPlan] = useState<PlayroomPlanRow | null>(null);
@@ -53,13 +47,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const [saving, setSaving] = useState(false);
 
   const targetPart = plan?.selected_part || plan?.urgency_breakdown?.target_part || "";
-  const roomDesign = useMemo(() => getRoomDesign(plan), [plan]);
-  const themeText = useMemo(() => getThemeText(plan), [plan]);
-  const themeSource = String(plan?.urgency_breakdown?.playroom_plan?.theme_source ?? "neutral_choice");
-  const safeObjects = toList(roomDesign.safe_objects);
-  const symbols = toList(roomDesign.interactive_symbols);
-  const openingScene = childSafe(roomDesign.opening_scene);
-  const exitSymbol = childSafe(roomDesign.exit_symbol);
+  const childAddress = useMemo(() => getChildAddress(targetPart), [targetPart]);
 
   const loadApprovedPlan = useCallback(async () => {
     setLoading(true);
@@ -89,7 +77,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
 
   useEffect(() => { void loadApprovedPlan(); }, [loadApprovedPlan]);
 
-  const enterPlayroom = async () => {
+  const enterPlayroom = async (firstReply?: string) => {
     if (!plan || !targetPart) return;
     setOpening(true);
     try {
@@ -108,7 +96,11 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         .eq("id", payload.thread_id)
         .maybeSingle();
       if (error || !data) throw error || new Error("Vlákno Herny se nenašlo.");
-      setThread({ id: data.id, messages: (data.messages || []) as PlayroomThread["messages"] });
+      const loadedThread = { id: data.id, messages: ((data.messages || []) as PlayroomThread["messages"]).map((message) => ({ ...message, content: childSafe(message.content) || "Jsem tady. Můžeme zůstat potichu." })) };
+      setThread(loadedThread);
+      if (firstReply) {
+        await saveReply(loadedThread, firstReply);
+      }
     } catch (error: any) {
       toast.error(error?.message || "Herna dnes nejde otevřít.");
     } finally {
@@ -116,11 +108,11 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
     }
   };
 
-  const sendReply = async (content: string) => {
-    if (!thread || !content.trim()) return;
+  const saveReply = async (currentThread: PlayroomThread, content: string) => {
+    if (!content.trim()) return;
     setSaving(true);
     const nextMessages: PlayroomThread["messages"] = [
-      ...thread.messages,
+      ...currentThread.messages,
       { role: "user", content: content.trim() },
       { role: "assistant", content: "Děkuju. Můžeme zůstat jen u tohohle a nemusíme nikam spěchat. Chceš ještě jedno slovo, barvu, nebo dnes končíme?" },
     ];
@@ -128,9 +120,9 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       const { error } = await (supabase as any)
         .from("did_threads")
         .update({ messages: nextMessages, last_activity_at: new Date().toISOString(), is_processed: false })
-        .eq("id", thread.id);
+        .eq("id", currentThread.id);
       if (error) throw error;
-      setThread({ ...thread, messages: nextMessages });
+      setThread({ ...currentThread, messages: nextMessages });
       setReply("");
     } catch (error) {
       console.error("[DidKidsPlayroom] message save failed", error);
@@ -138,6 +130,11 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const sendReply = async (content: string) => {
+    if (!thread) return;
+    await saveReply(thread, content);
   };
 
   if (loading) {
