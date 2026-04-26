@@ -373,32 +373,16 @@ async function loadContext(sb: any, planId: string) {
     .limit(1)
     .maybeSingle();
 
-  const sessionContract = plan.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown : {};
-  let threadCandidates: any[] | null = null;
-  if (sessionContract?.session_actor === "karel_direct") {
-    const { data } = await sb
-      .from("did_threads")
-      .select("id, part_name, sub_mode, started_at, last_activity_at, messages, workspace_type, workspace_id")
-      .eq("workspace_type", "session")
-      .eq("workspace_id", planId)
-      .eq("sub_mode", "karel_part_session")
-      .order("last_activity_at", { ascending: false })
-      .limit(3);
-    threadCandidates = data ?? null;
-  }
-
-  // Najít LIVE thread (cast/karel_part_session) pro stejnou část v okně sezení.
-  if (!threadCandidates?.length) {
-  const { data } = await sb
+  // Thread evidence must be linked to this exact plan. Do not attach another session's
+  // Karel-direct opener to a therapist-led plan just because part/date match.
+  const { data: exactThreads } = await sb
     .from("did_threads")
     .select("id, part_name, sub_mode, started_at, last_activity_at, messages, workspace_type, workspace_id")
-    .ilike("part_name", plan.selected_part)
-    .gte("last_activity_at", `${plan.plan_date}T00:00:00Z`)
-    .lte("last_activity_at", `${plan.plan_date}T23:59:59Z`)
+    .eq("workspace_type", "session")
+    .eq("workspace_id", planId)
     .order("last_activity_at", { ascending: false })
     .limit(3);
-    threadCandidates = data ?? [];
-  }
+  const threadCandidates: any[] = exactThreads ?? [];
 
   // Karta části (DB-side mirror) — deterministický resolver místo nejednoznačného ilike+maybeSingle.
   const { partCard, lookup: partCardLookup } = await resolveCanonicalPart(sb, plan.user_id, plan.selected_part);
@@ -471,6 +455,38 @@ function hasEvidence(turnsByBlock: Record<string, any[]>, observationsByBlock: R
   return (completedBlocks ?? 0) > 0 ||
     Object.values(turnsByBlock || {}).some(v => Array.isArray(v) && v.length > 0) ||
     Object.values(observationsByBlock || {}).some(v => String(v || "").trim().length > 0);
+}
+
+function countArtifactsByBlock(artifactsByBlock: Record<string, any> = {}): number {
+  return Object.values(artifactsByBlock || {}).reduce((sum, value: any) => {
+    if (Array.isArray(value)) return sum + value.length;
+    if (value && typeof value === "object") return sum + Object.keys(value).length;
+    return sum;
+  }, 0);
+}
+
+function hasThreadUserResponse(threads: any[] = []): boolean {
+  return threads.some((thread: any) => {
+    const messages = Array.isArray(thread?.messages) ? thread.messages : [];
+    return messages.slice(1).some((m: any) => String(m?.role ?? "").toLowerCase() === "user" && String(m?.content ?? "").trim().length > 0);
+  });
+}
+
+function sessionStartedEvidence(args: { completedBlocks?: number; turnsByBlock?: Record<string, any[]>; observationsByBlock?: Record<string, string>; liveProgress?: any; threads?: any[] }) {
+  const completedBlocks = args.completedBlocks ?? args.liveProgress?.completed_blocks ?? 0;
+  const turns = args.turnsByBlock ?? args.liveProgress?.turns_by_block ?? {};
+  const observations = args.observationsByBlock ?? {};
+  const artifacts = args.liveProgress?.artifacts_by_block ?? {};
+  const postSessionResult = args.liveProgress?.post_session_result && typeof args.liveProgress.post_session_result === "object" ? args.liveProgress.post_session_result : null;
+  const reasons = [
+    completedBlocks > 0 ? "completed_blocks" : null,
+    Object.values(turns || {}).some((v: any) => Array.isArray(v) && v.length > 0) ? "turns_by_block" : null,
+    Object.values(observations || {}).some((v: any) => String(v || "").trim().length > 0) ? "observations" : null,
+    countArtifactsByBlock(artifacts) > 0 ? "artifacts" : null,
+    postSessionResult?.provenance === "therapist_entered" || !!postSessionResult?.entered_by ? "therapist_entered_result" : null,
+    hasThreadUserResponse(args.threads ?? []) ? "matching_thread_user_response" : null,
+  ].filter(Boolean) as string[];
+  return { started: reasons.length > 0, reasons };
 }
 
 function karelDirectHasPartResponse(threads: any[] = []): boolean {
@@ -655,15 +671,82 @@ function sanitizeEvaluation(evaluation: any, endedReason: EndedReason, completed
     evaluation.incomplete_note = evaluation.incomplete_note || "Sezení proběhlo z větší části; nedokončené zůstaly jen některé body programu.";
   }
   if (endedReason === "auto_safety_net" && ratio === 0) {
-    const forbidden = /(neuskutečn|sotva zač|hned v úvodu|okamžitě přeruš|nebylo možné realizovat|vůbec zahájit)/i;
-    for (const key of ["incomplete_note", "session_arc", "child_perspective", "recommended_next_step"]) {
-      if (typeof evaluation[key] === "string" && forbidden.test(evaluation[key])) {
-        evaluation[key] = "Sezení nebylo formálně uzavřeno a v backendu není dost průběhových dat pro spolehlivý klinický závěr. Nelze z toho usuzovat, že sezení neproběhlo; je potřeba doplnit ruční záznam terapeutky.";
-      }
+    const neutral = "Sezení bylo naplánováno, ale v evidenci není záznam, že začalo. Nelze z toho odvozovat stav části. Je potřeba ověřit u terapeutky, zda se pokus skutečně odehrál.";
+    evaluation.completion_status = "abandoned";
+    evaluation.incomplete_note = neutral;
+    for (const key of ["session_arc", "child_perspective", "therapist_motivation", "implications_for_tomorrow", "recommended_next_step"]) {
+      if (typeof evaluation[key] === "string") evaluation[key] = key === "child_perspective" ? "unknown" : neutral;
     }
-    if (evaluation.completion_status === "abandoned") evaluation.completion_status = "partial";
+    evaluation.methods_used = [];
+    evaluation.methods_effectiveness = [];
+    evaluation.key_insights = ["planned_not_started"];
   }
   return evaluation;
+}
+
+async function persistPlannedNotStartedAudit(sb: any, ctx: any, args: { liveProgress: any; turnsByBlock: Record<string, any[]>; observationsByBlock: Record<string, string>; force?: boolean }) {
+  const now = new Date().toISOString();
+  const text = "Sezení bylo naplánováno, ale v evidenci není záznam, že začalo. Nelze z toho odvozovat stav části. Je potřeba ověřit u terapeutky, zda se pokus skutečně odehrál.";
+  const evidenceItems = [
+    { kind: "session_plan", available: true, source_table: "did_daily_session_plans", source_id: ctx.plan.id, date: ctx.plan.plan_date },
+    { kind: "session_started_evidence", available: false, basis: "no_completed_blocks_no_turns_no_observations_no_artifacts_no_matching_thread_user_response" },
+    { kind: "live_progress", available: !!args.liveProgress, source_table: "did_live_session_progress", source_id: ctx.plan.id, completed_blocks: args.liveProgress?.completed_blocks ?? null, total_blocks: args.liveProgress?.total_blocks ?? null },
+    { kind: "matching_thread_user_response", available: false, thread_count: ctx.threads?.length ?? 0 },
+  ];
+  const analysisJson = {
+    outcome: "planned_not_started",
+    post_session_result: { status: "planned_not_started", contactOccurred: false },
+    evidence_basis: "planned_only",
+    evidence_validity: "low",
+    child_perspective: "unknown",
+    confirmed_facts: {
+      plan_id: ctx.plan.id,
+      part_name: ctx.plan.selected_part,
+      plan_existed: true,
+      no_live_progress: !args.liveProgress,
+      no_matching_thread_user_response: true,
+      no_user_response: true,
+    },
+    unknowns: ["zda se pokus o sezení vůbec odehrál"],
+  };
+  const reviewPayload = {
+    user_id: ctx.plan.user_id,
+    plan_id: ctx.plan.id,
+    part_name: ctx.plan.selected_part,
+    session_date: ctx.plan.plan_date,
+    status: "evidence_limited",
+    review_kind: "calendar_day_safety_net",
+    analysis_version: "did-session-review-v1-planned-not-started",
+    source_data_summary: "planned_only:no_session_started_evidence",
+    evidence_items: evidenceItems,
+    completed_checklist_items: [],
+    missing_checklist_items: [],
+    transcript_available: false,
+    live_progress_available: !!args.liveProgress,
+    clinical_summary: text,
+    therapeutic_implications: "Ověřit u terapeutky, zda se pokus o sezení skutečně odehrál.",
+    team_implications: null,
+    next_session_recommendation: "Neodvozovat klinické závěry z plánu; nejprve ověřit realitu sezení.",
+    evidence_limitations: "Existuje plán, ale chybí evidence zahájení: žádné completed blocks, turn-by-turn data, observations, artifacts ani odpověď části v threadu navázaném na tento plan_id.",
+    analysis_json: analysisJson,
+    projection_status: "skipped",
+    error_message: null,
+    is_current: true,
+    updated_at: now,
+  };
+  const { data: existingReview } = await sb.from("did_session_reviews").select("id").eq("plan_id", ctx.plan.id).eq("is_current", true).maybeSingle();
+  let reviewId = existingReview?.id ?? null;
+  if (reviewId) await sb.from("did_session_reviews").update(reviewPayload).eq("id", reviewId);
+  else {
+    const { data: inserted } = await sb.from("did_session_reviews").insert(reviewPayload).select("id").single();
+    reviewId = inserted?.id ?? null;
+  }
+  await sb.from("did_daily_session_plans").update({
+    lifecycle_status: "evidence_limited",
+    urgency_breakdown: { ...(ctx.plan.urgency_breakdown ?? {}), result_status: "planned_not_started", session_started_evidence: false },
+    updated_at: now,
+  }).eq("id", ctx.plan.id);
+  return { reviewId, reviewStatus: "evidence_limited", postSessionResult: analysisJson.post_session_result };
 }
 
 function buildDiagnosticValidityReport(planText: string | null, turnsByBlock: Record<string, any[]>, observationsByBlock: Record<string, string>, liveProgress: any): string {
@@ -1444,7 +1527,15 @@ Deno.serve(async (req: Request) => {
     }
 
     const evidencePresent = hasEvidence(turnsByBlock, observationsByBlock, completedBlocks);
+    const startEvidence = sessionStartedEvidence({ completedBlocks, turnsByBlock, observationsByBlock, liveProgress, threads: ctx.threads });
     const sessionContract = ctx.plan.urgency_breakdown && typeof ctx.plan.urgency_breakdown === "object" ? ctx.plan.urgency_breakdown : {};
+    if (endedReason === "auto_safety_net" && !startEvidence.started && sessionContract?.session_actor !== "karel_direct") {
+      const audit = await persistPlannedNotStartedAudit(sb, ctx, { liveProgress, turnsByBlock, observationsByBlock, force });
+      return new Response(
+        JSON.stringify({ ok: true, plan_id: planId, part_name: ctx.plan.selected_part, outcome: "planned_not_started", review_status: audit.reviewStatus, review_id: audit.reviewId, post_session_result: audit.postSessionResult }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
     if (sessionContract?.session_actor === "karel_direct") {
       const mode = String(sessionContract?.session_mode ?? "");
       const hasPartResponse = karelDirectHasPartResponse(ctx.threads);
