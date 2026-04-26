@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { ArrowLeft, Camera, FileText, Image as ImageIcon, Loader2, Mic, Send, Square, Video, X, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -219,7 +219,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
     recorder.discardRecording();
   };
 
-  const handlePickedFiles = (event: React.ChangeEvent<HTMLInputElement>, category?: PendingAttachment["category"]) => {
+  const handlePickedFiles = (event: ChangeEvent<HTMLInputElement>, category?: PendingAttachment["category"]) => {
     Array.from(event.target.files || []).forEach((file) => void uploads.processFile(file, category));
     event.target.value = "";
   };
