@@ -574,6 +574,7 @@ export function useCrisisOperationalState() {
         const openTasks = tasks.map((t: any) => ({ id: t.id, title: t.title, assignedTo: t.assigned_to, priority: t.priority, status: t.status }));
         const karelRequires = computeKarelRequires(isStale, hoursStale, displayName, latest?.assessment_date || null, closureChecklistState, openTasks, ev.phase);
         const { score: closureReadinessScore, canPropose, ready: closureReady } = computeClosureReadiness(closureChecklistState);
+        const closureReadinessSnapshot = parseClosureReadinessSnapshot((ev as any).closure_readiness_snapshot);
         const { primary: primaryTherapist, secondary: secondaryTherapist, source: ownershipSource } = deriveTherapists(ev, tasks);
 
         const lastInterventionType = latestIntervention?.session_type ?? null;
@@ -639,7 +640,7 @@ export function useCrisisOperationalState() {
           closureChecklistState,
           canProposeClosing: canPropose,
           closureReady,
-          closureReadiness4Layer: null, // will be populated after initial fetch
+          closureReadiness4Layer: closureReadinessSnapshot,
           canEvaluate: !!ev.id,
           lastEntryBy: latest ? (latest.therapist_hana_input ? "Hanička" : latest.therapist_kata_input ? "Káťa" : null) : null,
           lastEntrySummary: latest?.part_interview_summary ?? null,
