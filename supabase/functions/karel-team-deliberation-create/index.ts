@@ -236,21 +236,27 @@ function sanitizeHybridContract(contract: Record<string, any> | null, therapistA
   return next;
 }
 
+function scrubKarelOnlyText(value: string): string {
+  return value
+    .replace(/fyzick\S*|pom[uů]ck\S*|hračk\S*|kresb\S*|obrázk\S*|obrazk\S*|latenc\S*|neverb\S*|hlas\S*|afekt\S*|somatick\S*|projektiv\S*/gi, "textově-symbolické")
+    .replace(/terapeutk[ay]?|Haničk[ay]?|Káť[ay]?/g, "Karel")
+    .trim();
+}
+
 function normalizeProgramBlock(raw: any, hybridContract: Record<string, any> | null) {
   const mode = String(hybridContract?.therapist_led_vs_karel_only ?? hybridContract?.session_mode ?? "karel_only");
   const therapistLed = mode === "therapist_led" || mode === "tandem";
-  const clinicalIntent = nonEmptyString(raw?.clinical_intent) ?? nonEmptyString(hybridContract?.clinical_goal) ?? nonEmptyString(hybridContract?.diagnostic_or_therapeutic_intent) ?? "Evidence-limited bezpečné ověření aktuální připravenosti bez klinických závěrů.";
+  const clinicalIntent = nonEmptyString(raw?.clinical_intent) ?? nonEmptyString(raw?.clinical_goal) ?? nonEmptyString(raw?.diagnostic_or_therapeutic_intent) ?? nonEmptyString(hybridContract?.clinical_goal) ?? nonEmptyString(hybridContract?.diagnostic_or_therapeutic_intent) ?? nonEmptyString(raw?.detail) ?? "Evidence-limited bezpečné ověření aktuální připravenosti bez klinických závěrů.";
   const playfulForm = nonEmptyString(raw?.playful_form) ?? nonEmptyString(hybridContract?.playful_theme) ?? "neutrální bezpečná symbolická volba";
   const script = nonEmptyString(raw?.script) ?? asStringArray(hybridContract?.what_therapist_says)[0] ?? "Můžeme u toho zůstat jen krátce a bezpečně; kdykoli můžeme přestat.";
+  const observe = therapistLed ? asStringArray(raw?.observe, asStringArray(hybridContract?.what_therapist_observes, ["míru bezpečného zapojení", "změnu napětí", "doslovnou odpověď"])) : ["textovou odpověď", "míru bezpečného zapojení", "přání pokračovat nebo skončit"];
   return {
-    block: String(raw?.block ?? "").slice(0, 120).trim(),
+    block: String(raw?.block ?? raw?.title ?? "").slice(0, 120).trim(),
     minutes: typeof raw?.minutes === "number" ? raw.minutes : 10,
-    detail: raw?.detail ? String(raw.detail).slice(0, 400).trim() : null,
-    tool_id: raw?.tool_id ? String(raw.tool_id).slice(0, 40).trim() : null,
-    clinical_intent: clinicalIntent,
-    playful_form: therapistLed ? playfulForm : String(playfulForm).replace(/fyzick\S*|latenc\S*|neverb\S*/gi, "textově-symbolické"),
-    script,
-    observe: therapistLed ? asStringArray(raw?.observe, asStringArray(hybridContract?.what_therapist_observes)) : ["textovou odpověď", "míru bezpečného zapojení", "přání pokračovat nebo skončit"],
+    clinical_intent: therapistLed ? clinicalIntent : scrubKarelOnlyText(clinicalIntent),
+    playful_form: therapistLed ? playfulForm : scrubKarelOnlyText(playfulForm || "neutrální textově-symbolická hra"),
+    script: therapistLed ? script : scrubKarelOnlyText(script),
+    observe: observe.map((x) => therapistLed ? x : scrubKarelOnlyText(x)).filter(Boolean),
     evidence_to_record: asStringArray(raw?.evidence_to_record, asStringArray(hybridContract?.data_needed_for_valid_review, ["co bylo skutečně řečeno", "co zůstalo nejasné", "zda kontakt zůstal bezpečný"])),
     stop_if: asStringArray(raw?.stop_if, asStringArray(hybridContract?.stop_rules, ["úzkost", "odmítnutí pokračovat", "ztráta bezpečí"])),
     fallback: nonEmptyString(raw?.fallback) ?? nonEmptyString(hybridContract?.fallback) ?? "Zastavit program a vrátit se k jednoduchému bezpečnému check-inu.",
