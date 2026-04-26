@@ -324,9 +324,12 @@ PRAVIDLA STRUKTURY:
       });
     }
 
-    const parsedHybrid = parsed.hybrid_contract && typeof parsed.hybrid_contract === "object"
-      ? parsed.hybrid_contract as Record<string, any>
-      : (row.session_params?.hybrid_contract && typeof row.session_params.hybrid_contract === "object" ? row.session_params.hybrid_contract as Record<string, any> : null);
+    const parsedHybrid = sanitizeHybridContract(
+      parsed.hybrid_contract && typeof parsed.hybrid_contract === "object"
+        ? parsed.hybrid_contract as Record<string, any>
+        : (row.session_params?.hybrid_contract && typeof row.session_params.hybrid_contract === "object" ? row.session_params.hybrid_contract as Record<string, any> : null),
+      true,
+    );
     const programDraft: Array<AgendaBlock & Record<string, any>> = Array.isArray(parsed.program_draft)
       ? parsed.program_draft.slice(0, 8).map((b: any) => normalizeProgramBlock(b, parsedHybrid)).filter((b: AgendaBlock) => b.block.length > 0)
       : currentProgram.map((b: any) => normalizeProgramBlock(b, parsedHybrid)).filter((b: AgendaBlock) => b.block.length > 0);
@@ -349,7 +352,9 @@ PRAVIDLA STRUKTURY:
     sessionParams.last_plan_change_at = nowIso;
     sessionParams.last_plan_change_source = `${author}:${fingerprint(text)}`;
     if (parsed.hybrid_contract && typeof parsed.hybrid_contract === "object") {
-      sessionParams.hybrid_contract = parsed.hybrid_contract;
+      sessionParams.hybrid_contract = sanitizeHybridContract(parsed.hybrid_contract as Record<string, any>, true);
+    } else if (sessionParams.hybrid_contract && typeof sessionParams.hybrid_contract === "object") {
+      sessionParams.hybrid_contract = sanitizeHybridContract(sessionParams.hybrid_contract as Record<string, any>, hasRealTherapistAnswer(row) || true);
     }
     const hybridContract = sessionParams.hybrid_contract && typeof sessionParams.hybrid_contract === "object"
       ? sessionParams.hybrid_contract as Record<string, any>
