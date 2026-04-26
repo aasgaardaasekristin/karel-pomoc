@@ -678,9 +678,10 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
   const sp = d ? signoffProgress(d) : { signed: 0, total: 2, missing: [] };
   const isReadOnly = d?.status === "approved";
   const sessionParams = d?.session_params && typeof d.session_params === "object" ? d.session_params : {};
+  const hybridContract = (sessionParams as any).hybrid_contract && typeof (sessionParams as any).hybrid_contract === "object" ? (sessionParams as any).hybrid_contract : {};
   const readinessRedBlocked = d?.deliberation_type === "session_plan"
-    && String(sessionParams.readiness_today ?? "").toLowerCase() === "red"
-    && !["stabilization_checkin", "deferred", "human_review_required"].includes(String(sessionParams.session_mode ?? "standard").toLowerCase());
+    && String((sessionParams as any).readiness_today ?? hybridContract.readiness_today ?? "").toLowerCase() === "red"
+    && !["stabilization_checkin", "deferred", "human_review_required"].includes(String((sessionParams as any).session_mode ?? hybridContract.session_mode ?? hybridContract.therapist_led_vs_karel_only ?? "standard").toLowerCase());
   // PER-THERAPIST LOCK — pokud Hanka podepsala, její sekce read-only,
   // ale Káťa může pořád odpovídat / přidávat podněty (a obráceně).
   const hankaLocked = !!d?.hanka_signed_at;
