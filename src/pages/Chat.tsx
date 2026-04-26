@@ -176,6 +176,50 @@ const Chat = () => {
   const [didLivePartContext, setDidLivePartContext] = useState<string>("");
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const hasStoredDidWork = (() => {
+    try {
+      return (
+        localStorage.getItem(ACTIVE_MODE_KEY) === "childcare" ||
+        localStorage.getItem("karel_did_submode") !== null ||
+        localStorage.getItem(DID_SESSION_ID_KEY) !== null ||
+        sessionStorage.getItem("karel_hub_section") === "did" ||
+        sessionStorage.getItem("karel_open_deliberation_id") !== null ||
+        sessionStorage.getItem("karel_meeting_seed") !== null
+      );
+    } catch {
+      return false;
+    }
+  })();
+
+  const hasWorkspaceContext = Boolean(
+    activeThread?.id ||
+    activeThread?.workspaceId ||
+    activeResearchThread?.id ||
+    meetingIdFromUrl ||
+    dailyPlanIdFromUrl ||
+    searchParams.get("workspace_thread") ||
+    searchParams.get("deliberation_id") ||
+    searchParams.get("daily_plan_id") ||
+    searchParams.get("task_id") ||
+    searchParams.get("question_id") ||
+    searchParams.get("session_part"),
+  );
+
+  const hasActiveWork = Boolean(
+    mode === "childcare" ||
+    didSubMode !== null ||
+    didFlowState !== "entry" ||
+    activeThread !== null ||
+    activeSession !== null ||
+    activeResearchThread !== null ||
+    messages.length > 0 ||
+    input.trim().length > 0 ||
+    hasStoredDidWork ||
+    hasWorkspaceContext,
+  );
+
+  const draftKey = `chat_draft:${hubSection ?? "none"}:${mode}:${didSubMode ?? "none"}:${activeThread?.id ?? activeThread?.workspaceId ?? activeResearchThread?.id ?? meetingIdFromUrl ?? dailyPlanIdFromUrl ?? "none"}`;
+
   const { history, saveConversation, loadConversation, deleteConversation, refreshHistory } = useConversationHistory();
 
   // Manual update hook
