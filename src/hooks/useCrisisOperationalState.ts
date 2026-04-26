@@ -437,6 +437,7 @@ export function useCrisisOperationalState() {
   const [cards, setCards] = useState<CrisisOperationalCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [globalUnreadBriefCount, setGlobalUnreadBriefCount] = useState(0);
+  const refreshTimerRef = useRef<number | null>(null);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -693,8 +694,9 @@ export function useCrisisOperationalState() {
       const builtCards = Array.from(cardMap.values());
       setCards(builtCards);
 
-      // Fire backend readiness fetch for each crisis with eventId (non-blocking)
-      for (const c of builtCards) {
+      // Backend readiness is intentionally throttled/deduped; firing it for every
+      // realtime refresh in parallel can overload the crisis function and surface as 503.
+      for (const c of builtCards.filter(c => c.eventId).slice(0, 2)) {
         if (!c.eventId) continue;
         fetchBackendReadiness(c.eventId).then(r => {
           if (!r) return;
@@ -731,22 +733,32 @@ export function useCrisisOperationalState() {
 
   useEffect(() => {
     fetchAll();
+    const scheduleFetchAll = () => {
+      if (refreshTimerRef.current != null) window.clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = window.setTimeout(() => {
+        refreshTimerRef.current = null;
+        void fetchAll();
+      }, 750);
+    };
     const channel = supabase
       .channel("crisis-operational-state")
-      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_events" }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_alerts" }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_daily_assessments" }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_session_questions" }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_closure_checklist" }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "did_meetings" }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_karel_interviews" }, () => fetchAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_events" }, scheduleFetchAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_alerts" }, scheduleFetchAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_daily_assessments" }, scheduleFetchAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_session_questions" }, scheduleFetchAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_closure_checklist" }, scheduleFetchAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "did_meetings" }, scheduleFetchAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_karel_interviews" }, scheduleFetchAll)
       .on("postgres_changes", { event: "*", schema: "public", table: "crisis_briefs" }, () => {
         supabase.from("crisis_briefs").select("id", { count: "exact", head: true }).eq("is_read", false).then(({ count }) => {
           setGlobalUnreadBriefCount(count ?? 0);
         });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (refreshTimerRef.current != null) window.clearTimeout(refreshTimerRef.current);
+      supabase.removeChannel(channel);
+    };
   }, [fetchAll]);
 
   return { cards, loading, refetch: fetchAll, globalUnreadBriefCount };
