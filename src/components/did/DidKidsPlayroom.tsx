@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import { toast } from "sonner";
+import tundrupekPlayroomBg from "@/assets/tundrupek-playroom-bg.jpg";
 
 const PREFERRED_PLAN_ID = "8d2deb4f-4e9e-48a2-8abc-c3f5be8d7914";
 
@@ -38,6 +39,11 @@ const getChildAddress = (partName: string) => partName.toLocaleUpperCase("cs-CZ"
 
 const firstChoices = ["jde to", "nejde to", "nevím", "chci jen ticho"];
 
+const getRoomBackground = (partName: string) => {
+  if (partName.toLocaleUpperCase("cs-CZ") === "TUNDRUPEK") return tundrupekPlayroomBg;
+  return tundrupekPlayroomBg;
+};
+
 const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const [plan, setPlan] = useState<PlayroomPlanRow | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,6 +54,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
 
   const targetPart = plan?.selected_part || plan?.urgency_breakdown?.target_part || "";
   const childAddress = useMemo(() => getChildAddress(targetPart), [targetPart]);
+  const roomBackground = useMemo(() => getRoomBackground(targetPart), [targetPart]);
 
   const loadApprovedPlan = useCallback(async () => {
     setLoading(true);
@@ -156,29 +163,36 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   }
 
   return (
-    <div className="min-h-full bg-background px-4 py-5">
-      <div className="mx-auto max-w-3xl space-y-4">
-        <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4" />Zpět</Button>
+    <div className="min-h-full bg-background">
+      <section className="relative min-h-[calc(100vh-4rem)] overflow-hidden px-4 py-5">
+        <img
+          src={roomBackground}
+          alt="Klidná herna s dveřmi, malým světlem a místem k sezení"
+          className="absolute inset-0 h-full w-full object-cover"
+          width={1344}
+          height={768}
+          fetchPriority="high"
+        />
+        <div className="absolute inset-0 bg-background/20" />
+        <div className="relative z-10 mx-auto flex min-h-[calc(100vh-6.5rem)] max-w-3xl flex-col space-y-4">
+          <Button variant="secondary" size="sm" onClick={onBack} className="w-fit bg-background/75 backdrop-blur-sm"><ArrowLeft className="mr-2 h-4 w-4" />Zpět</Button>
 
-        <header className="space-y-1 text-center">
-          <h1 className="text-3xl font-serif text-foreground">Herna</h1>
-        </header>
+          <header className="space-y-1 text-center drop-shadow-sm">
+            <h1 className="text-3xl font-serif text-foreground">Herna</h1>
+          </header>
 
-        <section className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
-          <div className="relative min-h-[18rem] p-5 sm:p-7">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,hsl(var(--primary)/0.22),transparent_38%),linear-gradient(180deg,hsl(var(--secondary)/0.72),hsl(var(--background)))]" />
-            <div className="relative z-10 space-y-5">
-              <div className="mx-auto h-20 w-20 rounded-full border border-primary/35 bg-primary/15 shadow-[0_0_42px_hsl(var(--primary)/0.32)]" aria-label="klidné modré světýlko" />
-              <div className="mx-auto max-w-md rounded-lg border border-border/70 bg-background/70 p-5 text-center backdrop-blur-sm">
+          <div className="flex flex-1 items-center justify-center pb-10 pt-4">
+            <div className="w-full max-w-md space-y-4 rounded-lg border border-border/70 bg-background/72 p-5 text-center shadow-sm backdrop-blur-md">
+              <div className="space-y-3">
                 <p className="text-base leading-relaxed text-foreground">Ahoj, {childAddress}.</p>
-                <p className="mt-3 text-base leading-relaxed text-foreground">Dnes tu nemusíš nic dokazovat.</p>
-                <p className="mt-3 text-base leading-relaxed text-foreground">Můžu být jen chvíli poblíž?</p>
+                <p className="text-base leading-relaxed text-foreground">Dnes tu nemusíš nic dokazovat.</p>
+                <p className="text-base leading-relaxed text-foreground">Můžu být jen chvíli poblíž?</p>
               </div>
 
               {!thread && (
-                <div className="mx-auto grid max-w-md grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2 pt-2">
                   {firstChoices.map((choice) => (
-                    <Button key={choice} variant="secondary" onClick={() => enterPlayroom(choice)} disabled={opening}>
+                    <Button key={choice} variant="secondary" onClick={() => enterPlayroom(choice)} disabled={opening} className="bg-card/85 backdrop-blur-sm">
                       {opening ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                       {choice}
                     </Button>
@@ -187,10 +201,9 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
               )}
             </div>
           </div>
-        </section>
 
         {thread ? (
-          <section className="space-y-3 rounded-lg border border-border bg-card p-4 shadow-sm">
+          <section className="space-y-3 rounded-lg border border-border/70 bg-background/78 p-4 shadow-sm backdrop-blur-md">
             <div className="space-y-3">
               {thread.messages.map((message, index) => (
                 <div key={`${index}-${message.role}`} className={message.role === "assistant" ? "mr-8 rounded-lg bg-secondary p-3 text-sm text-secondary-foreground" : "ml-8 rounded-lg bg-primary p-3 text-sm text-primary-foreground"}>
@@ -205,8 +218,9 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
               <Button variant="outline" onClick={onBack} disabled={saving}><XCircle className="mr-2 h-4 w-4" />Skončit</Button>
             </div>
           </section>
-        ) : null}
-      </div>
+          ) : null}
+        </div>
+      </section>
     </div>
   );
 };
