@@ -349,7 +349,14 @@ const Chat = () => {
     };
 
     const checkAuth = async () => {
-      if (!session) navigate("/", { replace: true });
+      if (!session) {
+        if (hasActiveWork) {
+          setAuthChecked(true);
+          return;
+        }
+        navigate("/", { replace: true });
+        return;
+      }
       else {
         // BUGFIX (spontaneous reset): once the user has been admitted into a
         // DID workspace, do NOT bounce them to /hub on subsequent auth
@@ -363,7 +370,7 @@ const Chat = () => {
           didFlowState === "did-kartoteka" || didFlowState === "dashboard" ||
           didFlowState === "terapeut"
         );
-        if (!hubSection && !activeSession && !inLiveDidFlow) {
+        if (!hubSection && !activeSession && !inLiveDidFlow && !hasActiveWork) {
           navigate("/hub", { replace: true });
           return;
         }
@@ -373,10 +380,18 @@ const Chat = () => {
             const hasFreshAccessToken = hasValidHanaPinToken();
             console.warn(`[F15-debug] Hana gate: pinToken=${hasFreshAccessToken ? "exists" : "null"}, supabaseSession=${session ? "exists" : "null"}`);
             if (!hasVerifiedPin || !hasFreshAccessToken) {
+              if (hasActiveWork) {
+                setAuthChecked(true);
+                return;
+              }
               navigate("/hub", { replace: true });
               return;
             }
           } catch {
+            if (hasActiveWork) {
+              setAuthChecked(true);
+              return;
+            }
             navigate("/hub", { replace: true });
             return;
           }
@@ -393,7 +408,7 @@ const Chat = () => {
       }
     };
     void checkAuth();
-  }, [isAuthReady, session, navigate, hubSection, activeSession, mode, setMode, researchThreads, didFlowState]);
+  }, [isAuthReady, session, navigate, hubSection, activeSession, mode, setMode, researchThreads, didFlowState, hasActiveWork]);
 
   // ═══ Crisis deep-link handler ═══
   // Accepts BOTH:
@@ -474,10 +489,10 @@ const Chat = () => {
   }, [authChecked, session, searchParams]);
 
   useEffect(() => {
-    if (authChecked && !session) {
+    if (authChecked && !session && !hasActiveWork) {
       navigate("/", { replace: true });
     }
-  }, [authChecked, session, navigate]);
+  }, [authChecked, session, navigate, hasActiveWork]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
