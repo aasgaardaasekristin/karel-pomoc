@@ -1630,7 +1630,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         }
 
         // ═══ SAFETY CHECK (fire-and-forget via separate edge function) ═══
-        if (didSubMode === "cast" && didPartName) {
+        if (isDirectChildSubMode && didPartName) {
           const lastUserMsg = (messages as any[]).filter((m: any) => m.role === "user").pop();
           const userText = typeof lastUserMsg?.content === "string" ? lastUserMsg.content : "";
           if (userText.length > 5) {
@@ -1647,7 +1647,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
 
         // ═══ ASYNC CRISIS CONVERSATION ANALYSIS (fire-and-forget) ═══
         // If the part has an active crisis, analyze each exchange for risk signals
-        if (didSubMode === "cast" && didPartName && fullResponse.length > 10) {
+        if (isDirectChildSubMode && didPartName && fullResponse.length > 10) {
           try {
             const { createClient: createSbCrisisPost } = await import("https://esm.sh/@supabase/supabase-js@2");
             const sbCrisisPost = createSbCrisisPost(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -1754,7 +1754,7 @@ Odpověz v JSON:
 
         // ═══ ASYNC CRISIS DETECTOR (non-blocking) ═══
         // Runs for every "cast" message — detects crisis signals in conversation
-        if (didSubMode === "cast" && fullResponse.length > 10) {
+        if (isDirectChildSubMode && fullResponse.length > 10) {
           try {
             // Build last 6-10 messages for analysis
             const recentMessages = (messages as any[]).slice(-10).map((m: any) => {
