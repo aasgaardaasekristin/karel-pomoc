@@ -292,6 +292,9 @@ PRAVIDLA STRUKTURY:
     sessionParams.last_plan_change_state = planChangeState;
     sessionParams.last_plan_change_at = nowIso;
     sessionParams.last_plan_change_source = `${author}:${fingerprint(text)}`;
+    if (parsed.hybrid_contract && typeof parsed.hybrid_contract === "object") {
+      sessionParams.hybrid_contract = parsed.hybrid_contract;
+    }
 
     // Save program_draft + log; invalidovat starou syntézu (vstup změnil situaci)
     const { error: updErr } = await admin
