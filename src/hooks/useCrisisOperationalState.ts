@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { cleanDisplayName } from "@/lib/didPartNaming";
 import { safeEdgeFunction } from "@/lib/safeEdgeFunction";
@@ -239,6 +239,10 @@ export interface AuditEntry {
   detail: string | null;
 }
 
+const READINESS_CACHE_TTL_MS = 60_000;
+const readinessCache = new Map<string, { value: ClosureReadiness4Layer; expiresAt: number }>();
+const readinessInFlight = new Map<string, Promise<ClosureReadiness4Layer | null>>();
+
 // ── Helpers ────────────────────────────────────────────────────
 
 function computeTrend(assessments: any[]): CrisisOperationalCard["trend48h"] {
@@ -433,6 +437,7 @@ export function useCrisisOperationalState() {
   const [cards, setCards] = useState<CrisisOperationalCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [globalUnreadBriefCount, setGlobalUnreadBriefCount] = useState(0);
+  const refreshTimerRef = useRef<number | null>(null);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -689,8 +694,9 @@ export function useCrisisOperationalState() {
       const builtCards = Array.from(cardMap.values());
       setCards(builtCards);
 
-      // Fire backend readiness fetch for each crisis with eventId (non-blocking)
-      for (const c of builtCards) {
+      // Backend readiness is intentionally throttled/deduped; firing it for every
+      // realtime refresh in parallel can overload the crisis function and surface as 503.
+      for (const c of builtCards.filter(c => c.eventId).slice(0, 2)) {
         if (!c.eventId) continue;
         fetchBackendReadiness(c.eventId).then(r => {
           if (!r) return;
@@ -727,22 +733,32 @@ export function useCrisisOperationalState() {
 
   useEffect(() => {
     fetchAll();
+    const scheduleFetchAll = () => {
+      if (refreshTimerRef.current != null) window.clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = window.setTimeout(() => {
+        refreshTimerRef.current = null;
+        void fetchAll();
+      }, 750);
+    };
     const channel = supabase
       .channel("crisis-operational-state")
-      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_events" }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_alerts" }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_daily_assessments" }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_session_questions" }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_closure_checklist" }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "did_meetings" }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_karel_interviews" }, () => fetchAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_events" }, scheduleFetchAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_alerts" }, scheduleFetchAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_daily_assessments" }, scheduleFetchAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_session_questions" }, scheduleFetchAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_closure_checklist" }, scheduleFetchAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "did_meetings" }, scheduleFetchAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_karel_interviews" }, scheduleFetchAll)
       .on("postgres_changes", { event: "*", schema: "public", table: "crisis_briefs" }, () => {
         supabase.from("crisis_briefs").select("id", { count: "exact", head: true }).eq("is_read", false).then(({ count }) => {
           setGlobalUnreadBriefCount(count ?? 0);
         });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (refreshTimerRef.current != null) window.clearTimeout(refreshTimerRef.current);
+      supabase.removeChannel(channel);
+    };
   }, [fetchAll]);
 
   return { cards, loading, refetch: fetchAll, globalUnreadBriefCount };
@@ -751,12 +767,27 @@ export function useCrisisOperationalState() {
 // ── Backend readiness fetcher ──────────────────────────────────
 
 async function fetchBackendReadiness(crisisEventId: string): Promise<ClosureReadiness4Layer | null> {
+  const now = Date.now();
+  const cached = readinessCache.get(crisisEventId);
+  if (cached && cached.expiresAt > now) return cached.value;
+
+  const existing = readinessInFlight.get(crisisEventId);
+  if (existing) return existing;
+
+  const request = fetchBackendReadinessUncached(crisisEventId).finally(() => {
+    readinessInFlight.delete(crisisEventId);
+  });
+  readinessInFlight.set(crisisEventId, request);
+  return request;
+}
+
+async function fetchBackendReadinessUncached(crisisEventId: string): Promise<ClosureReadiness4Layer | null> {
   const result = await safeEdgeFunction("karel-crisis-closure-meeting", { action: "check_closure_readiness", crisis_event_id: crisisEventId });
   if (!result.ok) return null;
   const r = result.data?.readiness || result.data;
   if (!r?.clinical || !r?.process || !r?.team || !r?.operational) return null;
   try {
-    return {
+    const value = {
       clinical: { met: r.clinical.met, blockers: r.clinical.blockers || [] },
       process: { met: r.process.met, blockers: r.process.blockers || [] },
       team: { met: r.team.met, blockers: r.team.blockers || [] },
@@ -764,6 +795,8 @@ async function fetchBackendReadiness(crisisEventId: string): Promise<ClosureRead
       overallReady: r.overall_ready,
       allBlockers: r.all_blockers || [],
     };
+    readinessCache.set(crisisEventId, { value, expiresAt: Date.now() + READINESS_CACHE_TTL_MS });
+    return value;
   } catch {
     return null;
   }
