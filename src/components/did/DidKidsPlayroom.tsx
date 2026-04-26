@@ -217,26 +217,30 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
           height={768}
           fetchPriority="high"
         />
-        <div className="absolute inset-0 bg-background/20" />
-        <div className="relative z-10 mx-auto flex min-h-[calc(100vh-6.5rem)] max-w-3xl flex-col space-y-4">
-          <Button variant="secondary" size="sm" onClick={onBack} className="w-fit bg-background/75 backdrop-blur-sm"><ArrowLeft className="mr-2 h-4 w-4" />Zpět</Button>
+        <div className={roomTone === "quiet" ? "absolute inset-0 bg-background/12" : roomTone === "open" ? "absolute inset-0 bg-primary/5" : "absolute inset-0 bg-background/8"} />
+        <div className="relative z-10 mx-auto flex min-h-[calc(100vh-6.5rem)] max-w-4xl flex-col space-y-3">
+          <Button variant="secondary" size="sm" onClick={onBack} className="w-fit bg-background/45 text-foreground/70 backdrop-blur-sm"><ArrowLeft className="mr-2 h-4 w-4" />Zpět</Button>
 
           <header className="space-y-1 text-center drop-shadow-sm">
             <h1 className="text-3xl font-serif text-foreground">Herna</h1>
           </header>
 
-          <div className="flex flex-1 items-center justify-center pb-10 pt-4">
-            <div className="w-full max-w-md space-y-4 rounded-lg border border-border/70 bg-background/72 p-5 text-center shadow-sm backdrop-blur-md">
-              <div className="space-y-3">
-                <p className="text-base leading-relaxed text-foreground">Ahoj, {childAddress}.</p>
-                <p className="text-base leading-relaxed text-foreground">Dnes tu nemusíš nic dokazovat.</p>
-                <p className="text-base leading-relaxed text-foreground">Můžu být jen chvíli poblíž?</p>
+          <div className="flex flex-1 items-center justify-center pb-8 pt-3">
+            <div className="w-full max-w-lg space-y-4 rounded-lg border border-border/35 bg-background/38 p-5 text-center shadow-sm backdrop-blur-[3px]">
+              <div className="space-y-3 text-foreground/72">
+                {thread ? opener.split("\n").filter(Boolean).slice(0, 4).map((line, index) => (
+                  <p key={index} className="text-base leading-relaxed">{line}</p>
+                )) : <>
+                  <p className="text-base leading-relaxed">Ahoj, {childAddress}.</p>
+                  <p className="text-base leading-relaxed">Dnes tu nemusíš nic dokazovat.</p>
+                  <p className="text-base leading-relaxed">Můžu být jen chvíli poblíž?</p>
+                </>}
               </div>
 
               {!thread && (
                 <div className="grid grid-cols-2 gap-2 pt-2">
                   {firstChoices.map((choice) => (
-                    <Button key={choice} variant="secondary" onClick={() => enterPlayroom(choice)} disabled={opening} className="bg-card/85 backdrop-blur-sm">
+                    <Button key={choice} variant="secondary" onClick={() => enterPlayroom(choice)} disabled={opening} className="bg-card/58 text-foreground/78 backdrop-blur-sm">
                       {opening ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                       {choice}
                     </Button>
@@ -247,17 +251,22 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
           </div>
 
         {thread ? (
-          <section className="space-y-3 rounded-lg border border-border/70 bg-background/78 p-4 shadow-sm backdrop-blur-md">
-            <div className="space-y-3">
-              {thread.messages.map((message, index) => (
-                <div key={`${index}-${message.role}`} className={message.role === "assistant" ? "mr-8 rounded-lg bg-secondary p-3 text-sm text-secondary-foreground" : "ml-8 rounded-lg bg-primary p-3 text-sm text-primary-foreground"}>
-                  {message.content}
+          <section className="mt-auto space-y-3 rounded-lg border border-border/35 bg-background/34 p-3 shadow-sm backdrop-blur-[3px]">
+            <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+              {thread.messages.slice(1).map((message, index) => (
+                <div key={`${index}-${message.role}`} className={message.role === "assistant" ? "mr-12 rounded-lg bg-secondary/45 p-3 text-sm text-secondary-foreground/74" : "ml-12 rounded-lg bg-primary/48 p-3 text-sm text-primary-foreground/82"}>
+                  {contentText(message.content) || (saving && message.role === "assistant" ? "…" : "")}
                 </div>
               ))}
             </div>
-            <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Můžeš napsat jedno slovo, barvu, nebo jen jde to / nejde to / nevím." className="min-h-24 resize-none" />
+            <div className="relative">
+              <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Napiš, nahraj hlas, video, fotku, screenshot nebo dokument." className="min-h-20 resize-none bg-background/46 text-foreground/78 placeholder:text-muted-foreground/62" />
+              <UniversalAttachmentBar attachments={uploads.attachments} onRemove={uploads.removeAttachment} onOpenFilePicker={uploads.openFilePicker} onCaptureScreenshot={uploads.captureScreenshot} onOpenDrivePicker={uploads.openFilePicker} onAutoAnalyze={() => sendReply(reply || "Podívej se prosím na přílohu.")} disabled={saving} fileInputRef={uploads.fileInputRef} onFileChange={uploads.handleFileChange} isAnalyzing={saving} />
+            </div>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => sendReply(reply)} disabled={saving || !reply.trim()}><Send className="mr-2 h-4 w-4" />Odpovědět</Button>
+              {recorder.state === "recording" ? <Button variant="secondary" onClick={recorder.stopRecording}><Square className="mr-2 h-4 w-4" />Zastavit hlas</Button> : <Button variant="secondary" onClick={recorder.startRecording}><Mic className="mr-2 h-4 w-4" />Hlas</Button>}
+              {recorder.state === "recorded" ? <Button variant="outline" onClick={attachRecording}><Paperclip className="mr-2 h-4 w-4" />Přiložit hlas</Button> : null}
+              <Button onClick={() => sendReply(reply)} disabled={saving || (!reply.trim() && uploads.attachments.length === 0)}><Send className="mr-2 h-4 w-4" />Odpovědět</Button>
               <Button variant="secondary" onClick={() => sendReply("Dnes nechci.")} disabled={saving}>Dnes nechci</Button>
               <Button variant="outline" onClick={onBack} disabled={saving}><XCircle className="mr-2 h-4 w-4" />Skončit</Button>
             </div>
