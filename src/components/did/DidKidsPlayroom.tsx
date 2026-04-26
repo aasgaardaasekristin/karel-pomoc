@@ -126,6 +126,11 @@ const getRoomTone = (plan: PlayroomPlanRow | null, thread: PlayroomThread | null
   return "listening";
 };
 
+const getStepPrompt = (plan: PlayroomPlanRow | null, thread: PlayroomThread | null) => {
+  const step = currentStepForThread(plan, thread);
+  return childSafe(step?.child_facing_prompt_draft) || "Mám být blíž, dál, nebo úplně potichu u dveří?";
+};
+
 const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const [plan, setPlan] = useState<PlayroomPlanRow | null>(null);
   const [loading, setLoading] = useState(true);
@@ -144,6 +149,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const roomBackground = useMemo(() => getRoomBackground(targetPart), [targetPart]);
   const roomTone = useMemo(() => getRoomTone(plan, thread), [plan, thread]);
   const opener = useMemo(() => childSafe(contentText(thread?.messages?.find((message) => message.role === "assistant")?.content)) || "Jsem tady. Zkusíme dnes jen jeden malý krok.", [thread]);
+  const stepPrompt = useMemo(() => getStepPrompt(plan, thread), [plan, thread]);
 
   const loadApprovedPlan = useCallback(async () => {
     setLoading(true);
@@ -221,7 +227,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         didSubMode: "playroom",
         didPartName: targetPart,
         didThreadLabel: `Herna ${targetPart}`,
-        didInitialContext: planContract(plan),
+        didInitialContext: planContract(plan, currentThread),
       };
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`, { method: "POST", headers, body: JSON.stringify(body) });
       if (!response.ok) handleApiError(response);
