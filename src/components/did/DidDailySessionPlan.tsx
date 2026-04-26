@@ -1188,7 +1188,7 @@ const PlanCard = ({
                  krizovém kontextu (krize ≠ vyloučení Karlova vlastního sezení).
                  Klik volá `karel-part-session-prepare` (idempotentní) a deep-linkuje
                  do `/chat?workspace_thread=<id>`. */}
-            {prepGateEnabled && (prepApproved || hernaApproved) && (
+            {prepGateEnabled && hernaApproved && (
               <Button
                 variant="default"
                 size="sm"
