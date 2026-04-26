@@ -300,21 +300,59 @@ function LiveProgramDraftPanel({
           </span>
         )}
       </div>
-      <ol className="space-y-1.5">
-        {blocks.map((b, i) => (
-          <li key={i} className="text-[11px] flex gap-2">
-            <span className="font-semibold text-primary shrink-0">
-              {i + 1}.
-              {typeof b.minutes === "number" && b.minutes > 0 ? ` ${b.minutes}′` : ""}
-            </span>
-            <span className="flex-1">
-              <span className="font-medium text-foreground">{b.block}</span>
-              {b.detail && (
-                <span className="block text-foreground/75 mt-0.5">{b.detail}</span>
+      <ol className="space-y-2">
+        {blocks.map((b, i) => {
+          const block = b as LiveProgramBlock;
+          const hasStructured = hasStructuredProgramFields(block);
+          return (
+            <li key={i} className="text-[11px] rounded-md border border-primary/15 bg-card/45 p-2.5 space-y-1.5">
+              <div className="flex gap-2">
+                <span className="font-semibold text-primary shrink-0">
+                  {i + 1}.
+                  {typeof block.minutes === "number" && block.minutes > 0 ? ` ${block.minutes}′` : ""}
+                </span>
+                <span className="font-medium text-foreground">{block.block}</span>
+              </div>
+              {!hasStructured && block.detail && (
+                <p className="text-foreground/75">{block.detail}</p>
               )}
-            </span>
-          </li>
-        ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1">
+                {PROGRAM_TEXT_FIELDS.map(([key, label]) => {
+                  const value = textValue(block[key]);
+                  if (!value) return null;
+                  return (
+                    <p key={String(key)} className="text-foreground/85">
+                      <span className="font-semibold text-foreground">{label}: </span>{value}
+                    </p>
+                  );
+                })}
+                {PROGRAM_LIST_FIELDS.map(([key, label]) => {
+                  const values = listValue(block[key]);
+                  if (values.length === 0) return null;
+                  return (
+                    <p key={String(key)} className="text-foreground/85">
+                      <span className="font-semibold text-foreground">{label}: </span>{values.join("; ")}
+                    </p>
+                  );
+                })}
+              </div>
+              {(typeof block.requires_physical_therapist === "boolean" || typeof block.karel_can_do_alone === "boolean") && (
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {typeof block.requires_physical_therapist === "boolean" && (
+                    <Badge variant="outline" className="text-[10px] h-5">
+                      Vyžaduje fyzickou terapeutku: {yesNo(block.requires_physical_therapist)}
+                    </Badge>
+                  )}
+                  {typeof block.karel_can_do_alone === "boolean" && (
+                    <Badge variant="outline" className="text-[10px] h-5">
+                      Karel může sám: {yesNo(block.karel_can_do_alone)}
+                    </Badge>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ol>
       {lastIterateComment && (
         <div className="rounded-md border border-primary/20 bg-card/60 p-2 text-[10.5px] text-foreground/85 italic">
