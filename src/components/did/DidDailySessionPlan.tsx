@@ -49,6 +49,10 @@ const isKarelDirectApprovedForHerna = (plan: SessionPlan) =>
   plan.urgency_breakdown?.human_review_required === true &&
   plan.urgency_breakdown?.approved_for_child_session === true;
 
+const isQuarantinedPlan = (plan: SessionPlan) =>
+  LEGACY_PLAN_GENERATORS.has(plan.generated_by) ||
+  (ANALYTIC_PLAN_GENERATORS.has(plan.generated_by) && !hasExplicitRoleContract(plan));
+
 interface PreviousSession {
   therapist: string;
   session_date: string;
@@ -128,7 +132,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
 
   // First pending plan TODAY only (no stale plans from yesterday allowed as "today's reality")
   const firstPendingPlan = plans.find(
-    p => (p.status === "generated" || p.status === "in_progress") && p.plan_date === todayPragueKey
+    p => (p.status === "generated" || p.status === "in_progress") && p.plan_date === todayPragueKey && !isQuarantinedPlan(p)
   ) || null;
 
   const loadTodayPlans = useCallback(async () => {
@@ -496,9 +500,6 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
   }
 
   // Split plans into runtime, quarantine, and archived.
-  const isQuarantinedPlan = (plan: SessionPlan) =>
-    LEGACY_PLAN_GENERATORS.has(plan.generated_by) ||
-    (ANALYTIC_PLAN_GENERATORS.has(plan.generated_by) && !hasExplicitRoleContract(plan));
   const pendingPlans = plans.filter(p => (p.status === "generated" || p.status === "in_progress") && !isQuarantinedPlan(p));
   const quarantinedPlans = plans.filter(p => (p.status === "generated" || p.status === "in_progress") && isQuarantinedPlan(p));
   const archivedPlans = plans.filter(p => p.status === "done" || p.status === "skipped");
