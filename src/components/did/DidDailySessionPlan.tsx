@@ -871,6 +871,11 @@ const PlanCard = ({
     return localStorage.getItem(addendumKey) ?? "";
   });
   const [addendumSavedAt, setAddendumSavedAt] = useState<string | null>(null);
+  const [reviewBusy, setReviewBusy] = useState<"approve" | "defer" | "reject" | null>(null);
+  const playroomPlan = plan.urgency_breakdown?.playroom_plan && typeof plan.urgency_breakdown.playroom_plan === "object"
+    ? plan.urgency_breakdown.playroom_plan
+    : null;
+  const therapeuticProgram = Array.isArray(playroomPlan?.therapeutic_program) ? playroomPlan.therapeutic_program : [];
   const onSaveAddendum = useCallback(() => {
     try {
       localStorage.setItem(addendumKey, therapistAddendum);
@@ -880,6 +885,44 @@ const PlanCard = ({
       toast.error("Nepodařilo se uložit doplnění.");
     }
   }, [addendumKey, therapistAddendum]);
+
+  const updateHernaReview = useCallback(async (action: "approve" | "defer" | "reject") => {
+    if (reviewBusy) return;
+    setReviewBusy(action);
+    try {
+      const nextBreakdown = {
+        ...plan.urgency_breakdown,
+        approved_for_child_session: action === "approve",
+        review_state: action === "approve" ? "approved" : action === "defer" ? "deferred" : "rejected",
+        human_review_required: action !== "approve",
+        approval: {
+          ...(plan.urgency_breakdown?.approval ?? {}),
+          required: action !== "approve",
+          approved_for_child_session: action === "approve",
+          review_state: action === "approve" ? "approved" : action === "defer" ? "deferred" : "rejected",
+        },
+        playroom_plan: playroomPlan ? {
+          ...playroomPlan,
+          approval: {
+            ...(playroomPlan.approval ?? {}),
+            required: action !== "approve",
+            approved_for_child_session: action === "approve",
+            review_state: action === "approve" ? "approved" : action === "defer" ? "deferred" : "rejected",
+          },
+        } : undefined,
+      };
+      const { error } = await (supabase as any)
+        .from("did_daily_session_plans")
+        .update({ urgency_breakdown: nextBreakdown, status: action === "reject" ? "skipped" : plan.status })
+        .eq("id", plan.id);
+      if (error) throw error;
+      toast.success(action === "approve" ? "Herna schválena." : action === "defer" ? "Herna odložena." : "Herna odmítnuta.");
+    } catch (e: any) {
+      toast.error(e?.message || "Nepodařilo se uložit rozhodnutí.");
+    } finally {
+      setReviewBusy(null);
+    }
+  }, [plan.id, plan.status, plan.urgency_breakdown, playroomPlan, reviewBusy]);
 
   const onOpenPartRoom = useCallback(async () => {
     if (openingPartRoom) return;
