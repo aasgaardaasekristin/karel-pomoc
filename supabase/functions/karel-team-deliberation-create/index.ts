@@ -401,6 +401,7 @@ Deno.serve(async (req: Request) => {
           last_plan_change_state: ["unchanged", "revised", "deferred", "needs_followup_question"].includes(String(rawSp.last_plan_change_state ?? ""))
             ? String(rawSp.last_plan_change_state)
             : "unchanged",
+          hybrid_contract: rawSp.hybrid_contract && typeof rawSp.hybrid_contract === "object" ? rawSp.hybrid_contract : null,
         }
       : {};
 
