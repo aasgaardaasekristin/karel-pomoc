@@ -37,6 +37,17 @@ interface SessionPlan {
 }
 
 const isKarelDirectPlan = (plan: SessionPlan) => plan.urgency_breakdown?.session_actor === "karel_direct";
+const LEGACY_PLAN_GENERATORS = new Set(["auto", "manual"]);
+const ANALYTIC_PLAN_GENERATORS = new Set(["analyst_loop", "recovery_mode", "karel-did-apply-analysis", "crisis-retroactive-scan"]);
+
+const hasExplicitRoleContract = (plan: SessionPlan) =>
+  ["therapist_led", "karel_direct"].includes(String(plan.urgency_breakdown?.session_actor ?? "")) &&
+  plan.urgency_breakdown?.human_review_required === true;
+
+const isKarelDirectApprovedForHerna = (plan: SessionPlan) =>
+  isKarelDirectPlan(plan) &&
+  plan.urgency_breakdown?.human_review_required === true &&
+  plan.urgency_breakdown?.approved_for_child_session === true;
 
 interface PreviousSession {
   therapist: string;
@@ -484,8 +495,12 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
     );
   }
 
-  // Split plans into pending and archived
-  const pendingPlans = plans.filter(p => p.status === "generated" || p.status === "in_progress");
+  // Split plans into runtime, quarantine, and archived.
+  const isQuarantinedPlan = (plan: SessionPlan) =>
+    LEGACY_PLAN_GENERATORS.has(plan.generated_by) ||
+    (ANALYTIC_PLAN_GENERATORS.has(plan.generated_by) && !hasExplicitRoleContract(plan));
+  const pendingPlans = plans.filter(p => (p.status === "generated" || p.status === "in_progress") && !isQuarantinedPlan(p));
+  const quarantinedPlans = plans.filter(p => (p.status === "generated" || p.status === "in_progress") && isQuarantinedPlan(p));
   const archivedPlans = plans.filter(p => p.status === "done" || p.status === "skipped");
 
   return (
@@ -645,6 +660,34 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
             onOpenPrepRoom={onOpenPrepRoom}
           />
         ))}
+
+        {/* ═══ QUARANTINED LEGACY / ANALYTIC DRAFTS ═══ */}
+        {quarantinedPlans.length > 0 && (
+          <div className="mt-3 space-y-1.5 rounded-md border border-dashed border-border/70 bg-muted/20 p-2.5">
+            <p className="text-[0.5625rem] text-muted-foreground font-medium uppercase tracking-wider">
+              Karanténa návrhů
+            </p>
+            {quarantinedPlans.map((plan) => (
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                isExpanded={expandedPlanId === plan.id}
+                onToggleExpand={() => setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)}
+                onStartSession={() => {}}
+                onEndSession={() => {}}
+                onRevert={() => revertStatus(plan)}
+                onMarkDone={() => {}}
+                onDelete={() => deletePlan(plan.id)}
+                onRegenerate={() => handlePartSelected(plan.selected_part)}
+                onOpenLive={() => {}}
+                prevSession={null}
+                isArchived
+                compact={compact}
+                onOpenPrepRoom={undefined}
+              />
+            ))}
+          </div>
+        )}
 
         {/* ═══ ARCHIVED PLANS (done/skipped) ═══ */}
         {archivedPlans.length > 0 && (
