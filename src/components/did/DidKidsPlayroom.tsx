@@ -315,6 +315,12 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
                 </>}
               </div>
 
+              {thread ? (
+                <div className="rounded-lg border border-border/20 bg-background/20 px-3 py-2 text-sm text-foreground/62 backdrop-blur-[2px]">
+                  {stepPrompt}
+                </div>
+              ) : null}
+
               {!thread && (
                 <div className="grid grid-cols-2 gap-2 pt-2">
                   {firstChoices.map((choice) => (
@@ -329,16 +335,21 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
           </div>
 
         {thread ? (
-          <section className="mt-auto space-y-3 rounded-lg border border-border/35 bg-background/34 p-3 shadow-sm backdrop-blur-[3px]">
+          <section className="mt-auto space-y-3 rounded-lg border border-border/25 bg-background/22 p-3 shadow-sm backdrop-blur-[2px]">
             <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
               {thread.messages.slice(1).map((message, index) => (
-                <div key={`${index}-${message.role}`} className={message.role === "assistant" ? "mr-12 rounded-lg bg-secondary/45 p-3 text-sm text-secondary-foreground/74" : "ml-12 rounded-lg bg-primary/48 p-3 text-sm text-primary-foreground/82"}>
+                <div key={`${index}-${message.role}`} className={message.role === "assistant" ? "mr-12 rounded-lg bg-secondary/24 p-3 text-sm text-secondary-foreground/66 backdrop-blur-[1px]" : "ml-12 rounded-lg bg-primary/34 p-3 text-sm text-primary-foreground/78 backdrop-blur-[1px]"}>
                   {contentText(message.content) || (saving && message.role === "assistant" ? "…" : "")}
                 </div>
               ))}
             </div>
             <div className="space-y-2">
-              <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Napiš, nahraj hlas, video, fotku, screenshot nebo dokument." className="min-h-20 resize-none border-border/25 bg-background/28 text-foreground/72 placeholder:text-muted-foreground/55 backdrop-blur-[2px]" />
+              <div className="flex gap-2">
+                <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Napiš, nahraj hlas, video, fotku, screenshot nebo dokument." className="min-h-16 resize-none border-border/20 bg-background/18 text-foreground/68 placeholder:text-muted-foreground/50 backdrop-blur-[2px]" />
+                <Button size="icon" onClick={() => sendReply(reply)} disabled={saving || uploads.attachments.some((attachment) => attachment.uploading) || (!reply.trim() && uploads.attachments.length === 0)} className="h-16 w-16 shrink-0 bg-primary/72 text-primary-foreground/90 backdrop-blur-[2px]" aria-label="Odeslat">
+                  {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+                </Button>
+              </div>
               <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(event) => handlePickedFiles(event, "image")} />
               <input ref={videoInputRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={(event) => handlePickedFiles(event, "video")} />
               <input ref={documentInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.json,.xml" multiple className="hidden" onChange={(event) => handlePickedFiles(event, "document")} />
@@ -361,7 +372,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
               <Button variant="secondary" onClick={() => documentInputRef.current?.click()} disabled={saving} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><FileText className="mr-2 h-4 w-4" />Dokument</Button>
               {recorder.state === "recording" ? <Button variant="secondary" onClick={recorder.stopRecording} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><Square className="mr-2 h-4 w-4" />Zastavit hlas</Button> : <Button variant="secondary" onClick={recorder.startRecording} disabled={saving} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><Mic className="mr-2 h-4 w-4" />Hlas</Button>}
               {recorder.state === "recorded" ? <Button variant="outline" onClick={attachRecording} className="bg-background/22 text-foreground/72 backdrop-blur-[2px]"><Mic className="mr-2 h-4 w-4" />Přiložit hlas</Button> : null}
-              <Button onClick={() => sendReply(reply)} disabled={saving || (!reply.trim() && uploads.attachments.length === 0)}><Send className="mr-2 h-4 w-4" />Odpovědět</Button>
+              <Button onClick={() => sendReply(reply || stepPrompt)} disabled={saving || uploads.attachments.some((attachment) => attachment.uploading)} className="bg-primary/62 text-primary-foreground/88 backdrop-blur-[2px]"><Send className="mr-2 h-4 w-4" />Odeslat krok</Button>
               <Button variant="secondary" onClick={() => sendReply("Dnes nechci.")} disabled={saving}>Dnes nechci</Button>
               <Button variant="outline" onClick={onBack} disabled={saving}><XCircle className="mr-2 h-4 w-4" />Skončit</Button>
             </div>
