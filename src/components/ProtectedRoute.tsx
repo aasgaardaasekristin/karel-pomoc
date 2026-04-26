@@ -88,6 +88,7 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
       }
       if (hasActiveStoredWork()) {
         setStatus("loading");
+        scheduleUnauthenticated();
         return;
       }
       scheduleUnauthenticated();
