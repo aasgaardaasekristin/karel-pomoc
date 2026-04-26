@@ -443,9 +443,12 @@ Deno.serve(async (req: Request) => {
     // Schválené parametry sezení (Slice 3 hardening) — uloženy autoritativně,
     // bridge do did_daily_session_plans je čte odsud místo hardcoded "hanka".
     const rawSp = (prefill as any)?.session_params;
-    const hybridContract = rawSp?.hybrid_contract && typeof rawSp.hybrid_contract === "object"
-      ? rawSp.hybrid_contract as Record<string, any>
-      : null;
+    const hasTherapistAnswer = [...(Array.isArray(aiContent?.questions_for_hanka) ? aiContent.questions_for_hanka : []), ...(Array.isArray(aiContent?.questions_for_kata) ? aiContent.questions_for_kata : [])]
+      .some((q: any) => nonEmptyString(q?.answer));
+    const hybridContract = sanitizeHybridContract(
+      rawSp?.hybrid_contract && typeof rawSp.hybrid_contract === "object" ? rawSp.hybrid_contract as Record<string, any> : null,
+      hasTherapistAnswer,
+    );
     const sessionParams = (rawSp && typeof rawSp === "object")
       ? {
           part_name: rawSp.part_name ? String(rawSp.part_name) : (subjectParts[0] ?? null),
@@ -469,9 +472,9 @@ Deno.serve(async (req: Request) => {
         }
       : {};
 
-    const agendaOutline = toAgendaBlocks(aiContent?.agenda_outline);
+    const agendaOutline = toAgendaBlocks(aiContent?.agenda_outline, hybridContract);
     const programDraft = type === "session_plan"
-      ? (agendaOutline.length > 0 ? agendaOutline : fallbackSessionProgramDraft(subjectParts))
+      ? (agendaOutline.length > 0 ? agendaOutline : fallbackSessionProgramDraft(subjectParts, hybridContract))
       : [];
 
     const insertRow = {
