@@ -4,6 +4,7 @@ export const STORAGE_KEY_PREFIX = "karel_chat_";
 export const ACTIVE_MODE_KEY = "karel_active_mode";
 export const DID_DOCS_LOADED_KEY = "karel_did_docs_loaded";
 export const DID_SESSION_ID_KEY = "karel_did_session_id";
+export const EXPLICIT_LOGOUT_KEY = "karel_explicit_logout";
 const LAST_CAST_GREETING_INDEX_KEY = "karel_last_cast_greeting_index";
 
 export type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
@@ -63,6 +64,36 @@ export const loadMessages = (mode: string) => {
 
 export const clearMessages = (mode: string) => {
   localStorage.removeItem(`${STORAGE_KEY_PREFIX}${mode}`);
+};
+
+export const markExplicitLogout = () => {
+  try { sessionStorage.setItem(EXPLICIT_LOGOUT_KEY, String(Date.now())); } catch {}
+};
+
+export const isExplicitLogoutActive = () => {
+  try {
+    const raw = sessionStorage.getItem(EXPLICIT_LOGOUT_KEY);
+    if (!raw) return false;
+    if (raw === "true") return true;
+    const markedAt = Number(raw);
+    if (!Number.isFinite(markedAt)) return true;
+    if (Date.now() - markedAt > 2 * 60 * 1000) {
+      sessionStorage.removeItem(EXPLICIT_LOGOUT_KEY);
+      return false;
+    }
+    return true;
+  } catch { return false; }
+};
+
+export const clearActiveWorkStorageForLogout = () => {
+  try {
+    [ACTIVE_MODE_KEY, "karel_did_submode", DID_SESSION_ID_KEY, "karel_did_context", DID_DOCS_LOADED_KEY].forEach((key) => localStorage.removeItem(key));
+    ["karel_hub_section", "karel_open_deliberation_id", "karel_meeting_seed", HANA_PIN_KEY, HANA_PIN_ACCESS_TOKEN_KEY].forEach((key) => sessionStorage.removeItem(key));
+    for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {
+      const key = sessionStorage.key(i);
+      if (key?.startsWith("chat_draft:")) sessionStorage.removeItem(key);
+    }
+  } catch {}
 };
 
 export const handleApiError = (response: Response) => {
