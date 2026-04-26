@@ -7272,7 +7272,7 @@ Vra\u0165 JSON:
       const pragueYesterday = yesterdayDate.toISOString().slice(0, 10);
       const { data: stalePlans, error: spErr } = await sb
         .from("did_daily_session_plans")
-        .select("id, plan_date, selected_part, status, created_at, completed_at, did_session_reviews!left(id)")
+        .select("id, plan_date, selected_part, status, created_at, completed_at, urgency_breakdown, did_session_reviews!left(id)")
         .eq("plan_date", pragueYesterday)
         .in("status", ["in_progress", "approved", "active", "completed", "done", "generated"])
         .is("did_session_reviews.id", null)
@@ -7285,7 +7285,7 @@ Vra\u0165 JSON:
           try {
             const { data: liveProgress } = await sb
               .from("did_live_session_progress")
-              .select("items, turns_by_block, completed_blocks, total_blocks")
+              .select("items, turns_by_block, artifacts_by_block, completed_blocks, total_blocks")
               .eq("plan_id", (plan as any).id)
               .maybeSingle();
             const progressItems = Array.isArray((liveProgress as any)?.items) ? (liveProgress as any).items : [];
@@ -7294,6 +7294,32 @@ Vra\u0165 JSON:
                 .map((it: any, idx: number) => [String(idx), String(it?.observation ?? "")])
                 .filter(([, value]: [string, string]) => value.trim().length > 0),
             );
+            const hasTurns = Object.values((liveProgress as any)?.turns_by_block ?? {}).some((v: any) => Array.isArray(v) && v.length > 0);
+            const hasObservations = Object.values(observationsByBlock).some((value: any) => String(value || "").trim().length > 0);
+            const artifactCount = Object.values((liveProgress as any)?.artifacts_by_block ?? {}).reduce((sum: number, value: any) => sum + (Array.isArray(value) ? value.length : value && typeof value === "object" ? Object.keys(value).length : 0), 0);
+            const { data: matchingThreads } = await sb
+              .from("did_threads")
+              .select("id, messages")
+              .eq("workspace_type", "session")
+              .eq("workspace_id", (plan as any).id)
+              .limit(3);
+            const hasThreadUserResponse = (matchingThreads ?? []).some((thread: any) => {
+              const messages = Array.isArray(thread?.messages) ? thread.messages : [];
+              return messages.slice(1).some((m: any) => String(m?.role ?? "").toLowerCase() === "user" && String(m?.content ?? "").trim().length > 0);
+            });
+            const sessionStarted = ((liveProgress as any)?.completed_blocks ?? 0) > 0 || hasTurns || hasObservations || artifactCount > 0 || hasThreadUserResponse;
+            const contract = (plan as any).urgency_breakdown && typeof (plan as any).urgency_breakdown === "object" ? (plan as any).urgency_breakdown : {};
+            const isKarelDirect = contract.session_actor === "karel_direct";
+            const isCancelledOrDeferred = ["cancelled", "deferred"].includes(String((plan as any).status ?? "")) || String(contract.session_mode ?? "") === "deferred";
+            if (!sessionStarted && !isKarelDirect && !isCancelledOrDeferred) {
+              await sb.from("did_daily_session_plans").update({
+                lifecycle_status: "evidence_limited",
+                urgency_breakdown: { ...contract, result_status: "planned_not_started", session_started_evidence: false },
+                updated_at: new Date().toISOString(),
+              }).eq("id", (plan as any).id);
+              console.log(`[PHASE_8A5] Plan ${(plan as any).id} (${(plan as any).selected_part}, ${(plan as any).plan_date}): planned_not_started, skipped evaluator`);
+              continue;
+            }
             const evalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-did-session-finalize`;
             const evalCtl = new AbortController();
             const evalTo = setTimeout(() => evalCtl.abort(), 60000);
