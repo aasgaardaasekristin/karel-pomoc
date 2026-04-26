@@ -506,14 +506,15 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
   const pendingPlans = plans.filter(p => (p.status === "generated" || p.status === "in_progress") && !isQuarantinedPlan(p));
   const quarantinedPlans = plans.filter(p => ["pending", "generated", "in_progress"].includes(p.status) && isQuarantinedPlan(p));
   const archivedPlans = plans.filter(p => p.status === "done" || p.status === "skipped");
+  const hasKarelDirectPlan = pendingPlans.some(isKarelDirectPlan);
 
   return (
     <>
       <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
-            <Target className="w-3.5 h-3.5 text-primary" />
-            Plán dnešního sezení
+            {hasKarelDirectPlan ? <Dices className="w-3.5 h-3.5 text-primary" /> : <Target className="w-3.5 h-3.5 text-primary" />}
+            {hasKarelDirectPlan ? "Karlova herna" : "Plán dnešního sezení"}
           </h4>
           <div className="flex items-center gap-1.5">
             {!generating && !compact && (
@@ -635,7 +636,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
         {pendingPlans.length === 0 && archivedPlans.length === 0 && !generating && (
           <div className="rounded-md border border-dashed border-border/50 bg-background/30 p-3">
             <p className="text-[0.6875rem] text-muted-foreground leading-relaxed">
-              Dnes zatím není žádné schválené sezení.
+              Dnes zatím není otevřená žádná Karlova herna ani schválené sezení.
               <br />
               <span className="text-muted-foreground/70">
                 Karlův návrh sezení vzniká v <strong>Společné poradě týmu</strong> (návrh → otázky → podpisy).
@@ -847,6 +848,7 @@ const PlanCard = ({
   const analyticDraftWithoutContract = ANALYTIC_PLAN_GENERATORS.has(plan.generated_by) && !hasExplicitRoleContract(plan);
   const quarantinedDraft = legacyDraft || analyticDraftWithoutContract;
   const hernaApproved = isKarelDirectApprovedForHerna(plan);
+  const hernaStatusLabel = hernaApproved ? "Herna otevřena" : "Čeká na schválení terapeutkami";
   // „Zahájit" je v Pracovně dostupné JEN když je plán schválený přes prep room.
   // Mimo Pracovnu (prepGateEnabled=false) zůstává staré chování.
   const startBlockedByPrep = prepGateEnabled && !prepApproved && !karelDirect;
@@ -993,7 +995,7 @@ const PlanCard = ({
         </Badge>
         {karelDirect && (
           <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-primary/40 text-primary bg-primary/5">
-            <Dices className="mr-0.5 h-2.5 w-2.5" /> Karelův přímý kontakt s částí
+            <Dices className="mr-0.5 h-2.5 w-2.5" /> Karlova herna
           </Badge>
         )}
         {legacyDraft && (
@@ -1029,7 +1031,12 @@ const PlanCard = ({
         )}
 
         {/* Status badges */}
-        {plan.status === "generated" && !isOverdue && (
+        {karelDirect && plan.status === "generated" && !isOverdue && (
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-primary/40 text-primary bg-primary/5">
+            {hernaStatusLabel}
+          </Badge>
+        )}
+        {!karelDirect && plan.status === "generated" && !isOverdue && (
           <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/50 text-amber-600">
             <Clock className="mr-0.5 h-2.5 w-2.5" /> Naplánováno
           </Badge>
@@ -1112,7 +1119,15 @@ const PlanCard = ({
         <div className="mb-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5">
           <p className="text-[0.625rem] leading-4 text-amber-800 dark:text-amber-300">
             <Lock className="mr-1 inline h-2.5 w-2.5 -mt-px" />
-            Čeká na lidské schválení před otevřením herny.
+            Čeká na schválení terapeutkami.
+          </p>
+        </div>
+      )}
+      {karelDirect && hernaApproved && plan.status === "generated" && !isArchived && (
+        <div className="mb-1.5 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1.5">
+          <p className="text-[0.625rem] leading-4 text-primary">
+            <Dices className="mr-1 inline h-2.5 w-2.5 -mt-px" />
+            Pro: <strong>{plan.selected_part}</strong> · Herna otevřena
           </p>
         </div>
       )}
