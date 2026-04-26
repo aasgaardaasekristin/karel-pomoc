@@ -992,7 +992,10 @@ This overrides ALL other language instructions.
 
     // Hard runtime truth-guard for DID mode
     if (mode === "childcare") {
-      systemPrompt += `\n\n═══ KRITICKÁ PRAVIDLA PRAVDIVOSTI ═══\n- Pro okamžité odeslání vzkazu používej VÝHRADNĚ značku [ODESLAT_VZKAZ:mamka] nebo [ODESLAT_VZKAZ:kata].\n- Značku vlož AŽ PO výslovném souhlasu dítěte.\n- Bez souhlasu pouze navrhni text a označ ho jako NÁVRH.\n- Po vložení značky řekni dítěti že se vzkaz posílá – systém ho odešle automaticky emailem.\n- V DID režimu považuj dítě za AKTIVNÍ pouze tehdy, když samo přímo mluví ve vláknu sub_mode=cast; pouhá zmínka terapeutkou nebo v jiném režimu NENÍ aktivita.\n- Aliasy Dymi/Dymytri/Dymitri vždy mapuj na jediný kanonický název DMYTRI. Pokud DMYTRI není aktivní v registru, nechovej se k němu jako k aktivnímu.\n- Nikdy nevytvářej nové názvy z čárek, stavových slov nebo testovacích textů typu „Aktivní“.`;
+      const messageRule = didSubMode === "playroom"
+        ? "- V režimu playroom NIKDY sám nenabízej posílání vzkazu mamce/Haničce/Kátě/e-mailem. Značku [ODESLAT_VZKAZ:*] použij pouze při výslovné žádosti dítěte nebo při bezprostředním bezpečnostním riziku."
+        : "- Pro okamžité odeslání vzkazu používej VÝHRADNĚ značku [ODESLAT_VZKAZ:mamka] nebo [ODESLAT_VZKAZ:kata].\n- Značku vlož AŽ PO výslovném souhlasu dítěte.\n- Bez souhlasu pouze navrhni text a označ ho jako NÁVRH.\n- Po vložení značky řekni dítěti že se vzkaz posílá – systém ho odešle automaticky emailem.";
+      systemPrompt += `\n\n═══ KRITICKÁ PRAVIDLA PRAVDIVOSTI ═══\n${messageRule}\n- V DID režimu považuj dítě za AKTIVNÍ pouze tehdy, když samo přímo mluví ve vláknu sub_mode=cast/playroom; pouhá zmínka terapeutkou nebo v jiném režimu NENÍ aktivita.\n- Aliasy Dymi/Dymytri/Dymitri vždy mapuj na jediný kanonický název DMYTRI. Pokud DMYTRI není aktivní v registru, nechovej se k němu jako k aktivnímu.\n- Nikdy nevytvářej nové názvy z čárek, stavových slov nebo testovacích textů typu „Aktivní“.`;
     }
 
     // ═══ AUTO-PERPLEXITY FOR KATA MODE ═══
