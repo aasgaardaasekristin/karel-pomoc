@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Loader2, Mic, Paperclip, Send, Square, XCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, Camera, FileText, Image as ImageIcon, Loader2, Mic, Send, Square, Video, X, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,7 +7,6 @@ import { getAuthHeaders } from "@/lib/auth";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import { toast } from "sonner";
 import tundrupekPlayroomBg from "@/assets/tundrupek-playroom-bg.jpg";
-import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
 import { buildAttachmentContent, useUniversalUpload, type PendingAttachment } from "@/hooks/useUniversalUpload";
 import { handleApiError, parseSSEStream } from "@/lib/chatHelpers";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
@@ -54,6 +53,35 @@ const contentText = (content: any) => {
   if (Array.isArray(content)) return content.map((part) => part?.text || (part?.image_url ? "Přiložený obrázek" : "Příloha")).filter(Boolean).join("\n");
   return "";
 };
+
+const attachmentLabel: Record<PendingAttachment["category"], string> = {
+  image: "fotka",
+  audio: "hlas",
+  video: "video",
+  document: "soubor",
+  screenshot: "screenshot",
+};
+
+const cleanPlanForPlayroom = (markdown?: string) => (markdown || "")
+  .split("\n")
+  .filter((line) => !/čeká\s+na\s+schválení|nesmí\s+otevřít|účel\s+dokumentu|nikoli\s+child-facing/i.test(line))
+  .join("\n")
+  .trim();
+
+const planContract = (plan: PlayroomPlanRow | null) => `SCHVÁLENÝ PROGRAM HERNY PRO DNEŠEK — AKTIVNÍ, ODSOUHLASENÝ TERAPEUTKAMI.
+PLAN_ID: ${plan?.id || "neznámý"}
+ČÁST: ${plan?.selected_part || plan?.urgency_breakdown?.target_part || "neznámá"}
+
+${cleanPlanForPlayroom(plan?.plan_markdown)}
+
+HERNA KONTRAKT PRO KARLA:
+- Nejde o běžné vlákno. Vedeš strukturované terapeutické Herna sezení podle schváleného programu.
+- V každé odpovědi zvol konkrétní další krok programu, ale ihned ho přizpůsob aktuálnímu stavu dítěte.
+- Každá replika má mít: 1) naladění na odpověď nebo přílohu, 2) jemnou motivaci, 3) jednu konkrétní mikro-aktivitu / test / volbu A/B.
+- Nesmíš být pasivní. Neptej se prázdně „co chceš dělat“. Veď, ale nech kontrolu dítěti.
+- Nikdy dítěti neukazuj interní plán, názvy diagnostiky, terapeutek ani technické vrstvy.
+- Nikdy sám nenabízej posílání vzkazů mamince/Haničce/Kátě/e-mailem. Jen pokud si o to dítě výslovně řekne nebo je bezpečnostní riziko.
+- Reaguj na text, hlas, fotku, video, screenshot i dokument jako na materiál ze sezení, ne jako na běžnou přílohu.`;
 
 const getRoomTone = (plan: PlayroomPlanRow | null, thread: PlayroomThread | null) => {
   const raw = `${plan?.urgency_breakdown?.readiness_today || ""} ${plan?.urgency_breakdown?.playroom_theme || ""} ${contentText(thread?.messages?.at(-1)?.content)}`.toLocaleLowerCase("cs-CZ");
