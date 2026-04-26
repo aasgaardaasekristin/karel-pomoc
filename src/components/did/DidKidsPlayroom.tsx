@@ -295,13 +295,30 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
                 </div>
               ))}
             </div>
-            <div className="relative">
-              <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Napiš, nahraj hlas, video, fotku, screenshot nebo dokument." className="min-h-20 resize-none bg-background/46 text-foreground/78 placeholder:text-muted-foreground/62" />
-              <UniversalAttachmentBar attachments={uploads.attachments} onRemove={uploads.removeAttachment} onOpenFilePicker={uploads.openFilePicker} onCaptureScreenshot={uploads.captureScreenshot} onOpenDrivePicker={uploads.openFilePicker} onAutoAnalyze={() => sendReply(reply || "Podívej se prosím na přílohu.")} disabled={saving} fileInputRef={uploads.fileInputRef} onFileChange={uploads.handleFileChange} isAnalyzing={saving} />
+            <div className="space-y-2">
+              <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Napiš, nahraj hlas, video, fotku, screenshot nebo dokument." className="min-h-20 resize-none border-border/25 bg-background/28 text-foreground/72 placeholder:text-muted-foreground/55 backdrop-blur-[2px]" />
+              <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(event) => handlePickedFiles(event, "image")} />
+              <input ref={videoInputRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={(event) => handlePickedFiles(event, "video")} />
+              <input ref={documentInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.json,.xml" multiple className="hidden" onChange={(event) => handlePickedFiles(event, "document")} />
             </div>
+            {uploads.attachments.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {uploads.attachments.map((attachment) => (
+                  <button key={attachment.id} type="button" onClick={() => uploads.removeAttachment(attachment.id)} className="inline-flex items-center gap-1.5 rounded-md border border-border/25 bg-background/24 px-2.5 py-1.5 text-xs text-foreground/70 backdrop-blur-[2px]">
+                    <span>{attachmentLabel[attachment.category]}</span>
+                    <span className="max-w-32 truncate">{attachment.name}</span>
+                    {attachment.uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <div className="flex flex-wrap gap-2">
-              {recorder.state === "recording" ? <Button variant="secondary" onClick={recorder.stopRecording}><Square className="mr-2 h-4 w-4" />Zastavit hlas</Button> : <Button variant="secondary" onClick={recorder.startRecording}><Mic className="mr-2 h-4 w-4" />Hlas</Button>}
-              {recorder.state === "recorded" ? <Button variant="outline" onClick={attachRecording}><Paperclip className="mr-2 h-4 w-4" />Přiložit hlas</Button> : null}
+              <Button variant="secondary" onClick={() => photoInputRef.current?.click()} disabled={saving} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><ImageIcon className="mr-2 h-4 w-4" />Fotka</Button>
+              <Button variant="secondary" onClick={() => videoInputRef.current?.click()} disabled={saving} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><Video className="mr-2 h-4 w-4" />Video</Button>
+              <Button variant="secondary" onClick={uploads.captureScreenshot} disabled={saving} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><Camera className="mr-2 h-4 w-4" />Screenshot</Button>
+              <Button variant="secondary" onClick={() => documentInputRef.current?.click()} disabled={saving} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><FileText className="mr-2 h-4 w-4" />Dokument</Button>
+              {recorder.state === "recording" ? <Button variant="secondary" onClick={recorder.stopRecording} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><Square className="mr-2 h-4 w-4" />Zastavit hlas</Button> : <Button variant="secondary" onClick={recorder.startRecording} disabled={saving} className="bg-background/30 text-foreground/72 backdrop-blur-[2px]"><Mic className="mr-2 h-4 w-4" />Hlas</Button>}
+              {recorder.state === "recorded" ? <Button variant="outline" onClick={attachRecording} className="bg-background/22 text-foreground/72 backdrop-blur-[2px]"><Mic className="mr-2 h-4 w-4" />Přiložit hlas</Button> : null}
               <Button onClick={() => sendReply(reply)} disabled={saving || (!reply.trim() && uploads.attachments.length === 0)}><Send className="mr-2 h-4 w-4" />Odpovědět</Button>
               <Button variant="secondary" onClick={() => sendReply("Dnes nechci.")} disabled={saving}>Dnes nechci</Button>
               <Button variant="outline" onClick={onBack} disabled={saving}><XCircle className="mr-2 h-4 w-4" />Skončit</Button>
