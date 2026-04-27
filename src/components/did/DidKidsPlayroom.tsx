@@ -166,8 +166,8 @@ const getRoomTone = (plan: PlayroomPlanRow | null, thread: PlayroomThread | null
   return "listening";
 };
 
-const getStepPrompt = (plan: PlayroomPlanRow | null, thread: PlayroomThread | null) => {
-  const step = currentStepForThread(plan, thread);
+const getStepPrompt = (plan: PlayroomPlanRow | null, thread: PlayroomThread | null, progress?: PlayroomProgressState) => {
+  const step = currentStepForThread(plan, thread, progress);
   return childSafe(step?.child_facing_prompt_draft) || "Mám být blíž, dál, nebo úplně potichu u dveří?";
 };
 
