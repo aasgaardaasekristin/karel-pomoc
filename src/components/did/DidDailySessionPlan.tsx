@@ -921,9 +921,10 @@ const PlanCard = ({
           },
         } : undefined,
       };
+      const nextProgramStatus = action === "approve" ? "approved" : action === "defer" ? "in_revision" : "cancelled";
       const { error } = await (supabase as any)
         .from("did_daily_session_plans")
-        .update({ urgency_breakdown: nextBreakdown, status: action === "reject" ? "skipped" : plan.status })
+        .update({ urgency_breakdown: nextBreakdown, program_status: nextProgramStatus, status: action === "reject" ? "skipped" : plan.status })
         .eq("id", plan.id);
       if (error) throw error;
       setLocalHernaApproved(action === "approve");
@@ -939,6 +940,10 @@ const PlanCard = ({
     if (openingPartRoom) return;
     if (!hernaApproved) {
       toast.info("Čeká na lidské schválení před otevřením herny.");
+      return;
+    }
+    if (!playroomPlan) {
+      toast.error("Herna nemá vlastní schválený program. Neotevírám program sezení jako hernu.");
       return;
     }
     setOpeningPartRoom(true);
@@ -961,9 +966,10 @@ const PlanCard = ({
             session_mode: plan.urgency_breakdown?.session_mode || undefined,
             readiness_today: plan.urgency_breakdown?.readiness_today || undefined,
             briefing_proposed_session: {
-              why_today: `Schválené sezení (porada): ${plan.selected_part}`,
-              duration_min: 60,
-              led_by: plan.session_lead === "kata" ? "Káťa" : plan.session_lead === "obe" ? "společně" : "Hanička",
+              why_today: playroomPlan.why_this_part_today || `Schválená herna: ${plan.selected_part}`,
+              duration_min: playroomPlan.duration_min || 20,
+              led_by: "Karel",
+              playroom_plan: playroomPlan,
               session_actor: plan.urgency_breakdown?.session_actor || undefined,
               session_mode: plan.urgency_breakdown?.session_mode || undefined,
               readiness_today: plan.urgency_breakdown?.readiness_today || undefined,
