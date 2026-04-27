@@ -32,11 +32,16 @@ interface SessionPlan {
   completed_at: string | null;
   session_lead: string;
   session_format: string;
+  program_status?: string;
   overdue_days: number;
   created_at?: string;
 }
 
-const isKarelDirectPlan = (plan: SessionPlan) => plan.urgency_breakdown?.session_actor === "karel_direct";
+const isKarelDirectPlan = (plan: SessionPlan) =>
+  plan.urgency_breakdown?.session_actor === "karel_direct" &&
+  plan.urgency_breakdown?.lead_entity === "karel" &&
+  plan.urgency_breakdown?.ui_surface === "did_kids_playroom" &&
+  !!plan.urgency_breakdown?.playroom_plan;
 const LEGACY_PLAN_GENERATORS = new Set(["auto", "manual"]);
 const ANALYTIC_PLAN_GENERATORS = new Set(["analyst_loop", "recovery_mode", "karel-did-apply-analysis", "crisis-retroactive-scan"]);
 
@@ -47,7 +52,8 @@ const hasExplicitRoleContract = (plan: SessionPlan) =>
 const isKarelDirectApprovedForHerna = (plan: SessionPlan) =>
   isKarelDirectPlan(plan) &&
   plan.urgency_breakdown?.human_review_required === true &&
-  plan.urgency_breakdown?.approved_for_child_session === true;
+  plan.urgency_breakdown?.approved_for_child_session === true &&
+  ["approved", "ready_to_start", "in_progress"].includes(String(plan.program_status || plan.urgency_breakdown?.review_state || plan.urgency_breakdown?.approval?.review_state || ""));
 
 const isQuarantinedPlan = (plan: SessionPlan) =>
   LEGACY_PLAN_GENERATORS.has(plan.generated_by) ||
@@ -915,9 +921,10 @@ const PlanCard = ({
           },
         } : undefined,
       };
+      const nextProgramStatus = action === "approve" ? "approved" : action === "defer" ? "in_revision" : "cancelled";
       const { error } = await (supabase as any)
         .from("did_daily_session_plans")
-        .update({ urgency_breakdown: nextBreakdown, status: action === "reject" ? "skipped" : plan.status })
+        .update({ urgency_breakdown: nextBreakdown, program_status: nextProgramStatus, status: action === "reject" ? "skipped" : plan.status })
         .eq("id", plan.id);
       if (error) throw error;
       setLocalHernaApproved(action === "approve");
@@ -933,6 +940,10 @@ const PlanCard = ({
     if (openingPartRoom) return;
     if (!hernaApproved) {
       toast.info("Čeká na lidské schválení před otevřením herny.");
+      return;
+    }
+    if (!playroomPlan) {
+      toast.error("Herna nemá vlastní schválený program. Neotevírám program sezení jako hernu.");
       return;
     }
     setOpeningPartRoom(true);
@@ -955,9 +966,10 @@ const PlanCard = ({
             session_mode: plan.urgency_breakdown?.session_mode || undefined,
             readiness_today: plan.urgency_breakdown?.readiness_today || undefined,
             briefing_proposed_session: {
-              why_today: `Schválené sezení (porada): ${plan.selected_part}`,
-              duration_min: 60,
-              led_by: plan.session_lead === "kata" ? "Káťa" : plan.session_lead === "obe" ? "společně" : "Hanička",
+              why_today: playroomPlan.why_this_part_today || `Schválená herna: ${plan.selected_part}`,
+              duration_min: playroomPlan.duration_min || 20,
+              led_by: "Karel",
+              playroom_plan: playroomPlan,
               session_actor: plan.urgency_breakdown?.session_actor || undefined,
               session_mode: plan.urgency_breakdown?.session_mode || undefined,
               readiness_today: plan.urgency_breakdown?.readiness_today || undefined,

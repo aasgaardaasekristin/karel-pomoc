@@ -102,10 +102,11 @@ PLAN_ID: ${plan?.id || "neznámý"}
 REVIEW_STATE: ${plan?.urgency_breakdown?.review_state || plan?.urgency_breakdown?.approval?.review_state || "neznámý"}
 POVOLENÁ HLOUBKA: ${plan?.urgency_breakdown?.allowed_depth || plan?.urgency_breakdown?.playroom_plan?.allowed_depth || "check_in_only"}
 
-${cleanPlanForPlayroom(plan?.plan_markdown)}
+VLASTNÍ PROGRAM HERNY:
+${plan?.urgency_breakdown?.playroom_plan ? JSON.stringify(plan.urgency_breakdown.playroom_plan, null, 2).slice(0, 5000) : "CHYBÍ — bez explicitního playroom_plan nesmí Karel použít plán terapeutického sezení jako program Herny."}
 
 STRUKTUROVANÝ PROGRAM — POUŽIJ JAKO SKRYTÝ ŘÍDICÍ PLÁN, NEUKAZUJ DÍTĚTI:
-${steps.length ? steps.map(stepLine).join("\n") : "Programové kroky nejsou ve strukturovaných datech; drž se plan_markdown a nejnižší možné hloubky."}
+${steps.length ? steps.map(stepLine).join("\n") : "Programové kroky Herny nejsou ve strukturovaných datech; nepřebírej plán Sezení. Zůstaň jen u bezpečného krátkého check-inu."}
 
 AKTUÁLNÍ KROK TEĎ:
 ${currentStep ? stepLine(currentStep) : "krok 1: bezpečný vstup a volba vzdálenosti"}
@@ -170,6 +171,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         return c.session_actor === "karel_direct"
           && c.lead_entity === "karel"
           && c.ui_surface === "did_kids_playroom"
+          && c.playroom_plan && typeof c.playroom_plan === "object"
           && c.approved_for_child_session === true
           && ["approved", "ready_to_start", "in_progress"].includes(row.program_status || c.review_state || c.approval?.review_state || "");
       });

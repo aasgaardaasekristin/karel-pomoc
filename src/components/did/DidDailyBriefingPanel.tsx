@@ -35,7 +35,7 @@
  *  takže idempotence funguje i bez nové edge generace.
  */
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { forwardRef, useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -125,6 +125,11 @@ interface BriefingRow {
 
 interface YesterdayFallbackReview extends YesterdaySessionReview {
   status_label?: string;
+  mode?: "playroom" | "session";
+  practical_report?: string | null;
+  detailed_analysis?: string | null;
+  sync_status?: string | null;
+  team_closing?: string | null;
 }
 
 interface Props {
@@ -179,12 +184,14 @@ const pragueYesterdayISO = (): string => {
   return d.toISOString().slice(0, 10);
 };
 
-const SectionHead = ({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) => (
-  <h3 className="text-[12px] font-medium text-foreground/80 flex items-center gap-1.5 uppercase tracking-wide">
+const SectionHead = forwardRef<HTMLHeadingElement, { children: React.ReactNode; icon?: React.ReactNode }>(
+  ({ children, icon }, ref) => (
+  <h3 ref={ref} className="text-[12px] font-medium text-foreground/80 flex items-center gap-1.5 uppercase tracking-wide">
     {icon}
     {children}
   </h3>
-);
+));
+SectionHead.displayName = "SectionHead";
 
 const NarrativeDivider = () => (
   <div className="my-4 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
@@ -244,7 +251,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [openingItemId, setOpeningItemId] = useState<string | null>(null);
-  const [yesterdayFallback, setYesterdayFallback] = useState<YesterdayFallbackReview | null>(null);
+  const [yesterdaySessionFallback, setYesterdaySessionFallback] = useState<YesterdayFallbackReview | null>(null);
+  const [yesterdayPlayroomFallback, setYesterdayPlayroomFallback] = useState<YesterdayFallbackReview | null>(null);
   /**
    * THERAPIST-LED TRUTH PASS (2026-04-22) — Duplicity guard.
    * Set obsahuje názvy částí, pro které dnes existuje schválený
@@ -278,25 +286,32 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const loadYesterdayFallback = useCallback(async () => {
     try {
       const yesterday = pragueYesterdayISO();
-      const { data: review } = await (supabase as any)
+      const { data: reviews } = await (supabase as any)
         .from("did_session_reviews")
-        .select("part_name,status,clinical_summary,therapeutic_implications,team_implications,next_session_recommendation,evidence_limitations")
+        .select("mode,part_name,status,clinical_summary,therapeutic_implications,team_implications,next_session_recommendation,evidence_limitations,clinical_findings,implications_for_part,implications_for_whole_system,recommendations_for_therapists,recommendations_for_next_session,recommendations_for_next_playroom,team_closing,drive_sync_status,source_of_truth_status,analysis_json")
         .eq("session_date", yesterday)
         .eq("is_current", true)
         .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (review) {
-        setYesterdayFallback({
-          held: true,
-          part_name: review.part_name || undefined,
-          completion: review.status === "analyzed" ? "completed" : review.status === "partially_analyzed" ? "partial" : "abandoned",
-          karel_summary: review.clinical_summary || review.evidence_limitations || "Review existuje, ale klinické shrnutí zatím není uložené.",
-          key_finding_about_part: review.therapeutic_implications || "Závěr je omezen dostupnou evidencí.",
-          implications_for_plan: review.next_session_recommendation || "Doplnit chybějící podklady a navázat v dalším plánování.",
-          team_acknowledgement: review.team_implications || "Děkuji Haničce a Kátě za držení kontinuity; i částečný záznam je pro tým užitečný, když je označen poctivě.",
-          status_label: review.status,
-        });
+        .limit(4);
+      const rows = (reviews || []) as any[];
+      const mapReview = (review: any): YesterdayFallbackReview => ({
+        held: true,
+        mode: review.mode === "playroom" ? "playroom" : "session",
+        part_name: review.part_name || undefined,
+        completion: review.status === "analyzed" ? "completed" : review.status === "partially_analyzed" ? "partial" : "abandoned",
+        karel_summary: review.analysis_json?.practical_report_text || review.clinical_summary || review.evidence_limitations || "Review existuje, ale klinické shrnutí zatím není uložené.",
+        key_finding_about_part: review.implications_for_part || review.therapeutic_implications || review.clinical_findings || "Závěr je omezen dostupnou evidencí.",
+        implications_for_plan: review.mode === "playroom" ? (review.recommendations_for_next_playroom || review.next_session_recommendation) : (review.recommendations_for_next_session || review.next_session_recommendation) || "Doplnit chybějící podklady a navázat v dalším plánování.",
+        team_acknowledgement: review.team_closing || review.team_implications || "Děkuji Haničce a Kátě za držení kontinuity; i částečný záznam je pro tým užitečný, když je označen poctivě.",
+        practical_report: review.analysis_json?.practical_report_text || review.clinical_summary || null,
+        detailed_analysis: review.analysis_json?.detailed_analysis_text || review.analysis_json?.diagnostic_validity || null,
+        sync_status: review.source_of_truth_status || review.drive_sync_status || null,
+        team_closing: review.team_closing || null,
+        status_label: review.status,
+      });
+      if (rows.length > 0) {
+        setYesterdayPlayroomFallback(rows.find((r) => r.mode === "playroom") ? mapReview(rows.find((r) => r.mode === "playroom")) : null);
+        setYesterdaySessionFallback(rows.find((r) => r.mode !== "playroom") ? mapReview(rows.find((r) => r.mode !== "playroom")) : null);
         return;
       }
       const { data: plan } = await (supabase as any)
@@ -306,7 +321,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (!plan) { setYesterdayFallback(null); return; }
+      if (!plan) { setYesterdaySessionFallback(null); setYesterdayPlayroomFallback(null); return; }
       const { data: progress } = await (supabase as any)
         .from("did_live_session_progress")
         .select("completed_blocks,total_blocks,items")
@@ -314,8 +329,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         .maybeSingle();
       const completed = progress?.completed_blocks ?? 0;
       const total = progress?.total_blocks ?? null;
-      setYesterdayFallback({
+      setYesterdaySessionFallback({
         held: true,
+        mode: "session",
         part_name: plan.selected_part || undefined,
         lead: String(plan.session_lead || plan.therapist || "").toLowerCase().includes("kat") ? "Káťa" : "Hanička",
         completion: completed > 0 ? "partial" : "abandoned",
@@ -327,9 +343,11 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         team_acknowledgement: "Haničko a Káťo, děkuji za udržení rámce — i nedokončené sezení se teď poctivě označí a neztratí se z přehledu.",
         status_label: plan.lifecycle_status || plan.status,
       });
+      setYesterdayPlayroomFallback(null);
     } catch (e) {
       console.error("[DidDailyBriefingPanel] loadYesterdayFallback failed:", e);
-      setYesterdayFallback(null);
+      setYesterdaySessionFallback(null);
+      setYesterdayPlayroomFallback(null);
     }
   }, []);
 
@@ -724,7 +742,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const p = briefing.payload;
   const yesterdayReview = (p.yesterday_session_review && p.yesterday_session_review.held)
     ? p.yesterday_session_review
-    : yesterdayFallback;
+    : yesterdaySessionFallback;
+  const yesterdayPlayroomReview = yesterdayPlayroomFallback;
   const hasProposed = !!p.proposed_session?.part_name;
   const proposedPartName = (p.proposed_session?.part_name ?? "").trim();
   const proposedAlreadyApproved =
@@ -789,7 +808,36 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
-      {/* 3.5 Vyhodnocení včerejšího sezení (sekce mezi „Z dřívějška" a „Návrh sezení") */}
+      {/* 3.5 Včerejší herna — samostatná vyhrazená sekce, nikdy nesmí splývat se sezením */}
+      {yesterdayPlayroomReview && yesterdayPlayroomReview.held && (
+        <>
+          <NarrativeDivider />
+          <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary/70" />}>
+            Včerejší herna
+          </SectionHead>
+          <div className="mt-2 rounded-lg border border-border/60 bg-card/40 p-3 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              {yesterdayPlayroomReview.part_name && <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">{yesterdayPlayroomReview.part_name}</Badge>}
+              <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">vedl Karel</Badge>
+              {yesterdayPlayroomReview.sync_status && <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{yesterdayPlayroomReview.sync_status}</Badge>}
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Praktický report</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{yesterdayPlayroomReview.practical_report || yesterdayPlayroomReview.karel_summary}</p>
+            </div>
+            {yesterdayPlayroomReview.key_finding_about_part && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Význam pro část</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{yesterdayPlayroomReview.key_finding_about_part}</p></div>}
+            {yesterdayPlayroomReview.implications_for_plan && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro další hernu</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{yesterdayPlayroomReview.implications_for_plan}</p></div>}
+            {yesterdayPlayroomReview.detailed_analysis && (
+              <details className="rounded-md border border-border/50 bg-background/35 p-2">
+                <summary className="cursor-pointer text-[12px] font-medium text-primary">Přečíst si detailní analýzu ze včerejší herny</summary>
+                <p className="mt-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{yesterdayPlayroomReview.detailed_analysis}</p>
+              </details>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* 3.6 Vyhodnocení včerejšího sezení — oddělené od Herny */}
       {yesterdayReview && yesterdayReview.held && (
         <>
           <NarrativeDivider />
@@ -855,11 +903,17 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             )}
             {yesterdayReview.team_acknowledgement && (
               <div className="pt-1 border-t border-border/40">
-                <p className="text-[11px] uppercase tracking-wide text-primary/70">Pro tým</p>
+                <p className="text-[11px] uppercase tracking-wide text-primary/70">Týmové uzavření</p>
                 <p className="text-[12px] leading-relaxed text-foreground/85 italic whitespace-pre-line mt-0.5">
                   {yesterdayReview.team_acknowledgement}
                 </p>
               </div>
+            )}
+            {(yesterdayReview as YesterdayFallbackReview).detailed_analysis && (
+              <details className="rounded-md border border-border/50 bg-background/35 p-2">
+                <summary className="cursor-pointer text-[12px] font-medium text-primary">Přečíst si detailní analýzu ze včerejšího sezení</summary>
+                <p className="mt-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{(yesterdayReview as YesterdayFallbackReview).detailed_analysis}</p>
+              </details>
             )}
           </div>
         </>
