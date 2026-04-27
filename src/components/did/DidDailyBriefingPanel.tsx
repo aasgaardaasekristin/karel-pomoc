@@ -845,12 +845,12 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
-      {/* 3.6 Vyhodnocení včerejšího sezení — oddělené od Herny */}
+      {/* 3.6 Včerejší sezení — samostatná vyhrazená sekce, nikdy nesmí splývat s Hernou */}
       {yesterdayReview && yesterdayReview.held && (
         <>
           <NarrativeDivider />
           <SectionHead icon={<Users className="w-3.5 h-3.5 text-primary/70" />}>
-            Vyhodnocení včerejšího sezení
+            Včerejší sezení
           </SectionHead>
           <div className="mt-2 p-3 rounded-lg border border-border/60 bg-card/40 space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
@@ -884,6 +884,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             </div>
             {yesterdayReview.karel_summary ? (
               <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Karlovo vyhodnocení</p>
                 <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
                   {yesterdayReview.karel_summary}
                 </p>
