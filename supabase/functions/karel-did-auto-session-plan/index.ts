@@ -243,7 +243,7 @@ function hasUsablePlayroomPlan(contract: any): boolean {
   return !!plan && typeof plan === "object" && Array.isArray(plan.therapeutic_program) && plan.therapeutic_program.length > 0;
 }
 
-async function ensureKarelDirectCandidate(sb: any, args: { userId: string; todayPrague: string; selectedPart: UrgencyResult; forcePart: string | null; crisisEventId?: string | null }) {
+async function ensureKarelDirectCandidate(sb: any, args: { userId: string; todayPrague: string; selectedPart: UrgencyResult; forcePart: string | null; crisisEventId?: string | null; partReg?: any }) {
   const { data: existing } = await sb.from("did_daily_session_plans")
     .select("id,status,lifecycle_status,urgency_breakdown")
     .eq("plan_date", args.todayPrague)
@@ -258,7 +258,7 @@ async function ensureKarelDirectCandidate(sb: any, args: { userId: string; today
   if (activeExisting) {
     const contract = activeExisting.urgency_breakdown && typeof activeExisting.urgency_breakdown === "object" ? activeExisting.urgency_breakdown : {};
     if (!hasUsablePlayroomPlan(contract)) {
-      const playroomPlan = buildPlayroomPlan({ selectedPart: args.selectedPart, forcePart: args.forcePart, todayPrague: args.todayPrague, crisisEventId: args.crisisEventId });
+      const playroomPlan = buildPlayroomPlan({ selectedPart: args.selectedPart, forcePart: args.forcePart, todayPrague: args.todayPrague, crisisEventId: args.crisisEventId, partReg: args.partReg });
       await sb.from("did_daily_session_plans").update({
         urgency_breakdown: { ...contract, ...deriveKarelDirectContract(args.selectedPart, args.forcePart), playroom_plan: playroomPlan },
         plan_markdown: playroomPlanToMarkdown(playroomPlan),
@@ -273,7 +273,7 @@ async function ensureKarelDirectCandidate(sb: any, args: { userId: string; today
   }
 
   const contract = deriveKarelDirectContract(args.selectedPart, args.forcePart);
-  const playroomPlan = buildPlayroomPlan({ selectedPart: args.selectedPart, forcePart: args.forcePart, todayPrague: args.todayPrague, crisisEventId: args.crisisEventId });
+  const playroomPlan = buildPlayroomPlan({ selectedPart: args.selectedPart, forcePart: args.forcePart, todayPrague: args.todayPrague, crisisEventId: args.crisisEventId, partReg: args.partReg });
   const markdown = playroomPlanToMarkdown(playroomPlan);
   const { data, error } = await sb.from("did_daily_session_plans").insert({
     user_id: args.userId,
