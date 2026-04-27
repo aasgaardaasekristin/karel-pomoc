@@ -230,19 +230,21 @@ serve(async (req) => {
 
     const planId = isUuid(body?.plan_id) ? String(body.plan_id) : null;
     let planContract: Record<string, unknown> = {};
+    let planProgramStatus = "";
     if (planId) {
       const { data: plan, error: planErr } = await sb
         .from("did_daily_session_plans")
-        .select("urgency_breakdown")
+        .select("urgency_breakdown,program_status")
         .eq("id", planId)
         .maybeSingle();
       if (planErr) return jsonRes({ ok: false, error: planErr.message }, 500);
       planContract = plan?.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown : {};
-      if (planContract.approved_for_child_session !== true) {
+      planProgramStatus = String((plan as any)?.program_status ?? "");
+      if (!hasApprovedPlayroomContract(planContract) || !["approved", "ready_to_start", "in_progress"].includes(planProgramStatus)) {
         return jsonRes({
           ok: false,
-          error: "human_review_required",
-          message: "Karlova herna se může otevřít až po schválení terapeutkami.",
+          error: "playroom_program_not_approved",
+          message: "Karlova herna vyžaduje vlastní schválený program Herny.",
         }, 403);
       }
     }
@@ -250,8 +252,11 @@ serve(async (req) => {
     const sessionActor = String(planContract.session_actor ?? body?.session_actor ?? body?.briefing_proposed_session?.session_actor ?? "").trim();
     const sessionMode = String(planContract.session_mode ?? body?.session_mode ?? body?.briefing_proposed_session?.session_mode ?? "").trim();
     const readinessToday = String(planContract.readiness_today ?? body?.readiness_today ?? body?.briefing_proposed_session?.readiness_today ?? "").trim();
+    const playroomPlan = (planContract as any).playroom_plan && typeof (planContract as any).playroom_plan === "object" ? (planContract as any).playroom_plan : null;
+    const safePlayroomHint = playroomPlan ? buildSafePlayroomHint(playroomPlan) : {};
     const briefingHint = {
-      first_question: planContract.first_question ?? body?.first_question ?? body?.briefing_proposed_session?.first_question,
+      ...safePlayroomHint,
+      first_question: (safePlayroomHint as any).first_question ?? planContract.first_question ?? body?.first_question ?? body?.briefing_proposed_session?.first_question,
       session_actor: sessionActor || undefined,
       session_mode: sessionMode || undefined,
       readiness_today: readinessToday || undefined,
