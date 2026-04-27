@@ -235,7 +235,15 @@ function buildPlayroomRailReply(runtimeContext: string | null | undefined, child
   const normalizedInput = normalizePlayroomText(lastInput || "");
   const childAddress = (childName || "").toLocaleUpperCase("cs-CZ") === "TUNDRUPEK" ? "Tundrupku" : (childName || "");
   const stepText = normalizePlayroomText(`${extractPlayroomCurrentBlockTitle(runtimeContext)} ${extractPlayroomCurrentProgramPrompt(runtimeContext)}`);
-  const attune = /velryb|kridl|bytost|domu|chlapeck/i.test(normalizedInput)
+  const attune = /^(a|a\)|slovo)$/i.test(normalizedInput)
+    ? "Dob\u0159e, beru jedno mal\u00e9 slovo."
+    : /^(b|b\)|symbol|emoji)$/i.test(normalizedInput)
+      ? "Dob\u0159e, beru jeden symbol."
+      : /^(c|c\)|ticho)$/i.test(normalizedInput)
+        ? "Dob\u0159e, ticho je taky odpov\u011b\u010f."
+        : /co budeme|co dal|co ted/i.test(normalizedInput)
+          ? "Te\u010f p\u016fjdeme jen o jeden mal\u00fd krok d\u00e1l."
+          : /velryb|kridl|bytost|domu|chlapeck/i.test(normalizedInput)
     ? "Sly\u0161\u00edm velryb\u00edho chlape\u010dka, k\u0159\u00eddla i to, \u017ee domov je bl\u00edzko."
     : /hvezdi|buh|nahore|svetlo|nebe/i.test(normalizedInput)
     ? "Sly\u0161\u00edm tu hv\u011bzdi\u010dku i to, \u017ee chce b\u00fdt hodn\u011b bl\u00edzko sv\u011btlu."
