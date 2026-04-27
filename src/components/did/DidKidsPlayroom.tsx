@@ -16,6 +16,8 @@ const PREFERRED_PLAN_ID = "8d2deb4f-4e9e-48a2-8abc-c3f5be8d7914";
 interface PlayroomPlanRow {
   id: string;
   selected_part: string;
+  status?: string;
+  program_status?: string;
   urgency_breakdown: Record<string, any>;
   plan_markdown?: string;
   created_at?: string;
@@ -139,6 +141,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const [thread, setThread] = useState<PlayroomThread | null>(null);
   const [reply, setReply] = useState("");
   const [saving, setSaving] = useState(false);
+  const [ending, setEnding] = useState(false);
   const uploads = useUniversalUpload();
   const recorder = useAudioRecorder();
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -157,7 +160,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
     try {
       const { data, error } = await (supabase as any)
         .from("did_daily_session_plans")
-        .select("id, selected_part, urgency_breakdown, plan_markdown, created_at")
+        .select("id, selected_part, status, program_status, urgency_breakdown, plan_markdown, created_at")
         .eq("plan_date", pragueTodayISO())
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -167,7 +170,8 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         return c.session_actor === "karel_direct"
           && c.lead_entity === "karel"
           && c.ui_surface === "did_kids_playroom"
-          && c.approved_for_child_session === true;
+          && c.approved_for_child_session === true
+          && ["approved", "ready_to_start", "in_progress"].includes(row.program_status || c.review_state || c.approval?.review_state || "");
       });
       setPlan(candidates.find((row) => row.id === PREFERRED_PLAN_ID) || candidates[0] || null);
     } catch (error) {
