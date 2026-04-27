@@ -1607,7 +1607,8 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
       const prematureClosing = isPrematurePlayroomClosing(rawPlayroomResponse);
       const passiveDrift = isPassivePlayroomDrift(rawPlayroomResponse);
       const symbolicEscape = isSymbolicEscapeWithoutAnchor(rawPlayroomResponse);
-      const guardedPlayroomResponse = mustStayOnRails && (offRail || prematureClosing || passiveDrift || symbolicEscape)
+      const hardReplaceNeeded = prematureClosing || symbolicEscape || hasPlayroomInternalLanguage(rawPlayroomResponse);
+      const guardedPlayroomResponse = mustStayOnRails && hardReplaceNeeded
         ? buildPlayroomRailReply(runtimeContext, didPartName, lastPlayroomInput)
         : rawPlayroomResponse.includes("[PLAYROOM_PROGRESS:")
           ? rawPlayroomResponse
