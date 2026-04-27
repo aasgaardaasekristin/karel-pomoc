@@ -247,6 +247,19 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       });
       const selectedPlan = (preferredPlanId ? candidates.find((row) => row.id === preferredPlanId) : null) || candidates[0] || null;
       setPlan(selectedPlan);
+      if (selectedPlan) {
+        const { data: progressRow } = await (supabase as any)
+          .from("did_live_session_progress")
+          .select("items, completed_blocks")
+          .eq("plan_id", selectedPlan.id)
+          .maybeSingle();
+        const completedIndexes = Array.isArray(progressRow?.items)
+          ? progressRow.items.map((item: any, index: number) => item?.done ? index : -1).filter((index: number) => index >= 0)
+          : [];
+        const steps = getProgramSteps(selectedPlan);
+        const firstOpen = steps.findIndex((_, index) => !completedIndexes.includes(index));
+        setProgress({ currentBlockIndex: firstOpen >= 0 ? firstOpen : 0, completedBlockIndexes: completedIndexes });
+      }
 
       if (preferredThreadId) {
         const { data: threadRow, error: threadError } = await (supabase as any)
@@ -296,6 +309,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       if (error || !data) throw error || new Error("Vlákno Herny se nenašlo.");
       const loadedThread = { id: data.id, messages: ((data.messages || []) as PlayroomThread["messages"]).map((message) => ({ ...message, content: childSafe(contentText(message.content)) || "Jsem tady. Můžeme zůstat potichu." })) };
       setThread(loadedThread);
+      await persistPlayroomProgress(progress, loadedThread);
       if (firstReply) {
         await saveReply(loadedThread, firstReply);
       }
