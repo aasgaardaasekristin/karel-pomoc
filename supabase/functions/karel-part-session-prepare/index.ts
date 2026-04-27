@@ -49,6 +49,31 @@ function pragueTodayISO(): string {
  * obrazovku — žádné fyzické pomůcky (papír, pastelky, balónky), žádný
  * scénář z perspektivy terapeuta v jedné místnosti.
  */
+function hasApprovedPlayroomContract(contract: Record<string, unknown>): boolean {
+  const playroomPlan = contract.playroom_plan as any;
+  const approval = (playroomPlan?.therapist_review ?? playroomPlan?.approval ?? contract.approval ?? {}) as Record<string, unknown>;
+  return contract.session_actor === "karel_direct" &&
+    contract.ui_surface === "did_kids_playroom" &&
+    contract.lead_entity === "karel" &&
+    !!playroomPlan &&
+    typeof playroomPlan === "object" &&
+    Array.isArray(playroomPlan.therapeutic_program) &&
+    playroomPlan.therapeutic_program.length > 0 &&
+    (contract.approved_for_child_session === true || approval.approved_for_child_session === true);
+}
+
+function buildSafePlayroomHint(playroomPlan: any) {
+  return {
+    first_question: playroomPlan?.first_question,
+    readiness_today: playroomPlan?.readiness_today,
+    session_mode: playroomPlan?.session_mode,
+    duration_min: playroomPlan?.duration_min,
+    safe_opening_options: Array.isArray(playroomPlan?.therapeutic_program)
+      ? playroomPlan.therapeutic_program.slice(0, 2).map((step: any) => ({ title: step.title, expected_signal: step.expected_signal }))
+      : [],
+  };
+}
+
 async function generateChildOpener(partName: string, briefingHint: any): Promise<string> {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   if (!apiKey) {
@@ -68,6 +93,10 @@ async function generateChildOpener(partName: string, briefingHint: any): Promise
         `Povolený child-facing vstup:`,
         `- part_name: ${partName}`,
         firstQuestion ? `- first_question: ${firstQuestion}` : `- first_question: Jak ti dnes je, když jsme spolu tady přes obrazovku?`,
+        briefingHint?.duration_min ? `- rámcová délka: ${briefingHint.duration_min} minut` : null,
+        Array.isArray(briefingHint?.safe_opening_options) && briefingHint.safe_opening_options.length
+          ? `- bezpečné úvodní možnosti: ${briefingHint.safe_opening_options.map((x: any) => x.title).join("; ")}`
+          : null,
         treatmentPhase ? `- jemný tón podle fáze: ${treatmentPhase}` : null,
         readiness ? `- jemný tón podle readiness: ${readiness}` : null,
       ]
