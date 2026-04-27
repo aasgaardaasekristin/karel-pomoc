@@ -808,7 +808,36 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
-      {/* 3.5 Vyhodnocení včerejšího sezení (sekce mezi „Z dřívějška" a „Návrh sezení") */}
+      {/* 3.5 Včerejší herna — samostatná vyhrazená sekce, nikdy nesmí splývat se sezením */}
+      {yesterdayPlayroomReview && yesterdayPlayroomReview.held && (
+        <>
+          <NarrativeDivider />
+          <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary/70" />}>
+            Včerejší herna
+          </SectionHead>
+          <div className="mt-2 rounded-lg border border-border/60 bg-card/40 p-3 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              {yesterdayPlayroomReview.part_name && <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">{yesterdayPlayroomReview.part_name}</Badge>}
+              <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">vedl Karel</Badge>
+              {yesterdayPlayroomReview.sync_status && <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{yesterdayPlayroomReview.sync_status}</Badge>}
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Praktický report</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{yesterdayPlayroomReview.practical_report || yesterdayPlayroomReview.karel_summary}</p>
+            </div>
+            {yesterdayPlayroomReview.key_finding_about_part && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Význam pro část</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{yesterdayPlayroomReview.key_finding_about_part}</p></div>}
+            {yesterdayPlayroomReview.implications_for_plan && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro další hernu</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{yesterdayPlayroomReview.implications_for_plan}</p></div>}
+            {yesterdayPlayroomReview.detailed_analysis && (
+              <details className="rounded-md border border-border/50 bg-background/35 p-2">
+                <summary className="cursor-pointer text-[12px] font-medium text-primary">Přečíst si detailní analýzu ze včerejší herny</summary>
+                <p className="mt-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{yesterdayPlayroomReview.detailed_analysis}</p>
+              </details>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* 3.6 Vyhodnocení včerejšího sezení — oddělené od Herny */}
       {yesterdayReview && yesterdayReview.held && (
         <>
           <NarrativeDivider />
@@ -874,11 +903,17 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             )}
             {yesterdayReview.team_acknowledgement && (
               <div className="pt-1 border-t border-border/40">
-                <p className="text-[11px] uppercase tracking-wide text-primary/70">Pro tým</p>
+                <p className="text-[11px] uppercase tracking-wide text-primary/70">Týmové uzavření</p>
                 <p className="text-[12px] leading-relaxed text-foreground/85 italic whitespace-pre-line mt-0.5">
                   {yesterdayReview.team_acknowledgement}
                 </p>
               </div>
+            )}
+            {(yesterdayReview as YesterdayFallbackReview).detailed_analysis && (
+              <details className="rounded-md border border-border/50 bg-background/35 p-2">
+                <summary className="cursor-pointer text-[12px] font-medium text-primary">Přečíst si detailní analýzu ze včerejšího sezení</summary>
+                <p className="mt-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{(yesterdayReview as YesterdayFallbackReview).detailed_analysis}</p>
+              </details>
             )}
           </div>
         </>
