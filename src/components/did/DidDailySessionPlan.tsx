@@ -510,9 +510,11 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
 
   // Split plans into runtime, hidden legacy/analytic drafts, and archived.
   const pendingPlans = plans.filter(p => (p.status === "generated" || p.status === "in_progress") && !isQuarantinedPlan(p));
+  const playroomPlans = pendingPlans.filter(isKarelDirectPlan);
+  const therapistSessionPlans = pendingPlans.filter(p => !isKarelDirectPlan(p));
   const quarantinedPlans = plans.filter(p => ["pending", "generated", "in_progress"].includes(p.status) && isQuarantinedPlan(p));
   const archivedPlans = plans.filter(p => p.status === "done" || p.status === "skipped");
-  const hasKarelDirectPlan = pendingPlans.some(isKarelDirectPlan);
+  const hasKarelDirectPlan = playroomPlans.length > 0;
 
   return (
     <>
@@ -520,7 +522,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
             {hasKarelDirectPlan ? <Dices className="w-3.5 h-3.5 text-primary" /> : <Target className="w-3.5 h-3.5 text-primary" />}
-            {hasKarelDirectPlan ? "Karlova herna" : "Plán dnešního sezení"}
+            Denní programy
           </h4>
           <div className="flex items-center gap-1.5">
             {!generating && !compact && (
@@ -652,25 +654,55 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
           </div>
         )}
 
-        {/* ═══ PENDING PLANS ═══ */}
-        {pendingPlans.map((plan) => (
-          <PlanCard
-            key={plan.id}
-            plan={plan}
-            isExpanded={expandedPlanId === plan.id}
-            onToggleExpand={() => setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)}
-            onStartSession={() => startSession(plan)}
-            onEndSession={() => endSession(plan)}
-            onRevert={() => revertStatus(plan)}
-            onMarkDone={() => markDone(plan.id)}
-            onDelete={() => deletePlan(plan.id)}
-            onRegenerate={() => handlePartSelected(plan.selected_part)}
-            onOpenLive={() => setActiveLivePlanId(plan.id)}
-            prevSession={plan.id === firstPendingPlan?.id ? prevSession : null}
-            compact={compact}
-            onOpenPrepRoom={onOpenPrepRoom}
-          />
-        ))}
+        {/* ═══ PLAYROOM PLANS ═══ */}
+        {playroomPlans.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-[0.5625rem] text-muted-foreground font-medium uppercase tracking-wider">Herna na dnes</p>
+            {playroomPlans.map((plan) => (
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                isExpanded={expandedPlanId === plan.id}
+                onToggleExpand={() => setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)}
+                onStartSession={() => startSession(plan)}
+                onEndSession={() => endSession(plan)}
+                onRevert={() => revertStatus(plan)}
+                onMarkDone={() => markDone(plan.id)}
+                onDelete={() => deletePlan(plan.id)}
+                onRegenerate={() => handlePartSelected(plan.selected_part)}
+                onOpenLive={() => setActiveLivePlanId(plan.id)}
+                prevSession={null}
+                compact={compact}
+                onOpenPrepRoom={onOpenPrepRoom}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* ═══ THERAPIST-LED SESSION PLANS ═══ */}
+        {therapistSessionPlans.length > 0 && (
+          <div className="mt-3 space-y-1.5">
+            <p className="text-[0.5625rem] text-muted-foreground font-medium uppercase tracking-wider">Sezení na dnes</p>
+            {therapistSessionPlans.map((plan) => (
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                isExpanded={expandedPlanId === plan.id}
+                onToggleExpand={() => setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)}
+                onStartSession={() => startSession(plan)}
+                onEndSession={() => endSession(plan)}
+                onRevert={() => revertStatus(plan)}
+                onMarkDone={() => markDone(plan.id)}
+                onDelete={() => deletePlan(plan.id)}
+                onRegenerate={() => handlePartSelected(plan.selected_part)}
+                onOpenLive={() => setActiveLivePlanId(plan.id)}
+                prevSession={plan.id === firstPendingPlan?.id ? prevSession : null}
+                compact={compact}
+                onOpenPrepRoom={onOpenPrepRoom}
+              />
+            ))}
+          </div>
+        )}
 
         {/* ═══ DEBUG-ONLY LEGACY / ANALYTIC DRAFTS ═══ */}
         {showLegacyDrafts && quarantinedPlans.length > 0 && (
