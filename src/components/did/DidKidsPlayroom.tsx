@@ -433,7 +433,8 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       const { error } = await (supabase as any).from("did_threads").update({ messages: savedMessages, last_activity_at: new Date().toISOString(), is_processed: false }).eq("id", currentThread.id);
       if (error) throw error;
       const nextThread = { ...currentThread, messages: savedMessages };
-      const nextState = nextProgressState(activeProgress, steps, "stay", lastUserText);
+      const progressCommand = progressCommandFrom(assistantContent);
+      const nextState = nextProgressState(activeProgress, steps, progressCommand, lastUserText);
       setProgress(nextState);
       await persistPlayroomProgress(nextState, nextThread);
       setThread(nextThread);
