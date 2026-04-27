@@ -1445,14 +1445,13 @@ const Chat = () => {
 
         // "kata" zůstává kata, "cast" → cast shell,
         // všechno ostatní fallback na mamka (terapeutické vlákno).
-        let subMode: "mamka" | "kata" | "cast" | "karel_part_session";
+        let subMode: "mamka" | "kata" | "cast";
         if (thread.subMode === "kata") subMode = "kata";
         else if (thread.subMode === "cast") subMode = "cast";
         else subMode = "mamka";
         setDidSubMode(subMode as DidSubMode);
-        const primeMode = subMode === "karel_part_session" ? "cast" : subMode;
-        didContextPrime.runPrime(thread.partName, primeMode as any);
-        await didThreads.fetchAllThreads(subMode === "karel_part_session" ? "cast" : subMode);
+        didContextPrime.runPrime(thread.partName, subMode as any);
+        await didThreads.fetchAllThreads(subMode);
         setActiveThread(thread);
         setMessages(thread.messages as any);
         setDidFlowState("chat");
