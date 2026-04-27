@@ -1446,7 +1446,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
             }
 
             const lastUserMsgMem = (messages as any[]).filter((m: any) => m.role === "user").pop();
-            const userTextMem = typeof lastUserMsgMem?.content === "string" ? lastUserMsgMem.content : "";
+            const userTextMem = normalizeMessageContentForPrompt(lastUserMsgMem?.content);
 
             if (userTextMem.length > 15) {
               const therapistKey: "HANKA" | "KATA" = didSubMode === "kata" ? "KATA" : "HANKA";
