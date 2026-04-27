@@ -948,8 +948,14 @@ const PlanCard = ({
           approved_for_child_session: action === "approve",
           review_state: action === "approve" ? "approved" : action === "defer" ? "deferred" : "rejected",
         },
-        playroom_plan: playroomPlan ? {
+        playroom_plan: hasPlayroomPlan(plan) ? {
           ...playroomPlan,
+          therapist_review: {
+            ...(playroomPlan.therapist_review ?? {}),
+            required: action !== "approve",
+            approved_for_child_session: action === "approve",
+            review_state: action === "approve" ? "approved" : action === "defer" ? "deferred" : "rejected",
+          },
           approval: {
             ...(playroomPlan.approval ?? {}),
             required: action !== "approve",
@@ -980,7 +986,7 @@ const PlanCard = ({
       return;
     }
     if (!playroomPlan) {
-      toast.error("Herna nemá vlastní schválený program. Neotevírám program sezení jako hernu.");
+      toast.error("Integritní chyba: dnešní Herna nemá playroom_plan. Spusť znovu Karlův přehled, aby se program doplnil.");
       return;
     }
     setOpeningPartRoom(true);
