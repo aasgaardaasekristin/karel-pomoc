@@ -781,7 +781,7 @@ const BRIEFING_TOOL = {
           description: "Krátký uzávěr (1-2 věty). Co se stane, jakmile Hanička a Káťa doplní své pohledy.",
         },
       },
-      required: ["greeting", "last_3_days", "decisions", "ask_hanka", "ask_kata", "closing"],
+      required: ["greeting", "last_3_days", "decisions", "proposed_playroom", "ask_hanka", "ask_kata", "closing"],
       additionalProperties: false,
     },
   },
@@ -811,6 +811,17 @@ DNEŠNÍ NAVRŽENÉ SEZENÍ:
 - Pokud kontext obsahuje kandidáta se skóre ≥ 3, MUSÍŠ navrhnout konkrétní sezení.
 - Vyber nejvhodnějšího kandidáta z poskytnutého seznamu, NEvymýšlej jméno mimo seznam.
 - Uveď: koho, proč právě dnes, kdo povede, první pracovní verze, kdy přizvat Káťu.
+
+DNEŠNÍ NAVRŽENÁ HERNA — POVINNÁ KAŽDÝ DEN:
+- VŽDY vytvoř proposed_playroom jako samostatný Karel-led program pro jednu konkrétní část. Nikdy ho nenechávej null.
+- Herna není běžný chat a není terapeutkou vedené Sezení. Vede ji Karel přímo s částí; terapeutka nemusí být fyzicky přítomná.
+- proposed_playroom.playroom_plan je jediný povolený program Herny. Nesmí být kopií proposed_session.first_draft, plan_markdown ani interního terapeutického programu pro Haničku/Káťu.
+- status nastav primárně na awaiting_therapist_review. Vstup do Herny bude možný až po schválení terapeutkami.
+- Program musí být profesionální hlubinně-psychoterapeutický a diagnosticky cílený, ale bezpečný pro Karla bez fyzického těla a bez fyzické kontroly.
+- Používej digitálně proveditelné aktivity: „nakresli strom a pošli mi ho sem“, „řekni hlasem jedno slovo“, „popiš vlastními slovy postavu ve fantazii“, symbolická hra, aktivní imaginace, slovní asociace, bezpečné projektivní mikro-úkoly.
+- Zahrň: část, téma, proč dnes, zdroje, cíle, therapeutic_program, child_safe_version, mikro-kroky, očekávané reakce, doporučené reakce Karla, rizika/stop signály a zakázané směry.
+- Dětsky bezpečná verze nesmí obsahovat slova jako diagnostika, klinicky významné, terapeutický plán, schvalování, analýza nebo model.
+- Výběr opři nejvíc o týdenní směr, včerejší aktivitu a reporty ze včerejší Herny/Sezení; středně o 2–3 dny a kartu části; měsíční směr jen strategicky.
 
 PROGRAM SEZENÍ — HRAVOST JE POVINNÁ:
 - agenda_outline NESMÍ být generická („úvod / práce s emocemi / uzávěr"). MUSÍ obsahovat alespoň 2 KONKRÉTNÍ nástroje z TERAPEUTICKÉHO ARZENÁLU (asociační test, Rorschach lite, aktivní imaginace, mandala, kresba dne, „co kdyby", 3 dveře, atd.).
