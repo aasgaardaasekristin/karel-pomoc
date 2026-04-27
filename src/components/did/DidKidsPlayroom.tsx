@@ -265,6 +265,34 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
     await saveReply(thread, content, uploads.attachments);
   };
 
+  const endPlayroom = async () => {
+    if (!plan || !thread || ending) return;
+    setEnding(true);
+    try {
+      const userTurns = thread.messages.filter((message) => message.role === "user").length;
+      const totalBlocks = Math.max(getProgramSteps(plan).length, userTurns, 1);
+      const { data, error } = await supabase.functions.invoke("karel-did-session-evaluate", {
+        body: {
+          planId: plan.id,
+          completedBlocks: Math.min(userTurns, totalBlocks),
+          totalBlocks,
+          endedReason: userTurns >= totalBlocks ? "completed" : "partial",
+          turnsByBlock: { 0: thread.messages.map((message) => ({ from: message.role === "assistant" ? "karel" : "hana", text: contentText(message.content) })) },
+          observationsByBlock: { 0: "Herna ukončena tlačítkem v dětském režimu; vyhodnoť pouze skutečné zprávy a přílohy v transcriptu." },
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.ok === false) throw new Error((data as any)?.error || "Vyhodnocení Herny selhalo.");
+      toast.success("Herna je ukončená. Karel ji zahrne do zítřejšího přehledu.");
+      onBack();
+    } catch (error: any) {
+      console.error("[DidKidsPlayroom] end failed", error);
+      toast.error(error?.message || "Herna se nepodařila vyhodnotit, ale záznam zůstává uložený.");
+    } finally {
+      setEnding(false);
+    }
+  };
+
   const attachRecording = async () => {
     const base64 = await recorder.getBase64();
     if (!base64) return;
