@@ -40,8 +40,12 @@ interface SessionPlan {
 const isKarelDirectPlan = (plan: SessionPlan) =>
   plan.urgency_breakdown?.session_actor === "karel_direct" &&
   plan.urgency_breakdown?.lead_entity === "karel" &&
-  plan.urgency_breakdown?.ui_surface === "did_kids_playroom" &&
-  !!plan.urgency_breakdown?.playroom_plan;
+  plan.urgency_breakdown?.ui_surface === "did_kids_playroom";
+const hasPlayroomPlan = (plan: SessionPlan) =>
+  !!plan.urgency_breakdown?.playroom_plan &&
+  typeof plan.urgency_breakdown.playroom_plan === "object" &&
+  Array.isArray(plan.urgency_breakdown.playroom_plan.therapeutic_program) &&
+  plan.urgency_breakdown.playroom_plan.therapeutic_program.length > 0;
 const LEGACY_PLAN_GENERATORS = new Set(["auto", "manual"]);
 const ANALYTIC_PLAN_GENERATORS = new Set(["analyst_loop", "recovery_mode", "karel-did-apply-analysis", "crisis-retroactive-scan"]);
 
@@ -51,6 +55,7 @@ const hasExplicitRoleContract = (plan: SessionPlan) =>
 
 const isKarelDirectApprovedForHerna = (plan: SessionPlan) =>
   isKarelDirectPlan(plan) &&
+  hasPlayroomPlan(plan) &&
   plan.urgency_breakdown?.human_review_required === true &&
   plan.urgency_breakdown?.approved_for_child_session === true &&
   ["approved", "ready_to_start", "in_progress"].includes(String(plan.program_status || plan.urgency_breakdown?.review_state || plan.urgency_breakdown?.approval?.review_state || ""));
