@@ -179,6 +179,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const [reply, setReply] = useState("");
   const [saving, setSaving] = useState(false);
   const [ending, setEnding] = useState(false);
+  const [progress, setProgress] = useState<PlayroomProgressState>({ currentBlockIndex: 0, completedBlockIndexes: [] });
   const uploads = useUniversalUpload();
   const recorder = useAudioRecorder();
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -190,7 +191,33 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const roomBackground = useMemo(() => getRoomBackground(targetPart), [targetPart]);
   const roomTone = useMemo(() => getRoomTone(plan, thread), [plan, thread]);
   const opener = useMemo(() => childSafe(contentText(thread?.messages?.find((message) => message.role === "assistant")?.content)) || "Jsem tady. Zkusíme dnes jen jeden malý krok.", [thread]);
-  const stepPrompt = useMemo(() => getStepPrompt(plan, thread), [plan, thread]);
+  const stepPrompt = useMemo(() => getStepPrompt(plan, thread), [plan, thread, progress]);
+
+  const persistPlayroomProgress = useCallback(async (state: PlayroomProgressState, sourceThread: PlayroomThread | null, finalizedReason?: "completed" | "partial") => {
+    if (!plan) return;
+    const steps = getProgramSteps(plan);
+    if (!steps.length) return;
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData.user?.id;
+    if (!userId) return;
+    const now = new Date().toISOString();
+    const messagesForAudit = sourceThread?.messages || [];
+    const { error } = await (supabase as any).from("did_live_session_progress").upsert({
+      user_id: userId,
+      plan_id: plan.id,
+      part_name: targetPart,
+      therapist: "karel",
+      items: buildProgressItems(steps, state.completedBlockIndexes),
+      turns_by_block: { [state.currentBlockIndex]: messagesForAudit.map((message) => ({ from: message.role === "assistant" ? "karel" : "child", text: contentText(message.content) })) },
+      artifacts_by_block: {},
+      completed_blocks: state.completedBlockIndexes.length,
+      total_blocks: steps.length,
+      last_activity_at: now,
+      finalized_at: finalizedReason ? now : null,
+      finalized_reason: finalizedReason ?? null,
+    }, { onConflict: "plan_id" });
+    if (error) console.warn("[DidKidsPlayroom] progress sync failed", error);
+  }, [plan, targetPart]);
 
   const loadApprovedPlan = useCallback(async () => {
     setLoading(true);
