@@ -7349,6 +7349,8 @@ Vra\u0165 JSON:
         console.warn("[PHASE_8A5] Failed to query stale plans:", spErr.message);
       } else {
         console.log(`[PHASE_8A5] Found ${stalePlans?.length ?? 0} yesterday plan(s) (${pragueYesterday}) without did_session_reviews`);
+        let phase8a5ProcessedSessions = 0;
+        let phase8a5PartialSessions = 0;
         for (const plan of stalePlans ?? []) {
           try {
             const { data: liveProgress } = await sb
@@ -7413,9 +7415,18 @@ Vra\u0165 JSON:
             clearTimeout(evalTo);
             const okText = evalRes.ok ? "OK" : `HTTP ${evalRes.status}`;
             console.log(`[PHASE_8A5] Plan ${(plan as any).id} (${(plan as any).selected_part}, ${(plan as any).plan_date}): ${okText}`);
+            if (evalRes.ok) phase8a5ProcessedSessions++;
+            if (((liveProgress as any)?.completed_blocks ?? 0) < ((liveProgress as any)?.total_blocks ?? 1)) phase8a5PartialSessions++;
           } catch (evalErr) {
             console.warn(`[PHASE_8A5] Evaluator failed for plan ${(plan as any).id}:`, (evalErr as any)?.message ?? evalErr);
           }
+        }
+        if (consolidationRunId) {
+          await sb.from("did_daily_consolidation_runs").update({
+            processed_sessions: phase8a5ProcessedSessions,
+            partial_sessions: phase8a5PartialSessions,
+            result_json: { phase_8a5_yesterday: pragueYesterday, stale_plans: stalePlans?.length ?? 0, processed_sessions: phase8a5ProcessedSessions, partial_sessions: phase8a5PartialSessions },
+          }).eq("id", consolidationRunId);
         }
       }
     } catch (safetyErr) {
