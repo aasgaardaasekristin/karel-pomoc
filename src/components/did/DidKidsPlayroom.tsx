@@ -31,7 +31,7 @@ interface PlayroomProgressState {
   completedBlockIndexes: number[];
 }
 
-const blockedChildText = /(Karel-only|DID\/Kluci\/Herna|M[ůu][žz]e\s+tu\s+b[ýy]t|konkr[ée]tn[íi]\s+motivy|nab[íi]dka,?\s+ne\s+jako\s+tvrzen[íi]|preference|voln[ée]\s+m[íi]sto\s+pro\s+symbol|Karel\s+je\s+v\s+m[íi]stnosti\s+p[řr][íi]tomen|theme_source|playroom_plan|clinical_goal|evidence|diagnostik|trauma|terapeutick[ýy]\s+pl[áa]n|Hani[čc]ka|K[áa][ťt]a|intern[íi]|writeback|risk_assessment|forbidden_methods)/i;
+const blockedChildText = /(Karel-only|DID\/Kluci\/Herna|M[ůu][žz]e\s+tu\s+b[ýy]t|konkr[ée]tn[íi]\s+motivy|nab[íi]dka,?\s+ne\s+jako\s+tvrzen[íi]|preference|voln[ée]\s+m[íi]sto\s+pro\s+symbol|Karel\s+je\s+v\s+m[íi]stnosti\s+p[řr][íi]tomen|theme_source|playroom_plan|clinical_goal|evidence|diagnostik|trauma|terapeutick[ýy]\s+pl[áa]n|Hani[čc]ka|K[áa][ťt]a|intern[íi]|writeback|risk_assessment|forbidden_methods|Dal[šs][íi]\s+bod\s+je|aktu[áa]ln[íi]\s+blok|programov[ýy]\s+krok|M[ěe]kk[ée]\s+uzav[řr]en[íi]|Symbolick[áa]\s+hra|C[íi]lem\s+je|Karel\s+nab[íi]dne|schv[áa]len[ýy]\s+program|dostupnost\s+[čc][áa]sti|runtime|\bindex\b|\bblok\b)/i;
 
 const childSafe = (value: unknown) => {
   const text = String(value ?? "").trim();
@@ -105,6 +105,8 @@ const getProgramSteps = (plan: PlayroomPlanRow | null) => {
 
 const sanitizeAssistantForPlayroom = (value: string) => value.replace(PLAYROOM_PROGRESS_MARKER_RE, "").trim();
 
+const hasInternalPlayroomLanguage = (value: string) => blockedChildText.test(value);
+
 const progressCommandFrom = (value: string) => (value.match(PLAYROOM_PROGRESS_MARKER_RE)?.[1] || "stay").toLowerCase();
 
 const isStopRequest = (value: string) => /(^|\b)(stop|kon[čc][íi]m|nechci\s+pokra[čc]ovat|dnes\s+nechci|sta[čc][íi]|ukon[čc]it)(\b|$)/i.test(value);
@@ -164,13 +166,22 @@ const explicitStepPrompt = (step: any) => childSafe(step?.child_facing_prompt_dr
 
 const buildRailReply = (plan: PlayroomPlanRow | null, progress: PlayroomProgressState, childAddress: string, lastUserText: string) => {
   const step = currentStepForThread(plan, null, progress);
-  const prompt = explicitStepPrompt(step);
+  const stepText = `${step?.title || ""} ${step?.method || ""} ${step?.detail || ""} ${step?.child_facing_prompt_draft || ""} ${step?.karel_response_strategy || ""}`.toLocaleLowerCase("cs-CZ");
   const attune = /hv[ěe]zdi|b[oů]h|naho[řr]e|sv[ěe]tlo|nebe/i.test(lastUserText)
     ? "Slyším tu hvězdičku i to, že chce být hodně blízko světlu."
     : /bl[íi]zko|u tebe|se mnou/i.test(lastUserText)
       ? "Slyším, že mám být blízko, a zůstávám tady s tebou."
       : "Slyším tě a beru to jako odpověď na náš krok.";
-  return `${attune} Teď nejdeme pryč a neuzavíráme to, ${childAddress}; pokračujeme přesně dalším kouskem dnešní hry. ${prompt}`;
+  const childStep = /měkké uzavření|uzavřen|kontakt|slovo|emoji|symbol|ticho/i.test(stepText)
+    ? "Teď to můžeme jen jemně položit, ne zavřít narychlo. Vyber si: A) jedno malé slovo, B) jeden symbol, C) ticho a já budu potichu blízko."
+    : /co potřebuje|malý krok|mikro|tělo|srdce/i.test(stepText)
+      ? "Nekončíme, jen z toho uděláme jeden maličký kousek pro tělo nebo srdce. Vyber si: A) pošleme tělu kousek tepla, B) dáme ruce na bezpečné místo, C) necháme jen ticho."
+      : /symbol|postav|příběh|obraz/i.test(stepText)
+        ? "Necháme ten obrázek ukázat jen jednu bezpečnou věc, ne celý příběh najednou. Vyber si: A) kdo je tam nejblíž, B) kde je bezpečné místo, C) jakou barvu tam vidíš."
+        : /počasí|teplo|chlad|sluníčko|vločka/i.test(stepText)
+          ? "Zůstaneme jen u toho, jaké to tam uvnitř je. Vyber si: A) sluníčko, B) vločka, C) nevím."
+          : "Nekončíme narychlo, zůstaneme jen u jednoho malého kousku. Vyber si: A) jedno slovo, B) jeden symbol, C) ticho a já budu blízko.";
+  return `${attune} ${childAddress}, ${childStep}`;
 };
 
 const responseFollowsCurrentStep = (assistantText: string, plan: PlayroomPlanRow | null, progress: PlayroomProgressState) => {
