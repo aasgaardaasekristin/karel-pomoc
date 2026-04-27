@@ -162,12 +162,15 @@ function reviewEvidenceBasis(review: any): "planned_only" | "started_partial" | 
 
 function enrichYesterdaySessionReview(payload: any, context: any) {
   const reviews = Array.isArray(context?.yesterday_session_reviews) ? context.yesterday_session_reviews : [];
-  const clinicalReviews = reviews.filter((r: any) => ["started_partial", "completed"].includes(reviewEvidenceBasis(r)));
-  const latestReview = clinicalReviews[0] ?? null;
+  const sessionReviews = reviews.filter((r: any) => String(r?.mode ?? "session") !== "playroom");
+  const clinicalReviews = sessionReviews.filter((r: any) => ["started_partial", "completed"].includes(reviewEvidenceBasis(r)));
+  // Non-playroom session review je autoritativní stopa včerejšího sezení i tehdy,
+  // když chybí did_part_sessions nebo evidence_basis vyjde unknown/evidence_limited.
+  const latestReview = clinicalReviews[0] ?? sessionReviews[0] ?? null;
   const latestSession = latestReview && Array.isArray(context?.yesterday_sessions)
     ? context.yesterday_sessions.find((s: any) => String(s?.part_name ?? "").toLowerCase() === String(latestReview.part_name ?? "").toLowerCase()) ?? null
     : null;
-  const plannedOnly = reviews.find((r: any) => reviewEvidenceBasis(r) === "planned_only");
+  const plannedOnly = sessionReviews.find((r: any) => reviewEvidenceBasis(r) === "planned_only");
 
   if (!latestSession && !latestReview) {
     if (plannedOnly) {
@@ -217,7 +220,7 @@ function enrichYesterdaySessionReview(payload: any, context: any) {
     part_name: String(latestReview?.part_name ?? latestSession?.part_name ?? review.part_name ?? "").trim() || undefined,
     lead: normalizeTherapistLabel(latestSession?.therapist ?? review.lead) ?? review.lead,
     review_status: latestReview?.status ?? review.review_status,
-    completion: evidenceBasis === "completed" ? "completed" : latestReview?.status === "partially_analyzed" ? "partial" : (review.completion ?? "partial"),
+    completion: evidenceBasis === "completed" ? "completed" : latestReview?.status === "partially_analyzed" ? "partial" : latestReview?.status === "evidence_limited" ? "partial" : (review.completion ?? "partial"),
     completed_checklist_count: latestReview ? completedCount : review.completed_checklist_count,
     total_checklist_count: latestReview ? totalCount : review.total_checklist_count,
     evidence_label: evidenceLabel ?? review.evidence_label,
