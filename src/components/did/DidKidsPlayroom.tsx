@@ -488,10 +488,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         setThread((prev) => prev ? { ...prev, messages: [...nextMessages, { role: "assistant", content: childSafe(partial) || partial }] } : prev);
       });
       const sanitizedAiContent = sanitizeAssistantForPlayroom(assistantContent);
-      const wantsProgramContinuation = CONTINUE_PROGRAM_RE.test(lastUserText) && !isStopRequest(lastUserText);
-      const offRail = !responseFollowsCurrentStep(sanitizedAiContent, plan, activeProgress);
-      const internalLanguage = hasInternalPlayroomLanguage(sanitizedAiContent);
-      const forcedRail = ((PREMATURE_CLOSING_RE.test(sanitizedAiContent) || wantsProgramContinuation || offRail || internalLanguage) && !isStopRequest(lastUserText));
+      const forcedRail = isClearlyUnsafePlayroomOutput(sanitizedAiContent, lastUserText);
       const safeAssistantContent = forcedRail
         ? buildRailReply(plan, activeProgress, childAddress, lastUserText)
         : childSafe(sanitizedAiContent) || sanitizedAiContent || PLAYROOM_TECH_FALLBACK;
