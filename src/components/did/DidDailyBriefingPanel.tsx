@@ -268,6 +268,46 @@ const toAskItem = (
   return { id: legacyAskIdFor(briefingId, role, text), text };
 };
 
+const createFallbackPlayroomProposal = (payload: BriefingPayload): ProposedPlayroom => {
+  const session = payload.proposed_session;
+  const partName = session?.part_name?.trim() || "část vybraná ranním přehledem";
+  const why = session?.why_today?.trim()
+    || payload.last_3_days?.trim()
+    || "Ranní přehled zatím nemá uložený samostatný playroom payload, ale Herna musí mít každý den vlastní program k poradě.";
+
+  return {
+    part_name: partName,
+    status: "awaiting_therapist_review",
+    why_this_part_today: why,
+    main_theme: `Bezpečný kontakt a cílené zmapování toho, co ${partName} dnes unese`,
+    evidence_sources: ["Karlův ranní přehled", "návrh dnešního sezení", "poslední 3 dny"],
+    goals: [
+      "navázat kontakt bez tlaku na výkon",
+      "rozlišit aktuální míru bezpečí, ochoty a únavy",
+      "získat konkrétní materiál pro klinické vyhodnocení Herny",
+      "ukončit včas při známkách zahlcení nebo stažení",
+    ],
+    playroom_plan: {
+      therapeutic_program: [
+        { block: "Bezpečný práh", minutes: 3, detail: "Karel nabídne dvě jednoduché volby kontaktu: slovo, emoji/symbol nebo ticho. Cílem je zjistit dostupnost části, ne ji tlačit do výkonu." },
+        { block: "Mapa dnešního vnitřního počasí", minutes: 6, detail: "Část popíše obrazem, barvou nebo jedním slovem, jak se dnes uvnitř má. Karel sleduje míru konkrétnosti, vyhýbání a schopnost zůstat v kontaktu." },
+        { block: "Symbolická hra s jednou postavou", minutes: 8, detail: "Karel nechá část vybrat postavu, místo nebo předmět a vede krátký dialog přes bezpečný symbol, bez otevírání traumatické paměti." },
+        { block: "Co potřebuje malý krok", minutes: 5, detail: "Karel hledá jeden zvládnutelný mikro-krok pro dnešek: co pomůže tělu, kontaktu nebo klidu, bez slibů a bez konfrontace." },
+        { block: "Měkké uzavření", minutes: 3, detail: "Karel shrne, co slyšel, nabídne bezpečné zakotvení a uloží body pro pozdější review." },
+      ],
+      child_safe_version: "Dnes si spolu jen opatrně zkusíme, jaké je uvnitř počasí, kdo tam je poblíž a co by pomohlo, aby toho nebylo moc.",
+      micro_steps: ["vybrat způsob odpovědi", "pojmenovat obraz nebo barvu", "nechat symbol něco říct", "zvolit jeden malý pomocný krok", "společně zavřít hru"],
+      expected_child_reactions: ["krátké odpovědi", "nejistota", "odmítnutí konkrétního tématu", "zájem o symbolickou postavu", "únava"],
+      recommended_karel_responses: ["zpomalit", "nabídnout volbu", "potvrdit právo neodpovědět", "držet symbolickou rovinu", "ukončit dřív při zahlcení"],
+      risks_and_stop_signals: ["náhlé stažení", "zmatek v čase nebo místě", "somatické zhoršení", "tlak na tajemství nebo trauma", "výrazné odpojení"],
+      forbidden_directions: ["nevynucovat vzpomínky", "neinterpretovat kresbu jako diagnózu bez review", "neeskalovat trauma", "nepokračovat přes stop signál"],
+      runtime_packet_seed: { source: "ui_fallback_until_next_briefing_regeneration" },
+    },
+    questions_for_hanka: ["Je pro tuto část dnes bezpečnější krátká Karel-led Herna, nebo má být Hanička poblíž jako fyzická opora?"],
+    questions_for_kata: ["Vidíš u této části dnes riziko, kvůli kterému má být Herna jen stabilizační a ne hlubinně explorativní?"],
+  };
+};
+
 const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) => {
   const navigate = useNavigate();
   const didThreads = useDidThreads();
@@ -862,7 +902,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const proposedPartName = (p.proposed_session?.part_name ?? "").trim();
   const proposedAlreadyApproved =
     proposedPartName.length > 0 && approvedTodayParts.has(proposedPartName);
-  const hasPlayroomProposal = !!p.proposed_playroom?.part_name;
+  const playroomProposal = p.proposed_playroom?.part_name
+    ? p.proposed_playroom
+    : createFallbackPlayroomProposal(p);
   const decisions = (p.decisions ?? []).slice(0, 3);
   const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
   const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
@@ -1108,51 +1150,51 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       )}
 
       {/* 4.5 Dnešní navržená Herna — samostatný Karel-led program, nikdy ne session first_draft. */}
-      {hasPlayroomProposal && p.proposed_playroom && (
+      {playroomProposal && (
         <>
           <NarrativeDivider />
           <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary" />}>
-            Návrh dnešní herny s {p.proposed_playroom.part_name}
+            Návrh pro dnešní hernu
           </SectionHead>
           <button
             type="button"
-            onClick={() => openProposedPlayroomDeliberation(p.proposed_playroom!)}
+            onClick={() => openProposedPlayroomDeliberation(playroomProposal)}
             className="mt-2 w-full text-left p-3 rounded-lg border border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors space-y-3 cursor-pointer"
           >
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">Část: {p.proposed_playroom.part_name}</Badge>
-              <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{p.proposed_playroom.status || "awaiting_therapist_review"}</Badge>
+              <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">Část: {playroomProposal.part_name}</Badge>
+              <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{playroomProposal.status || "awaiting_therapist_review"}</Badge>
               <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">vede Karel</Badge>
               <ArrowRight className="w-3.5 h-3.5 text-primary/60 ml-auto" />
             </div>
             <div>
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Hlavní téma dnešní Herny</p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{p.proposed_playroom.main_theme}</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{playroomProposal.main_theme}</p>
             </div>
             <div>
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Proč právě tato Herna</p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{p.proposed_playroom.why_this_part_today}</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomProposal.why_this_part_today}</p>
             </div>
-            {Array.isArray(p.proposed_playroom.goals) && p.proposed_playroom.goals.length > 0 && (
+            {Array.isArray(playroomProposal.goals) && playroomProposal.goals.length > 0 && (
               <div>
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Cíle Herny</p>
                 <ul className="mt-1 space-y-1 text-[13px] leading-relaxed text-foreground/80">
-                  {p.proposed_playroom.goals.slice(0, 4).map((goal, index) => <li key={`${goal}-${index}`}>{index + 1}. {goal}</li>)}
+                  {playroomProposal.goals.slice(0, 4).map((goal, index) => <li key={`${goal}-${index}`}>{index + 1}. {goal}</li>)}
                 </ul>
               </div>
             )}
-            {Array.isArray(p.proposed_playroom.playroom_plan?.therapeutic_program) && p.proposed_playroom.playroom_plan.therapeutic_program.length > 0 && (
+            {Array.isArray(playroomProposal.playroom_plan?.therapeutic_program) && playroomProposal.playroom_plan.therapeutic_program.length > 0 && (
               <div>
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Program pro Hernu</p>
                 <div className="mt-1 space-y-1.5">
-                  {p.proposed_playroom.playroom_plan.therapeutic_program.slice(0, 5).map((block, index) => (
+                  {playroomProposal.playroom_plan.therapeutic_program.slice(0, 5).map((block, index) => (
                     <p key={`${block.block}-${index}`} className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line"><span className="font-medium text-foreground/90">{index + 1}. {block.block}</span>{block.detail ? ` — ${block.detail}` : ""}</p>
                   ))}
                 </div>
               </div>
             )}
-            {p.proposed_playroom.playroom_plan?.child_safe_version && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Dětsky bezpečná verze</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{p.proposed_playroom.playroom_plan.child_safe_version}</p></div>}
-            {Array.isArray(p.proposed_playroom.playroom_plan?.risks_and_stop_signals) && p.proposed_playroom.playroom_plan.risks_and_stop_signals.length > 0 && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Rizika a stop signály</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{p.proposed_playroom.playroom_plan.risks_and_stop_signals.slice(0, 4).map((x) => `- ${x}`).join("\n")}</p></div>}
+            {playroomProposal.playroom_plan?.child_safe_version && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Dětsky bezpečná verze</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomProposal.playroom_plan.child_safe_version}</p></div>}
+            {Array.isArray(playroomProposal.playroom_plan?.risks_and_stop_signals) && playroomProposal.playroom_plan.risks_and_stop_signals.length > 0 && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Rizika a stop signály</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomProposal.playroom_plan.risks_and_stop_signals.slice(0, 4).map((x) => `- ${x}`).join("\n")}</p></div>}
             <p className="text-[11px] text-primary/70 italic">Otevřít poradu ke schválení Herny →</p>
           </button>
         </>

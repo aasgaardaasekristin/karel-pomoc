@@ -98,6 +98,46 @@ const jsonItemCount = (value: unknown): number => {
   return 0;
 };
 
+const buildMandatoryPlayroomProposal = (payload: any, context: any, candidates: Array<{ part_name: string; score: number; reasons: string[] }>) => {
+  const selectedPart = String(payload?.proposed_session?.part_name || candidates?.[0]?.part_name || context?.crises?.[0]?.part_name || context?.recent_threads?.[0]?.part_name || "část vybraná ranním přehledem").trim();
+  const whyToday = cleanBlockText(payload?.proposed_session?.why_today)
+    || cleanBlockText(candidates?.[0]?.reasons?.join(", "))
+    || cleanBlockText(context?.last_3_days)
+    || "Ranní přehled musí každý den připravit samostatnou Hernu; aktuální signály jsou slabé, proto volím bezpečný nízkoprahový diagnosticko-terapeutický program.";
+
+  return {
+    part_name: selectedPart,
+    status: "awaiting_therapist_review",
+    why_this_part_today: whyToday,
+    main_theme: `Bezpečný kontakt a zmapování toho, co ${selectedPart} dnes unese`,
+    evidence_sources: ["ranní briefing", "poslední tři dny", "kandidáti dnešního sezení"],
+    goals: [
+      "navázat kontakt bez tlaku na výkon",
+      "rozlišit aktuální bezpečí, ochotu a únavu části",
+      "získat konkrétní materiál pro následné klinické review",
+      "ukončit včas při zahlcení nebo stažení",
+    ],
+    playroom_plan: {
+      therapeutic_program: [
+        { block: "Bezpečný práh", minutes: 3, detail: "Karel nabídne odpověď slovem, symbolem nebo tichem; cílem je zjistit dostupnost části, ne vynutit výkon." },
+        { block: "Vnitřní počasí", minutes: 6, detail: "Část vybere barvu, obraz nebo jedno slovo pro dnešní stav. Karel sleduje konkrétnost, vyhýbání a toleranci kontaktu." },
+        { block: "Symbolická postava", minutes: 8, detail: "Krátká bezpečná imaginativní hra s jednou postavou nebo předmětem, bez otevírání traumatické paměti." },
+        { block: "Jeden malý krok", minutes: 5, detail: "Karel hledá jeden zvládnutelný krok pro tělo, klid nebo kontakt; bez slibů a bez konfrontace." },
+        { block: "Měkké uzavření", minutes: 3, detail: "Karel shrne slyšené, nabídne zakotvení a označí podklady pro review." },
+      ],
+      child_safe_version: "Dnes si spolu opatrně zkusíme, jaké je uvnitř počasí, kdo tam je poblíž a co by pomohlo, aby toho nebylo moc.",
+      micro_steps: ["zvolit způsob odpovědi", "pojmenovat obraz nebo barvu", "nechat symbol něco říct", "vybrat jeden pomocný krok", "společně hru zavřít"],
+      expected_child_reactions: ["krátké odpovědi", "nejistota", "odmítnutí tématu", "zájem o symbol", "únava"],
+      recommended_karel_responses: ["zpomalit", "nabídnout volbu", "potvrdit právo neodpovědět", "držet symbolickou rovinu", "ukončit při stop signálu"],
+      risks_and_stop_signals: ["náhlé stažení", "zmatek v čase nebo místě", "somatické zhoršení", "tlak na tajemství", "výrazné odpojení"],
+      forbidden_directions: ["nevynucovat vzpomínky", "neinterpretovat kresbu jako diagnózu bez review", "neeskalovat trauma", "nepokračovat přes stop signál"],
+      runtime_packet_seed: { source: "mandatory_backend_fallback" },
+    },
+    questions_for_hanka: ["Je dnes pro tuto část bezpečnější krátká Karel-led Herna, nebo má být Hanička fyzicky poblíž?"],
+    questions_for_kata: ["Vidíš dnes riziko, kvůli kterému má Herna zůstat pouze stabilizační a ne hlubinně explorativní?"],
+  };
+};
+
 const getResolvedPartCardEvidence = (review: any): any | null => {
   const items = Array.isArray(review?.evidence_items) ? review.evidence_items : [];
   return items.find((item: any) =>
@@ -1109,6 +1149,10 @@ Deno.serve(async (req) => {
     // 3) AI generování
     const { payload: rawPayload, durationMs } = await generateBriefing(context, candidates, apiKey);
     const payload = enrichYesterdaySessionReview(rawPayload, context);
+    if (!payload.proposed_playroom || typeof payload.proposed_playroom !== "object" || !String(payload.proposed_playroom?.part_name ?? "").trim()) {
+      console.warn("[briefing] AI payload missing proposed_playroom — applying mandatory backend fallback.");
+      payload.proposed_playroom = buildMandatoryPlayroomProposal(payload, context, candidates);
+    }
 
     // 3b) ── ASK ITEM IDENTITY ──
     // AI vrací ask_hanka/ask_kata jako string[]. Server přidá stabilní `id` na
