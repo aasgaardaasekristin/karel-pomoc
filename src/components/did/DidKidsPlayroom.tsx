@@ -377,12 +377,16 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
           .eq("id", preferredThreadId)
           .eq("sub_mode", "karel_part_session")
           .maybeSingle();
-        if (!threadError && threadRow) {
+        const fallbackThread = threadRow && messageCount(threadRow.messages) <= 1
+          ? ((activeThreads || []) as any[]).find((row) => row.id !== threadRow.id && messageCount(row.messages) > 1 && samePart(row.part_name, selectedPlan?.selected_part || targetPart))
+          : null;
+        const rowToLoad = fallbackThread || threadRow;
+        if (!threadError && rowToLoad) {
           const loadedThread = {
-            id: threadRow.id,
-            workspace_id: threadRow.workspace_id,
-            workspace_type: threadRow.workspace_type,
-            messages: ((threadRow.messages || []) as PlayroomThread["messages"]).map((message) => ({
+            id: rowToLoad.id,
+            workspace_id: rowToLoad.workspace_id,
+            workspace_type: rowToLoad.workspace_type,
+            messages: ((rowToLoad.messages || []) as PlayroomThread["messages"]).map((message) => ({
               ...message,
               content: childSafe(contentText(message.content)) || "Jsem tady. Můžeme zůstat potichu.",
             })),
