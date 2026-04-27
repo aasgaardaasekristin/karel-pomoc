@@ -422,8 +422,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     loadYesterdayFallback();
   }, [loadLatest, loadApprovedToday, loadYesterdayFallback, refreshTrigger]);
 
-  // Auto-refresh při nově vygenerovaném briefingu (realtime) i při focusu okna,
-  // aby uživatel neviděl zastaralou verzi po regeneraci v jiné záložce / serveru.
+  // Auto-refresh při nově vygenerovaném briefingu i při doplnění včerejšího review,
+  // aby sekce Včerejší herna naskočila bez ručního reloadu dashboardu.
   useEffect(() => {
     const channel = supabase
       .channel("did_daily_briefings_panel")
@@ -441,16 +441,26 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           loadLatest();
         },
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "did_session_reviews" },
+        () => {
+          loadYesterdayFallback();
+        },
+      )
       .subscribe();
 
-    const onFocus = () => loadLatest();
+    const onFocus = () => {
+      loadLatest();
+      loadYesterdayFallback();
+    };
     window.addEventListener("focus", onFocus);
 
     return () => {
       window.removeEventListener("focus", onFocus);
       supabase.removeChannel(channel);
     };
-  }, [loadLatest]);
+  }, [loadLatest, loadYesterdayFallback]);
 
   const handleRegenerate = async () => {
     setRegenerating(true);
