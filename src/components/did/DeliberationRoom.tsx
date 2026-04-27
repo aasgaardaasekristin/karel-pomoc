@@ -16,6 +16,7 @@ import { Loader2, CheckCircle2, Send, ArrowRight, Users, Brain, AlertTriangle, S
 import { toast } from "sonner";
 import { useTeamDeliberations } from "@/hooks/useTeamDeliberations";
 import DidLiveSessionPanel from "./DidLiveSessionPanel";
+import { getAuthHeaders } from "@/lib/auth";
 import {
   signoffProgress,
   type TeamDeliberation,
@@ -175,6 +176,14 @@ function buildApprovedLivePlanMarkdown(source: LiveDeliberationSource | null | u
   }
 
   return lines.filter(Boolean).join("\n");
+}
+
+function isPlayroomDeliberation(source: LiveDeliberationSource | null | undefined) {
+  const sp = source?.session_params && typeof source.session_params === "object" ? source.session_params : {};
+  return sp.session_actor === "karel_direct" ||
+    sp.ui_surface === "did_kids_playroom" ||
+    sp.session_format === "playroom" ||
+    !!sp.playroom_plan;
 }
 
 function areAllQuestionsAnswered(questions: DeliberationQuestion[] = []) {
