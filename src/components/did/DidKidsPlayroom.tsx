@@ -300,13 +300,14 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       });
       const selectedPlan = (preferredPlanId ? candidates.find((row) => row.id === preferredPlanId) : null) || candidates[0] || null;
       setPlan(selectedPlan);
+      let completedIndexes: number[] = [];
       if (selectedPlan) {
         const { data: progressRow } = await (supabase as any)
           .from("did_live_session_progress")
           .select("items, completed_blocks")
           .eq("plan_id", selectedPlan.id)
           .maybeSingle();
-        const completedIndexes = Array.isArray(progressRow?.items)
+        completedIndexes = Array.isArray(progressRow?.items)
           ? progressRow.items.map((item: any, index: number) => item?.done ? index : -1).filter((index: number) => index >= 0)
           : [];
         setProgress(inferProgressFromThread(getProgramSteps(selectedPlan), [], completedIndexes));
