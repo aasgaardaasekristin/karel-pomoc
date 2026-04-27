@@ -1121,8 +1121,15 @@ This overrides ALL other language instructions.
 
     if (isPlayroomMode) {
       const lastPlayroomInput = normalizeMessageContentForPrompt([...messages].reverse().find((m: any) => m.role === "user")?.content);
+      const approvedPlayroom = await loadApprovedPlayroomPlan(didPartName || didEnteredName);
+      const playroomProgramBlock = approvedPlayroom
+        ? JSON.stringify({ plan_id: approvedPlayroom.id, program_status: approvedPlayroom.program_status, playroom_plan: approvedPlayroom.playroom_plan }, null, 2)
+        : "(DNEŠNÍ SCHVÁLENÝ PLAYROOM_PLAN NEBYL NALEZEN — NEPOUŽÍVEJ PLAN_MARKDOWN SEZENÍ; drž pouze bezpečný krátký check-in.)";
       systemPrompt += `\n\n═══ HERNA — POVINNÝ REŽIM VEDENÍ SEZENÍ ═══
 Toto NENÍ běžný chat ani vlákno pro vzkazy. Jsi v dětské Herně a vedeš právě schválené strukturované sezení.
+
+SCHVÁLENÝ SAMOSTATNÝ PROGRAM HERNY — JEDINÝ ZDROJ PROGRAMU:
+${playroomProgramBlock}
 
 POSLEDNÍ SKUTEČNÝ VSTUP DÍTĚTE/PŘÍLOHA — MUSÍŠ NA NĚJ REAGOVAT JAKO PRVNÍ:
 ${lastPlayroomInput || "(žádný text; dítě možná poslalo jen přílohu nebo volbu)"}
