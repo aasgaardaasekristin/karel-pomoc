@@ -32,11 +32,16 @@ interface SessionPlan {
   completed_at: string | null;
   session_lead: string;
   session_format: string;
+  program_status?: string;
   overdue_days: number;
   created_at?: string;
 }
 
-const isKarelDirectPlan = (plan: SessionPlan) => plan.urgency_breakdown?.session_actor === "karel_direct";
+const isKarelDirectPlan = (plan: SessionPlan) =>
+  plan.urgency_breakdown?.session_actor === "karel_direct" &&
+  plan.urgency_breakdown?.lead_entity === "karel" &&
+  plan.urgency_breakdown?.ui_surface === "did_kids_playroom" &&
+  !!plan.urgency_breakdown?.playroom_plan;
 const LEGACY_PLAN_GENERATORS = new Set(["auto", "manual"]);
 const ANALYTIC_PLAN_GENERATORS = new Set(["analyst_loop", "recovery_mode", "karel-did-apply-analysis", "crisis-retroactive-scan"]);
 
@@ -47,7 +52,8 @@ const hasExplicitRoleContract = (plan: SessionPlan) =>
 const isKarelDirectApprovedForHerna = (plan: SessionPlan) =>
   isKarelDirectPlan(plan) &&
   plan.urgency_breakdown?.human_review_required === true &&
-  plan.urgency_breakdown?.approved_for_child_session === true;
+  plan.urgency_breakdown?.approved_for_child_session === true &&
+  ["approved", "ready_to_start", "in_progress"].includes(String(plan.program_status || plan.urgency_breakdown?.review_state || plan.urgency_breakdown?.approval?.review_state || ""));
 
 const isQuarantinedPlan = (plan: SessionPlan) =>
   LEGACY_PLAN_GENERATORS.has(plan.generated_by) ||
