@@ -473,12 +473,12 @@ async function gatherContext(supabase: any) {
   if (yesterdayPlanIds.length > 0) {
     const { data: reviews } = await supabase
       .from("did_session_reviews")
-      .select("id, plan_id, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, completed_checklist_items, missing_checklist_items, source_data_summary, analysis_json, created_at")
+      .select("id, plan_id, mode, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, completed_checklist_items, missing_checklist_items, source_data_summary, analysis_json, created_at")
       .in("plan_id", yesterdayPlanIds)
       .eq("is_current", true)
       .order("created_at", { ascending: false })
       .limit(5);
-    const allReviews = reviews ?? [];
+    const allReviews = (reviews ?? []).filter((r: any) => String(r?.mode ?? "session") !== "playroom");
     const rank = (r: any) => {
       const basis = reviewEvidenceBasis(r);
       if (basis === "completed") return 0;
@@ -488,7 +488,7 @@ async function gatherContext(supabase: any) {
     };
     yesterdaySessionReviews = allReviews.sort((a: any, b: any) => rank(a) - rank(b));
   }
-  const clinicalReviewParts = new Set(yesterdaySessionReviews.filter((r: any) => ["completed", "started_partial"].includes(reviewEvidenceBasis(r))).map((r: any) => String(r.part_name ?? "").toLowerCase()));
+  const clinicalReviewParts = new Set(yesterdaySessionReviews.filter((r: any) => ["completed", "started_partial", "unknown"].includes(reviewEvidenceBasis(r))).map((r: any) => String(r.part_name ?? "").toLowerCase()));
   const safeYesterdaySessions = clinicalReviewParts.size > 0
     ? yesterdaySessions.filter((s: any) => clinicalReviewParts.has(String(s.part_name ?? "").toLowerCase()))
     : [];
