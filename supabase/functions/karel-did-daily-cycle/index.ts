@@ -2496,6 +2496,7 @@ serve(async (req) => {
 
   let cycleId: string | null = null;
   let sb: ReturnType<typeof createClient> | null = null;
+  let consolidationRunId: string | null = null;
 
   try {
     // ═══ FAST-PATH: syncRegistry – batched: list + process_one ═══
@@ -3144,7 +3145,6 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
     const { data: cycle, error: cycleErr } = await sb.from("did_update_cycles").insert(cycleInsertPayload).select().single();
     if (cycleErr) console.error("[daily-cycle] Failed to create cycle record:", cycleErr.message);
     cycleId = cycle?.id || null;
-    let consolidationRunId: string | null = null;
     try {
       const pragueRunDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
       const { data: consolidationRun } = await sb.from("did_daily_consolidation_runs").insert({
