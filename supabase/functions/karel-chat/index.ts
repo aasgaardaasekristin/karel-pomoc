@@ -1232,7 +1232,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
       }
     }
 
-    const primaryModel = isPlayroomMode ? "openai/gpt-5.2" : "google/gemini-3-flash-preview";
+    const primaryModel = isPlayroomMode ? "google/gemini-3-flash-preview" : "google/gemini-3-flash-preview";
     console.log(`[karel-chat] Primary model: ${primaryModel}; subMode=${didSubMode || "none"}`);
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -1257,7 +1257,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
     });
 
     if (!response.ok) {
-      if (response.status === 429 || response.status === 402 || response.status >= 500) return streamFallbackReply(mode, response.status);
+      if (response.status === 429 || response.status === 402 || response.status >= 500) return streamFallbackReply(isPlayroomMode ? "playroom" : mode, response.status);
       const text = await response.text();
       console.error("AI gateway error:", response.status, text);
       return new Response(JSON.stringify({ error: "AI gateway error" }), {
