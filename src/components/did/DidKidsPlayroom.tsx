@@ -77,9 +77,30 @@ const cleanPlanForPlayroom = (markdown?: string) => (markdown || "")
   .join("\n")
   .trim();
 
+const normalizeProgramStep = (step: any, index: number) => {
+  const title = childSafe(step?.title || step?.block || step?.name || `Blok ${index + 1}`) || `Blok ${index + 1}`;
+  const detail = childSafe(step?.detail || step?.method || step?.karel_response_strategy || step?.goal || "") || "Karel udělá jeden bezpečný krok z tohoto bloku.";
+  const childPrompt = childSafe(step?.child_facing_prompt_draft || step?.prompt || step?.sentence || step?.veta || "");
+  const strategy = childSafe(step?.karel_response_strategy || step?.strategy || step?.detail || "");
+  return {
+    ...step,
+    step: step?.step ?? index + 1,
+    title,
+    block: title,
+    method: childSafe(step?.method || step?.play_form || step?.hrava_forma || "") || title,
+    detail,
+    child_facing_prompt_draft: childPrompt,
+    karel_response_strategy: strategy || detail,
+    expected_response_range: Array.isArray(step?.expected_response_range) ? step.expected_response_range : toList(step?.expected_signal || step?.expected_child_reactions),
+    stop_if: Array.isArray(step?.stop_if) ? step.stop_if : toList(step?.stop_rules || step?.risks_and_stop_signals),
+    fallback: childSafe(step?.fallback || "Vrátit se k jednoduché bezpečné volbě: blíž, dál, nebo ticho."),
+    duration_min: step?.duration_min ?? step?.minutes,
+  };
+};
+
 const getProgramSteps = (plan: PlayroomPlanRow | null) => {
   const steps = plan?.urgency_breakdown?.playroom_plan?.therapeutic_program;
-  return Array.isArray(steps) ? steps : [];
+  return Array.isArray(steps) ? steps.map(normalizeProgramStep) : [];
 };
 
 const sanitizeAssistantForPlayroom = (value: string) => value.replace(PLAYROOM_PROGRESS_MARKER_RE, "").trim();
@@ -104,9 +125,10 @@ const nextProgressState = (progress: PlayroomProgressState, steps: any[], comman
 
 const progressAfterChildAnswer = (progress: PlayroomProgressState, steps: any[], lastUserText: string): PlayroomProgressState => {
   if (!steps.length || isStopRequest(lastUserText)) return progress;
-  const completed = Array.from(new Set([...progress.completedBlockIndexes, progress.currentBlockIndex])).sort((a, b) => a - b);
-  const firstOpen = steps.findIndex((_, index) => !completed.includes(index));
-  return { currentBlockIndex: firstOpen >= 0 ? firstOpen : Math.max(steps.length - 1, 0), completedBlockIndexes: completed };
+  return {
+    currentBlockIndex: Math.min(Math.max(progress.currentBlockIndex, 0), steps.length - 1),
+    completedBlockIndexes: progress.completedBlockIndexes.filter((index) => index >= 0 && index < steps.length),
+  };
 };
 
 const inferProgressFromThread = (steps: any[], _messages: PlayroomThread["messages"], savedCompleted: number[]): PlayroomProgressState => {
@@ -411,7 +433,8 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       const { error } = await (supabase as any).from("did_threads").update({ messages: savedMessages, last_activity_at: new Date().toISOString(), is_processed: false }).eq("id", currentThread.id);
       if (error) throw error;
       const nextThread = { ...currentThread, messages: savedMessages };
-      const nextState = nextProgressState(activeProgress, steps, "stay", lastUserText);
+      const progressCommand = progressCommandFrom(assistantContent);
+      const nextState = nextProgressState(activeProgress, steps, progressCommand, lastUserText);
       setProgress(nextState);
       await persistPlayroomProgress(nextState, nextThread);
       setThread(nextThread);

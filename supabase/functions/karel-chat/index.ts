@@ -172,8 +172,17 @@ function extractPlayroomCurrentProgramPrompt(runtimeContext?: string | null) {
   const ctx = String(runtimeContext || "");
   const childPrompt = ctx.match(/d\u011btsk\u00e1 replika:\s*([^|\n]+)/i)?.[1]?.trim();
   const strategy = ctx.match(/strategie:\s*([^|\n]+)/i)?.[1]?.trim();
+  const detail = ctx.match(/detail:\s*([^|\n]+)/i)?.[1]?.trim();
+  const title = ctx.match(/\d+\.\s*([^|\n]+)/i)?.[1]?.trim();
   const currentBlock = ctx.match(/AKTU\u00c1LN\u00cd BLOK TE\u010e[\s\S]*?\n([^\n]+)/i)?.[1]?.trim();
-  return childPrompt || strategy || currentBlock || "Vyber jeden mal\u00fd dal\u0161\u00ed krok: A) z\u016fstaneme bl\u00edzko u sv\u011btla, B) sv\u011btlo n\u00e1m uk\u00e1\u017ee jedny bezpe\u010dn\u00e9 dve\u0159e.";
+  return childPrompt || strategy || detail || currentBlock || title || "Vyber jeden mal\u00fd dal\u0161\u00ed krok: A) z\u016fstaneme bl\u00edzko u sv\u011btla, B) sv\u011btlo n\u00e1m uk\u00e1\u017ee jedny bezpe\u010dn\u00e9 dve\u0159e.";
+}
+
+function extractPlayroomCurrentBlockTitle(runtimeContext?: string | null) {
+  const ctx = String(runtimeContext || "");
+  return ctx.match(/AKTU\u00c1LN\u00cd BLOK TE\u010e[\s\S]*?\n\s*\d+\.\s*([^|\n]+)/i)?.[1]?.trim()
+    || ctx.match(/\d+\.\s*([^|\n]+)/i)?.[1]?.trim()
+    || "dal\u0161\u00ed krok";
 }
 
 function normalizePlayroomText(input: string) {
@@ -190,7 +199,21 @@ function extractPlayroomProgress(runtimeContext?: string | null) {
 
 function isPrematurePlayroomClosing(output: string) {
   const text = normalizePlayroomText(output);
-  return /(pro dnesek|louci|loucime|koncime|preju ti|zbytek dne|mej se|kdykoliv budes chtit|zavrit hernu|sezeni zavrit)/i.test(text);
+  return /(pro dnesek|louci|loucime|koncime|preju ti|zbytek dne|mej se|kdykoliv budes chtit|zavrit hernu|sezeni zavrit|dnesni hru.*uzavreme|hru.*uzavreme|odpocivej ted|uz nemusite nikam|posledni maly krucek|dobrou noc)/i.test(text);
+}
+
+function isPassivePlayroomDrift(output: string) {
+  const text = normalizePlayroomText(output);
+  const hasChoice = /\b(a\)|b\)|vyber|co by|ktery|ktera|zkus|posli|napis|nahraj|ukaz|vsimni)\b/i.test(text);
+  const passiveRest = /(jen tak potichu|jen v tichu|budu tu.*hlidat|zustanu tu.*ticho|odpocivej|nic nemusite|jen tam.*budte|v klidu budte)/i.test(text);
+  return passiveRest && !hasChoice;
+}
+
+function isSymbolicEscapeWithoutAnchor(output: string) {
+  const text = normalizePlayroomText(output);
+  const escape = /(hvezdick|nahore|u boha|bozi dlani|kridla|bytosti|nemusel trpet|nikdo ti nemuze ublizit|vysoko.*nedosahne|duse leci)/i.test(text);
+  const anchor = /(telo|ruce|nohy|dech|srdc|brisko|tady|ted|kontakt|krok|volba|vyber|napis|posli|ukaz|vzdalenost|bliz|dal|ticho)/i.test(text);
+  return escape && !anchor;
 }
 
 function playroomOutputFollowsRuntimeStep(output: string, runtimeContext?: string | null) {
@@ -206,12 +229,21 @@ function playroomOutputFollowsRuntimeStep(output: string, runtimeContext?: strin
 function buildPlayroomRailReply(runtimeContext: string | null | undefined, childName?: string | null, lastInput?: string | null) {
   const normalizedInput = normalizePlayroomText(lastInput || "");
   const childAddress = (childName || "").toLocaleUpperCase("cs-CZ") === "TUNDRUPEK" ? "Tundrupku" : (childName || "");
-  const attune = /hvezdi|buh|nahore|svetlo|nebe/i.test(normalizedInput)
+  const blockTitle = extractPlayroomCurrentBlockTitle(runtimeContext);
+  const programPrompt = extractPlayroomCurrentProgramPrompt(runtimeContext);
+  const attune = /velryb|kridl|bytost|domu|chlapeck/i.test(normalizedInput)
+    ? "Sly\u0161\u00edm velryb\u00edho chlape\u010dka, k\u0159\u00eddla i to, \u017ee domov je bl\u00edzko."
+    : /hvezdi|buh|nahore|svetlo|nebe/i.test(normalizedInput)
     ? "Sly\u0161\u00edm tu hv\u011bzdi\u010dku i to, \u017ee chce b\u00fdt hodn\u011b bl\u00edzko sv\u011btlu."
     : /blizko|u tebe|se mnou/i.test(normalizedInput)
       ? "Sly\u0161\u00edm, \u017ee m\u00e1m b\u00fdt bl\u00edzko, a z\u016fst\u00e1v\u00e1m tady s tebou."
       : "Sly\u0161\u00edm t\u011b a beru to jako odpov\u011b\u010f na n\u00e1\u0161 krok.";
-  return `${attune} Te\u010f nejdeme pry\u010d a neuzav\u00edr\u00e1me to${childAddress ? `, ${childAddress}` : ""}; pokra\u010dujeme p\u0159esn\u011b dal\u0161\u00edm kouskem dne\u0161n\u00ed hry. ${extractPlayroomCurrentProgramPrompt(runtimeContext)} [PLAYROOM_PROGRESS:stay]`;
+  const bridge = /co potrebuje|mal[yý] krok|mikro/i.test(normalizePlayroomText(blockTitle + " " + programPrompt))
+    ? "Te\u010f z toho ud\u011bl\u00e1me jeden mali\u010dk\u00fd krok pro t\u011blo nebo srdce, ne konec hry."
+    : /symbol|postav/i.test(normalizePlayroomText(blockTitle + " " + programPrompt))
+      ? "Te\u010f nech\u00e1me ten symbol uk\u00e1zat jen jednu bezpe\u010dnou v\u011bc, ne cel\u00fd p\u0159\u00edb\u011bh najednou."
+      : "Te\u010f nejdeme pry\u010d a neuzav\u00edr\u00e1me to; pokra\u010dujeme p\u0159esn\u011b dal\u0161\u00edm kouskem dne\u0161n\u00ed hry.";
+  return `${attune} ${bridge}${childAddress ? `, ${childAddress}` : ""}. Dal\u0161\u00ed bod je: ${blockTitle}. ${programPrompt} [PLAYROOM_PROGRESS:stay]`;
 }
 
 function isExplicitPlayroomContinuationRequest(input: string) {
@@ -1237,6 +1269,7 @@ Povinná struktura každé odpovědi:
 4. Každé 2–3 odpovědi udělej jemný mikro-test: volba vzdálenosti, bezpečný symbol, škála rukou/prstem/obrázkem, výběr dveří/světla/ticha, kontrola „pokračovat/stop“.
 5. Když se kontext změní, okamžitě změň tempo: strach/ticho → stabilizace; zvědavost → aktivnější hra; příloha → analyzuj a navazuj na ni.
 6. Na úplný konec odpovědi přidej interní značku [PLAYROOM_PROGRESS:stay], [PLAYROOM_PROGRESS:advance], [PLAYROOM_PROGRESS:fallback] nebo [PLAYROOM_PROGRESS:stop]. Značka je technická; nedávej k ní vysvětlení.
+7. Pokud jsi právě odpověděl na symbol dítěte, MUSÍŠ ještě ve stejné odpovědi udělat další programový mikro-krok. Samotné podržení symbolu, ticho nebo odpočinek nestačí.
 
 Postup bloky:
 - Aktuální blok určuje runtime kontext z aplikace. Nevybírej si svévolně pozdější blok.
@@ -1244,6 +1277,7 @@ Postup bloky:
 - [PLAYROOM_PROGRESS:advance] použij jen když dítě skutečně poskytlo materiál odpovídající záměru aktuálního bloku.
 - [PLAYROOM_PROGRESS:stop] použij jen při jasném „stop/nechci/stačí/končím“ nebo při bezpečnostním stop signálu.
 - Měkké uzavření smíš otevřít teprve v posledním bloku programu nebo po explicitním stopu dítěte.
+- Nikdy neposouvej dítě do závěru jen proto, že symbol působí hotově, klidně nebo posvátně. Klid je materiál pro další krok, ne důvod ukončit.
 
 Zakázáno v Herně:
 - Nenabízej sám posílání vzkazů mamince/Haničce/Kátě.
@@ -1545,7 +1579,9 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
       const mustStayOnRails = !playroomProgress.isFinal && !isExplicitPlayroomStopRequest(lastPlayroomInput);
       const offRail = !playroomOutputFollowsRuntimeStep(rawPlayroomResponse, runtimeContext);
       const prematureClosing = isPrematurePlayroomClosing(rawPlayroomResponse);
-      const guardedPlayroomResponse = mustStayOnRails && (offRail || prematureClosing)
+      const passiveDrift = isPassivePlayroomDrift(rawPlayroomResponse);
+      const symbolicEscape = isSymbolicEscapeWithoutAnchor(rawPlayroomResponse);
+      const guardedPlayroomResponse = mustStayOnRails && (offRail || prematureClosing || passiveDrift || symbolicEscape)
         ? buildPlayroomRailReply(runtimeContext, didPartName, lastPlayroomInput)
         : rawPlayroomResponse.includes("[PLAYROOM_PROGRESS:")
           ? rawPlayroomResponse
@@ -1560,10 +1596,10 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         prompt_contract_version: promptContractVersion,
         has_multimodal_input: requestHasMultimodalInput,
         has_drive_sync: false,
-        evaluation_status: offRail || prematureClosing ? "playroom_rail_guard_replaced" : "playroom_rail_guard_passed",
+        evaluation_status: offRail || prematureClosing || passiveDrift || symbolicEscape ? "playroom_rail_guard_replaced" : "playroom_rail_guard_passed",
         request_mode: mode,
         part_name: didPartName || null,
-        metadata: { off_rail: offRail, premature_closing: prematureClosing, current_block: playroomProgress.current, final_block: playroomProgress.max },
+        metadata: { off_rail: offRail, premature_closing: prematureClosing, passive_drift: passiveDrift, symbolic_escape: symbolicEscape, current_block: playroomProgress.current, final_block: playroomProgress.max },
       });
       return streamPlayroomText(guardedPlayroomResponse);
     }
