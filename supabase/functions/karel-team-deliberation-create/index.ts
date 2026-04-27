@@ -470,6 +470,12 @@ Deno.serve(async (req: Request) => {
             ? rawSp.stop_rules.map((x: any) => String(x)).slice(0, 8)
             : (Array.isArray(hybridContract?.stop_rules) ? hybridContract.stop_rules.map((x: any) => String(x)).slice(0, 8) : []),
           session_mode: nonEmptyString(rawSp.session_mode) ?? nonEmptyString(hybridContract?.session_mode) ?? nonEmptyString(hybridContract?.therapist_led_vs_karel_only) ?? "standard",
+          session_actor: nonEmptyString(rawSp.session_actor),
+          ui_surface: nonEmptyString(rawSp.ui_surface),
+          approved_for_child_session: rawSp.approved_for_child_session === true,
+          human_review_required: rawSp.human_review_required !== false,
+          review_state: nonEmptyString(rawSp.review_state) ?? "awaiting_therapist_review",
+          playroom_plan: rawSp.playroom_plan && typeof rawSp.playroom_plan === "object" ? rawSp.playroom_plan : null,
           first_question: rawSp.first_question ? String(rawSp.first_question).slice(0, 240) : null,
           last_plan_change_state: ["unchanged", "revised", "deferred", "needs_followup_question"].includes(String(rawSp.last_plan_change_state ?? ""))
             ? String(rawSp.last_plan_change_state)
