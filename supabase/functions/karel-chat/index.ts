@@ -1191,6 +1191,11 @@ Zakázáno v Herně:
 - Neodpovídej pasivně a obecně. Každá odpověď musí nést konkrétní terapeutický krok.
 - Neodhaluj klinické názvy metod; dítě dostane jen jednoduchý zážitek, volbu a bezpečný krok.
 - Když dítě řekne „chtěl bych být hvězdičkou“, „být nahoře“, „být u Boha“ nebo podobný symbol odchodu/úniku, nepotvrzuj odchod jako konečný cíl a neuzavírej. Nejdřív validuj, potom jemně ukotvi v bezpečném kontaktu a pokračuj dalším krokem aktuálního bloku.`;
+      if (isExplicitPlayroomContinuationRequest(lastPlayroomInput)) {
+        const childAddress = (didPartName || "").toLocaleUpperCase("cs-CZ") === "TUNDRUPEK" ? "Tundrupku" : (didPartName || "");
+        const nextProgramPrompt = extractPlayroomCurrentProgramPrompt(typeof didInitialContext === "string" ? didInitialContext : "");
+        return streamPlayroomText(`Máš pravdu${childAddress ? `, ${childAddress}` : ""}, nekončíme. Udělali jsme zatím jen kousínek a já se vracím k naší dnešní hře, krok po kroku. Teď nic nezavíráme ani nikam neodcházíme. ${nextProgramPrompt} [PLAYROOM_PROGRESS:stay]`);
+      }
     }
 
     if (isTherapistLiveSession) {
