@@ -116,7 +116,7 @@ const inferProgressFromThread = (steps: any[], messages: PlayroomThread["message
     return { currentBlockIndex: firstOpen >= 0 ? firstOpen : Math.max(steps.length - 1, 0), completedBlockIndexes: savedCompleted };
   }
   const userTurns = messages.filter((message) => message.role === "user" && !isStopRequest(contentText(message.content))).length;
-  const inferredCompleted = Array.from({ length: Math.min(userTurns, steps.length) }, (_, index) => index);
+  const inferredCompleted = Array.from({ length: Math.min(userTurns, Math.max(steps.length - 1, 0)) }, (_, index) => index);
   const firstOpen = steps.findIndex((_, index) => !inferredCompleted.includes(index));
   return { currentBlockIndex: firstOpen >= 0 ? firstOpen : Math.max(steps.length - 1, 0), completedBlockIndexes: inferredCompleted };
 };
@@ -244,7 +244,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const roomBackground = useMemo(() => getRoomBackground(targetPart), [targetPart]);
   const roomTone = useMemo(() => getRoomTone(plan, thread), [plan, thread]);
   const opener = useMemo(() => childSafe(contentText(thread?.messages?.find((message) => message.role === "assistant")?.content)) || "Jsem tady. Zkusíme dnes jen jeden malý krok.", [thread]);
-  const stepPrompt = useMemo(() => getStepPrompt(plan, thread), [plan, thread, progress]);
+  const stepPrompt = useMemo(() => getStepPrompt(plan, thread, progress), [plan, thread, progress]);
 
   const persistPlayroomProgress = useCallback(async (state: PlayroomProgressState, sourceThread: PlayroomThread | null, finalizedReason?: "completed" | "partial") => {
     if (!plan) return;
