@@ -250,9 +250,17 @@ function buildPlayroomRailReply(runtimeContext: string | null | undefined, child
     : /blizko|u tebe|se mnou/i.test(normalizedInput)
       ? "Sly\u0161\u00edm, \u017ee m\u00e1m b\u00fdt bl\u00edzko, a z\u016fst\u00e1v\u00e1m tady s tebou."
       : "Sly\u0161\u00edm t\u011b a beru to jako odpov\u011b\u010f na n\u00e1\u0161 krok.";
-  const childStep = /mekke uzavreni|uzavren|kontakt|slovo|emoji|symbol|ticho/i.test(stepText)
-    ? "Te\u010f to m\u016f\u017eeme jen jemn\u011b polo\u017eit, ne zav\u0159\u00edt narychlo. Vyber si: A) jedno mal\u00e9 slovo, B) jeden symbol, C) ticho a j\u00e1 budu potichu bl\u00edzko."
-    : /co potrebuje|maly krok|mikro|telo|srdce/i.test(stepText)
+  const childStep = /^(a|a\)|slovo)$/i.test(normalizedInput)
+    ? "Te\u010f mi po\u0161li to jedno konkr\u00e9tn\u00ed slovo. M\u016f\u017ee b\u00fdt t\u0159eba: domov, sv\u011btlo, k\u0159\u00eddla, klid \u2014 nebo \u00fapln\u011b jin\u00e9."
+    : /^(b|b\)|symbol|emoji)$/i.test(normalizedInput)
+      ? "Te\u010f mi po\u0161li jeden mal\u00fd symbol nebo emoji. Sta\u010d\u00ed jedin\u00fd obr\u00e1zek, nic v\u00edc."
+      : /^(c|c\)|ticho)$/i.test(normalizedInput)
+        ? "Dob\u0159e, nech\u00e1me ticho. Kdyby to \u0161lo, po\u0161li jen te\u010dku, a\u017e m\u00e1m v\u011bd\u011bt, \u017ee jsi po\u0159\u00e1d tady."
+        : /co budeme|co dal|co ted/i.test(normalizedInput)
+          ? "Te\u010f vybereme jednu bezpe\u010dnou stopu pro dal\u0161\u00ed krok. Napi\u0161 jedno slovo, kter\u00e9 m\u00e1 b\u00fdt te\u010f bl\u00edzko: t\u0159eba domov, sv\u011btlo, klid, k\u0159\u00eddla \u2014 nebo svoje slovo."
+          : /mekke uzavreni|uzavren|kontakt|slovo|emoji|symbol|ticho/i.test(stepText)
+            ? "Te\u010f to m\u016f\u017eeme jen jemn\u011b polo\u017eit, ne zav\u0159\u00edt narychlo. Po\u0161li mi jedno mal\u00e9 slovo, jeden symbol, nebo jen te\u010dku pro ticho."
+            : /co potrebuje|maly krok|mikro|telo|srdce/i.test(stepText)
       ? "Nekon\u010d\u00edme, jen z toho ud\u011bl\u00e1me jeden mali\u010dk\u00fd kousek pro t\u011blo nebo srdce. Vyber si: A) po\u0161leme t\u011blu kousek tepla, B) d\u00e1me ruce na bezpe\u010dn\u00e9 m\u00edsto, C) nech\u00e1me jen ticho."
       : /symbol|postav|pribeh|obraz/i.test(stepText)
         ? "Nech\u00e1me ten obr\u00e1zek uk\u00e1zat jen jednu bezpe\u010dnou v\u011bc, ne cel\u00fd p\u0159\u00edb\u011bh najednou. Vyber si: A) kdo je tam nejbl\u00ed\u017e, B) kde je bezpe\u010dn\u00e9 m\u00edsto, C) jakou barvu tam vid\u00ed\u0161."
@@ -1599,7 +1607,8 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
       const prematureClosing = isPrematurePlayroomClosing(rawPlayroomResponse);
       const passiveDrift = isPassivePlayroomDrift(rawPlayroomResponse);
       const symbolicEscape = isSymbolicEscapeWithoutAnchor(rawPlayroomResponse);
-      const guardedPlayroomResponse = mustStayOnRails && (offRail || prematureClosing || passiveDrift || symbolicEscape)
+      const hardReplaceNeeded = prematureClosing || symbolicEscape || hasPlayroomInternalLanguage(rawPlayroomResponse);
+      const guardedPlayroomResponse = mustStayOnRails && hardReplaceNeeded
         ? buildPlayroomRailReply(runtimeContext, didPartName, lastPlayroomInput)
         : rawPlayroomResponse.includes("[PLAYROOM_PROGRESS:")
           ? rawPlayroomResponse

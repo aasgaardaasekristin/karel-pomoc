@@ -187,9 +187,17 @@ const buildRailReply = (plan: PlayroomPlanRow | null, progress: PlayroomProgress
     : /bl[íi]zko|u tebe|se mnou/i.test(lastUserText)
       ? "Slyším, že mám být blízko, a zůstávám tady s tebou."
       : "Slyším tě a beru to jako odpověď na náš krok.";
-  const childStep = /měkké uzavření|uzavřen|kontakt|slovo|emoji|symbol|ticho/i.test(stepText)
-    ? "Teď to můžeme jen jemně položit, ne zavřít narychlo. Vyber si: A) jedno malé slovo, B) jeden symbol, C) ticho a já budu potichu blízko."
-    : /co potřebuje|malý krok|mikro|tělo|srdce/i.test(stepText)
+  const childStep = /^(a|a\)|slovo)$/i.test(normalizedInput)
+    ? "Teď mi pošli to jedno konkrétní slovo. Může být třeba: domov, světlo, křídla, klid — nebo úplně jiné."
+    : /^(b|b\)|symbol|emoji)$/i.test(normalizedInput)
+      ? "Teď mi pošli jeden malý symbol nebo emoji. Stačí jediný obrázek, nic víc."
+      : /^(c|c\)|ticho)$/i.test(normalizedInput)
+        ? "Dobře, necháme ticho. Kdyby to šlo, pošli jen tečku, až mám vědět, že jsi pořád tady."
+        : /co\s+budeme|co\s+d[áa]l|co\s+te[ďd]/i.test(lastUserText)
+          ? "Teď vybereme jednu bezpečnou stopu pro další krok. Napiš jedno slovo, které má být teď blízko: třeba domov, světlo, klid, křídla — nebo svoje slovo."
+          : /měkké uzavření|uzavřen|kontakt|slovo|emoji|symbol|ticho/i.test(stepText)
+            ? "Teď to můžeme jen jemně položit, ne zavřít narychlo. Pošli mi jedno malé slovo, jeden symbol, nebo jen tečku pro ticho."
+            : /co potřebuje|malý krok|mikro|tělo|srdce/i.test(stepText)
       ? "Nekončíme, jen z toho uděláme jeden maličký kousek pro tělo nebo srdce. Vyber si: A) pošleme tělu kousek tepla, B) dáme ruce na bezpečné místo, C) necháme jen ticho."
       : /symbol|postav|příběh|obraz/i.test(stepText)
         ? "Necháme ten obrázek ukázat jen jednu bezpečnou věc, ne celý příběh najednou. Vyber si: A) kdo je tam nejblíž, B) kde je bezpečné místo, C) jakou barvu tam vidíš."
