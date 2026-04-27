@@ -352,18 +352,19 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         }
       }
 
-      if (rows.length > 0) {
-        if (!sessionReview) setYesterdaySessionFallback(null);
-        return;
-      }
+      // Playroom review nesmí zabránit samostatnému fallbacku pro Včerejší sezení.
+      // Dřív jakýkoliv řádek v did_session_reviews (typicky mode='playroom') ukončil
+      // funkci a terapeutické sezení tiše zmizelo z Karlova přehledu.
+      if (sessionReview) return;
       const { data: plan } = await (supabase as any)
         .from("did_daily_session_plans")
         .select("id,selected_part,session_lead,therapist,status,lifecycle_status,plan_markdown")
         .eq("plan_date", yesterday)
+        .not("urgency_breakdown->>ui_surface", "eq", "did_kids_playroom")
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (!plan) { setYesterdaySessionFallback(null); setYesterdayPlayroomFallback(null); return; }
+      if (!plan) { setYesterdaySessionFallback(null); return; }
       const { data: progress } = await (supabase as any)
         .from("did_live_session_progress")
         .select("completed_blocks,total_blocks,items")
@@ -385,7 +386,6 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         team_acknowledgement: "Haničko a Káťo, děkuji za udržení rámce — i nedokončené sezení se teď poctivě označí a neztratí se z přehledu.",
         status_label: plan.lifecycle_status || plan.status,
       });
-      setYesterdayPlayroomFallback(null);
     } catch (e) {
       console.error("[DidDailyBriefingPanel] loadYesterdayFallback failed:", e);
       setYesterdaySessionFallback(null);
@@ -845,12 +845,12 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
-      {/* 3.6 Vyhodnocení včerejšího sezení — oddělené od Herny */}
+      {/* 3.6 Včerejší sezení — samostatná vyhrazená sekce, nikdy nesmí splývat s Hernou */}
       {yesterdayReview && yesterdayReview.held && (
         <>
           <NarrativeDivider />
           <SectionHead icon={<Users className="w-3.5 h-3.5 text-primary/70" />}>
-            Vyhodnocení včerejšího sezení
+            Včerejší sezení
           </SectionHead>
           <div className="mt-2 p-3 rounded-lg border border-border/60 bg-card/40 space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
@@ -884,6 +884,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             </div>
             {yesterdayReview.karel_summary ? (
               <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Karlovo vyhodnocení</p>
                 <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
                   {yesterdayReview.karel_summary}
                 </p>

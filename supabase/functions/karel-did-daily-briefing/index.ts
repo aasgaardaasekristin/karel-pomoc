@@ -162,12 +162,15 @@ function reviewEvidenceBasis(review: any): "planned_only" | "started_partial" | 
 
 function enrichYesterdaySessionReview(payload: any, context: any) {
   const reviews = Array.isArray(context?.yesterday_session_reviews) ? context.yesterday_session_reviews : [];
-  const clinicalReviews = reviews.filter((r: any) => ["started_partial", "completed"].includes(reviewEvidenceBasis(r)));
-  const latestReview = clinicalReviews[0] ?? null;
+  const sessionReviews = reviews.filter((r: any) => String(r?.mode ?? "session") !== "playroom");
+  const clinicalReviews = sessionReviews.filter((r: any) => ["started_partial", "completed"].includes(reviewEvidenceBasis(r)));
+  // Non-playroom session review je autoritativní stopa včerejšího sezení i tehdy,
+  // když chybí did_part_sessions nebo evidence_basis vyjde unknown/evidence_limited.
+  const latestReview = clinicalReviews[0] ?? sessionReviews[0] ?? null;
   const latestSession = latestReview && Array.isArray(context?.yesterday_sessions)
     ? context.yesterday_sessions.find((s: any) => String(s?.part_name ?? "").toLowerCase() === String(latestReview.part_name ?? "").toLowerCase()) ?? null
     : null;
-  const plannedOnly = reviews.find((r: any) => reviewEvidenceBasis(r) === "planned_only");
+  const plannedOnly = sessionReviews.find((r: any) => reviewEvidenceBasis(r) === "planned_only");
 
   if (!latestSession && !latestReview) {
     if (plannedOnly) {
@@ -217,7 +220,7 @@ function enrichYesterdaySessionReview(payload: any, context: any) {
     part_name: String(latestReview?.part_name ?? latestSession?.part_name ?? review.part_name ?? "").trim() || undefined,
     lead: normalizeTherapistLabel(latestSession?.therapist ?? review.lead) ?? review.lead,
     review_status: latestReview?.status ?? review.review_status,
-    completion: evidenceBasis === "completed" ? "completed" : latestReview?.status === "partially_analyzed" ? "partial" : (review.completion ?? "partial"),
+    completion: evidenceBasis === "completed" ? "completed" : latestReview?.status === "partially_analyzed" ? "partial" : latestReview?.status === "evidence_limited" ? "partial" : (review.completion ?? "partial"),
     completed_checklist_count: latestReview ? completedCount : review.completed_checklist_count,
     total_checklist_count: latestReview ? totalCount : review.total_checklist_count,
     evidence_label: evidenceLabel ?? review.evidence_label,
@@ -470,12 +473,12 @@ async function gatherContext(supabase: any) {
   if (yesterdayPlanIds.length > 0) {
     const { data: reviews } = await supabase
       .from("did_session_reviews")
-      .select("id, plan_id, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, completed_checklist_items, missing_checklist_items, source_data_summary, analysis_json, created_at")
+      .select("id, plan_id, mode, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, completed_checklist_items, missing_checklist_items, source_data_summary, analysis_json, created_at")
       .in("plan_id", yesterdayPlanIds)
       .eq("is_current", true)
       .order("created_at", { ascending: false })
       .limit(5);
-    const allReviews = reviews ?? [];
+    const allReviews = (reviews ?? []).filter((r: any) => String(r?.mode ?? "session") !== "playroom");
     const rank = (r: any) => {
       const basis = reviewEvidenceBasis(r);
       if (basis === "completed") return 0;
@@ -485,7 +488,18 @@ async function gatherContext(supabase: any) {
     };
     yesterdaySessionReviews = allReviews.sort((a: any, b: any) => rank(a) - rank(b));
   }
-  const clinicalReviewParts = new Set(yesterdaySessionReviews.filter((r: any) => ["completed", "started_partial"].includes(reviewEvidenceBasis(r))).map((r: any) => String(r.part_name ?? "").toLowerCase()));
+  if (yesterdaySessionReviews.length === 0) {
+    const { data: reviewsByDate } = await supabase
+      .from("did_session_reviews")
+      .select("id, plan_id, mode, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, completed_checklist_items, missing_checklist_items, source_data_summary, analysis_json, created_at")
+      .eq("session_date", yesterdayISO)
+      .eq("is_current", true)
+      .neq("mode", "playroom")
+      .order("created_at", { ascending: false })
+      .limit(5);
+    yesterdaySessionReviews = reviewsByDate ?? [];
+  }
+  const clinicalReviewParts = new Set(yesterdaySessionReviews.filter((r: any) => ["completed", "started_partial", "unknown"].includes(reviewEvidenceBasis(r))).map((r: any) => String(r.part_name ?? "").toLowerCase()));
   const safeYesterdaySessions = clinicalReviewParts.size > 0
     ? yesterdaySessions.filter((s: any) => clinicalReviewParts.has(String(s.part_name ?? "").toLowerCase()))
     : [];
