@@ -1,96 +1,72 @@
-Oprava pravidla je jednoznačná: Herna nikdy nesmí být bez programu. Každé spuštění ranního Karlova přehledu / denního plánování musí vytvořit dva oddělené výstupy:
+Odpověď na otázku: neudělal jsem to správně proto, že jsem poslední implementaci soustředil na oddělení Herny a zastavení míchání Herna programu se Sezením. V kódu sice existuje render sekce pro včerejší sezení, ale je pojmenovaný a koncipovaný jako „Vyhodnocení včerejšího sezení“, ne jako samostatná explicitní sekce „Včerejší sezení“ podle tvé vize. Navíc dnešní briefing v databázi má `yesterday_session_review.held=false`, i když pro včerejšek existuje jeden review záznam a pět plánů; tím pádem se sekce v UI nespustí. To je přesně ta mezera: backend enrichment nepřebíjí prázdný/false payload dostatečně tvrdě a UI nemá samostatný blok „Včerejší sezení“ jako paralelu k „Včerejší herna“.
+
+Opravím to takto:
+
+1. V Karlově přehledu budou dvě oddělené včerejší sekce
 
 ```text
-Karlův přehled / denní cyklus
-├─ Sezení na dnes
-│  └─ therapist-led program pro Haničku/Káťu
-└─ Herna na dnes
-   └─ samostatný Karel-led playroom_plan pro přímý kontakt s dítětem/částí
+Včerejší herna
+- Karel-led přímý kontakt s dítětem/částí
+- praktický report Herny
+- význam pro část
+- doporučení pro další Hernu
+- detailní analýza Herny, pokud existuje
+
+Včerejší sezení
+- terapeutkou vedené sezení
+- co se fakticky stalo / jaký je stav evidence
+- Karlovo klinické přetlumočení
+- co teď víme o části
+- co z toho plyne pro další terapeutický plán
+- týmové uzavření
+- detailní analýza sezení, pokud existuje
 ```
 
-## Co změním
+Nebude to jedna sloučená sekce a nebude se to jmenovat pouze „Vyhodnocení včerejšího sezení“. „Vyhodnocení“ bude podčást uvnitř „Včerejší sezení“.
 
-1. Upravím generování denního programu tak, aby se při každém běhu vytvořil i samostatný program Herny
-   - V `karel-did-auto-session-plan` se už zakládá Karel-direct kandidát, ale dnes je to jen slabý záznam s krátkým markdownem a bez plného `playroom_plan`.
-   - Nahradím to povinnou tvorbou plnohodnotného `playroom_plan` v `urgency_breakdown.playroom_plan`.
-   - Program Herny bude obsahovat klinicko-praktický návrh pro terapeutky: cíl, proč právě tato část, bezpečnostní rámec, 3–5 remote-native herních bloků, stop signály, fallback, hranice, co Karel nesmí dělat, kritéria ukončení a praktické instrukce pro vstup.
-   - Nebude to child-facing opener. Child-facing text vznikne až při vstupu do herny.
+2. Zpřísním backend Karlova přehledu
 
-2. Oddělím výběr a obsah Herny od „Sezení na dnes“
-   - `session_actor: "therapist_led"` zůstane pro dnešní sezení.
-   - `session_actor: "karel_direct"`, `ui_surface: "did_kids_playroom"`, `lead_entity: "karel"` bude povinné pro Hernu.
-   - Herna nebude číst `plan_markdown` terapeutického sezení jako svůj program.
-   - Pokud jsou cílové části stejné, pořád vzniknou dva odlišné programy: jeden pro terapeutky a jeden pro Karla v Herně.
+V `karel-did-daily-briefing` upravím logiku `enrichYesterdaySessionReview` tak, aby:
 
-3. Odstraním možnost „Herna nemá vlastní program“ jako normální stav
-   - Současná UI hláška „Herna nemá vlastní schválený program“ zůstane jen jako nouzová diagnostická chyba pro poškozená historická data, ne jako očekávaný workflow.
-   - Pro dnešní den má systém program Herny buď najít, nebo ho automaticky doplnit přes opravný backendový ensure krok.
-   - Vstup do Herny bude dál blokovaný, pokud program není schválený terapeutkami, ale nebude vycházet z předpokladu, že program může chybět.
+- za včerejší sezení považovala primárně non-playroom terapeutické review z `did_session_reviews`, i když neexistuje řádek v `did_part_sessions`,
+- neignorovala review jen proto, že evidence basis vyjde jako `unknown`,
+- pokud existuje non-playroom review pro včerejší plán, payload bude mít `held=true` nebo alespoň evidence-limited stav, který UI zobrazí,
+- AI payload s `held=false` nesmí přebít databázově doložené včerejší review/sezení,
+- playroom review zůstane oddělené a nikdy nebude použité jako náhrada sezení.
 
-4. Zpřísním schvalovací workflow Herny
-   - V Pracovně se musí zobrazit karta „Herna na dnes“ odděleně od „Sezení na dnes“.
-   - Terapeutky budou schvalovat konkrétní playroom program, nikoli terapeutické sezení.
-   - Stav bude: `awaiting_therapist_review` → `approved` → `ready_to_start` / `in_progress` → `evaluated`.
-   - Tlačítko „Vstup do herny“ se ukáže jen u Karel-direct plánu s existujícím `playroom_plan` a schválením.
+3. Zpřísním UI fallback v `DidDailyBriefingPanel.tsx`
 
-5. Doplním safety-net pro historické a rozbité dnešní záznamy
-   - Pokud existuje dnešní Karel-direct záznam bez `playroom_plan`, backend ho neopustí jako „bez programu“.
-   - Doplní mu plnohodnotný `playroom_plan` z dostupných dat: registry, recent threads, session memory, did_daily_context / Pantry A a případně profile data.
-   - To je oprava integrity, ne náhradní režim bez programu.
+Upravím načítání včerejších fallbacků tak, aby:
 
-6. Napojím Hernu při spuštění na její vlastní program
-   - `karel-part-session-prepare` bude při `plan_id` validovat:
-     - plán je Karel-direct,
-     - `ui_surface` je `did_kids_playroom`,
-     - `playroom_plan` existuje,
-     - je schválený.
-   - Do child-facing openeru půjde jen bezpečný výtah z playroom programu, nikoli terapeutické interní poznámky.
+- `Včerejší sezení` naskočilo vždy, když existuje non-playroom `did_session_reviews` nebo včerejší terapeutický plán se stopou review/progress,
+- prázdný payload `held:false` z briefingu neskryl reálný fallback z databáze,
+- názvy podsekcí jasně rozlišily faktický stav od klinického vyhodnocení,
+- Herna fallback už při chybějícím sezení nesmazal omylem session fallback a naopak.
 
-7. Zpřísním `karel-chat` pro live Hernu
-   - Herna dostane hidden runtime kontext výhradně z `playroom_plan`, nikoli ze „Sezení na dnes“.
-   - Poslední vstup dítěte / příloha bude povinný rozhodovací bod odpovědi.
-   - Runtime chyby a 503 fallback zůstanou technicky označené tak, aby se nikdy nebraly jako klinický obsah.
+4. Doplním konzistentní slovník
 
-8. Upravím reporting
-   - „Včerejší herna“ bude samostatná sekce založená na Playroom payloadu a playroom review.
-   - „Vyhodnocení včerejšího sezení“ zůstane samostatně pro therapist-led session.
-   - Evaluace Herny bude odkazovat na schválený `playroom_plan`, nikoli na terapeutický `plan_markdown`.
+V UI bude:
 
-## Technické změny
+- sekce: `Včerejší herna`
+- sekce: `Včerejší sezení`
+- uvnitř sezení podčást: `Karlovo vyhodnocení`
+- žádné splývání Herny se Sezením
+- žádné používání playroom programu nebo playroom review jako terapeutického session review
 
-- `supabase/functions/karel-did-auto-session-plan/index.ts`
-  - přidat builder plnohodnotného `playroom_plan`,
-  - změnit `deriveKarelDirectContract` / `ensureKarelDirectCandidate`, aby vždy ukládaly samostatný Herna program,
-  - idempotentně opravovat dnešní Karel-direct záznamy bez `playroom_plan`.
+5. Ověření po implementaci
 
-- `supabase/functions/karel-part-session-prepare/index.ts`
-  - tvrdá validace Karel-direct Playroom contractu,
-  - používat `playroom_plan` jako jediný zdroj pro Hernu,
-  - child opener generovat pouze z bezpečného výtahu.
+Po schválení provedu:
 
-- `supabase/functions/karel-chat/index.ts`
-  - pro `karel_part_session`/Herna načítat a injektovat schválený `playroom_plan`,
-  - nikdy neinjektovat terapeutický program sezení jako program Herny,
-  - auditovat model, submode, contract version a fallback status.
+- TypeScript build,
+- kontrolu, že dnešní briefing umí zobrazit včerejší session review i při `held=false` v uloženém payloadu,
+- kontrolu, že `Včerejší herna` a `Včerejší sezení` jsou dvě samostatné sekce,
+- kontrolu, že backend prompt/enrichment neumožní tiché zmizení sekce, pokud existuje databázový doklad včerejšího sezení/review.
 
-- `src/components/did/DidDailySessionPlan.tsx`
-  - jasně oddělit kartu „Sezení na dnes“ a „Herna na dnes“,
-  - u Herny zobrazit schvalovací klinicko-praktický program,
-  - odstranit jazyk, který naznačuje, že Herna normálně může nemít program.
+Dotčené soubory:
 
-- `supabase/functions/karel-did-session-evaluate/index.ts` a `src/components/did/DidDailyBriefingPanel.tsx`
-  - zachovat rozdělení „Včerejší herna“ vs. „Vyhodnocení včerejšího sezení“,
-  - pro Hernu používat pouze Playroom payload / `playroom_plan`.
+- `supabase/functions/karel-did-daily-briefing/index.ts`
+- `src/components/did/DidDailyBriefingPanel.tsx`
 
-## Datová integrita
+Výsledek:
 
-Použiju stávající tabulku `did_daily_session_plans`, protože už obsahuje lifecycle, schvalování, audit a vazby na evaluaci. Herna v ní ale bude rozlišena tvrdým contractem:
-
-```text
-urgency_breakdown.session_actor = "karel_direct"
-urgency_breakdown.ui_surface = "did_kids_playroom"
-urgency_breakdown.lead_entity = "karel"
-urgency_breakdown.playroom_plan = { ...plný samostatný program Herny... }
-```
-
-Tím se zabrání tomu, aby Herna spadla zpět na `plan_markdown` terapeutického sezení.
+Karlův přehled bude mít vedle samostatné sekce pro včerejší Hernu také samostatnou sekci `Včerejší sezení`, přesně oddělenou od Herny i od dnešního programu.
