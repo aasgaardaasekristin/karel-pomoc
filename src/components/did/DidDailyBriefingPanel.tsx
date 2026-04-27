@@ -35,7 +35,7 @@
  *  takže idempotence funguje i bez nové edge generace.
  */
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { forwardRef, useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -125,6 +125,11 @@ interface BriefingRow {
 
 interface YesterdayFallbackReview extends YesterdaySessionReview {
   status_label?: string;
+  mode?: "playroom" | "session";
+  practical_report?: string | null;
+  detailed_analysis?: string | null;
+  sync_status?: string | null;
+  team_closing?: string | null;
 }
 
 interface Props {
@@ -179,12 +184,14 @@ const pragueYesterdayISO = (): string => {
   return d.toISOString().slice(0, 10);
 };
 
-const SectionHead = ({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) => (
-  <h3 className="text-[12px] font-medium text-foreground/80 flex items-center gap-1.5 uppercase tracking-wide">
+const SectionHead = forwardRef<HTMLHeadingElement, { children: React.ReactNode; icon?: React.ReactNode }>(
+  ({ children, icon }, ref) => (
+  <h3 ref={ref} className="text-[12px] font-medium text-foreground/80 flex items-center gap-1.5 uppercase tracking-wide">
     {icon}
     {children}
   </h3>
-);
+));
+SectionHead.displayName = "SectionHead";
 
 const NarrativeDivider = () => (
   <div className="my-4 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
