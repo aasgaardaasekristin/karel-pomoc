@@ -948,7 +948,8 @@ ${candidates.length > 0 ? candidates.slice(0, 5).map((c) => `- ${c.part_name} (s
 ${toolboxSection}
 ÚKOL:
 Vygeneruj strukturovaný briefing pro dnešní poradu týmu. Drž se pravidel z system promptu.
-${candidates[0]?.score >= 3 ? `MUSÍŠ navrhnout sezení — nejvhodnější kandidát je ${candidates[0].part_name}. Program (agenda_outline) MUSÍ obsahovat alespoň 2 konkrétní hravé nástroje z arzenálu (uveď jejich tool_id).` : "Pokud žádný kandidát nemá dost silné signály, nech proposed_session null."}`;
+${candidates[0]?.score >= 3 ? `MUSÍŠ navrhnout sezení — nejvhodnější kandidát je ${candidates[0].part_name}. Program (agenda_outline) MUSÍ obsahovat alespoň 2 konkrétní hravé nástroje z arzenálu (uveď jejich tool_id).` : "Pokud žádný kandidát nemá dost silné signály, nech proposed_session null."}
+MUSÍŠ vždy navrhnout proposed_playroom. Pokud jsou signály slabé, zvol nejbezpečnější nízkoprahovou diagnosticko-terapeutickou Hernu s jasným playroom_plan a se statusem awaiting_therapist_review.`;
 
   const res = await fetch(AI_URL, {
     method: "POST",
