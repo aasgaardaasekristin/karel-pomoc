@@ -189,8 +189,12 @@ function normalizePlayroomText(input: string) {
   return String(input || "").toLocaleLowerCase("cs-CZ").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
+function stripPlayroomProgressMarker(output: string) {
+  return String(output || "").replace(/\[PLAYROOM_PROGRESS:(stay|advance|fallback|stop)\]/gi, "");
+}
+
 function hasPlayroomInternalLanguage(output: string) {
-  const text = normalizePlayroomText(output);
+  const text = normalizePlayroomText(stripPlayroomProgressMarker(output));
   return /(dalsi bod je|aktualni blok|programovy krok|mekke uzavreni|symbolicka hra|cilem je|karel nabidne|terapeuticky plan|schvaleny program|dostupnost casti|runtime|index|\bblok\b|interni znacka|playroom_progress)/i.test(text);
 }
 
