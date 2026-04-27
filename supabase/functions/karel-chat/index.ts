@@ -238,6 +238,26 @@ function streamPlayroomText(content: string) {
   });
 }
 
+async function readSseContent(stream: ReadableStream<Uint8Array>) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let fullResponse = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = decoder.decode(value, { stream: true });
+    for (const line of chunk.split("\n")) {
+      if (line.startsWith("data: ") && !line.includes("[DONE]")) {
+        try {
+          const json = JSON.parse(line.slice(6));
+          fullResponse += json.choices?.[0]?.delta?.content || "";
+        } catch {}
+      }
+    }
+  }
+  return fullResponse;
+}
+
 function streamFallbackReply(mode: string, status: number) {
   const content = mode === "playroom"
     ? "Slyším tě. Teď se mi na chvilku zasekl hlas, ale zůstávám tady u dveří a nic nemusíš opravovat. Vyber jen jednu věc: mám být blíž, dál, nebo úplně potichu?"
