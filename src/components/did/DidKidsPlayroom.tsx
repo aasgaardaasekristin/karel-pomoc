@@ -382,6 +382,9 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       ...currentThread.messages,
       { role: "user", content: userContent },
     ];
+    const steps = getProgramSteps(plan);
+    const lastUserText = contentText(userContent);
+    const activeProgress = progressAfterChildAnswer(progress, steps, lastUserText);
     try {
       setThread({ ...currentThread, messages: [...nextMessages, { role: "assistant", content: "" }] });
       const headers = await getAuthHeaders();
@@ -391,7 +394,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         didSubMode: "playroom",
         didPartName: targetPart,
         didThreadLabel: targetPart,
-        didInitialContext: planContract(plan, currentThread, progress),
+        didInitialContext: planContract(plan, { ...currentThread, messages: nextMessages }, activeProgress),
       };
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`, { method: "POST", headers, body: JSON.stringify(body) });
       if (!response.ok) handleApiError(response);
@@ -400,9 +403,6 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         setThread((prev) => prev ? { ...prev, messages: [...nextMessages, { role: "assistant", content: childSafe(partial) || partial }] } : prev);
       });
       const sanitizedAiContent = sanitizeAssistantForPlayroom(assistantContent);
-      const steps = getProgramSteps(plan);
-      const lastUserText = contentText(userContent);
-      const activeProgress = progressAfterChildAnswer(progress, steps, lastUserText);
       const isLastBlock = activeProgress.currentBlockIndex >= Math.max(steps.length - 1, 0);
       const wantsProgramContinuation = CONTINUE_PROGRAM_RE.test(lastUserText) && !isStopRequest(lastUserText);
       const offRail = !responseFollowsCurrentStep(sanitizedAiContent, plan, activeProgress);
