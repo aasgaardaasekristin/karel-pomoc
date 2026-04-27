@@ -251,7 +251,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [openingItemId, setOpeningItemId] = useState<string | null>(null);
-  const [yesterdayFallback, setYesterdayFallback] = useState<YesterdayFallbackReview | null>(null);
+  const [yesterdaySessionFallback, setYesterdaySessionFallback] = useState<YesterdayFallbackReview | null>(null);
+  const [yesterdayPlayroomFallback, setYesterdayPlayroomFallback] = useState<YesterdayFallbackReview | null>(null);
   /**
    * THERAPIST-LED TRUTH PASS (2026-04-22) — Duplicity guard.
    * Set obsahuje názvy částí, pro které dnes existuje schválený
@@ -285,25 +286,32 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const loadYesterdayFallback = useCallback(async () => {
     try {
       const yesterday = pragueYesterdayISO();
-      const { data: review } = await (supabase as any)
+      const { data: reviews } = await (supabase as any)
         .from("did_session_reviews")
-        .select("part_name,status,clinical_summary,therapeutic_implications,team_implications,next_session_recommendation,evidence_limitations")
+        .select("mode,part_name,status,clinical_summary,therapeutic_implications,team_implications,next_session_recommendation,evidence_limitations,clinical_findings,implications_for_part,implications_for_whole_system,recommendations_for_therapists,recommendations_for_next_session,recommendations_for_next_playroom,team_closing,drive_sync_status,source_of_truth_status,analysis_json")
         .eq("session_date", yesterday)
         .eq("is_current", true)
         .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (review) {
-        setYesterdayFallback({
-          held: true,
-          part_name: review.part_name || undefined,
-          completion: review.status === "analyzed" ? "completed" : review.status === "partially_analyzed" ? "partial" : "abandoned",
-          karel_summary: review.clinical_summary || review.evidence_limitations || "Review existuje, ale klinické shrnutí zatím není uložené.",
-          key_finding_about_part: review.therapeutic_implications || "Závěr je omezen dostupnou evidencí.",
-          implications_for_plan: review.next_session_recommendation || "Doplnit chybějící podklady a navázat v dalším plánování.",
-          team_acknowledgement: review.team_implications || "Děkuji Haničce a Kátě za držení kontinuity; i částečný záznam je pro tým užitečný, když je označen poctivě.",
-          status_label: review.status,
-        });
+        .limit(4);
+      const rows = (reviews || []) as any[];
+      const mapReview = (review: any): YesterdayFallbackReview => ({
+        held: true,
+        mode: review.mode === "playroom" ? "playroom" : "session",
+        part_name: review.part_name || undefined,
+        completion: review.status === "analyzed" ? "completed" : review.status === "partially_analyzed" ? "partial" : "abandoned",
+        karel_summary: review.analysis_json?.practical_report_text || review.clinical_summary || review.evidence_limitations || "Review existuje, ale klinické shrnutí zatím není uložené.",
+        key_finding_about_part: review.implications_for_part || review.therapeutic_implications || review.clinical_findings || "Závěr je omezen dostupnou evidencí.",
+        implications_for_plan: review.mode === "playroom" ? (review.recommendations_for_next_playroom || review.next_session_recommendation) : (review.recommendations_for_next_session || review.next_session_recommendation) || "Doplnit chybějící podklady a navázat v dalším plánování.",
+        team_acknowledgement: review.team_closing || review.team_implications || "Děkuji Haničce a Kátě za držení kontinuity; i částečný záznam je pro tým užitečný, když je označen poctivě.",
+        practical_report: review.analysis_json?.practical_report_text || review.clinical_summary || null,
+        detailed_analysis: review.analysis_json?.detailed_analysis_text || review.analysis_json?.diagnostic_validity || null,
+        sync_status: review.source_of_truth_status || review.drive_sync_status || null,
+        team_closing: review.team_closing || null,
+        status_label: review.status,
+      });
+      if (rows.length > 0) {
+        setYesterdayPlayroomFallback(rows.find((r) => r.mode === "playroom") ? mapReview(rows.find((r) => r.mode === "playroom")) : null);
+        setYesterdaySessionFallback(rows.find((r) => r.mode !== "playroom") ? mapReview(rows.find((r) => r.mode !== "playroom")) : null);
         return;
       }
       const { data: plan } = await (supabase as any)
@@ -313,7 +321,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (!plan) { setYesterdayFallback(null); return; }
+      if (!plan) { setYesterdaySessionFallback(null); setYesterdayPlayroomFallback(null); return; }
       const { data: progress } = await (supabase as any)
         .from("did_live_session_progress")
         .select("completed_blocks,total_blocks,items")
@@ -321,8 +329,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         .maybeSingle();
       const completed = progress?.completed_blocks ?? 0;
       const total = progress?.total_blocks ?? null;
-      setYesterdayFallback({
+      setYesterdaySessionFallback({
         held: true,
+        mode: "session",
         part_name: plan.selected_part || undefined,
         lead: String(plan.session_lead || plan.therapist || "").toLowerCase().includes("kat") ? "Káťa" : "Hanička",
         completion: completed > 0 ? "partial" : "abandoned",
@@ -334,9 +343,11 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         team_acknowledgement: "Haničko a Káťo, děkuji za udržení rámce — i nedokončené sezení se teď poctivě označí a neztratí se z přehledu.",
         status_label: plan.lifecycle_status || plan.status,
       });
+      setYesterdayPlayroomFallback(null);
     } catch (e) {
       console.error("[DidDailyBriefingPanel] loadYesterdayFallback failed:", e);
-      setYesterdayFallback(null);
+      setYesterdaySessionFallback(null);
+      setYesterdayPlayroomFallback(null);
     }
   }, []);
 
