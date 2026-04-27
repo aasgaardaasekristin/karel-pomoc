@@ -11,8 +11,6 @@ import { buildAttachmentContent, useUniversalUpload, type PendingAttachment } fr
 import { handleApiError, parseSSEStream } from "@/lib/chatHelpers";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 
-const PREFERRED_PLAN_ID = "8d2deb4f-4e9e-48a2-8abc-c3f5be8d7914";
-
 interface PlayroomPlanRow {
   id: string;
   selected_part: string;
@@ -159,6 +157,13 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const loadApprovedPlan = useCallback(async () => {
     setLoading(true);
     try {
+      let preferredPlanId: string | null = null;
+      let preferredThreadId: string | null = null;
+      try {
+        preferredPlanId = sessionStorage.getItem("karel_playroom_plan_id");
+        preferredThreadId = sessionStorage.getItem("karel_playroom_thread_id");
+      } catch { /* ignore */ }
+
       const { data, error } = await (supabase as any)
         .from("did_daily_session_plans")
         .select("id, selected_part, status, program_status, urgency_breakdown, plan_markdown, created_at")
@@ -175,7 +180,26 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
           && c.approved_for_child_session === true
           && ["approved", "ready_to_start", "in_progress"].includes(row.program_status || c.review_state || c.approval?.review_state || "");
       });
-      setPlan(candidates.find((row) => row.id === PREFERRED_PLAN_ID) || candidates[0] || null);
+      const selectedPlan = (preferredPlanId ? candidates.find((row) => row.id === preferredPlanId) : null) || candidates[0] || null;
+      setPlan(selectedPlan);
+
+      if (preferredThreadId) {
+        const { data: threadRow, error: threadError } = await (supabase as any)
+          .from("did_threads")
+          .select("id, messages")
+          .eq("id", preferredThreadId)
+          .eq("sub_mode", "karel_part_session")
+          .maybeSingle();
+        if (!threadError && threadRow) {
+          setThread({
+            id: threadRow.id,
+            messages: ((threadRow.messages || []) as PlayroomThread["messages"]).map((message) => ({
+              ...message,
+              content: childSafe(contentText(message.content)) || "Jsem tady. Můžeme zůstat potichu.",
+            })),
+          });
+        }
+      }
     } catch (error) {
       console.error("[DidKidsPlayroom] plan load failed", error);
       setPlan(null);
