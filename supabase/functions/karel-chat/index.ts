@@ -1599,6 +1599,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         : rawPlayroomResponse.includes("[PLAYROOM_PROGRESS:")
           ? rawPlayroomResponse
           : `${rawPlayroomResponse.trim()} [PLAYROOM_PROGRESS:stay]`;
+      const childSafePlayroomResponse = sanitizePlayroomChildVisibleText(guardedPlayroomResponse, runtimeContext, didPartName, lastPlayroomInput);
       await writeRuntimeAudit({
         user_id: requestUserId,
         runtime_packet_id: runtimePacketId,
@@ -1609,12 +1610,12 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         prompt_contract_version: promptContractVersion,
         has_multimodal_input: requestHasMultimodalInput,
         has_drive_sync: false,
-        evaluation_status: offRail || prematureClosing || passiveDrift || symbolicEscape ? "playroom_rail_guard_replaced" : "playroom_rail_guard_passed",
+        evaluation_status: offRail || prematureClosing || passiveDrift || symbolicEscape || hasPlayroomInternalLanguage(guardedPlayroomResponse) ? "playroom_rail_guard_replaced" : "playroom_rail_guard_passed",
         request_mode: mode,
         part_name: didPartName || null,
-        metadata: { off_rail: offRail, premature_closing: prematureClosing, passive_drift: passiveDrift, symbolic_escape: symbolicEscape, current_block: playroomProgress.current, final_block: playroomProgress.max },
+        metadata: { off_rail: offRail, premature_closing: prematureClosing, passive_drift: passiveDrift, symbolic_escape: symbolicEscape, internal_language: hasPlayroomInternalLanguage(guardedPlayroomResponse), current_block: playroomProgress.current, final_block: playroomProgress.max },
       });
-      return streamPlayroomText(guardedPlayroomResponse);
+      return streamPlayroomText(childSafePlayroomResponse);
     }
 
     // ═══ ASYNC TASK EXTRACTION (non-blocking) ═══
