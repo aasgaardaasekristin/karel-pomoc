@@ -30,6 +30,8 @@ import { buildKarelVoiceGuide, type KarelVoiceMode } from "../_shared/karelVoice
 import { auditKarelOutput } from "../_shared/karelLanguageGuard.ts";
 import { assessActivityStatus, type ActivityEvidenceInput } from "../_shared/activityStatusGuard.ts";
 import { checkTaskFeasibility, type TaskProposal } from "../_shared/taskFeasibilityGuard.ts";
+import { classifyJungRelevance, shouldActivateJungOriginal } from "../_shared/jungTopicClassifier.ts";
+import { buildJungOriginalInjection } from "../_shared/jungOriginalInjection.ts";
 import { detectCircumstances } from "../_shared/therapistCircumstanceProfiler.ts";
 import {
   splitRecentThreads,
@@ -91,8 +93,23 @@ function extractPartName(text: string): string | null {
   return null;
 }
 
+function normalizeMessageContentForPrompt(content: any): string {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content.map((part: any) => {
+    if (!part || typeof part !== "object") return "";
+    if (part.type === "text") return String(part.text || "").trim();
+    if (part.type === "image_url") return "[DÍTĚ POSLALO OBRÁZEK/FOTKU]";
+    const mediaKind = part.category || part.mime_type || part.type || "příloha";
+    const name = part.name ? `: ${part.name}` : "";
+    return `[DÍTĚ POSLALO PŘÍLOHU ${String(mediaKind).toUpperCase()}${name}]`;
+  }).filter(Boolean).join("\n").trim();
+}
+
 function streamFallbackReply(mode: string, status: number) {
-  const content = mode === "supervision" || mode === "live-session"
+  const content = mode === "playroom"
+    ? "Slyším tě. Teď se mi na chvilku zasekl hlas, ale zůstávám tady u dveří a nic nemusíš opravovat. Vyber jen jednu věc: mám být blíž, dál, nebo úplně potichu?"
+    : mode === "supervision" || mode === "live-session"
     ? "Hani, jsem teď technicky přetížený, ale sezení nepřerušuj: drž se doslovných zápisů, latencí a změn v těle/hlasu. Teď polož jen jednu klidnou otázku: „Co bylo u toho slova nejdivnější?“"
     : "Teď jsem technicky přetížený, proto nedám plnou odpověď. Zkus to prosím za chvíli znovu; mezitím neuzavírej interpretaci a drž se jen ověřených dat.";
   const payload = JSON.stringify({ choices: [{ delta: { content } }] });
@@ -178,11 +195,7 @@ serve(async (req) => {
     // Aktivuje se pro did_terapeut (Hanka/Káťa) — pro děti NIKDY (guard v shouldActivateJungOriginal).
     try {
       const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
-      const lastUserText = typeof lastUserMsg?.content === "string"
-        ? lastUserMsg.content
-        : Array.isArray(lastUserMsg?.content)
-          ? lastUserMsg.content.filter((p: any) => p?.type === "text").map((p: any) => p.text).join(" ")
-          : "";
+      const lastUserText = normalizeMessageContentForPrompt(lastUserMsg?.content);
       const historyText = messages.slice(-6, -1)
         .map((m: any) => typeof m.content === "string" ? m.content : "")
         .join("\n");
@@ -955,7 +968,7 @@ Karel doporučení přirozeně začlení do rozhovoru, ne jako seznam.`;
     let detectedLang = "";
     if (isDirectChildSubMode && messages.length >= 1) {
       const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
-      const lastUserText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
+      const lastUserText = normalizeMessageContentForPrompt(lastUserMsg?.content);
       if (lastUserText.length > 0) {
         const hasCyrillic = /[\u0400-\u04FF]/.test(lastUserText);
         const hasNordic = /[æøåÆØÅ]/.test(lastUserText);
@@ -1003,8 +1016,12 @@ This overrides ALL other language instructions.
     }
 
     if (isPlayroomMode) {
+      const lastPlayroomInput = normalizeMessageContentForPrompt([...messages].reverse().find((m: any) => m.role === "user")?.content);
       systemPrompt += `\n\n═══ HERNA — POVINNÝ REŽIM VEDENÍ SEZENÍ ═══
 Toto NENÍ běžný chat ani vlákno pro vzkazy. Jsi v dětské Herně a vedeš právě schválené strukturované sezení.
+
+POSLEDNÍ SKUTEČNÝ VSTUP DÍTĚTE/PŘÍLOHA — MUSÍŠ NA NĚJ REAGOVAT JAKO PRVNÍ:
+${lastPlayroomInput || "(žádný text; dítě možná poslalo jen přílohu nebo volbu)"}
 
 ABSOLUTNÍ PRIORITA: tento blok přepisuje obecný režim "cast" i všechna pravidla o běžném chatu, vzkazech a deníku. V Herně nejsi kamarádský chat; jsi profesionální klinický průvodce v krátkém, nízkoprahovém sezení podle schváleného programu.
 
@@ -1030,7 +1047,7 @@ Zakázáno v Herně:
     let perplexityContext = "";
     if (effectiveMode === "kata" && messages.length >= 1) {
       const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
-      const lastUserText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
+      const lastUserText = normalizeMessageContentForPrompt(lastUserMsg?.content);
 
       if (lastUserText.length > 15) {
         // Step 1: Quick complexity classification (non-streaming)
@@ -1132,7 +1149,7 @@ Odpověz v češtině. Buď stručný a praktický. Max 500 slov.`,
     if (isDirectChildSubMode && didPartName && messages.length >= 2) {
       try {
         const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
-        const lastUserText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
+        const lastUserText = normalizeMessageContentForPrompt(lastUserMsg?.content);
         const userMsgCount = messages.filter((m: any) => m.role === "user").length;
 
         // Performance optimization: skip first 2 messages, short messages, and only detect every 3rd unless suspicious
@@ -1215,7 +1232,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
       }
     }
 
-    const primaryModel = isPlayroomMode ? "openai/gpt-5.2" : "google/gemini-3-flash-preview";
+    const primaryModel = isPlayroomMode ? "google/gemini-3-flash-preview" : "google/gemini-3-flash-preview";
     console.log(`[karel-chat] Primary model: ${primaryModel}; subMode=${didSubMode || "none"}`);
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -1240,7 +1257,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
     });
 
     if (!response.ok) {
-      if (response.status === 429 || response.status === 402 || response.status >= 500) return streamFallbackReply(mode, response.status);
+      if (response.status === 429 || response.status === 402 || response.status >= 500) return streamFallbackReply(isPlayroomMode ? "playroom" : mode, response.status);
       const text = await response.text();
       console.error("AI gateway error:", response.status, text);
       return new Response(JSON.stringify({ error: "AI gateway error" }), {
@@ -1429,7 +1446,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
             }
 
             const lastUserMsgMem = (messages as any[]).filter((m: any) => m.role === "user").pop();
-            const userTextMem = typeof lastUserMsgMem?.content === "string" ? lastUserMsgMem.content : "";
+            const userTextMem = normalizeMessageContentForPrompt(lastUserMsgMem?.content);
 
             if (userTextMem.length > 15) {
               const therapistKey: "HANKA" | "KATA" = didSubMode === "kata" ? "KATA" : "HANKA";

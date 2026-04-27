@@ -42,6 +42,7 @@ const toList = (value: unknown) => {
 const getChildAddress = (partName: string) => partName.toLocaleUpperCase("cs-CZ") === "TUNDRUPEK" ? "TUNDRUPKU" : partName;
 
 const firstChoices = ["jde to", "nejde to", "nevím", "chci jen ticho"];
+const PLAYROOM_TECH_FALLBACK = "Slyším tě. Teď se mi na chvilku zasekl hlas, ale zůstávám tady u dveří a nic nemusíš opravovat. Vyber jen jednu věc: mám být blíž, dál, nebo úplně potichu?";
 
 const getRoomBackground = (partName: string) => {
   if (partName.toLocaleUpperCase("cs-CZ") === "TUNDRUPEK") return tundrupekPlayroomBg;
@@ -235,7 +236,8 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       const assistantContent = await parseSSEStream(response.body, (partial) => {
         setThread((prev) => prev ? { ...prev, messages: [...nextMessages, { role: "assistant", content: childSafe(partial) || partial }] } : prev);
       });
-      const savedMessages = [...nextMessages, { role: "assistant" as const, content: childSafe(assistantContent) || assistantContent }];
+      const safeAssistantContent = childSafe(assistantContent) || assistantContent || PLAYROOM_TECH_FALLBACK;
+      const savedMessages = [...nextMessages, { role: "assistant" as const, content: safeAssistantContent }];
       const { error } = await (supabase as any).from("did_threads").update({ messages: savedMessages, last_activity_at: new Date().toISOString(), is_processed: false }).eq("id", currentThread.id);
       if (error) throw error;
       setThread({ ...currentThread, messages: savedMessages });
@@ -243,7 +245,12 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       uploads.clearAttachments();
     } catch (error) {
       console.error("[DidKidsPlayroom] message save failed", error);
-      toast.error(error instanceof Error ? error.message : "Odpověď se nepodařilo uložit.");
+      const fallbackMessages = [...nextMessages, { role: "assistant" as const, content: PLAYROOM_TECH_FALLBACK }];
+      setThread({ ...currentThread, messages: fallbackMessages });
+      await (supabase as any).from("did_threads").update({ messages: fallbackMessages, last_activity_at: new Date().toISOString(), is_processed: false }).eq("id", currentThread.id);
+      setReply("");
+      uploads.clearAttachments();
+      toast.error(error instanceof Error ? error.message : "Karel se na chvíli zasekl, ale Herna zůstává otevřená.");
     } finally {
       setSaving(false);
     }
