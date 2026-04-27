@@ -413,7 +413,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
               {recorder.state === "recorded" ? <Button variant="outline" onClick={attachRecording} className="bg-background/22 text-foreground/72 backdrop-blur-[2px]"><Mic className="mr-2 h-4 w-4" />Přiložit hlas</Button> : null}
               <Button onClick={() => sendReply(reply)} disabled={saving || uploads.attachments.some((attachment) => attachment.uploading) || (!reply.trim() && uploads.attachments.length === 0)} className="bg-primary/62 text-primary-foreground/88 backdrop-blur-[2px]"><Send className="mr-2 h-4 w-4" />Odeslat</Button>
               <Button variant="secondary" onClick={() => sendReply("Dnes nechci.")} disabled={saving}>Dnes nechci</Button>
-              <Button variant="outline" onClick={onBack} disabled={saving}><XCircle className="mr-2 h-4 w-4" />Skončit</Button>
+              <Button variant="outline" onClick={endPlayroom} disabled={saving || ending}><XCircle className="mr-2 h-4 w-4" />{ending ? "Ukončuji" : "Ukončit hernu"}</Button>
             </div>
           </section>
           ) : null}
