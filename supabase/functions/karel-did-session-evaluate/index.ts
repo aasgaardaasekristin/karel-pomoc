@@ -241,6 +241,13 @@ interface SessionReviewRow {
   evidence_limitations: string | null;
 }
 
+function isPlayroomPlan(plan: SessionPlan): boolean {
+  const contract = plan.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown as Record<string, any> : {};
+  return contract.ui_surface === "did_kids_playroom"
+    || contract.session_actor === "karel_direct"
+    || (contract.playroom_plan && typeof contract.playroom_plan === "object");
+}
+
 interface PartCardLookup {
   status: "resolved" | "missing" | "ambiguous";
   reason: string;
@@ -375,11 +382,13 @@ async function loadContext(sb: any, planId: string) {
 
   // Thread evidence must be linked to this exact plan. Do not attach another session's
   // Karel-direct opener to a therapist-led plan just because part/date match.
-  const { data: exactThreads } = await sb
+  let exactThreadQuery = sb
     .from("did_threads")
     .select("id, part_name, sub_mode, started_at, last_activity_at, messages, workspace_type, workspace_id")
     .eq("workspace_type", "session")
-    .eq("workspace_id", planId)
+    .eq("workspace_id", planId);
+  if (isPlayroomPlan(plan as SessionPlan)) exactThreadQuery = exactThreadQuery.eq("sub_mode", "karel_part_session");
+  const { data: exactThreads } = await exactThreadQuery
     .order("last_activity_at", { ascending: false })
     .limit(3);
   const threadCandidates: any[] = exactThreads ?? [];
