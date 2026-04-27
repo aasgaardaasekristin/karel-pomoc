@@ -30,6 +30,8 @@ import { buildKarelVoiceGuide, type KarelVoiceMode } from "../_shared/karelVoice
 import { auditKarelOutput } from "../_shared/karelLanguageGuard.ts";
 import { assessActivityStatus, type ActivityEvidenceInput } from "../_shared/activityStatusGuard.ts";
 import { checkTaskFeasibility, type TaskProposal } from "../_shared/taskFeasibilityGuard.ts";
+import { classifyJungRelevance, shouldActivateJungOriginal } from "../_shared/jungTopicClassifier.ts";
+import { buildJungOriginalInjection } from "../_shared/jungOriginalInjection.ts";
 import { detectCircumstances } from "../_shared/therapistCircumstanceProfiler.ts";
 import {
   splitRecentThreads,
@@ -91,8 +93,23 @@ function extractPartName(text: string): string | null {
   return null;
 }
 
+function normalizeMessageContentForPrompt(content: any): string {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content.map((part: any) => {
+    if (!part || typeof part !== "object") return "";
+    if (part.type === "text") return String(part.text || "").trim();
+    if (part.type === "image_url") return "[DÍTĚ POSLALO OBRÁZEK/FOTKU]";
+    const mediaKind = part.category || part.mime_type || part.type || "příloha";
+    const name = part.name ? `: ${part.name}` : "";
+    return `[DÍTĚ POSLALO PŘÍLOHU ${String(mediaKind).toUpperCase()}${name}]`;
+  }).filter(Boolean).join("\n").trim();
+}
+
 function streamFallbackReply(mode: string, status: number) {
-  const content = mode === "supervision" || mode === "live-session"
+  const content = mode === "playroom"
+    ? "Slyším tě. Teď se mi na chvilku zasekl hlas, ale zůstávám tady u dveří a nic nemusíš opravovat. Vyber jen jednu věc: mám být blíž, dál, nebo úplně potichu?"
+    : mode === "supervision" || mode === "live-session"
     ? "Hani, jsem teď technicky přetížený, ale sezení nepřerušuj: drž se doslovných zápisů, latencí a změn v těle/hlasu. Teď polož jen jednu klidnou otázku: „Co bylo u toho slova nejdivnější?“"
     : "Teď jsem technicky přetížený, proto nedám plnou odpověď. Zkus to prosím za chvíli znovu; mezitím neuzavírej interpretaci a drž se jen ověřených dat.";
   const payload = JSON.stringify({ choices: [{ delta: { content } }] });
