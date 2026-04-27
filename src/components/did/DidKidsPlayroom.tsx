@@ -24,6 +24,8 @@ interface PlayroomPlanRow {
 interface PlayroomThread {
   id: string;
   messages: { role: "user" | "assistant"; content: any }[];
+  workspace_id?: string | null;
+  workspace_type?: string | null;
 }
 
 interface PlayroomProgressState {
@@ -62,6 +64,10 @@ const contentText = (content: any) => {
   if (Array.isArray(content)) return content.map((part) => part?.text || (part?.image_url ? "Přiložený obrázek" : "Příloha")).filter(Boolean).join("\n");
   return "";
 };
+
+const messageCount = (messages: unknown) => Array.isArray(messages) ? messages.length : 0;
+
+const samePart = (a?: string | null, b?: string | null) => String(a || "").toLocaleLowerCase("cs-CZ") === String(b || "").toLocaleLowerCase("cs-CZ");
 
 const attachmentLabel: Record<PendingAttachment["category"], string> = {
   image: "fotka",

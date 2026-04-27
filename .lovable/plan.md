@@ -1,95 +1,75 @@
-Souhlasím — tohle je další bug z mé předchozí opravy. Guard sice Karla zastavil před volným uzavíráním, ale při vynuceném návratu na koleje začal dítěti ukazovat interní program: „Další bod je: Měkké uzavření… Cílem je…“. To do dětské Herny nepatří.
+Zjistil jsem příčinu: aktivita nejspíš nezmizela z databáze, ale Herna se přepnula na novější/prázdné vlákno a novější schválený plán.
+
+V datech jsou teď dvě dnešní Herny pro Tundrupka:
+
+```text
+1) Nové prázdné vlákno
+   thread: e031a91f-b3e3-488c-b905-48b9703b60b5
+   plan:   7a1f48d5-f1a2-4cfe-90b0-7ca153cd2001
+   zprávy: 1
+   čas:    18:51
+
+2) Původní aktivní vlákno s celou konverzací
+   thread: c0f53d31-c62a-42c5-b932-de4def806f59
+   plan:   6dab7338-8f9b-4168-af83-ff14e00e89c1
+   zprávy: 55
+   čas:    17:52
+```
+
+Takže stará aktivita pravděpodobně není smazaná. Jen se UI/loader po posledních zásazích chytil novějšího prázdného plánu/vlákna, takže to vypadá, jako by předchozí Herna nikdy neproběhla.
 
 ## Co opravím
 
-### 1. Oddělím interní program od dětské řeči
-Vynucovací odpověď už nikdy nesmí obsahovat:
-- „Další bod je…“
-- názvy bloků typu „Měkké uzavření“, „Symbolická hra“, „Co potřebuje malý krok“
-- „Karel nabídne…“
-- „Cílem je…“
-- „dostupnost části“, „program“, „blok“, „terapeutický plán“, „schválený“
+### 1. Obnovím zobrazení původní aktivity
+Nastavím Herna loader tak, aby při výběru dnešního plánu nedal slepě přednost nejnovějšímu schválenému plánu, pokud existuje starší aktivní vlákno se skutečnou konverzací.
 
-Interní krokový stroj zůstane pro řízení, ale dítě uvidí jen dětskou repliku.
-
-### 2. Přepíšu backendový `buildPlayroomRailReply`
-Současná problematická věta vzniká v backendu v `supabase/functions/karel-chat/index.ts`, kde fallback skládá odpověď takto:
+Pravidlo bude:
 
 ```text
-Slyším tě... Další bod je: {blockTitle}. {programPrompt}
+Pokud existuje dnešní karel_part_session pro stejnou část a má více než opener,
+Herna má pokračovat v něm, ne otevírat prázdné nové vlákno.
 ```
 
-To nahradím dětským composerem:
+### 2. Opravím výběr plánu v `DidKidsPlayroom.tsx`
+V `loadApprovedPlan` přidám bezpečný resolver:
+- nejdřív vezme `workspace_thread` z URL nebo `sessionStorage`, pokud existuje,
+- pokud neexistuje, vyhledá dnešní aktivní vlákna `sub_mode = karel_part_session`,
+- upřednostní vlákno se zprávami a poslední aktivitou,
+- z jeho `workspace_id` vezme správný plán,
+- teprve když žádné aktivní vlákno není, vybere nejnovější schválený plán.
+
+Tím se původní 55zprávová aktivita znovu objeví.
+
+### 3. Opravím `karel-part-session-prepare`
+Funkce teď hledá existující vlákno jen podle přesného `plan_id`. Když vznikl nový schválený plán, vytvořila novou prázdnou Hernu, i když dnešní Herna Tundrupka už běžela.
+
+Změním idempotenci takto:
 
 ```text
-Slyším tě, Tundrupku. Nekončíme, zůstaneme jen u jednoho malého kousku.
-Vyber si: A) pošleš mi jedno slovo, B) pošleš jen obrázek/symbol, C) necháme chvilku ticho.
+A) pokud plan_id už má vlákno, vrať ho
+B) jinak pro stejnou část a dnešní den najdi poslední neukončené / aktivní vlákno s messages > 1
+C) pokud existuje, vrať původní vlákno a nepřepisuj jeho messages
+D) nové vlákno vytvoř jen tehdy, když žádná reálná dnešní aktivita neexistuje
 ```
 
-Podle aktuálního bloku se vytvoří dětská mikro-volba, ne opis terapeutického plánu.
+### 4. Nechám historii nedotčenou
+Nebudu mazat ani přepisovat původní zprávy. Cílem je pouze znovu napojit UI na správný záznam.
 
-### 3. Přepíšu frontendový `buildRailReply`
-Stejný problém je i ve frontendu v `src/components/did/DidKidsPlayroom.tsx`. Pokud frontend zachytí off-rail odpověď, také nesmí vložit interní text plánu.
-
-Frontend guard bude používat jen:
-- krátké navázání na dítě,
-- „nekončíme / zůstaneme u malého kousku“,
-- jednu jednoduchou A/B/C volbu,
-- žádné názvy programu.
-
-### 4. Přidám tvrdý sanitizační filtr pro dětské odpovědi
-Do Herny přidám finální kontrolu textu před uložením/zobrazením. Pokud odpověď obsahuje interní jazyk, bude nahrazena bezpečnou dětskou verzí.
-
-Zakázané vzory:
-```text
-Další bod je
-aktuální blok
-programový krok
-Měkké uzavření
-Symbolická hra
-Cílem je
-Karel nabídne
-terapeutický plán
-schválený program
-část / dostupnost části
-runtime / index / blok
-```
-
-### 5. Opravím logiku posledního bloku
-I když je aktuální blok „Měkké uzavření“, Karel ho nesmí dítěti pojmenovat klinicky. Dětská verze bude například:
-
-```text
-Teď to můžeme jen jemně položit, ne zavřít narychlo. Vyber si, co je pro tebe nejlepší: A) jedno malé slovo, B) jeden symbol, C) ticho a já budu potichu blízko.
-```
-
-Tedy: program se splní, ale dětskou řečí.
-
-### 6. Resetnu/napravím aktuální pokračování Tundrupka
-Po opravě zajistím, aby další odpověď navázala dětsky a podle programu, ne interním popisem. Pokud je uložená poslední špatná odpověď v threadu, upravím následnou návaznost tak, aby se Karel omluvně a jednoduše vrátil k Herně bez metajazyka.
+### 5. Doplním ochranu proti „zmizení“ po dalších opravách
+Do loaderu přidám fallback: pokud vybraný thread má jen opener, ale existuje starší dnešní thread se stejnou částí a více zprávami, UI zobrazí starší aktivní thread.
 
 ## Technické změny
 
-- `supabase/functions/karel-chat/index.ts`
-  - přepsat `buildPlayroomRailReply`,
-  - přidat `sanitizePlayroomChildVisibleText`,
-  - odstranit child-facing vypisování `blockTitle` a `programPrompt`,
-  - vynucovat dětské A/B/C formulace podle typu kroku,
-  - auditovat zásah jako guard replacement, ale bez úniku interního textu.
-
 - `src/components/did/DidKidsPlayroom.tsx`
-  - přepsat `buildRailReply`,
-  - rozšířit `blockedChildText`,
-  - před uložením finální odpovědi kontrolovat interní jazyk,
-  - při zachycení interního jazyka nahradit odpověď dětskou mikro-volbou.
+  - rozšířit načítání o `workspace_id`, `workspace_type`, `started_at`, `last_activity_at`, `messages`,
+  - při výběru plánu zohlednit existující aktivní vlákno,
+  - při načtení threadu uložit jeho `workspace_id` zpět do `sessionStorage`, aby se Herna dál držela stejného plánu.
+
+- `supabase/functions/karel-part-session-prepare/index.ts`
+  - změnit lookup existující Herny: kromě přesného `workspace_id=plan_id` hledat také dnešní aktivní vlákno pro stejnou část,
+  - preferovat thread s reálnou aktivitou (`jsonb_array_length(messages) > 1`),
+  - nevytvářet duplicitní prázdnou Hernu, pokud už dnešní Herna proběhla.
 
 ## Očekávaný výsledek
 
-Karel bude dál tvrdě držen programem, ale dítě neuvidí technický ani klinický plán. Herna bude znít jako rozhovor s dítětem:
-
-```text
-Slyším tě, Tundrupku. Trochu jsem to předtím řekl moc dospělácky; teď to zjednoduším.
-Nekončíme narychlo, jen položíme jeden malý kousek.
-Vyber si: A) jedno slovo, B) jeden symbol, C) ticho a já budu blízko.
-```
-
-Program zůstane závazný, ale jeho formulace bude skrytá.
+Po opravě se Herna znovu otevře na původní konverzaci Tundrupka s 55 zprávami. Nové prázdné vlákno nebude uživateli vytlačovat rozpracovanou aktivitu. Karel bude moct pokračovat v programu, ale z historicky správného místa, ne z čistého začátku.
