@@ -81,6 +81,28 @@ interface ProposedSession {
   questions_for_kata?: string[];
 }
 
+interface ProposedPlayroom {
+  id?: string;
+  part_name: string;
+  status?: "draft" | "awaiting_therapist_review" | "in_revision" | "approved" | "ready_to_start" | "in_progress" | "completed" | "evaluated" | "archived";
+  why_this_part_today: string;
+  main_theme: string;
+  evidence_sources?: string[];
+  goals?: string[];
+  playroom_plan: {
+    therapeutic_program?: AgendaBlock[];
+    child_safe_version?: string;
+    micro_steps?: string[];
+    expected_child_reactions?: string[];
+    recommended_karel_responses?: string[];
+    risks_and_stop_signals?: string[];
+    forbidden_directions?: string[];
+    runtime_packet_seed?: Record<string, unknown>;
+  };
+  questions_for_hanka?: string[];
+  questions_for_kata?: string[];
+}
+
 /** Nový tvar ask položky (id+text). Edge funkce vrací tohle od 2026-04-19. */
 interface AskItemObj { id: string; text: string }
 type AskItemRaw = string | AskItemObj;
@@ -107,6 +129,7 @@ interface BriefingPayload {
   yesterday_session_review?: YesterdaySessionReview | null;
   decisions: BriefingDecision[];
   proposed_session?: ProposedSession | null;
+  proposed_playroom?: ProposedPlayroom | null;
   ask_hanka: AskItemRaw[];
   ask_kata: AskItemRaw[];
   waiting_for?: string[];
