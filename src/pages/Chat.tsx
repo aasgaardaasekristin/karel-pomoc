@@ -1426,14 +1426,28 @@ const Chat = () => {
           setDidFlowState("therapist-threads");
           return;
         }
-        // 2026-04-22 — KAREL+ČÁST ROOM: nový sub_mode "karel_part_session"
-        // se chová jako specializovaná varianta cast vlákna (Karel ↔ část).
-        // "kata" zůstává kata, "cast" a "karel_part_session" → cast shell,
+        // HERNA ROUTING TRUTH PASS: `karel_part_session` NENÍ běžný chat shell.
+        // Je to dětská Herna (DID/Kluci/Herna), proto musí otevřít playroom UI,
+        // ne terapeutické vlákno ani live sezení.
+        if (thread.subMode === "karel_part_session") {
+          try {
+            sessionStorage.setItem("karel_playroom_thread_id", thread.id);
+            if (thread.workspaceType === "session" && thread.workspaceId) {
+              sessionStorage.setItem("karel_playroom_plan_id", thread.workspaceId);
+            }
+          } catch { /* ignore */ }
+          setDidSubMode("playroom");
+          setActiveThread(null);
+          setMessages([]);
+          setDidFlowState("playroom");
+          return;
+        }
+
+        // "kata" zůstává kata, "cast" → cast shell,
         // všechno ostatní fallback na mamka (terapeutické vlákno).
         let subMode: "mamka" | "kata" | "cast" | "karel_part_session";
         if (thread.subMode === "kata") subMode = "kata";
         else if (thread.subMode === "cast") subMode = "cast";
-        else if (thread.subMode === "karel_part_session") subMode = "karel_part_session";
         else subMode = "mamka";
         setDidSubMode(subMode as DidSubMode);
         const primeMode = subMode === "karel_part_session" ? "cast" : subMode;
