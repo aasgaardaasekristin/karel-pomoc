@@ -111,21 +111,24 @@ const stepLine = (step: any) => [
   step.fallback ? `fallback: ${step.fallback}` : null,
 ].filter(Boolean).join(" | ");
 
-const currentStepForThread = (plan: PlayroomPlanRow | null, currentThread?: PlayroomThread | null) => {
+const currentStepForThread = (plan: PlayroomPlanRow | null, currentThread?: PlayroomThread | null, progress?: PlayroomProgressState) => {
   const steps = getProgramSteps(plan);
   if (!steps.length) return null;
+  if (progress) return steps[Math.min(Math.max(progress.currentBlockIndex, 0), steps.length - 1)];
   const userTurns = currentThread?.messages?.filter((message) => message.role === "user").length || 1;
   return steps[Math.min(Math.max(userTurns, 1) - 1, steps.length - 1)];
 };
 
-const planContract = (plan: PlayroomPlanRow | null, currentThread?: PlayroomThread | null) => {
+const planContract = (plan: PlayroomPlanRow | null, currentThread?: PlayroomThread | null, progress?: PlayroomProgressState) => {
   const steps = getProgramSteps(plan);
-  const currentStep = currentStepForThread(plan, currentThread);
+  const currentStep = currentStepForThread(plan, currentThread, progress);
+  const completed = progress?.completedBlockIndexes || [];
   return `SCHVÁLENÝ PROGRAM HERNY PRO DNEŠEK — AKTIVNÍ, ODSOUHLASENÝ TERAPEUTKAMI.
 PLAN_ID: ${plan?.id || "neznámý"}
 ČÁST: ${plan?.selected_part || plan?.urgency_breakdown?.target_part || "neznámá"}
 REVIEW_STATE: ${plan?.urgency_breakdown?.review_state || plan?.urgency_breakdown?.approval?.review_state || "neznámý"}
 POVOLENÁ HLOUBKA: ${plan?.urgency_breakdown?.allowed_depth || plan?.urgency_breakdown?.playroom_plan?.allowed_depth || "check_in_only"}
+JAZYK HERNY: čeština. Nepřepínej do norštiny/angličtiny bez výslovné žádosti dítěte nebo jasné souvislé cizojazyčné komunikace.
 
 VLASTNÍ PROGRAM HERNY:
 ${plan?.urgency_breakdown?.playroom_plan ? JSON.stringify(plan.urgency_breakdown.playroom_plan, null, 2).slice(0, 5000) : "CHYBÍ — bez explicitního playroom_plan nesmí Karel použít plán terapeutického sezení jako program Herny."}
@@ -133,15 +136,23 @@ ${plan?.urgency_breakdown?.playroom_plan ? JSON.stringify(plan.urgency_breakdown
 STRUKTUROVANÝ PROGRAM — POUŽIJ JAKO SKRYTÝ ŘÍDICÍ PLÁN, NEUKAZUJ DÍTĚTI:
 ${steps.length ? steps.map(stepLine).join("\n") : "Programové kroky Herny nejsou ve strukturovaných datech; nepřebírej plán Sezení. Zůstaň jen u bezpečného krátkého check-inu."}
 
-AKTUÁLNÍ KROK TEĎ:
+STAV PRŮBĚHU:
+- aktuální blok index: ${progress?.currentBlockIndex ?? 0} z ${Math.max(steps.length - 1, 0)}
+- dokončené bloky indexy: ${completed.length ? completed.join(", ") : "žádné"}
+- formální ukončení smí nastat jen tlačítkem „Ukončit hernu“, jasným stopem dítěte nebo bezpečnostním důvodem.
+
+AKTUÁLNÍ BLOK TEĎ — DRŽ SE HO, DOKUD NENÍ SPLNĚNÝ:
 ${currentStep ? stepLine(currentStep) : "krok 1: bezpečný vstup a volba vzdálenosti"}
 
 HERNA KONTRAKT PRO KARLA:
 - Nejde o běžné vlákno. Vedeš strukturované terapeutické Herna sezení podle schváleného programu.
 - V každé odpovědi zvol konkrétní další krok programu, ale ihned ho přizpůsob aktuálnímu stavu dítěte.
+- Neukončuj Hernu sám. Neluč se a neříkej „pro dnešek“ mimo poslední blok a bez explicitního stopu dítěte.
+- Pokud dítě mluví symbolicky o odchodu vzhůru / hvězdičce / Bohu, nejprve bezpečně ukotvi a pokračuj v aktuálním bloku; nepoužij to jako důvod k uzavření.
 - Každá replika má mít: 1) naladění na odpověď nebo přílohu, 2) jemnou motivaci, 3) jednu konkrétní mikro-aktivitu / test / volbu A/B.
 - Nesmíš být pasivní. Neptej se prázdně „co chceš dělat“. Veď, ale nech kontrolu dítěti.
 - Odpověď má být krátká, konkrétní a profesionální: max 5 krátkých vět, vždy jeden krok, nikdy obecné povídání.
+- Na úplný konec odpovědi přidej skrytou značku přesně v jednom tvaru: [PLAYROOM_PROGRESS:stay] pokud pokračuješ ve stejném bloku, [PLAYROOM_PROGRESS:advance] pokud je blok dostatečně splněný a příště má začít další, [PLAYROOM_PROGRESS:fallback] pokud se vracíš do bezpečí, [PLAYROOM_PROGRESS:stop] jen při jasném stopu/bezpečnostním stopu.
 - Nikdy dítěti neukazuj interní plán, názvy diagnostiky, terapeutek ani technické vrstvy.
 - Nikdy sám nenabízej posílání vzkazů mamince/Haničce/Kátě/e-mailem. Jen pokud si o to dítě výslovně řekne nebo je bezprostřední bezpečnostní riziko.
 - Reaguj na text, hlas, fotku, video, screenshot i dokument jako na materiál ze sezení, ne jako na běžnou přílohu.
