@@ -266,8 +266,9 @@ serve(async (req) => {
     const dayStart = `${today}T00:00:00.000Z`;
     const dayEnd = `${today}T23:59:59.999Z`;
 
-    // 1) Idempotent lookup — primary truth is workspace_type=session + workspace_id=plan_id.
-    let existingQuery = sb.from("did_threads").select("id, started_at").eq("sub_mode", "karel_part_session");
+    // 1) Idempotent lookup — primary truth is workspace_type=session + workspace_id=plan_id,
+    //    but do not hide an already active same-day playroom behind a newer empty plan/thread.
+    let existingQuery = sb.from("did_threads").select("id, started_at, messages").eq("sub_mode", "karel_part_session");
     if (planId) {
       existingQuery = existingQuery.eq("workspace_type", "session").eq("workspace_id", planId);
     } else {
@@ -275,9 +276,23 @@ serve(async (req) => {
     }
     const existing = await existingQuery.order("started_at", { ascending: false }).limit(1).maybeSingle();
 
-    if (existing.data?.id) {
+    const { data: sameDayThreads } = await sb
+      .from("did_threads")
+      .select("id, started_at, messages")
+      .eq("sub_mode", "karel_part_session")
+      .ilike("part_name", partName)
+      .gte("started_at", dayStart)
+      .lte("started_at", dayEnd)
+      .order("last_activity_at", { ascending: false })
+      .limit(10);
+    const activeSameDay = (sameDayThreads || []).find((row: any) => row.id !== existing.data?.id && Array.isArray(row.messages) && row.messages.length > 1);
+    if (existing.data?.id && (!activeSameDay || (Array.isArray(existing.data.messages) && existing.data.messages.length > 1))) {
       if (planId) await ensurePlayroomProgress(sb, { userId: null, planId, partName, playroomPlan });
       return jsonRes({ thread_id: existing.data.id, created: false });
+    }
+    if (activeSameDay?.id) {
+      if (planId) await ensurePlayroomProgress(sb, { userId: null, planId, partName, playroomPlan });
+      return jsonRes({ thread_id: activeSameDay.id, created: false, reused_active_playroom: true });
     }
 
     // 2) Resolve user_id (single-tenant fallback)

@@ -24,6 +24,8 @@ interface PlayroomPlanRow {
 interface PlayroomThread {
   id: string;
   messages: { role: "user" | "assistant"; content: any }[];
+  workspace_id?: string | null;
+  workspace_type?: string | null;
 }
 
 interface PlayroomProgressState {
@@ -62,6 +64,10 @@ const contentText = (content: any) => {
   if (Array.isArray(content)) return content.map((part) => part?.text || (part?.image_url ? "Přiložený obrázek" : "Příloha")).filter(Boolean).join("\n");
   return "";
 };
+
+const messageCount = (messages: unknown) => Array.isArray(messages) ? messages.length : 0;
+
+const samePart = (a?: string | null, b?: string | null) => String(a || "").toLocaleLowerCase("cs-CZ") === String(b || "").toLocaleLowerCase("cs-CZ");
 
 const attachmentLabel: Record<PendingAttachment["category"], string> = {
   image: "fotka",
@@ -328,7 +334,28 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
           && c.approved_for_child_session === true
           && ["approved", "ready_to_start", "in_progress"].includes(row.program_status || c.review_state || c.approval?.review_state || "");
       });
-      const selectedPlan = (preferredPlanId ? candidates.find((row) => row.id === preferredPlanId) : null) || candidates[0] || null;
+      const today = pragueTodayISO();
+      const dayStart = `${today}T00:00:00.000Z`;
+      const dayEnd = `${today}T23:59:59.999Z`;
+      const { data: activeThreads } = await (supabase as any)
+        .from("did_threads")
+        .select("id, part_name, messages, workspace_id, workspace_type, started_at, last_activity_at")
+        .eq("sub_mode", "karel_part_session")
+        .gte("started_at", dayStart)
+        .lte("started_at", dayEnd)
+        .order("last_activity_at", { ascending: false });
+      const realActiveThread = ((activeThreads || []) as any[])
+        .filter((row) => messageCount(row.messages) > 1)
+        .find((row) => !preferredPlanId || row.workspace_id === preferredPlanId || candidates.some((planRow) => planRow.id === row.workspace_id && samePart(planRow.selected_part, row.part_name)));
+      if (!preferredThreadId && realActiveThread?.id) {
+        preferredThreadId = realActiveThread.id;
+        if (realActiveThread.workspace_id) preferredPlanId = realActiveThread.workspace_id;
+      }
+
+      const selectedPlan = (preferredPlanId ? candidates.find((row) => row.id === preferredPlanId) : null)
+        || (realActiveThread?.workspace_id ? candidates.find((row) => row.id === realActiveThread.workspace_id) : null)
+        || candidates[0]
+        || null;
       setPlan(selectedPlan);
       let completedIndexes: number[] = [];
       if (selectedPlan) {
@@ -346,19 +373,29 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       if (preferredThreadId) {
         const { data: threadRow, error: threadError } = await (supabase as any)
           .from("did_threads")
-          .select("id, messages")
+          .select("id, messages, workspace_id, workspace_type")
           .eq("id", preferredThreadId)
           .eq("sub_mode", "karel_part_session")
           .maybeSingle();
-        if (!threadError && threadRow) {
+        const fallbackThread = threadRow && messageCount(threadRow.messages) <= 1
+          ? ((activeThreads || []) as any[]).find((row) => row.id !== threadRow.id && messageCount(row.messages) > 1 && samePart(row.part_name, selectedPlan?.selected_part))
+          : null;
+        const rowToLoad = fallbackThread || threadRow;
+        if (!threadError && rowToLoad) {
           const loadedThread = {
-            id: threadRow.id,
-            messages: ((threadRow.messages || []) as PlayroomThread["messages"]).map((message) => ({
+            id: rowToLoad.id,
+            workspace_id: rowToLoad.workspace_id,
+            workspace_type: rowToLoad.workspace_type,
+            messages: ((rowToLoad.messages || []) as PlayroomThread["messages"]).map((message) => ({
               ...message,
               content: childSafe(contentText(message.content)) || "Jsem tady. Můžeme zůstat potichu.",
             })),
           };
           setThread(loadedThread);
+          try {
+            sessionStorage.setItem("karel_playroom_thread_id", loadedThread.id);
+            if (loadedThread.workspace_type === "session" && loadedThread.workspace_id) sessionStorage.setItem("karel_playroom_plan_id", loadedThread.workspace_id);
+          } catch { /* ignore */ }
           setProgress(inferProgressFromThread(getProgramSteps(selectedPlan), loadedThread.messages, completedIndexes));
         }
       }
@@ -387,12 +424,16 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
 
       const { data, error } = await (supabase as any)
         .from("did_threads")
-        .select("id, messages")
+        .select("id, messages, workspace_id, workspace_type")
         .eq("id", payload.thread_id)
         .maybeSingle();
       if (error || !data) throw error || new Error("Vlákno Herny se nenašlo.");
-      const loadedThread = { id: data.id, messages: ((data.messages || []) as PlayroomThread["messages"]).map((message) => ({ ...message, content: childSafe(contentText(message.content)) || "Jsem tady. Můžeme zůstat potichu." })) };
+      const loadedThread = { id: data.id, workspace_id: data.workspace_id, workspace_type: data.workspace_type, messages: ((data.messages || []) as PlayroomThread["messages"]).map((message) => ({ ...message, content: childSafe(contentText(message.content)) || "Jsem tady. Můžeme zůstat potichu." })) };
       setThread(loadedThread);
+      try {
+        sessionStorage.setItem("karel_playroom_thread_id", loadedThread.id);
+        if (loadedThread.workspace_type === "session" && loadedThread.workspace_id) sessionStorage.setItem("karel_playroom_plan_id", loadedThread.workspace_id);
+      } catch { /* ignore */ }
       await persistPlayroomProgress(progress, loadedThread);
       if (firstReply) {
         await saveReply(loadedThread, firstReply);
