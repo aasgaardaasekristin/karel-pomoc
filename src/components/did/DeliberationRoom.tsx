@@ -743,6 +743,8 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
       const authoritativeMarkdown = buildApprovedLivePlanMarkdown(
         (deliberationRes?.data as LiveDeliberationSource | null) ?? ((d as any) as LiveDeliberationSource | null),
       );
+      const liveSource = (deliberationRes?.data as LiveDeliberationSource | null) ?? ((d as any) as LiveDeliberationSource | null);
+      const isPlayroom = isPlayroomDeliberation(liveSource);
 
       if (authoritativeMarkdown) {
         const { error: syncErr } = await (supabase as any)
@@ -767,6 +769,25 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
       if (fetchErr || !planRow) {
         console.error("[DeliberationRoom] startLiveSession fetch failed:", fetchErr);
         toast.error("Nepodařilo se načíst aktuální schválený plán.");
+        return;
+      }
+
+      if (isPlayroom) {
+        const headers = await getAuthHeaders();
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-part-session-prepare`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ part_name: planRow.selected_part, plan_id: planRow.id }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.thread_id) throw new Error(payload.message || payload.error || "Herna nejde otevřít.");
+        try {
+          sessionStorage.setItem("karel_playroom_plan_id", planRow.id);
+          sessionStorage.setItem("karel_playroom_thread_id", payload.thread_id);
+        } catch { /* ignore */ }
+        onClose();
+        window.location.assign(`/chat?workspace_thread=${payload.thread_id}`);
+        toast.success("Herna zahájena.");
         return;
       }
 
