@@ -176,6 +176,44 @@ function extractPlayroomCurrentProgramPrompt(runtimeContext?: string | null) {
   return childPrompt || strategy || currentBlock || "Vyber jeden mal\u00fd dal\u0161\u00ed krok: A) z\u016fstaneme bl\u00edzko u sv\u011btla, B) sv\u011btlo n\u00e1m uk\u00e1\u017ee jedny bezpe\u010dn\u00e9 dve\u0159e.";
 }
 
+function normalizePlayroomText(input: string) {
+  return String(input || "").toLocaleLowerCase("cs-CZ").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function extractPlayroomProgress(runtimeContext?: string | null) {
+  const match = String(runtimeContext || "").match(/aktualni blok index:\s*(\d+)\s*z\s*(\d+)/i)
+    || normalizePlayroomText(String(runtimeContext || "")).match(/aktualni blok index:\s*(\d+)\s*z\s*(\d+)/i);
+  const current = Number(match?.[1] || 0);
+  const max = Number(match?.[2] || 0);
+  return { current, max, isFinal: current >= max };
+}
+
+function isPrematurePlayroomClosing(output: string) {
+  const text = normalizePlayroomText(output);
+  return /(pro dnesek|louci|loucime|koncime|preju ti|zbytek dne|mej se|kdykoliv budes chtit|zavrit hernu|sezeni zavrit)/i.test(text);
+}
+
+function playroomOutputFollowsRuntimeStep(output: string, runtimeContext?: string | null) {
+  const prompt = extractPlayroomCurrentProgramPrompt(runtimeContext);
+  const source = normalizePlayroomText(prompt);
+  const haystack = normalizePlayroomText(output);
+  const keywords = Array.from(new Set((source.match(/[a-z]{5,}/g) || [])
+    .filter((word) => !/(ktery|ktera|muzes|jeden|maly|dnes|bezpec|tvoje|tebou|vyber|zkusime|muzeme|odpoved|kousek)/i.test(word))
+    .slice(0, 10)));
+  return keywords.length === 0 || keywords.some((word) => haystack.includes(word));
+}
+
+function buildPlayroomRailReply(runtimeContext: string | null | undefined, childName?: string | null, lastInput?: string | null) {
+  const normalizedInput = normalizePlayroomText(lastInput || "");
+  const childAddress = (childName || "").toLocaleUpperCase("cs-CZ") === "TUNDRUPEK" ? "Tundrupku" : (childName || "");
+  const attune = /hvezdi|buh|nahore|svetlo|nebe/i.test(normalizedInput)
+    ? "Sly\u0161\u00edm tu hv\u011bzdi\u010dku i to, \u017ee chce b\u00fdt hodn\u011b bl\u00edzko sv\u011btlu."
+    : /blizko|u tebe|se mnou/i.test(normalizedInput)
+      ? "Sly\u0161\u00edm, \u017ee m\u00e1m b\u00fdt bl\u00edzko, a z\u016fst\u00e1v\u00e1m tady s tebou."
+      : "Sly\u0161\u00edm t\u011b a beru to jako odpov\u011b\u010f na n\u00e1\u0161 krok.";
+  return `${attune} Te\u010f nejdeme pry\u010d a neuzav\u00edr\u00e1me to${childAddress ? `, ${childAddress}` : ""}; pokra\u010dujeme p\u0159esn\u011b dal\u0161\u00edm kouskem dne\u0161n\u00ed hry. ${extractPlayroomCurrentProgramPrompt(runtimeContext)} [PLAYROOM_PROGRESS:stay]`;
+}
+
 function isExplicitPlayroomContinuationRequest(input: string) {
   return /(nekon\u010d\u00ed|nekon\u010d\u00edme|mus\u00edme\s+pokra\u010dovat|pokra\u010duj|pokra\u010dovat|co\s+d\u00e1l|zat\u00edm\s+jsme\s+ud\u011blali\s+jen|jenom?\s+kous\u00ednek|podle\s+programu)/i.test(input);
 }
@@ -198,6 +236,26 @@ function streamPlayroomText(content: string) {
     status: 200,
     headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
   });
+}
+
+async function readSseContent(stream: ReadableStream<Uint8Array>) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let fullResponse = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = decoder.decode(value, { stream: true });
+    for (const line of chunk.split("\n")) {
+      if (line.startsWith("data: ") && !line.includes("[DONE]")) {
+        try {
+          const json = JSON.parse(line.slice(6));
+          fullResponse += json.choices?.[0]?.delta?.content || "";
+        } catch {}
+      }
+    }
+  }
+  return fullResponse;
 }
 
 function streamFallbackReply(mode: string, status: number) {
@@ -1196,9 +1254,7 @@ Zakázáno v Herně:
 - Neodhaluj klinické názvy metod; dítě dostane jen jednoduchý zážitek, volbu a bezpečný krok.
 - Když dítě řekne „chtěl bych být hvězdičkou“, „být nahoře“, „být u Boha“ nebo podobný symbol odchodu/úniku, nepotvrzuj odchod jako konečný cíl a neuzavírej. Nejdřív validuj, potom jemně ukotvi v bezpečném kontaktu a pokračuj dalším krokem aktuálního bloku.`;
       if (isExplicitPlayroomContinuationRequest(lastPlayroomInput) && !isExplicitPlayroomStopRequest(lastPlayroomInput)) {
-        const childAddress = (didPartName || "").toLocaleUpperCase("cs-CZ") === "TUNDRUPEK" ? "Tundrupku" : (didPartName || "");
-        const nextProgramPrompt = extractPlayroomCurrentProgramPrompt(typeof didInitialContext === "string" ? didInitialContext : "");
-        return streamPlayroomText(`Máš pravdu${childAddress ? `, ${childAddress}` : ""}, nekončíme. Udělali jsme zatím jen kousínek a já se vracím k naší dnešní hře, krok po kroku. Teď nic nezavíráme ani nikam neodcházíme. ${nextProgramPrompt} [PLAYROOM_PROGRESS:stay]`);
+        return streamPlayroomText(buildPlayroomRailReply(typeof didInitialContext === "string" ? didInitialContext : "", didPartName, lastPlayroomInput));
       }
     }
 
@@ -1479,6 +1535,37 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    if (isPlayroomMode) {
+      const lastPlayroomInput = normalizeMessageContentForPrompt([...messages].reverse().find((m: any) => m.role === "user")?.content);
+      const runtimeContext = typeof didInitialContext === "string" ? didInitialContext : "";
+      const playroomProgress = extractPlayroomProgress(runtimeContext);
+      const rawPlayroomResponse = await readSseContent(response.body!);
+      const mustStayOnRails = !playroomProgress.isFinal && !isExplicitPlayroomStopRequest(lastPlayroomInput);
+      const offRail = !playroomOutputFollowsRuntimeStep(rawPlayroomResponse, runtimeContext);
+      const prematureClosing = isPrematurePlayroomClosing(rawPlayroomResponse);
+      const guardedPlayroomResponse = mustStayOnRails && (offRail || prematureClosing)
+        ? buildPlayroomRailReply(runtimeContext, didPartName, lastPlayroomInput)
+        : rawPlayroomResponse.includes("[PLAYROOM_PROGRESS:")
+          ? rawPlayroomResponse
+          : `${rawPlayroomResponse.trim()} [PLAYROOM_PROGRESS:stay]`;
+      await writeRuntimeAudit({
+        user_id: requestUserId,
+        runtime_packet_id: runtimePacketId,
+        function_name: "karel-chat",
+        model_used: primaryModel,
+        model_tier: modelTier(primaryModel),
+        did_sub_mode: didSubMode || null,
+        prompt_contract_version: promptContractVersion,
+        has_multimodal_input: requestHasMultimodalInput,
+        has_drive_sync: false,
+        evaluation_status: offRail || prematureClosing ? "playroom_rail_guard_replaced" : "playroom_rail_guard_passed",
+        request_mode: mode,
+        part_name: didPartName || null,
+        metadata: { off_rail: offRail, premature_closing: prematureClosing, current_block: playroomProgress.current, final_block: playroomProgress.max },
+      });
+      return streamPlayroomText(guardedPlayroomResponse);
     }
 
     // ═══ ASYNC TASK EXTRACTION (non-blocking) ═══

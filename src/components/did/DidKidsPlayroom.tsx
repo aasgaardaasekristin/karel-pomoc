@@ -102,6 +102,22 @@ const nextProgressState = (progress: PlayroomProgressState, steps: any[], comman
   return { currentBlockIndex: firstOpen >= 0 ? firstOpen : Math.max(steps.length - 1, 0), completedBlockIndexes: completed };
 };
 
+const progressAfterChildAnswer = (progress: PlayroomProgressState, steps: any[], lastUserText: string): PlayroomProgressState => {
+  if (!steps.length || isStopRequest(lastUserText)) return progress;
+  const completed = Array.from(new Set([...progress.completedBlockIndexes, progress.currentBlockIndex])).sort((a, b) => a - b);
+  const firstOpen = steps.findIndex((_, index) => !completed.includes(index));
+  return { currentBlockIndex: firstOpen >= 0 ? firstOpen : Math.max(steps.length - 1, 0), completedBlockIndexes: completed };
+};
+
+const inferProgressFromThread = (steps: any[], _messages: PlayroomThread["messages"], savedCompleted: number[]): PlayroomProgressState => {
+  if (!steps.length) return { currentBlockIndex: 0, completedBlockIndexes: [] };
+  if (savedCompleted.length) {
+    const firstOpen = steps.findIndex((_, index) => !savedCompleted.includes(index));
+    return { currentBlockIndex: firstOpen >= 0 ? firstOpen : Math.max(steps.length - 1, 0), completedBlockIndexes: savedCompleted };
+  }
+  return { currentBlockIndex: 0, completedBlockIndexes: [] };
+};
+
 const stepLine = (step: any) => [
   `${step.step || "?"}. ${step.title || "krok"}`,
   step.method ? `metoda: ${step.method}` : null,
@@ -118,6 +134,33 @@ const currentStepForThread = (plan: PlayroomPlanRow | null, currentThread?: Play
   if (progress) return steps[Math.min(Math.max(progress.currentBlockIndex, 0), steps.length - 1)];
   const userTurns = currentThread?.messages?.filter((message) => message.role === "user").length || 1;
   return steps[Math.min(Math.max(userTurns, 1) - 1, steps.length - 1)];
+};
+
+const explicitStepPrompt = (step: any) => childSafe(step?.child_facing_prompt_draft)
+  || childSafe(step?.karel_response_strategy)
+  || "Vyber jeden malý další krok: A) ukážeme bezpečné místo, B) necháme bezpečné místo ukázat jednu věc.";
+
+const buildRailReply = (plan: PlayroomPlanRow | null, progress: PlayroomProgressState, childAddress: string, lastUserText: string) => {
+  const step = currentStepForThread(plan, null, progress);
+  const prompt = explicitStepPrompt(step);
+  const attune = /hv[ěe]zdi|b[oů]h|naho[řr]e|sv[ěe]tlo|nebe/i.test(lastUserText)
+    ? "Slyším tu hvězdičku i to, že chce být hodně blízko světlu."
+    : /bl[íi]zko|u tebe|se mnou/i.test(lastUserText)
+      ? "Slyším, že mám být blízko, a zůstávám tady s tebou."
+      : "Slyším tě a beru to jako odpověď na náš krok.";
+  return `${attune} Teď nejdeme pryč a neuzavíráme to, ${childAddress}; pokračujeme přesně dalším kouskem dnešní hry. ${prompt}`;
+};
+
+const responseFollowsCurrentStep = (assistantText: string, plan: PlayroomPlanRow | null, progress: PlayroomProgressState) => {
+  const step = currentStepForThread(plan, null, progress);
+  const haystack = assistantText.toLocaleLowerCase("cs-CZ");
+  const source = [step?.title, step?.method, step?.child_facing_prompt_draft, step?.karel_response_strategy, ...(Array.isArray(step?.expected_response_range) ? step.expected_response_range : [])]
+    .join(" ")
+    .toLocaleLowerCase("cs-CZ");
+  const keywords = Array.from(new Set((source.match(/[a-zá-ž]{5,}/gi) || [])
+    .filter((word) => !/kter[ýa]|m[ůu][žz]e|jeden|mal[ýy]|dnes|bezpe[čc]|tvoje|tebou|te[ďd]/i.test(word))
+    .slice(0, 12)));
+  return keywords.length === 0 || keywords.some((word) => haystack.includes(word));
 };
 
 const planContract = (plan: PlayroomPlanRow | null, currentThread?: PlayroomThread | null, progress?: PlayroomProgressState) => {
@@ -198,7 +241,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const roomBackground = useMemo(() => getRoomBackground(targetPart), [targetPart]);
   const roomTone = useMemo(() => getRoomTone(plan, thread), [plan, thread]);
   const opener = useMemo(() => childSafe(contentText(thread?.messages?.find((message) => message.role === "assistant")?.content)) || "Jsem tady. Zkusíme dnes jen jeden malý krok.", [thread]);
-  const stepPrompt = useMemo(() => getStepPrompt(plan, thread), [plan, thread, progress]);
+  const stepPrompt = useMemo(() => getStepPrompt(plan, thread, progress), [plan, thread, progress]);
 
   const persistPlayroomProgress = useCallback(async (state: PlayroomProgressState, sourceThread: PlayroomThread | null, finalizedReason?: "completed" | "partial") => {
     if (!plan) return;
@@ -254,18 +297,17 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       });
       const selectedPlan = (preferredPlanId ? candidates.find((row) => row.id === preferredPlanId) : null) || candidates[0] || null;
       setPlan(selectedPlan);
+      let completedIndexes: number[] = [];
       if (selectedPlan) {
         const { data: progressRow } = await (supabase as any)
           .from("did_live_session_progress")
           .select("items, completed_blocks")
           .eq("plan_id", selectedPlan.id)
           .maybeSingle();
-        const completedIndexes = Array.isArray(progressRow?.items)
+        completedIndexes = Array.isArray(progressRow?.items)
           ? progressRow.items.map((item: any, index: number) => item?.done ? index : -1).filter((index: number) => index >= 0)
           : [];
-        const steps = getProgramSteps(selectedPlan);
-        const firstOpen = steps.findIndex((_, index) => !completedIndexes.includes(index));
-        setProgress({ currentBlockIndex: firstOpen >= 0 ? firstOpen : 0, completedBlockIndexes: completedIndexes });
+        setProgress(inferProgressFromThread(getProgramSteps(selectedPlan), [], completedIndexes));
       }
 
       if (preferredThreadId) {
@@ -276,13 +318,15 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
           .eq("sub_mode", "karel_part_session")
           .maybeSingle();
         if (!threadError && threadRow) {
-          setThread({
+          const loadedThread = {
             id: threadRow.id,
             messages: ((threadRow.messages || []) as PlayroomThread["messages"]).map((message) => ({
               ...message,
               content: childSafe(contentText(message.content)) || "Jsem tady. Můžeme zůstat potichu.",
             })),
-          });
+          };
+          setThread(loadedThread);
+          setProgress(inferProgressFromThread(getProgramSteps(selectedPlan), loadedThread.messages, completedIndexes));
         }
       }
     } catch (error) {
@@ -335,6 +379,9 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       ...currentThread.messages,
       { role: "user", content: userContent },
     ];
+    const steps = getProgramSteps(plan);
+    const lastUserText = contentText(userContent);
+    const activeProgress = progressAfterChildAnswer(progress, steps, lastUserText);
     try {
       setThread({ ...currentThread, messages: [...nextMessages, { role: "assistant", content: "" }] });
       const headers = await getAuthHeaders();
@@ -344,7 +391,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         didSubMode: "playroom",
         didPartName: targetPart,
         didThreadLabel: targetPart,
-        didInitialContext: planContract(plan, currentThread, progress),
+        didInitialContext: planContract(plan, { ...currentThread, messages: nextMessages }, activeProgress),
       };
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`, { method: "POST", headers, body: JSON.stringify(body) });
       if (!response.ok) handleApiError(response);
@@ -352,21 +399,19 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       const assistantContent = await parseSSEStream(response.body, (partial) => {
         setThread((prev) => prev ? { ...prev, messages: [...nextMessages, { role: "assistant", content: childSafe(partial) || partial }] } : prev);
       });
-      const command = progressCommandFrom(assistantContent);
       const sanitizedAiContent = sanitizeAssistantForPlayroom(assistantContent);
-      const steps = getProgramSteps(plan);
-      const isLastBlock = progress.currentBlockIndex >= Math.max(steps.length - 1, 0);
-      const lastUserText = contentText(userContent);
+      const isLastBlock = activeProgress.currentBlockIndex >= Math.max(steps.length - 1, 0);
       const wantsProgramContinuation = CONTINUE_PROGRAM_RE.test(lastUserText) && !isStopRequest(lastUserText);
-      const prematureClose = (PREMATURE_CLOSING_RE.test(sanitizedAiContent) || wantsProgramContinuation) && !isLastBlock && !isStopRequest(lastUserText);
-      const safeAssistantContent = prematureClose
-        ? buildProgramContinuationReply(plan, progress, childAddress)
+      const offRail = !responseFollowsCurrentStep(sanitizedAiContent, plan, activeProgress);
+      const forcedRail = ((PREMATURE_CLOSING_RE.test(sanitizedAiContent) || wantsProgramContinuation || offRail) && !isLastBlock && !isStopRequest(lastUserText));
+      const safeAssistantContent = forcedRail
+        ? buildRailReply(plan, activeProgress, childAddress, lastUserText)
         : childSafe(sanitizedAiContent) || sanitizedAiContent || PLAYROOM_TECH_FALLBACK;
       const savedMessages = [...nextMessages, { role: "assistant" as const, content: safeAssistantContent }];
       const { error } = await (supabase as any).from("did_threads").update({ messages: savedMessages, last_activity_at: new Date().toISOString(), is_processed: false }).eq("id", currentThread.id);
       if (error) throw error;
       const nextThread = { ...currentThread, messages: savedMessages };
-      const nextState = nextProgressState(progress, steps, prematureClose ? "stay" : command, lastUserText);
+      const nextState = nextProgressState(activeProgress, steps, "stay", lastUserText);
       setProgress(nextState);
       await persistPlayroomProgress(nextState, nextThread);
       setThread(nextThread);
