@@ -46,7 +46,7 @@ const toList = (value: unknown) => {
   return safe ? [safe] : [];
 };
 
-const getChildAddress = (partName: string) => partName.toLocaleUpperCase("cs-CZ") === "TUNDRUPEK" ? "TUNDRUPKU" : partName;
+const getChildAddress = (partName: string) => partName.toLocaleUpperCase("cs-CZ") === "TUNDRUPEK" ? "Tundrupku" : partName;
 
 const firstChoices = ["jde to", "nejde to", "nevím", "chci jen ticho"];
 const PLAYROOM_TECH_FALLBACK = "Slyším tě. Teď se mi na chvilku zasekl hlas, ale zůstávám tady u dveří a nic nemusíš opravovat. Vyber jen jednu věc: mám být blíž, dál, nebo úplně potichu?";
@@ -173,7 +173,16 @@ const explicitStepPrompt = (step: any) => childSafe(step?.child_facing_prompt_dr
 const buildRailReply = (plan: PlayroomPlanRow | null, progress: PlayroomProgressState, childAddress: string, lastUserText: string) => {
   const step = currentStepForThread(plan, null, progress);
   const stepText = `${step?.title || ""} ${step?.method || ""} ${step?.detail || ""} ${step?.child_facing_prompt_draft || ""} ${step?.karel_response_strategy || ""}`.toLocaleLowerCase("cs-CZ");
-  const attune = /hv[ěe]zdi|b[oů]h|naho[řr]e|sv[ěe]tlo|nebe/i.test(lastUserText)
+  const normalizedInput = lastUserText.trim().toLocaleLowerCase("cs-CZ");
+  const attune = /^(a|a\)|slovo)$/i.test(normalizedInput)
+    ? "Dobře, beru jedno malé slovo."
+    : /^(b|b\)|symbol|emoji)$/i.test(normalizedInput)
+      ? "Dobře, beru jeden symbol."
+      : /^(c|c\)|ticho)$/i.test(normalizedInput)
+        ? "Dobře, ticho je taky odpověď."
+        : /co\s+budeme|co\s+d[áa]l|co\s+te[ďd]/i.test(lastUserText)
+          ? "Teď půjdeme jen o jeden malý krok dál."
+          : /hv[ěe]zdi|b[oů]h|naho[řr]e|sv[ěe]tlo|nebe/i.test(lastUserText)
     ? "Slyším tu hvězdičku i to, že chce být hodně blízko světlu."
     : /bl[íi]zko|u tebe|se mnou/i.test(lastUserText)
       ? "Slyším, že mám být blízko, a zůstávám tady s tebou."
