@@ -178,6 +178,15 @@ serve(async (req) => {
   try {
     const { messages, mode, didInitialContext, didSubMode, notebookProject, didPartName, didThreadLabel, didEnteredName, didContextPrimeCache } = await req.json();
     const isPlayroomMode = didSubMode === "playroom";
+    const isTherapistLiveSession = mode === "live-session" || didSubMode === "therapist_session" || didSubMode === "session";
+    const runtimePacketId = crypto.randomUUID();
+    const promptContractVersion = isPlayroomMode
+      ? "PLAYROOM_SYSTEM_CONTRACT_v2"
+      : isTherapistLiveSession
+        ? "THERAPIST_SESSION_ASSISTANT_CONTRACT_v1"
+        : "KAREL_CHAT_CONTRACT_v1";
+    const requestUserId = await resolveUserIdFromRequest(req);
+    const requestHasMultimodalInput = hasMultimodalInput(messages || []);
     const isDirectChildSubMode = didSubMode === "cast" || isPlayroomMode;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
