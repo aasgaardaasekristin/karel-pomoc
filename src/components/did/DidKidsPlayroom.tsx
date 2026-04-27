@@ -378,7 +378,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
           .eq("sub_mode", "karel_part_session")
           .maybeSingle();
         const fallbackThread = threadRow && messageCount(threadRow.messages) <= 1
-          ? ((activeThreads || []) as any[]).find((row) => row.id !== threadRow.id && messageCount(row.messages) > 1 && samePart(row.part_name, selectedPlan?.selected_part || targetPart))
+          ? ((activeThreads || []) as any[]).find((row) => row.id !== threadRow.id && messageCount(row.messages) > 1 && samePart(row.part_name, selectedPlan?.selected_part))
           : null;
         const rowToLoad = fallbackThread || threadRow;
         if (!threadError && rowToLoad) {
@@ -424,12 +424,16 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
 
       const { data, error } = await (supabase as any)
         .from("did_threads")
-        .select("id, messages")
+        .select("id, messages, workspace_id, workspace_type")
         .eq("id", payload.thread_id)
         .maybeSingle();
       if (error || !data) throw error || new Error("Vlákno Herny se nenašlo.");
-      const loadedThread = { id: data.id, messages: ((data.messages || []) as PlayroomThread["messages"]).map((message) => ({ ...message, content: childSafe(contentText(message.content)) || "Jsem tady. Můžeme zůstat potichu." })) };
+      const loadedThread = { id: data.id, workspace_id: data.workspace_id, workspace_type: data.workspace_type, messages: ((data.messages || []) as PlayroomThread["messages"]).map((message) => ({ ...message, content: childSafe(contentText(message.content)) || "Jsem tady. Můžeme zůstat potichu." })) };
       setThread(loadedThread);
+      try {
+        sessionStorage.setItem("karel_playroom_thread_id", loadedThread.id);
+        if (loadedThread.workspace_type === "session" && loadedThread.workspace_id) sessionStorage.setItem("karel_playroom_plan_id", loadedThread.workspace_id);
+      } catch { /* ignore */ }
       await persistPlayroomProgress(progress, loadedThread);
       if (firstReply) {
         await saveReply(loadedThread, firstReply);
