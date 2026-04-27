@@ -102,6 +102,25 @@ const nextProgressState = (progress: PlayroomProgressState, steps: any[], comman
   return { currentBlockIndex: firstOpen >= 0 ? firstOpen : Math.max(steps.length - 1, 0), completedBlockIndexes: completed };
 };
 
+const progressAfterChildAnswer = (progress: PlayroomProgressState, steps: any[], lastUserText: string): PlayroomProgressState => {
+  if (!steps.length || isStopRequest(lastUserText)) return progress;
+  const completed = Array.from(new Set([...progress.completedBlockIndexes, progress.currentBlockIndex])).sort((a, b) => a - b);
+  const firstOpen = steps.findIndex((_, index) => !completed.includes(index));
+  return { currentBlockIndex: firstOpen >= 0 ? firstOpen : Math.max(steps.length - 1, 0), completedBlockIndexes: completed };
+};
+
+const inferProgressFromThread = (steps: any[], messages: PlayroomThread["messages"], savedCompleted: number[]): PlayroomProgressState => {
+  if (!steps.length) return { currentBlockIndex: 0, completedBlockIndexes: [] };
+  if (savedCompleted.length) {
+    const firstOpen = steps.findIndex((_, index) => !savedCompleted.includes(index));
+    return { currentBlockIndex: firstOpen >= 0 ? firstOpen : Math.max(steps.length - 1, 0), completedBlockIndexes: savedCompleted };
+  }
+  const userTurns = messages.filter((message) => message.role === "user" && !isStopRequest(contentText(message.content))).length;
+  const inferredCompleted = Array.from({ length: Math.min(userTurns, steps.length) }, (_, index) => index);
+  const firstOpen = steps.findIndex((_, index) => !inferredCompleted.includes(index));
+  return { currentBlockIndex: firstOpen >= 0 ? firstOpen : Math.max(steps.length - 1, 0), completedBlockIndexes: inferredCompleted };
+};
+
 const stepLine = (step: any) => [
   `${step.step || "?"}. ${step.title || "krok"}`,
   step.method ? `metoda: ${step.method}` : null,
