@@ -276,11 +276,6 @@ serve(async (req) => {
     }
     const existing = await existingQuery.order("started_at", { ascending: false }).limit(1).maybeSingle();
 
-    if (existing.data?.id) {
-      if (planId) await ensurePlayroomProgress(sb, { userId: null, planId, partName, playroomPlan });
-      return jsonRes({ thread_id: existing.data.id, created: false });
-    }
-
     const { data: sameDayThreads } = await sb
       .from("did_threads")
       .select("id, started_at, messages")
@@ -290,7 +285,11 @@ serve(async (req) => {
       .lte("started_at", dayEnd)
       .order("last_activity_at", { ascending: false })
       .limit(10);
-    const activeSameDay = (sameDayThreads || []).find((row: any) => Array.isArray(row.messages) && row.messages.length > 1);
+    const activeSameDay = (sameDayThreads || []).find((row: any) => row.id !== existing.data?.id && Array.isArray(row.messages) && row.messages.length > 1);
+    if (existing.data?.id && (!activeSameDay || (Array.isArray(existing.data.messages) && existing.data.messages.length > 1))) {
+      if (planId) await ensurePlayroomProgress(sb, { userId: null, planId, partName, playroomPlan });
+      return jsonRes({ thread_id: existing.data.id, created: false });
+    }
     if (activeSameDay?.id) {
       if (planId) await ensurePlayroomProgress(sb, { userId: null, planId, partName, playroomPlan });
       return jsonRes({ thread_id: activeSameDay.id, created: false, reused_active_playroom: true });
