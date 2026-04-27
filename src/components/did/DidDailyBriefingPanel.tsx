@@ -268,6 +268,46 @@ const toAskItem = (
   return { id: legacyAskIdFor(briefingId, role, text), text };
 };
 
+const createFallbackPlayroomProposal = (payload: BriefingPayload): ProposedPlayroom => {
+  const session = payload.proposed_session;
+  const partName = session?.part_name?.trim() || "část vybraná ranním přehledem";
+  const why = session?.why_today?.trim()
+    || payload.last_3_days?.trim()
+    || "Ranní přehled zatím nemá uložený samostatný playroom payload, ale Herna musí mít každý den vlastní program k poradě.";
+
+  return {
+    part_name: partName,
+    status: "awaiting_therapist_review",
+    why_this_part_today: why,
+    main_theme: `Bezpečný kontakt a cílené zmapování toho, co ${partName} dnes unese`,
+    evidence_sources: ["Karlův ranní přehled", "návrh dnešního sezení", "poslední 3 dny"],
+    goals: [
+      "navázat kontakt bez tlaku na výkon",
+      "rozlišit aktuální míru bezpečí, ochoty a únavy",
+      "získat konkrétní materiál pro klinické vyhodnocení Herny",
+      "ukončit včas při známkách zahlcení nebo stažení",
+    ],
+    playroom_plan: {
+      therapeutic_program: [
+        { block: "Bezpečný práh", minutes: 3, detail: "Karel nabídne dvě jednoduché volby kontaktu: slovo, emoji/symbol nebo ticho. Cílem je zjistit dostupnost části, ne ji tlačit do výkonu." },
+        { block: "Mapa dnešního vnitřního počasí", minutes: 6, detail: "Část popíše obrazem, barvou nebo jedním slovem, jak se dnes uvnitř má. Karel sleduje míru konkrétnosti, vyhýbání a schopnost zůstat v kontaktu." },
+        { block: "Symbolická hra s jednou postavou", minutes: 8, detail: "Karel nechá část vybrat postavu, místo nebo předmět a vede krátký dialog přes bezpečný symbol, bez otevírání traumatické paměti." },
+        { block: "Co potřebuje malý krok", minutes: 5, detail: "Karel hledá jeden zvládnutelný mikro-krok pro dnešek: co pomůže tělu, kontaktu nebo klidu, bez slibů a bez konfrontace." },
+        { block: "Měkké uzavření", minutes: 3, detail: "Karel shrne, co slyšel, nabídne bezpečné zakotvení a uloží body pro pozdější review." },
+      ],
+      child_safe_version: "Dnes si spolu jen opatrně zkusíme, jaké je uvnitř počasí, kdo tam je poblíž a co by pomohlo, aby toho nebylo moc.",
+      micro_steps: ["vybrat způsob odpovědi", "pojmenovat obraz nebo barvu", "nechat symbol něco říct", "zvolit jeden malý pomocný krok", "společně zavřít hru"],
+      expected_child_reactions: ["krátké odpovědi", "nejistota", "odmítnutí konkrétního tématu", "zájem o symbolickou postavu", "únava"],
+      recommended_karel_responses: ["zpomalit", "nabídnout volbu", "potvrdit právo neodpovědět", "držet symbolickou rovinu", "ukončit dřív při zahlcení"],
+      risks_and_stop_signals: ["náhlé stažení", "zmatek v čase nebo místě", "somatické zhoršení", "tlak na tajemství nebo trauma", "výrazné odpojení"],
+      forbidden_directions: ["nevynucovat vzpomínky", "neinterpretovat kresbu jako diagnózu bez review", "neeskalovat trauma", "nepokračovat přes stop signál"],
+      runtime_packet_seed: { source: "ui_fallback_until_next_briefing_regeneration" },
+    },
+    questions_for_hanka: ["Je pro tuto část dnes bezpečnější krátká Karel-led Herna, nebo má být Hanička poblíž jako fyzická opora?"],
+    questions_for_kata: ["Vidíš u této části dnes riziko, kvůli kterému má být Herna jen stabilizační a ne hlubinně explorativní?"],
+  };
+};
+
 const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) => {
   const navigate = useNavigate();
   const didThreads = useDidThreads();
