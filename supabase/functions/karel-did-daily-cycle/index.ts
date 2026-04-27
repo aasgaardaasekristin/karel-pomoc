@@ -3144,6 +3144,22 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
     const { data: cycle, error: cycleErr } = await sb.from("did_update_cycles").insert(cycleInsertPayload).select().single();
     if (cycleErr) console.error("[daily-cycle] Failed to create cycle record:", cycleErr.message);
     cycleId = cycle?.id || null;
+    let consolidationRunId: string | null = null;
+    try {
+      const pragueRunDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+      const { data: consolidationRun } = await sb.from("did_daily_consolidation_runs").insert({
+        user_id: resolvedUserId,
+        run_date: pragueRunDate,
+        scheduled_for: requestBody?.time || new Date().toISOString(),
+        timezone: "Europe/Prague",
+        status: "started",
+        drive_sync_status: "queued",
+        result_json: { source: requestBody?.source || "manual", target_hour_prague: "03:00", cycle_id: cycleId },
+      }).select("id").single();
+      consolidationRunId = consolidationRun?.id || null;
+    } catch (e) {
+      console.warn("[daily-cycle] consolidation run audit insert failed:", (e as Error)?.message || e);
+    }
 
     // ─── HEARTBEAT HELPER (E1) ────────────────────────────────────────────
     // Zapisuje phase + heartbeat_at na začátku každé hlavní fáze daily-cycle.
