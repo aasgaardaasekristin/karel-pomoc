@@ -26,6 +26,11 @@ interface PlayroomThread {
   messages: { role: "user" | "assistant"; content: any }[];
 }
 
+interface PlayroomProgressState {
+  currentBlockIndex: number;
+  completedBlockIndexes: number[];
+}
+
 const blockedChildText = /(Karel-only|DID\/Kluci\/Herna|M[ůu][žz]e\s+tu\s+b[ýy]t|konkr[ée]tn[íi]\s+motivy|nab[íi]dka,?\s+ne\s+jako\s+tvrzen[íi]|preference|voln[ée]\s+m[íi]sto\s+pro\s+symbol|Karel\s+je\s+v\s+m[íi]stnosti\s+p[řr][íi]tomen|theme_source|playroom_plan|clinical_goal|evidence|diagnostik|trauma|terapeutick[ýy]\s+pl[áa]n|Hani[čc]ka|K[áa][ťt]a|intern[íi]|writeback|risk_assessment|forbidden_methods)/i;
 
 const childSafe = (value: unknown) => {
@@ -43,6 +48,8 @@ const getChildAddress = (partName: string) => partName.toLocaleUpperCase("cs-CZ"
 
 const firstChoices = ["jde to", "nejde to", "nevím", "chci jen ticho"];
 const PLAYROOM_TECH_FALLBACK = "Slyším tě. Teď se mi na chvilku zasekl hlas, ale zůstávám tady u dveří a nic nemusíš opravovat. Vyber jen jednu věc: mám být blíž, dál, nebo úplně potichu?";
+const PLAYROOM_PROGRESS_MARKER_RE = /\[PLAYROOM_PROGRESS:(stay|advance|fallback|stop)\]/i;
+const PREMATURE_CLOSING_RE = /(pro\s+dne[sš]ek\s+(se\s+)?(lou[čc][íi]me|kon[čc][íi]me|budeme\s+lou[čc]it)|p[řr]eju\s+ti\s+.*zbytek\s+dne|m[eě]j\s+se\s+moc\s+hezky|kdykoliv\s+bude[šs]\s+cht[íi]t,?\s+jsem\s+tady|jsem\s+moc\s+r[áa]d,?\s+[žz]e\s+jsme\s+.*dnes\s+.*na[šs]li)/i;
 
 const getRoomBackground = (partName: string) => {
   if (partName.toLocaleUpperCase("cs-CZ") === "TUNDRUPEK") return tundrupekPlayroomBg;
@@ -72,6 +79,26 @@ const cleanPlanForPlayroom = (markdown?: string) => (markdown || "")
 const getProgramSteps = (plan: PlayroomPlanRow | null) => {
   const steps = plan?.urgency_breakdown?.playroom_plan?.therapeutic_program;
   return Array.isArray(steps) ? steps : [];
+};
+
+const sanitizeAssistantForPlayroom = (value: string) => value.replace(PLAYROOM_PROGRESS_MARKER_RE, "").trim();
+
+const progressCommandFrom = (value: string) => (value.match(PLAYROOM_PROGRESS_MARKER_RE)?.[1] || "stay").toLowerCase();
+
+const isStopRequest = (value: string) => /(^|\b)(stop|kon[čc][íi]m|nechci\s+pokra[čc]ovat|dnes\s+nechci|sta[čc][íi]|ukon[čc]it)(\b|$)/i.test(value);
+
+const buildProgressItems = (steps: any[], completedIndexes: number[]) => steps.map((step, index) => ({
+  id: `playroom-${index + 1}`,
+  text: `${step?.title || `Blok ${index + 1}`}${step?.duration_min ? ` (${step.duration_min}′)` : ""}`,
+  done: completedIndexes.includes(index),
+  observation: "",
+}));
+
+const nextProgressState = (progress: PlayroomProgressState, steps: any[], command: string, lastUserText: string): PlayroomProgressState => {
+  if (!steps.length || command !== "advance" || isStopRequest(lastUserText)) return progress;
+  const completed = Array.from(new Set([...progress.completedBlockIndexes, progress.currentBlockIndex])).sort((a, b) => a - b);
+  const firstOpen = steps.findIndex((_, index) => !completed.includes(index));
+  return { currentBlockIndex: firstOpen >= 0 ? firstOpen : Math.max(steps.length - 1, 0), completedBlockIndexes: completed };
 };
 
 const stepLine = (step: any) => [
