@@ -237,10 +237,13 @@ Deno.serve(async (req: Request) => {
       //   jinak fallback "Hanka".
       const ledByRaw = String(sp.led_by ?? "").trim();
       const ledByLower = ledByRaw.toLowerCase();
+      const isPlayroomPlan = sp.session_actor === "karel_direct" || sp.ui_surface === "did_kids_playroom" || sp.session_format === "playroom";
       let therapist: string;
       let sessionLead: string;
       let sessionFormatDefault: string;
-      if (ledByLower.startsWith("ha")) {
+      if (isPlayroomPlan || ledByLower.startsWith("kar")) {
+        therapist = "karel"; sessionLead = "karel"; sessionFormatDefault = "playroom";
+      } else if (ledByLower.startsWith("ha")) {
         therapist = "hanka"; sessionLead = "hanka"; sessionFormatDefault = "osobně";
       } else if (ledByLower.startsWith("ká") || ledByLower.startsWith("ka")) {
         therapist = "kata"; sessionLead = "kata"; sessionFormatDefault = "chat";
@@ -278,6 +281,16 @@ Deno.serve(async (req: Request) => {
         led_by: ledByRaw || null,
         duration_min: typeof sp.duration_min === "number" ? sp.duration_min : null,
         kata_involvement: sp.kata_involvement ?? null,
+        ...(isPlayroomPlan ? {
+          mode: "playroom",
+          session_actor: "karel_direct",
+          lead_entity: "karel",
+          ui_surface: "did_kids_playroom",
+          approved_for_child_session: true,
+          human_review_required: false,
+          review_state: "approved",
+          playroom_plan: sp.playroom_plan ?? null,
+        } : {}),
         re_synced_at: new Date().toISOString(),
       };
 
@@ -295,6 +308,7 @@ Deno.serve(async (req: Request) => {
           generated_by: "team_deliberation",
           updated_at: new Date().toISOString(),
         };
+        if (isPlayroomPlan) updatePatch.program_status = "approved";
         // status posuneme na "generated" jen pokud byl pending/planned/null
         // — nikdy nevracíme zpět in_progress / done sezení.
         const safeStatusFlip = ["pending", "planned", null, undefined].includes((updated as any).__plan_status_unused__ as any);
@@ -323,6 +337,7 @@ Deno.serve(async (req: Request) => {
           plan_markdown: planMarkdown,
           generated_by: "team_deliberation",
           session_lead: sessionLead,
+          ...(isPlayroomPlan ? { program_status: "approved" } : {}),
         };
 
         const { data: planRes, error: planErr } = await admin

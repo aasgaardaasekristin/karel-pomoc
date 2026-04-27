@@ -81,6 +81,28 @@ interface ProposedSession {
   questions_for_kata?: string[];
 }
 
+interface ProposedPlayroom {
+  id?: string;
+  part_name: string;
+  status?: "draft" | "awaiting_therapist_review" | "in_revision" | "approved" | "ready_to_start" | "in_progress" | "completed" | "evaluated" | "archived";
+  why_this_part_today: string;
+  main_theme: string;
+  evidence_sources?: string[];
+  goals?: string[];
+  playroom_plan: {
+    therapeutic_program?: AgendaBlock[];
+    child_safe_version?: string;
+    micro_steps?: string[];
+    expected_child_reactions?: string[];
+    recommended_karel_responses?: string[];
+    risks_and_stop_signals?: string[];
+    forbidden_directions?: string[];
+    runtime_packet_seed?: Record<string, unknown>;
+  };
+  questions_for_hanka?: string[];
+  questions_for_kata?: string[];
+}
+
 /** Nový tvar ask položky (id+text). Edge funkce vrací tohle od 2026-04-19. */
 interface AskItemObj { id: string; text: string }
 type AskItemRaw = string | AskItemObj;
@@ -107,6 +129,7 @@ interface BriefingPayload {
   yesterday_session_review?: YesterdaySessionReview | null;
   decisions: BriefingDecision[];
   proposed_session?: ProposedSession | null;
+  proposed_playroom?: ProposedPlayroom | null;
   ask_hanka: AskItemRaw[];
   ask_kata: AskItemRaw[];
   waiting_for?: string[];
@@ -707,6 +730,88 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     [briefing, navigate, onOpenDeliberation, openingItemId],
   );
 
+  const openProposedPlayroomDeliberation = useCallback(
+    async (s: ProposedPlayroom) => {
+      if (openingItemId || !briefing) return;
+      const itemId = s.id || legacyAskIdFor(briefing.id, "ask_kata", `playroom::${s.part_name}`);
+      setOpeningItemId(itemId);
+      try {
+        const titleHint = `Plán dnešní herny s ${s.part_name}`;
+        const program = Array.isArray(s.playroom_plan?.therapeutic_program) ? s.playroom_plan.therapeutic_program : [];
+        const reasonText = [s.main_theme, s.why_this_part_today].filter(Boolean).join(" — ");
+        const introBrief = [
+          `🎲 **${titleHint}**`,
+          "",
+          `*Hlavní téma:* ${s.main_theme}`,
+          `*Proč právě dnes:* ${s.why_this_part_today}`,
+          "",
+          "Otevírám poradu ke schválení samostatného programu Herny. Herna je Karel-led práce s částí; nepoužije se plán terapeutického sezení ani first_draft.",
+        ].join("\n");
+        const karelPlan = [
+          `Část: ${s.part_name}`,
+          `Stav: ${s.status || "awaiting_therapist_review"}`,
+          `Hlavní téma: ${s.main_theme}`,
+          "",
+          `Proč právě tato herna:\n${s.why_this_part_today}`,
+          "",
+          s.goals?.length ? `Cíle dnešní herny:\n${s.goals.map((g, i) => `${i + 1}. ${g}`).join("\n")}` : "",
+          "",
+          s.playroom_plan?.child_safe_version ? `Dětsky bezpečná verze programu:\n${s.playroom_plan.child_safe_version}` : "",
+          "",
+          s.playroom_plan?.risks_and_stop_signals?.length ? `Rizika a stop signály:\n${s.playroom_plan.risks_and_stop_signals.map((x) => `- ${x}`).join("\n")}` : "",
+          "",
+          s.playroom_plan?.forbidden_directions?.length ? `Zakázané směry:\n${s.playroom_plan.forbidden_directions.map((x) => `- ${x}`).join("\n")}` : "",
+        ].filter(Boolean).join("\n");
+        const prefill = {
+          title: titleHint,
+          reason: reasonText,
+          initial_karel_brief: introBrief,
+          karel_proposed_plan: karelPlan,
+          agenda_outline: program,
+          questions_for_hanka: Array.isArray(s.questions_for_hanka) ? s.questions_for_hanka : [],
+          questions_for_kata: Array.isArray(s.questions_for_kata) ? s.questions_for_kata : [],
+          session_params: {
+            part_name: s.part_name,
+            led_by: "Karel",
+            session_format: "playroom",
+            why_today: s.why_this_part_today,
+            session_mode: "playroom",
+            session_actor: "karel_direct",
+            ui_surface: "did_kids_playroom",
+            approved_for_child_session: false,
+            human_review_required: true,
+            review_state: s.status || "awaiting_therapist_review",
+            playroom_plan: s.playroom_plan,
+          },
+        };
+        const { data, error } = await (supabase as any).functions.invoke("karel-team-deliberation-create", {
+          body: {
+            deliberation_type: "session_plan",
+            subject_parts: [s.part_name],
+            reason: reasonText,
+            hint: titleHint,
+            priority: "high",
+            linked_briefing_id: briefing.id,
+            linked_briefing_item_id: itemId,
+            prefill,
+          },
+        });
+        if (error) throw error;
+        const created = (data as any)?.deliberation;
+        if (!created?.id) throw new Error("Plán herny nebyl vytvořen.");
+        if (onOpenDeliberation) onOpenDeliberation(created.id);
+        else { markBriefingOrigin(); navigate(`/chat?deliberation_id=${created.id}`); }
+        if (!(data as any)?.reused) toast.success("Návrh herny otevřen jako porada týmu.");
+      } catch (e: any) {
+        console.error("[DidDailyBriefingPanel] openProposedPlayroomDeliberation failed:", e);
+        toast.error(e?.message || "Nepodařilo se otevřít návrh herny.");
+      } finally {
+        setOpeningItemId(null);
+      }
+    },
+    [briefing, navigate, onOpenDeliberation, openingItemId],
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-10">
@@ -757,6 +862,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const proposedPartName = (p.proposed_session?.part_name ?? "").trim();
   const proposedAlreadyApproved =
     proposedPartName.length > 0 && approvedTodayParts.has(proposedPartName);
+  const hasPlayroomProposal = !!p.proposed_playroom?.part_name;
   const decisions = (p.decisions ?? []).slice(0, 3);
   const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
   const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
@@ -997,6 +1103,57 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             <p className="text-[11px] text-primary/70 italic">
               Otevřít poradu →
             </p>
+          </button>
+        </>
+      )}
+
+      {/* 4.5 Dnešní navržená Herna — samostatný Karel-led program, nikdy ne session first_draft. */}
+      {hasPlayroomProposal && p.proposed_playroom && (
+        <>
+          <NarrativeDivider />
+          <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary" />}>
+            Návrh dnešní herny s {p.proposed_playroom.part_name}
+          </SectionHead>
+          <button
+            type="button"
+            onClick={() => openProposedPlayroomDeliberation(p.proposed_playroom!)}
+            className="mt-2 w-full text-left p-3 rounded-lg border border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors space-y-3 cursor-pointer"
+          >
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">Část: {p.proposed_playroom.part_name}</Badge>
+              <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{p.proposed_playroom.status || "awaiting_therapist_review"}</Badge>
+              <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">vede Karel</Badge>
+              <ArrowRight className="w-3.5 h-3.5 text-primary/60 ml-auto" />
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Hlavní téma dnešní Herny</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{p.proposed_playroom.main_theme}</p>
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Proč právě tato Herna</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{p.proposed_playroom.why_this_part_today}</p>
+            </div>
+            {Array.isArray(p.proposed_playroom.goals) && p.proposed_playroom.goals.length > 0 && (
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Cíle Herny</p>
+                <ul className="mt-1 space-y-1 text-[13px] leading-relaxed text-foreground/80">
+                  {p.proposed_playroom.goals.slice(0, 4).map((goal, index) => <li key={`${goal}-${index}`}>{index + 1}. {goal}</li>)}
+                </ul>
+              </div>
+            )}
+            {Array.isArray(p.proposed_playroom.playroom_plan?.therapeutic_program) && p.proposed_playroom.playroom_plan.therapeutic_program.length > 0 && (
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Program pro Hernu</p>
+                <div className="mt-1 space-y-1.5">
+                  {p.proposed_playroom.playroom_plan.therapeutic_program.slice(0, 5).map((block, index) => (
+                    <p key={`${block.block}-${index}`} className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line"><span className="font-medium text-foreground/90">{index + 1}. {block.block}</span>{block.detail ? ` — ${block.detail}` : ""}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+            {p.proposed_playroom.playroom_plan?.child_safe_version && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Dětsky bezpečná verze</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{p.proposed_playroom.playroom_plan.child_safe_version}</p></div>}
+            {Array.isArray(p.proposed_playroom.playroom_plan?.risks_and_stop_signals) && p.proposed_playroom.playroom_plan.risks_and_stop_signals.length > 0 && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Rizika a stop signály</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{p.proposed_playroom.playroom_plan.risks_and_stop_signals.slice(0, 4).map((x) => `- ${x}`).join("\n")}</p></div>}
+            <p className="text-[11px] text-primary/70 italic">Otevřít poradu ke schválení Herny →</p>
           </button>
         </>
       )}

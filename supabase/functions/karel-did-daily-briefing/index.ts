@@ -711,6 +711,53 @@ const BRIEFING_TOOL = {
           required: ["part_name", "why_today", "led_by", "first_draft", "agenda_outline", "hybrid_contract", "questions_for_hanka", "questions_for_kata"],
           additionalProperties: false,
         },
+        proposed_playroom: {
+          type: "object",
+          description: "POVINNÝ samostatný návrh dnešní Herny. Herna je Karel-led terapeutická práce s konkrétní částí; NESMÍ kopírovat proposed_session.first_draft ani plan_markdown. Musí obsahovat vlastní playroom_plan.",
+          properties: {
+            part_name: { type: "string" },
+            status: { type: "string", enum: ["draft", "awaiting_therapist_review", "in_revision", "approved", "ready_to_start", "in_progress", "completed", "evaluated", "archived"] },
+            why_this_part_today: { type: "string", description: "Konkrétní důvod výběru části: týdenní směr, včerejší aktivita, report Herny/Sezení, karta části, 2-3denní vývoj." },
+            main_theme: { type: "string", description: "Konkrétní téma Herny navázané na část a aktuální problém." },
+            evidence_sources: { type: "array", items: { type: "string" }, maxItems: 8 },
+            goals: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 4 },
+            playroom_plan: {
+              type: "object",
+              description: "Jediný program, který smí Herna použít. Dětsky bezpečný, krátký, profesionální, vhodný pro Karla bez fyzického těla a bez fyzické kontroly.",
+              properties: {
+                therapeutic_program: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      block: { type: "string" },
+                      minutes: { type: "number" },
+                      detail: { type: "string", description: "Konkrétní mikro-krok: otázka, kresba/foto upload, hlasový vstup, symbolická hra, bezpečná diagnostická aktivita; bez fyzického pozorování." },
+                      tool_id: { type: "string" },
+                    },
+                    required: ["block", "detail"],
+                    additionalProperties: false,
+                  },
+                  minItems: 4,
+                  maxItems: 6,
+                },
+                child_safe_version: { type: "string" },
+                micro_steps: { type: "array", items: { type: "string" }, maxItems: 8 },
+                expected_child_reactions: { type: "array", items: { type: "string" }, maxItems: 8 },
+                recommended_karel_responses: { type: "array", items: { type: "string" }, maxItems: 8 },
+                risks_and_stop_signals: { type: "array", items: { type: "string" }, maxItems: 8 },
+                forbidden_directions: { type: "array", items: { type: "string" }, maxItems: 8 },
+                runtime_packet_seed: { type: "object", additionalProperties: true },
+              },
+              required: ["therapeutic_program", "child_safe_version", "micro_steps", "recommended_karel_responses", "risks_and_stop_signals", "forbidden_directions"],
+              additionalProperties: false,
+            },
+            questions_for_hanka: { type: "array", items: { type: "string" }, maxItems: 3 },
+            questions_for_kata: { type: "array", items: { type: "string" }, maxItems: 3 },
+          },
+          required: ["part_name", "status", "why_this_part_today", "main_theme", "goals", "playroom_plan", "questions_for_hanka", "questions_for_kata"],
+          additionalProperties: false,
+        },
         ask_hanka: {
           type: "array",
           description: "Co Karel dnes potřebuje od Haničky. 1-3 konkrétní položky. Musí být JINÉ než ask_kata. Vrať pole STRINGŮ — id se doplní serverově.",
@@ -734,7 +781,7 @@ const BRIEFING_TOOL = {
           description: "Krátký uzávěr (1-2 věty). Co se stane, jakmile Hanička a Káťa doplní své pohledy.",
         },
       },
-      required: ["greeting", "last_3_days", "decisions", "ask_hanka", "ask_kata", "closing"],
+      required: ["greeting", "last_3_days", "decisions", "proposed_playroom", "ask_hanka", "ask_kata", "closing"],
       additionalProperties: false,
     },
   },
@@ -764,6 +811,17 @@ DNEŠNÍ NAVRŽENÉ SEZENÍ:
 - Pokud kontext obsahuje kandidáta se skóre ≥ 3, MUSÍŠ navrhnout konkrétní sezení.
 - Vyber nejvhodnějšího kandidáta z poskytnutého seznamu, NEvymýšlej jméno mimo seznam.
 - Uveď: koho, proč právě dnes, kdo povede, první pracovní verze, kdy přizvat Káťu.
+
+DNEŠNÍ NAVRŽENÁ HERNA — POVINNÁ KAŽDÝ DEN:
+- VŽDY vytvoř proposed_playroom jako samostatný Karel-led program pro jednu konkrétní část. Nikdy ho nenechávej null.
+- Herna není běžný chat a není terapeutkou vedené Sezení. Vede ji Karel přímo s částí; terapeutka nemusí být fyzicky přítomná.
+- proposed_playroom.playroom_plan je jediný povolený program Herny. Nesmí být kopií proposed_session.first_draft, plan_markdown ani interního terapeutického programu pro Haničku/Káťu.
+- status nastav primárně na awaiting_therapist_review. Vstup do Herny bude možný až po schválení terapeutkami.
+- Program musí být profesionální hlubinně-psychoterapeutický a diagnosticky cílený, ale bezpečný pro Karla bez fyzického těla a bez fyzické kontroly.
+- Používej digitálně proveditelné aktivity: „nakresli strom a pošli mi ho sem“, „řekni hlasem jedno slovo“, „popiš vlastními slovy postavu ve fantazii“, symbolická hra, aktivní imaginace, slovní asociace, bezpečné projektivní mikro-úkoly.
+- Zahrň: část, téma, proč dnes, zdroje, cíle, therapeutic_program, child_safe_version, mikro-kroky, očekávané reakce, doporučené reakce Karla, rizika/stop signály a zakázané směry.
+- Dětsky bezpečná verze nesmí obsahovat slova jako diagnostika, klinicky významné, terapeutický plán, schvalování, analýza nebo model.
+- Výběr opři nejvíc o týdenní směr, včerejší aktivitu a reporty ze včerejší Herny/Sezení; středně o 2–3 dny a kartu části; měsíční směr jen strategicky.
 
 PROGRAM SEZENÍ — HRAVOST JE POVINNÁ:
 - agenda_outline NESMÍ být generická („úvod / práce s emocemi / uzávěr"). MUSÍ obsahovat alespoň 2 KONKRÉTNÍ nástroje z TERAPEUTICKÉHO ARZENÁLU (asociační test, Rorschach lite, aktivní imaginace, mandala, kresba dne, „co kdyby", 3 dveře, atd.).
@@ -890,7 +948,8 @@ ${candidates.length > 0 ? candidates.slice(0, 5).map((c) => `- ${c.part_name} (s
 ${toolboxSection}
 ÚKOL:
 Vygeneruj strukturovaný briefing pro dnešní poradu týmu. Drž se pravidel z system promptu.
-${candidates[0]?.score >= 3 ? `MUSÍŠ navrhnout sezení — nejvhodnější kandidát je ${candidates[0].part_name}. Program (agenda_outline) MUSÍ obsahovat alespoň 2 konkrétní hravé nástroje z arzenálu (uveď jejich tool_id).` : "Pokud žádný kandidát nemá dost silné signály, nech proposed_session null."}`;
+${candidates[0]?.score >= 3 ? `MUSÍŠ navrhnout sezení — nejvhodnější kandidát je ${candidates[0].part_name}. Program (agenda_outline) MUSÍ obsahovat alespoň 2 konkrétní hravé nástroje z arzenálu (uveď jejich tool_id).` : "Pokud žádný kandidát nemá dost silné signály, nech proposed_session null."}
+MUSÍŠ vždy navrhnout proposed_playroom. Pokud jsou signály slabé, zvol nejbezpečnější nízkoprahovou diagnosticko-terapeutickou Hernu s jasným playroom_plan a se statusem awaiting_therapist_review.`;
 
   const res = await fetch(AI_URL, {
     method: "POST",
@@ -1215,6 +1274,28 @@ Deno.serve(async (req) => {
         ...ps,
         id: resolvedId || crypto.randomUUID(),
       } as ProposedSessionItem;
+    }
+
+    // ── proposed_playroom carry-over (single object; match by part_name) ──
+    if (payload?.proposed_playroom && typeof payload.proposed_playroom === "object") {
+      const pp = payload.proposed_playroom;
+      const partName = String(pp?.part_name ?? "").trim();
+      const np = normalizeForMatch(partName);
+      let resolvedId: string | null = null;
+      for (const row of sameDayPrev || []) {
+        const oldPp = (row?.payload as any)?.proposed_playroom;
+        if (oldPp && typeof oldPp === "object" && oldPp.id && oldPp.part_name) {
+          const op = normalizeForMatch(String(oldPp.part_name));
+          if (op === np) {
+            resolvedId = String(oldPp.id);
+            break;
+          }
+        }
+      }
+      payload.proposed_playroom = {
+        ...pp,
+        id: resolvedId || crypto.randomUUID(),
+      };
     }
 
     // 4) Resolve part_id pro proposed_session (kanonická tabulka did_part_registry)
