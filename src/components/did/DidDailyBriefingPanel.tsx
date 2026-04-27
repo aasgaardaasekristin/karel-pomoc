@@ -193,9 +193,10 @@ const SectionHead = forwardRef<HTMLHeadingElement, { children: React.ReactNode; 
 ));
 SectionHead.displayName = "SectionHead";
 
-const NarrativeDivider = () => (
-  <div className="my-4 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-);
+const NarrativeDivider = forwardRef<HTMLDivElement>((_, ref) => (
+  <div ref={ref} className="my-4 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
+));
+NarrativeDivider.displayName = "NarrativeDivider";
 
 /**
  * Mark this navigation as originating from the briefing panel so that
@@ -309,9 +310,50 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         team_closing: review.team_closing || null,
         status_label: review.status,
       });
+      const playroomReview = rows.find((r) => r.mode === "playroom");
+      const sessionReview = rows.find((r) => r.mode !== "playroom");
+      if (playroomReview) setYesterdayPlayroomFallback(mapReview(playroomReview));
+      if (sessionReview) setYesterdaySessionFallback(mapReview(sessionReview));
+
+      if (!playroomReview) {
+        const dayStart = `${yesterday}T00:00:00.000Z`;
+        const dayEnd = `${yesterday}T23:59:59.999Z`;
+        const { data: playroomThread } = await (supabase as any)
+          .from("did_threads")
+          .select("id,part_name,thread_label,messages,last_activity_at,started_at,created_at")
+          .eq("sub_mode", "karel_part_session")
+          .gte("last_activity_at", dayStart)
+          .lte("last_activity_at", dayEnd)
+          .order("last_activity_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (playroomThread) {
+          const messages = Array.isArray(playroomThread.messages) ? playroomThread.messages : [];
+          const userTurns = messages.filter((m: any) => m?.role === "user").length;
+          const assistantTurns = messages.filter((m: any) => m?.role === "assistant").length;
+          setYesterdayPlayroomFallback({
+            held: true,
+            mode: "playroom",
+            part_name: playroomThread.part_name || undefined,
+            completion: userTurns > 0 ? "partial" : "abandoned",
+            karel_summary: userTurns > 0
+              ? `Včerejší herna proběhla ve vlákně „${playroomThread.thread_label || "Herna"}“. Vidím ${userTurns} odpovědí části a ${assistantTurns} Karlových vstupů. Plné klinické vyhodnocení zatím není uložené, proto ji zde označuji jako čekající na review, ne jako hotový závěr.`
+              : `Včerejší herna byla otevřená jako „${playroomThread.thread_label || "Herna"}“, ale zatím nevidím odpověď části. Sekce zůstává viditelná, aby Herna nezmizela z přehledu.`,
+            key_finding_about_part: "Zatím jde o provozní evidenci z Herny; klinický závěr musí vzniknout až z uloženého playroom review.",
+            implications_for_plan: "Doplnit/obnovit vyhodnocení Herny jako samostatný playroom report, oddělený od terapeutického sezení.",
+            team_acknowledgement: "Děkuji za udržení samostatné stopy Herny — nebude se míchat s programem sezení.",
+            practical_report: null,
+            detailed_analysis: null,
+            sync_status: "čeká na playroom review",
+            status_label: "pending_review",
+          });
+        } else {
+          setYesterdayPlayroomFallback(null);
+        }
+      }
+
       if (rows.length > 0) {
-        setYesterdayPlayroomFallback(rows.find((r) => r.mode === "playroom") ? mapReview(rows.find((r) => r.mode === "playroom")) : null);
-        setYesterdaySessionFallback(rows.find((r) => r.mode !== "playroom") ? mapReview(rows.find((r) => r.mode !== "playroom")) : null);
+        if (!sessionReview) setYesterdaySessionFallback(null);
         return;
       }
       const { data: plan } = await (supabase as any)
@@ -380,8 +422,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     loadYesterdayFallback();
   }, [loadLatest, loadApprovedToday, loadYesterdayFallback, refreshTrigger]);
 
-  // Auto-refresh při nově vygenerovaném briefingu (realtime) i při focusu okna,
-  // aby uživatel neviděl zastaralou verzi po regeneraci v jiné záložce / serveru.
+  // Auto-refresh při nově vygenerovaném briefingu i při doplnění včerejšího review,
+  // aby sekce Včerejší herna naskočila bez ručního reloadu dashboardu.
   useEffect(() => {
     const channel = supabase
       .channel("did_daily_briefings_panel")
@@ -399,16 +441,26 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           loadLatest();
         },
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "did_session_reviews" },
+        () => {
+          loadYesterdayFallback();
+        },
+      )
       .subscribe();
 
-    const onFocus = () => loadLatest();
+    const onFocus = () => {
+      loadLatest();
+      loadYesterdayFallback();
+    };
     window.addEventListener("focus", onFocus);
 
     return () => {
       window.removeEventListener("focus", onFocus);
       supabase.removeChannel(channel);
     };
-  }, [loadLatest]);
+  }, [loadLatest, loadYesterdayFallback]);
 
   const handleRegenerate = async () => {
     setRegenerating(true);
@@ -653,50 +705,6 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       }
     },
     [briefing, navigate, onOpenDeliberation, openingItemId],
-  );
-
-  /**
-   * 2026-04-22 — Klik na "Herna Karel + [část]".
-   *
-   * Otevře / vytvoří dnešní dedikované did_threads vlákno
-   * (sub_mode=karel_part_session, workspace_id=kps_<part>_<date>) přes
-   * edge funkci `karel-part-session-prepare`. Idempotentní — druhý klik
-   * ten samý den vrací totéž thread_id. Pak naviguje přes existující
-   * `?workspace_thread=<id>` deep-link do Chat.tsx.
-   */
-  const openKarelPartSessionRoom = useCallback(
-    async (s: ProposedSession) => {
-      const itemKey = `kps::${s.part_name}`;
-      if (openingItemId === itemKey) return;
-      setOpeningItemId(itemKey);
-      try {
-        const { data, error } = await (supabase as any).functions.invoke(
-          "karel-part-session-prepare",
-          {
-            body: {
-              part_name: s.part_name,
-              briefing_proposed_session: {
-                why_today: s.why_today,
-                first_draft: s.first_draft,
-                duration_min: s.duration_min,
-                led_by: s.led_by,
-              },
-            },
-          },
-        );
-        if (error) throw error;
-        const threadId = (data as any)?.thread_id;
-        if (!threadId) throw new Error("Herna nebyla vytvořena.");
-        toast.success(`🎲 Herna s ${s.part_name} otevřena.`);
-        navigate(`/chat?workspace_thread=${threadId}`);
-      } catch (e: any) {
-        console.error("[DidDailyBriefingPanel] openKarelPartSessionRoom failed:", e);
-        toast.error(e?.message || "Nepodařilo se otevřít hernu.");
-      } finally {
-        setOpeningItemId(null);
-      }
-    },
-    [navigate, openingItemId],
   );
 
   if (loading) {
