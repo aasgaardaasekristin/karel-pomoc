@@ -195,11 +195,7 @@ serve(async (req) => {
     // Aktivuje se pro did_terapeut (Hanka/Káťa) — pro děti NIKDY (guard v shouldActivateJungOriginal).
     try {
       const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
-      const lastUserText = typeof lastUserMsg?.content === "string"
-        ? lastUserMsg.content
-        : Array.isArray(lastUserMsg?.content)
-          ? lastUserMsg.content.filter((p: any) => p?.type === "text").map((p: any) => p.text).join(" ")
-          : "";
+      const lastUserText = normalizeMessageContentForPrompt(lastUserMsg?.content);
       const historyText = messages.slice(-6, -1)
         .map((m: any) => typeof m.content === "string" ? m.content : "")
         .join("\n");
@@ -972,7 +968,7 @@ Karel doporučení přirozeně začlení do rozhovoru, ne jako seznam.`;
     let detectedLang = "";
     if (isDirectChildSubMode && messages.length >= 1) {
       const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
-      const lastUserText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
+      const lastUserText = normalizeMessageContentForPrompt(lastUserMsg?.content);
       if (lastUserText.length > 0) {
         const hasCyrillic = /[\u0400-\u04FF]/.test(lastUserText);
         const hasNordic = /[æøåÆØÅ]/.test(lastUserText);
@@ -1020,8 +1016,12 @@ This overrides ALL other language instructions.
     }
 
     if (isPlayroomMode) {
+      const lastPlayroomInput = normalizeMessageContentForPrompt([...messages].reverse().find((m: any) => m.role === "user")?.content);
       systemPrompt += `\n\n═══ HERNA — POVINNÝ REŽIM VEDENÍ SEZENÍ ═══
 Toto NENÍ běžný chat ani vlákno pro vzkazy. Jsi v dětské Herně a vedeš právě schválené strukturované sezení.
+
+POSLEDNÍ SKUTEČNÝ VSTUP DÍTĚTE/PŘÍLOHA — MUSÍŠ NA NĚJ REAGOVAT JAKO PRVNÍ:
+${lastPlayroomInput || "(žádný text; dítě možná poslalo jen přílohu nebo volbu)"}
 
 ABSOLUTNÍ PRIORITA: tento blok přepisuje obecný režim "cast" i všechna pravidla o běžném chatu, vzkazech a deníku. V Herně nejsi kamarádský chat; jsi profesionální klinický průvodce v krátkém, nízkoprahovém sezení podle schváleného programu.
 
@@ -1047,7 +1047,7 @@ Zakázáno v Herně:
     let perplexityContext = "";
     if (effectiveMode === "kata" && messages.length >= 1) {
       const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
-      const lastUserText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
+      const lastUserText = normalizeMessageContentForPrompt(lastUserMsg?.content);
 
       if (lastUserText.length > 15) {
         // Step 1: Quick complexity classification (non-streaming)
@@ -1149,7 +1149,7 @@ Odpověz v češtině. Buď stručný a praktický. Max 500 slov.`,
     if (isDirectChildSubMode && didPartName && messages.length >= 2) {
       try {
         const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
-        const lastUserText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
+        const lastUserText = normalizeMessageContentForPrompt(lastUserMsg?.content);
         const userMsgCount = messages.filter((m: any) => m.role === "user").length;
 
         // Performance optimization: skip first 2 messages, short messages, and only detect every 3rd unless suspicious
