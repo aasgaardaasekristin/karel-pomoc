@@ -399,21 +399,22 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       const assistantContent = await parseSSEStream(response.body, (partial) => {
         setThread((prev) => prev ? { ...prev, messages: [...nextMessages, { role: "assistant", content: childSafe(partial) || partial }] } : prev);
       });
-      const command = progressCommandFrom(assistantContent);
       const sanitizedAiContent = sanitizeAssistantForPlayroom(assistantContent);
       const steps = getProgramSteps(plan);
-      const isLastBlock = progress.currentBlockIndex >= Math.max(steps.length - 1, 0);
       const lastUserText = contentText(userContent);
+      const activeProgress = progressAfterChildAnswer(progress, steps, lastUserText);
+      const isLastBlock = activeProgress.currentBlockIndex >= Math.max(steps.length - 1, 0);
       const wantsProgramContinuation = CONTINUE_PROGRAM_RE.test(lastUserText) && !isStopRequest(lastUserText);
-      const prematureClose = (PREMATURE_CLOSING_RE.test(sanitizedAiContent) || wantsProgramContinuation) && !isLastBlock && !isStopRequest(lastUserText);
-      const safeAssistantContent = prematureClose
-        ? buildProgramContinuationReply(plan, progress, childAddress)
+      const offRail = !responseFollowsCurrentStep(sanitizedAiContent, plan, activeProgress);
+      const forcedRail = ((PREMATURE_CLOSING_RE.test(sanitizedAiContent) || wantsProgramContinuation || offRail) && !isLastBlock && !isStopRequest(lastUserText));
+      const safeAssistantContent = forcedRail
+        ? buildRailReply(plan, activeProgress, childAddress, lastUserText)
         : childSafe(sanitizedAiContent) || sanitizedAiContent || PLAYROOM_TECH_FALLBACK;
       const savedMessages = [...nextMessages, { role: "assistant" as const, content: safeAssistantContent }];
       const { error } = await (supabase as any).from("did_threads").update({ messages: savedMessages, last_activity_at: new Date().toISOString(), is_processed: false }).eq("id", currentThread.id);
       if (error) throw error;
       const nextThread = { ...currentThread, messages: savedMessages };
-      const nextState = nextProgressState(progress, steps, prematureClose ? "stay" : command, lastUserText);
+      const nextState = nextProgressState(activeProgress, steps, "stay", lastUserText);
       setProgress(nextState);
       await persistPlayroomProgress(nextState, nextThread);
       setThread(nextThread);
