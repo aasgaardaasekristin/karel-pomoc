@@ -488,6 +488,17 @@ async function gatherContext(supabase: any) {
     };
     yesterdaySessionReviews = allReviews.sort((a: any, b: any) => rank(a) - rank(b));
   }
+  if (yesterdaySessionReviews.length === 0) {
+    const { data: reviewsByDate } = await supabase
+      .from("did_session_reviews")
+      .select("id, plan_id, mode, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, completed_checklist_items, missing_checklist_items, source_data_summary, analysis_json, created_at")
+      .eq("session_date", yesterdayISO)
+      .eq("is_current", true)
+      .neq("mode", "playroom")
+      .order("created_at", { ascending: false })
+      .limit(5);
+    yesterdaySessionReviews = reviewsByDate ?? [];
+  }
   const clinicalReviewParts = new Set(yesterdaySessionReviews.filter((r: any) => ["completed", "started_partial", "unknown"].includes(reviewEvidenceBasis(r))).map((r: any) => String(r.part_name ?? "").toLowerCase()));
   const safeYesterdaySessions = clinicalReviewParts.size > 0
     ? yesterdaySessions.filter((s: any) => clinicalReviewParts.has(String(s.part_name ?? "").toLowerCase()))
