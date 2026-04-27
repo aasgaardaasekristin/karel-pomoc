@@ -118,6 +118,9 @@ function deriveKarelDirectContract(selectedPart: UrgencyResult, forcePart: strin
   return {
     kind: "karel_direct_session_candidate",
     session_actor: "karel_direct",
+    ui_surface: "did_kids_playroom",
+    lead_entity: "karel",
+    prompt_contract_version: "PLAYROOM_SYSTEM_CONTRACT_v3",
     session_mode,
     human_review_required: true,
     readiness_today,
@@ -132,9 +135,117 @@ function deriveKarelDirectContract(selectedPart: UrgencyResult, forcePart: strin
   };
 }
 
+function buildPlayroomPlan(args: { selectedPart: UrgencyResult; forcePart: string | null; todayPrague: string; partReg?: any; crisisEventId?: string | null }) {
+  const { selectedPart, forcePart, todayPrague, partReg } = args;
+  const readiness = selectedPart.breakdown?.crisis ? "red" : selectedPart.score >= 6 ? "amber" : "green";
+  const duration = readiness === "red" ? 12 : selectedPart.breakdown?.fading_alert ? 18 : 25;
+  const why = Object.entries(selectedPart.breakdown || {})
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(", ") || "denní povinný kontakt Herny podle ranního přehledu";
+  const firstQuestion = readiness === "red"
+    ? "Jde teď být spolu pár minut bezpečně, nebo mám jen zůstat potichu poblíž?"
+    : selectedPart.breakdown?.fading_alert
+      ? "Mám zůstat úplně jemně u tebe a jen zjistit, co je dnes jiné než minule?"
+      : "Jak ti dnes je, když jsme spolu tady přes obrazovku?";
+  return {
+    version: "playroom_plan_v1",
+    title: `Herna na dnes: ${selectedPart.partName}`,
+    date: todayPrague,
+    part_name: selectedPart.partName,
+    source: forcePart ? "manual_daily_generation" : "automatic_daily_overview_generation",
+    independent_from_therapist_session: true,
+    why_this_part_today: why,
+    clinical_goal: readiness === "red"
+      ? "Bezpečný krátký kontakt, orientace v přítomnosti a zjištění, zda je možná další komunikace bez zatížení."
+      : selectedPart.breakdown?.fading_alert
+        ? "Jemně obnovit kontakt po odmlčení, mapovat dostupnost a nepřetížit část požadavky."
+        : "Podpořit kontakt, seberegulaci a hravou komunikaci přes bezpečné remote-native aktivity.",
+    practical_goal: "Karel vede krátké strukturované online setkání přímo s částí; terapeutky pouze schvalují rámec a sledují výstup.",
+    duration_min: duration,
+    readiness_today: readiness,
+    session_mode: readiness === "red" ? "check_in" : selectedPart.breakdown?.fading_alert ? "state_mapping" : "resource_building",
+    first_question: firstQuestion,
+    safety_frame: {
+      remote_native_only: true,
+      no_breathing_exercises: true,
+      child_choice_required: true,
+      no_trauma_memory_work: true,
+      no_deep_regression: true,
+      no_physical_co_presence_assumptions: true,
+    },
+    therapeutic_program: [
+      {
+        step: 1,
+        title: "Bezpečné přivítání a volba intenzity",
+        duration_min: Math.min(5, duration),
+        instruction_for_karel: "Oslov část jménem, potvrď dobrovolnost a nabídni odpověď slovem, číslem, tichem, kresbou nebo hlasem.",
+        expected_signal: "zda část chce mluvit, psát, poslat obrázek/audio, nebo jen krátce zůstat",
+      },
+      {
+        step: 2,
+        title: "Mapování dnešního stavu",
+        duration_min: readiness === "red" ? 4 : 6,
+        instruction_for_karel: "Zeptej se na dnešní barvu, vzdálenost od obrazovky, míru bezpečí 1–10 nebo jednu věc, která je teď moc.",
+        expected_signal: "emoční stav, dostupnost, riziko zahlcení",
+      },
+      {
+        step: 3,
+        title: "Hravý remote-native mikroúkol",
+        duration_min: readiness === "red" ? 0 : 7,
+        instruction_for_karel: "Nabídni jednu jednoduchou volbu: slovní asociaci, mini příběh, screenshot/kresbu do appky, hlasovou zprávu nebo škálu. Nic nevynucuj.",
+        expected_signal: "způsob komunikace a bezpečný zájem části",
+      },
+      {
+        step: 4,
+        title: "Upevnění zdroje nebo hranice",
+        duration_min: readiness === "red" ? 3 : 5,
+        instruction_for_karel: "Pomoz pojmenovat jednu věc, která má zůstat stejná, a jednu věc, kterou dnes nemá nikdo tlačit.",
+        expected_signal: "potřeba ochrany, hranice, přání pro terapeutky",
+      },
+      {
+        step: 5,
+        title: "Krátké uzavření",
+        duration_min: 3,
+        instruction_for_karel: "Shrň pouze to, co část sama dala. Zeptej se, zda smí být pro Haničku/Káťu předána jedna praktická věta.",
+        expected_signal: "souhlas s předáním, nálada po kontaktu, bezpečné ukončení",
+      },
+    ].filter((step) => step.duration_min > 0),
+    stop_signals: ["část říká nejde/nechci/stop", "náhlé zmatení nebo odpojení", "sebepoškozovací nebo suicidální obsah", "výrazné zahlcení", "nátlak na trauma vzpomínky"],
+    fallback: "Okamžitě zkrátit na stabilizační check-in: potvrdit bezpečí, nenutit odpověď, nabídnout ticho / jedno slovo / konec a předat terapeutkám pouze technicky přesný stav.",
+    boundaries: ["Karel nevede trauma memory work", "Karel nepoužívá dechová cvičení", "Karel nepředstírá fyzickou přítomnost", "Karel nepoužívá program Sezení na dnes", "Karel nevkládá do dítěte obsah, který samo neřeklo"],
+    completion_criteria: ["proběhl bezpečný kontakt", "je jasné, zda část chce pokračovat", "vznikl praktický výstup pro terapeutky nebo vědomé tiché ukončení", "nebyly překročeny stop signály"],
+    therapist_review: {
+      required: true,
+      review_state: "pending_review",
+      approved_for_child_session: false,
+      note: "Schvaluje se samostatný program Herny, nikoli terapeutické Sezení na dnes.",
+    },
+    registry_snapshot: partReg ? {
+      status: partReg.status ?? null,
+      age_estimate: partReg.age_estimate ?? null,
+      role_in_system: partReg.role_in_system ?? null,
+      last_emotional_state: partReg.last_emotional_state ?? null,
+      known_triggers: partReg.known_triggers ?? [],
+      known_strengths: partReg.known_strengths ?? [],
+    } : null,
+  };
+}
+
+function playroomPlanToMarkdown(plan: any): string {
+  const steps = Array.isArray(plan.therapeutic_program)
+    ? plan.therapeutic_program.map((s: any) => `- ${s.step}. ${s.title} (${s.duration_min} min): ${s.instruction_for_karel}`).join("\n")
+    : "- Program není strukturovaný.";
+  return `## ${plan.title}\n\nToto je samostatný program Herny, ne Sezení na dnes.\n\n### Cíl\n${plan.clinical_goal}\n\n### Proč dnes\n${plan.why_this_part_today}\n\n### Průběh\n${steps}\n\n### Stop signály\n${(plan.stop_signals || []).map((x: string) => `- ${x}`).join("\n")}\n\n### Fallback\n${plan.fallback}\n\n### Hranice\n${(plan.boundaries || []).map((x: string) => `- ${x}`).join("\n")}`;
+}
+
+function hasUsablePlayroomPlan(contract: any): boolean {
+  const plan = contract?.playroom_plan;
+  return !!plan && typeof plan === "object" && Array.isArray(plan.therapeutic_program) && plan.therapeutic_program.length > 0;
+}
+
 async function ensureKarelDirectCandidate(sb: any, args: { userId: string; todayPrague: string; selectedPart: UrgencyResult; forcePart: string | null; crisisEventId?: string | null }) {
   const { data: existing } = await sb.from("did_daily_session_plans")
-    .select("id,status,lifecycle_status")
+    .select("id,status,lifecycle_status,urgency_breakdown")
     .eq("plan_date", args.todayPrague)
     .contains("urgency_breakdown", { kind: "karel_direct_session_candidate", session_actor: "karel_direct" })
     .limit(10);
@@ -145,22 +256,36 @@ async function ensureKarelDirectCandidate(sb: any, args: { userId: string; today
   );
 
   if (activeExisting) {
-    console.log(`[auto-session-plan] Karel-direct candidate already exists for ${args.todayPrague}; continuing therapist-led flow.`);
+    const contract = activeExisting.urgency_breakdown && typeof activeExisting.urgency_breakdown === "object" ? activeExisting.urgency_breakdown : {};
+    if (!hasUsablePlayroomPlan(contract)) {
+      const playroomPlan = buildPlayroomPlan({ selectedPart: args.selectedPart, forcePart: args.forcePart, todayPrague: args.todayPrague, crisisEventId: args.crisisEventId });
+      await sb.from("did_daily_session_plans").update({
+        urgency_breakdown: { ...contract, ...deriveKarelDirectContract(args.selectedPart, args.forcePart), playroom_plan: playroomPlan },
+        plan_markdown: playroomPlanToMarkdown(playroomPlan),
+        plan_html: playroomPlanToMarkdown(playroomPlan).replace(/\n/g, "<br>"),
+        program_status: "awaiting_therapist_review",
+        updated_at: new Date().toISOString(),
+      }).eq("id", activeExisting.id);
+      console.log(`[auto-session-plan] Repaired missing playroom_plan for ${args.todayPrague}.`);
+    }
+    console.log(`[auto-session-plan] Karel-direct playroom plan already exists for ${args.todayPrague}; continuing therapist-led flow.`);
     return { created: false, existingPlanId: activeExisting.id };
   }
 
   const contract = deriveKarelDirectContract(args.selectedPart, args.forcePart);
-  const markdown = `## Karelův přímý kontakt s částí: ${args.selectedPart.partName}\n\nBezpečný doplňkový denní kandidát. Režim: ${contract.session_mode}.\n\nPrvní věta: ${contract.first_question}`;
+  const playroomPlan = buildPlayroomPlan({ selectedPart: args.selectedPart, forcePart: args.forcePart, todayPrague: args.todayPrague, crisisEventId: args.crisisEventId });
+  const markdown = playroomPlanToMarkdown(playroomPlan);
   const { data, error } = await sb.from("did_daily_session_plans").insert({
     user_id: args.userId,
     plan_date: args.todayPrague,
     selected_part: args.selectedPart.partName,
     urgency_score: args.selectedPart.score,
-    urgency_breakdown: { ...args.selectedPart.breakdown, ...contract },
+    urgency_breakdown: { ...args.selectedPart.breakdown, ...contract, playroom_plan: playroomPlan },
     plan_markdown: markdown,
     plan_html: markdown.replace(/\n/g, "<br>"),
     therapist: "karel",
     status: "generated",
+    program_status: "awaiting_therapist_review",
     generated_by: "karel_direct_daily_candidate",
     part_tier: args.selectedPart.tier,
     session_lead: "karel",
