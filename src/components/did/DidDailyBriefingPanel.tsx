@@ -730,6 +730,88 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     [briefing, navigate, onOpenDeliberation, openingItemId],
   );
 
+  const openProposedPlayroomDeliberation = useCallback(
+    async (s: ProposedPlayroom) => {
+      if (openingItemId || !briefing) return;
+      const itemId = s.id || legacyAskIdFor(briefing.id, "ask_kata", `playroom::${s.part_name}`);
+      setOpeningItemId(itemId);
+      try {
+        const titleHint = `Plán dnešní herny s ${s.part_name}`;
+        const program = Array.isArray(s.playroom_plan?.therapeutic_program) ? s.playroom_plan.therapeutic_program : [];
+        const reasonText = [s.main_theme, s.why_this_part_today].filter(Boolean).join(" — ");
+        const introBrief = [
+          `🎲 **${titleHint}**`,
+          "",
+          `*Hlavní téma:* ${s.main_theme}`,
+          `*Proč právě dnes:* ${s.why_this_part_today}`,
+          "",
+          "Otevírám poradu ke schválení samostatného programu Herny. Herna je Karel-led práce s částí; nepoužije se plán terapeutického sezení ani first_draft.",
+        ].join("\n");
+        const karelPlan = [
+          `Část: ${s.part_name}`,
+          `Stav: ${s.status || "awaiting_therapist_review"}`,
+          `Hlavní téma: ${s.main_theme}`,
+          "",
+          `Proč právě tato herna:\n${s.why_this_part_today}`,
+          "",
+          s.goals?.length ? `Cíle dnešní herny:\n${s.goals.map((g, i) => `${i + 1}. ${g}`).join("\n")}` : "",
+          "",
+          s.playroom_plan?.child_safe_version ? `Dětsky bezpečná verze programu:\n${s.playroom_plan.child_safe_version}` : "",
+          "",
+          s.playroom_plan?.risks_and_stop_signals?.length ? `Rizika a stop signály:\n${s.playroom_plan.risks_and_stop_signals.map((x) => `- ${x}`).join("\n")}` : "",
+          "",
+          s.playroom_plan?.forbidden_directions?.length ? `Zakázané směry:\n${s.playroom_plan.forbidden_directions.map((x) => `- ${x}`).join("\n")}` : "",
+        ].filter(Boolean).join("\n");
+        const prefill = {
+          title: titleHint,
+          reason: reasonText,
+          initial_karel_brief: introBrief,
+          karel_proposed_plan: karelPlan,
+          agenda_outline: program,
+          questions_for_hanka: Array.isArray(s.questions_for_hanka) ? s.questions_for_hanka : [],
+          questions_for_kata: Array.isArray(s.questions_for_kata) ? s.questions_for_kata : [],
+          session_params: {
+            part_name: s.part_name,
+            led_by: "Karel",
+            session_format: "playroom",
+            why_today: s.why_this_part_today,
+            session_mode: "playroom",
+            session_actor: "karel_direct",
+            ui_surface: "did_kids_playroom",
+            approved_for_child_session: false,
+            human_review_required: true,
+            review_state: s.status || "awaiting_therapist_review",
+            playroom_plan: s.playroom_plan,
+          },
+        };
+        const { data, error } = await (supabase as any).functions.invoke("karel-team-deliberation-create", {
+          body: {
+            deliberation_type: "session_plan",
+            subject_parts: [s.part_name],
+            reason: reasonText,
+            hint: titleHint,
+            priority: "high",
+            linked_briefing_id: briefing.id,
+            linked_briefing_item_id: itemId,
+            prefill,
+          },
+        });
+        if (error) throw error;
+        const created = (data as any)?.deliberation;
+        if (!created?.id) throw new Error("Plán herny nebyl vytvořen.");
+        if (onOpenDeliberation) onOpenDeliberation(created.id);
+        else { markBriefingOrigin(); navigate(`/chat?deliberation_id=${created.id}`); }
+        if (!(data as any)?.reused) toast.success("Návrh herny otevřen jako porada týmu.");
+      } catch (e: any) {
+        console.error("[DidDailyBriefingPanel] openProposedPlayroomDeliberation failed:", e);
+        toast.error(e?.message || "Nepodařilo se otevřít návrh herny.");
+      } finally {
+        setOpeningItemId(null);
+      }
+    },
+    [briefing, navigate, onOpenDeliberation, openingItemId],
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-10">
