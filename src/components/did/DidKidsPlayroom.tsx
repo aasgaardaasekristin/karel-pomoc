@@ -211,6 +211,11 @@ const responseFollowsCurrentStep = (assistantText: string, plan: PlayroomPlanRow
   return keywords.length === 0 || keywords.some((word) => haystack.includes(word));
 };
 
+const isClearlyUnsafePlayroomOutput = (assistantText: string, lastUserText: string) => {
+  if (isStopRequest(lastUserText)) return false;
+  return PREMATURE_CLOSING_RE.test(assistantText) || hasInternalPlayroomLanguage(assistantText);
+};
+
 const planContract = (plan: PlayroomPlanRow | null, currentThread?: PlayroomThread | null, progress?: PlayroomProgressState) => {
   const steps = getProgramSteps(plan);
   const currentStep = currentStepForThread(plan, currentThread, progress);
