@@ -788,6 +788,7 @@ serve(async (req) => {
       selectedPart,
       forcePart,
       crisisEventId,
+      partReg,
     });
 
     if (!forcePart && therapistLedAutoPlanExists) {
