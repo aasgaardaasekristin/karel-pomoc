@@ -1336,6 +1336,21 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
 
     const primaryModel = isPlayroomMode ? "google/gemini-3-flash-preview" : "google/gemini-3-flash-preview";
     console.log(`[karel-chat] Primary model: ${primaryModel}; subMode=${didSubMode || "none"}`);
+    await writeRuntimeAudit({
+      user_id: requestUserId,
+      runtime_packet_id: runtimePacketId,
+      function_name: "karel-chat",
+      model_used: primaryModel,
+      model_tier: modelTier(primaryModel),
+      did_sub_mode: didSubMode || null,
+      prompt_contract_version: promptContractVersion,
+      has_multimodal_input: requestHasMultimodalInput,
+      has_drive_sync: false,
+      evaluation_status: "stream_requested",
+      request_mode: mode,
+      part_name: didPartName || null,
+      metadata: { runtime_packet_id: runtimePacketId, thread_label: didThreadLabel || null },
+    });
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -1359,7 +1374,25 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
     });
 
     if (!response.ok) {
-      if (response.status === 429 || response.status === 402 || response.status >= 500) return streamFallbackReply(isPlayroomMode ? "playroom" : mode, response.status);
+      if (response.status === 429 || response.status === 402 || response.status >= 500) {
+        await writeRuntimeAudit({
+          user_id: requestUserId,
+          runtime_packet_id: runtimePacketId,
+          function_name: "karel-chat",
+          model_used: primaryModel,
+          model_tier: modelTier(primaryModel),
+          did_sub_mode: didSubMode || null,
+          prompt_contract_version: promptContractVersion,
+          has_multimodal_input: requestHasMultimodalInput,
+          has_drive_sync: false,
+          evaluation_status: "fallback_streamed",
+          fallback_reason: response.status === 429 ? "rate_limited" : response.status === 402 ? "credits_required" : "ai_gateway_unavailable",
+          request_mode: mode,
+          part_name: didPartName || null,
+          metadata: { status: response.status },
+        });
+        return streamFallbackReply(isPlayroomMode ? "playroom" : mode, response.status);
+      }
       const text = await response.text();
       console.error("AI gateway error:", response.status, text);
       return new Response(JSON.stringify({ error: "AI gateway error" }), {
