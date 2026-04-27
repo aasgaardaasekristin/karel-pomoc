@@ -189,6 +189,11 @@ function normalizePlayroomText(input: string) {
   return String(input || "").toLocaleLowerCase("cs-CZ").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
+function hasPlayroomInternalLanguage(output: string) {
+  const text = normalizePlayroomText(output);
+  return /(dalsi bod je|aktualni blok|programovy krok|mekke uzavreni|symbolicka hra|cilem je|karel nabidne|terapeuticky plan|schvaleny program|dostupnost casti|runtime|index|\bblok\b|interni znacka|playroom_progress)/i.test(text);
+}
+
 function extractPlayroomProgress(runtimeContext?: string | null) {
   const match = String(runtimeContext || "").match(/aktualni blok index:\s*(\d+)\s*z\s*(\d+)/i)
     || normalizePlayroomText(String(runtimeContext || "")).match(/aktualni blok index:\s*(\d+)\s*z\s*(\d+)/i);
@@ -229,8 +234,7 @@ function playroomOutputFollowsRuntimeStep(output: string, runtimeContext?: strin
 function buildPlayroomRailReply(runtimeContext: string | null | undefined, childName?: string | null, lastInput?: string | null) {
   const normalizedInput = normalizePlayroomText(lastInput || "");
   const childAddress = (childName || "").toLocaleUpperCase("cs-CZ") === "TUNDRUPEK" ? "Tundrupku" : (childName || "");
-  const blockTitle = extractPlayroomCurrentBlockTitle(runtimeContext);
-  const programPrompt = extractPlayroomCurrentProgramPrompt(runtimeContext);
+  const stepText = normalizePlayroomText(`${extractPlayroomCurrentBlockTitle(runtimeContext)} ${extractPlayroomCurrentProgramPrompt(runtimeContext)}`);
   const attune = /velryb|kridl|bytost|domu|chlapeck/i.test(normalizedInput)
     ? "Sly\u0161\u00edm velryb\u00edho chlape\u010dka, k\u0159\u00eddla i to, \u017ee domov je bl\u00edzko."
     : /hvezdi|buh|nahore|svetlo|nebe/i.test(normalizedInput)
@@ -238,12 +242,21 @@ function buildPlayroomRailReply(runtimeContext: string | null | undefined, child
     : /blizko|u tebe|se mnou/i.test(normalizedInput)
       ? "Sly\u0161\u00edm, \u017ee m\u00e1m b\u00fdt bl\u00edzko, a z\u016fst\u00e1v\u00e1m tady s tebou."
       : "Sly\u0161\u00edm t\u011b a beru to jako odpov\u011b\u010f na n\u00e1\u0161 krok.";
-  const bridge = /co potrebuje|mal[yý] krok|mikro/i.test(normalizePlayroomText(blockTitle + " " + programPrompt))
-    ? "Te\u010f z toho ud\u011bl\u00e1me jeden mali\u010dk\u00fd krok pro t\u011blo nebo srdce, ne konec hry."
-    : /symbol|postav/i.test(normalizePlayroomText(blockTitle + " " + programPrompt))
-      ? "Te\u010f nech\u00e1me ten symbol uk\u00e1zat jen jednu bezpe\u010dnou v\u011bc, ne cel\u00fd p\u0159\u00edb\u011bh najednou."
-      : "Te\u010f nejdeme pry\u010d a neuzav\u00edr\u00e1me to; pokra\u010dujeme p\u0159esn\u011b dal\u0161\u00edm kouskem dne\u0161n\u00ed hry.";
-  return `${attune} ${bridge}${childAddress ? `, ${childAddress}` : ""}. Dal\u0161\u00ed bod je: ${blockTitle}. ${programPrompt} [PLAYROOM_PROGRESS:stay]`;
+  const childStep = /mekke uzavreni|uzavren|kontakt|slovo|emoji|symbol|ticho/i.test(stepText)
+    ? "Te\u010f to m\u016f\u017eeme jen jemn\u011b polo\u017eit, ne zav\u0159\u00edt narychlo. Vyber si: A) jedno mal\u00e9 slovo, B) jeden symbol, C) ticho a j\u00e1 budu potichu bl\u00edzko."
+    : /co potrebuje|maly krok|mikro|telo|srdce/i.test(stepText)
+      ? "Nekon\u010d\u00edme, jen z toho ud\u011bl\u00e1me jeden mali\u010dk\u00fd kousek pro t\u011blo nebo srdce. Vyber si: A) po\u0161leme t\u011blu kousek tepla, B) d\u00e1me ruce na bezpe\u010dn\u00e9 m\u00edsto, C) nech\u00e1me jen ticho."
+      : /symbol|postav|pribeh|obraz/i.test(stepText)
+        ? "Nech\u00e1me ten obr\u00e1zek uk\u00e1zat jen jednu bezpe\u010dnou v\u011bc, ne cel\u00fd p\u0159\u00edb\u011bh najednou. Vyber si: A) kdo je tam nejbl\u00ed\u017e, B) kde je bezpe\u010dn\u00e9 m\u00edsto, C) jakou barvu tam vid\u00ed\u0161."
+        : /pocasi|teplo|chlad|slunicko|vlocka/i.test(stepText)
+          ? "Z\u016fstaneme jen u toho, jak\u00e9 to tam uvnit\u0159 je. Vyber si: A) slun\u00ed\u010dko, B) vlo\u010dka, C) nev\u00edm."
+          : "Nekon\u010d\u00edme narychlo, z\u016fstaneme jen u jednoho mal\u00e9ho kousku. Vyber si: A) jedno slovo, B) jeden symbol, C) ticho a j\u00e1 budu bl\u00edzko.";
+  return `${attune}${childAddress ? ` ${childAddress},` : ""} ${childStep} [PLAYROOM_PROGRESS:stay]`;
+}
+
+function sanitizePlayroomChildVisibleText(output: string, runtimeContext?: string | null, childName?: string | null, lastInput?: string | null) {
+  if (!hasPlayroomInternalLanguage(output)) return output;
+  return buildPlayroomRailReply(runtimeContext, childName, lastInput);
 }
 
 function isExplicitPlayroomContinuationRequest(input: string) {

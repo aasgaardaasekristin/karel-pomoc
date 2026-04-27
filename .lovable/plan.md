@@ -1,85 +1,95 @@
-Rozumím. Tohle už není jen „prompt neposlechl“ — našel jsem skutečný konstrukční bug:
+Souhlasím — tohle je další bug z mé předchozí opravy. Guard sice Karla zastavil před volným uzavíráním, ale při vynuceném návratu na koleje začal dítěti ukazovat interní program: „Další bod je: Měkké uzavření… Cílem je…“. To do dětské Herny nepatří.
 
-1. Herna sice předává Karlovi schválený program, ale zároveň se postup bloků ve frontendu posouvá automaticky po každé odpovědi dítěte. Proto se v databázi aktuální Herna tváří jako dokončená 5/5 bloků, i když reálně program nebyl projitý.
-2. Strukturovaný program má aktuálně jen obecné klíče `block/detail/minutes`, zatímco starý runtime čeká `title/method/child_facing_prompt_draft/karel_response_strategy`. Výsledkem je, že guard často nemá konkrétní „kolej“, ke které má Karla vracet.
-3. Backend guard dnes kontroluje jen shodu s jedním promptem a předčasné loučení. Neumí vynutit pořadí: počasí → symbolická postava → jeden malý krok → ukotvení → závěr. Proto Karel sklouzne do krásného, ale volného rozhovoru a znovu si sám uzavírá.
+## Co opravím
 
-Navrhuji opravit to tvrdě takto:
+### 1. Oddělím interní program od dětské řeči
+Vynucovací odpověď už nikdy nesmí obsahovat:
+- „Další bod je…“
+- názvy bloků typu „Měkké uzavření“, „Symbolická hra“, „Co potřebuje malý krok“
+- „Karel nabídne…“
+- „Cílem je…“
+- „dostupnost části“, „program“, „blok“, „terapeutický plán“, „schválený“
 
-## 1. Zastavit automatické dokončování bloků
-- V `DidKidsPlayroom.tsx` odstraním logiku, která po každé dětské odpovědi automaticky označí aktuální blok jako hotový.
-- Blok se posune jen tehdy, když runtime výslovně vyhodnotí, že byl splněn, nebo když dítě odpovědělo na přesně očekávaný mikro-krok.
-- Současná situace „completed_blocks = 5/5“ už nebude vznikat po pár výměnách.
+Interní krokový stroj zůstane pro řízení, ale dítě uvidí jen dětskou repliku.
 
-## 2. Zavést programový krokový stroj pro Hernu
-Pro každý blok vytvořím normalizovaný runtime krok bez ohledu na to, jestli plán obsahuje `block/detail/minutes` nebo novější detailní pole.
-
-Příklad pro aktuální program:
+### 2. Přepíšu backendový `buildPlayroomRailReply`
+Současná problematická věta vzniká v backendu v `supabase/functions/karel-chat/index.ts`, kde fallback skládá odpověď takto:
 
 ```text
-0 Bezpečný práh
-1 Mapa dnešního vnitřního počasí
-2 Symbolická hra s jednou postavou
-3 Co potřebuje malý krok
-4 Měkké uzavření
+Slyším tě... Další bod je: {blockTitle}. {programPrompt}
 ```
 
-Runtime bude vědět:
-- aktuální blok,
-- co už dítě poskytlo,
-- co má Karel udělat teď,
-- co je zakázané,
-- kdy smí přejít dál.
+To nahradím dětským composerem:
 
-## 3. Přepsat Karlovu odpověď do „rail composeru“, ne jen prompt guardu
-Když AI ujede mimo program, nenechám ji jen znovu vyzvat promptem. Backend vytvoří povinnou opravenou odpověď podle aktuálního bloku:
+```text
+Slyším tě, Tundrupku. Nekončíme, zůstaneme jen u jednoho malého kousku.
+Vyber si: A) pošleš mi jedno slovo, B) pošleš jen obrázek/symbol, C) necháme chvilku ticho.
+```
 
-- krátké navázání na poslední vstup dítěte,
-- explicitní návrat k dalšímu bodu programu,
-- jedna konkrétní A/B volba nebo mikro-aktivita,
-- žádné loučení mimo poslední blok.
+Podle aktuálního bloku se vytvoří dětská mikro-volba, ne opis terapeutického plánu.
 
-U aktuálního příkladu by Karel po „křídla se nad chlapečkem roztáhla. Už brzy bude doma“ neměl uzavírat, ale pokračovat dalším blokem, např. převést symbol velrybího chlapečka do bodu „jeden malý krok pro tělo/kontakt/klid“.
+### 3. Přepíšu frontendový `buildRailReply`
+Stejný problém je i ve frontendu v `src/components/did/DidKidsPlayroom.tsx`. Pokud frontend zachytí off-rail odpověď, také nesmí vložit interní text plánu.
 
-## 4. Zpřísnit detekci off-rail chování
-Doplním guardy pro:
-- samovolné uzavírání: „dnešní hru uzavřeme“, „odpočívej“, „přeju“, „jsem rád, že jsme našli“, „už nemusíte nic“;
-- pasivní setrvání bez dalšího programového kroku;
-- symbolický únik nahoru/Bůh/hvězda/křídla, pokud není přetaven do bezpečného dalšího kroku;
-- opakované kroužení v jednom symbolu bez návratu k programu;
-- cizí jazyk v Herně.
+Frontend guard bude používat jen:
+- krátké navázání na dítě,
+- „nekončíme / zůstaneme u malého kousku“,
+- jednu jednoduchou A/B/C volbu,
+- žádné názvy programu.
 
-## 5. Tvrdě zresetovat rozpracovanou Hernu pro Tundrupka
-Po opravě runtime upravím aktuální stav tak, aby Tundrupek mohl pokračovat:
-- `did_live_session_progress` pro dnešní schválený program nastavím zpět na správný nedokončený stav, pravděpodobně na blok „Symbolická hra s jednou postavou“ nebo „Co potřebuje malý krok“ podle dosavadního transcriptu.
-- Herna nebude považovaná za hotovou jen proto, že stará logika chybně označila 5/5 bloků.
-- Stávající transcript zachovám jako historii, ale další odpovědi už pojedou přes nový krokový runtime.
+### 4. Přidám tvrdý sanitizační filtr pro dětské odpovědi
+Do Herny přidám finální kontrolu textu před uložením/zobrazením. Pokud odpověď obsahuje interní jazyk, bude nahrazena bezpečnou dětskou verzí.
 
-## 6. Přidat auditní stopu pro vynucení programu
-Do runtime auditu doplním rozlišení:
-- `playroom_step_advanced`,
-- `playroom_step_stayed`,
-- `playroom_rail_guard_replaced`,
-- `playroom_forced_program_resume`.
+Zakázané vzory:
+```text
+Další bod je
+aktuální blok
+programový krok
+Měkké uzavření
+Symbolická hra
+Cílem je
+Karel nabídne
+terapeutický plán
+schválený program
+část / dostupnost části
+runtime / index / blok
+```
 
-Tím půjde poznat, jestli Karel skutečně postupuje podle programu, nebo jestli ho guard musel opravit.
+### 5. Opravím logiku posledního bloku
+I když je aktuální blok „Měkké uzavření“, Karel ho nesmí dítěti pojmenovat klinicky. Dětská verze bude například:
+
+```text
+Teď to můžeme jen jemně položit, ne zavřít narychlo. Vyber si, co je pro tebe nejlepší: A) jedno malé slovo, B) jeden symbol, C) ticho a já budu potichu blízko.
+```
+
+Tedy: program se splní, ale dětskou řečí.
+
+### 6. Resetnu/napravím aktuální pokračování Tundrupka
+Po opravě zajistím, aby další odpověď navázala dětsky a podle programu, ne interním popisem. Pokud je uložená poslední špatná odpověď v threadu, upravím následnou návaznost tak, aby se Karel omluvně a jednoduše vrátil k Herně bez metajazyka.
 
 ## Technické změny
-- `src/components/did/DidKidsPlayroom.tsx`
-  - opravit progresní logiku,
-  - normalizovat kroky programu,
-  - neposouvat blok automaticky po každé odpovědi,
-  - posílat backendu jasný runtime stav.
 
 - `supabase/functions/karel-chat/index.ts`
-  - doplnit normalizaci playroom kroků,
-  - nahradit slabý keyword guard krokovým guardem,
-  - přidat deterministic rail composer pro každý blok,
-  - vynutit češtinu a zákaz samovolného závěru,
-  - zapisovat auditní důvody.
+  - přepsat `buildPlayroomRailReply`,
+  - přidat `sanitizePlayroomChildVisibleText`,
+  - odstranit child-facing vypisování `blockTitle` a `programPrompt`,
+  - vynucovat dětské A/B/C formulace podle typu kroku,
+  - auditovat zásah jako guard replacement, ale bez úniku interního textu.
 
-- Lovable Cloud databáze
-  - opravit aktuální `did_live_session_progress` pro dnešní Tundrupkovu Hernu, aby mohl pokračovat podle programu místo falešného stavu 5/5.
+- `src/components/did/DidKidsPlayroom.tsx`
+  - přepsat `buildRailReply`,
+  - rozšířit `blockedChildText`,
+  - před uložením finální odpovědi kontrolovat interní jazyk,
+  - při zachycení interního jazyka nahradit odpověď dětskou mikro-volbou.
 
 ## Očekávaný výsledek
-Karel nebude volně vést „hezký rozhovor“ mimo plán. Bude reagovat na Tundrupka, ale vždy ho vrátí k dalšímu bodu schváleného programu. Ukončení bude možné jen v posledním bloku, přes tlačítko „Ukončit hernu“, explicitní stop dítěte nebo bezpečnostní důvod.
+
+Karel bude dál tvrdě držen programem, ale dítě neuvidí technický ani klinický plán. Herna bude znít jako rozhovor s dítětem:
+
+```text
+Slyším tě, Tundrupku. Trochu jsem to předtím řekl moc dospělácky; teď to zjednoduším.
+Nekončíme narychlo, jen položíme jeden malý kousek.
+Vyber si: A) jedno slovo, B) jeden symbol, C) ticho a já budu blízko.
+```
+
+Program zůstane závazný, ale jeho formulace bude skrytá.
