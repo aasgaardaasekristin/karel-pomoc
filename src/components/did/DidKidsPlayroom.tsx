@@ -337,7 +337,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         didSubMode: "playroom",
         didPartName: targetPart,
         didThreadLabel: targetPart,
-        didInitialContext: planContract(plan, currentThread),
+        didInitialContext: planContract(plan, currentThread, progress),
       };
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`, { method: "POST", headers, body: JSON.stringify(body) });
       if (!response.ok) handleApiError(response);
@@ -345,11 +345,23 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       const assistantContent = await parseSSEStream(response.body, (partial) => {
         setThread((prev) => prev ? { ...prev, messages: [...nextMessages, { role: "assistant", content: childSafe(partial) || partial }] } : prev);
       });
-      const safeAssistantContent = childSafe(assistantContent) || assistantContent || PLAYROOM_TECH_FALLBACK;
+      const command = progressCommandFrom(assistantContent);
+      const sanitizedAiContent = sanitizeAssistantForPlayroom(assistantContent);
+      const steps = getProgramSteps(plan);
+      const isLastBlock = progress.currentBlockIndex >= Math.max(steps.length - 1, 0);
+      const lastUserText = contentText(userContent);
+      const prematureClose = PREMATURE_CLOSING_RE.test(sanitizedAiContent) && !isLastBlock && !isStopRequest(lastUserText);
+      const safeAssistantContent = prematureClose
+        ? `Slyším tě, ${childAddress}. Nechci tu hvězdičku zavřít ani tě posílat pryč; zůstaneme ještě u našeho dnešního kroku. Když je vločka teď modrá a chceš jí dát svobodu, zkus vybrat jedno bezpečné místo pro další kousek hry: A) hvězdička zůstane blízko a svítí nad dlaní, B) hvězdička ukáže jednu malou cestu, kam se můžeme podívat.`
+        : childSafe(sanitizedAiContent) || sanitizedAiContent || PLAYROOM_TECH_FALLBACK;
       const savedMessages = [...nextMessages, { role: "assistant" as const, content: safeAssistantContent }];
       const { error } = await (supabase as any).from("did_threads").update({ messages: savedMessages, last_activity_at: new Date().toISOString(), is_processed: false }).eq("id", currentThread.id);
       if (error) throw error;
-      setThread({ ...currentThread, messages: savedMessages });
+      const nextThread = { ...currentThread, messages: savedMessages };
+      const nextState = nextProgressState(progress, steps, prematureClose ? "stay" : command, lastUserText);
+      setProgress(nextState);
+      await persistPlayroomProgress(nextState, nextThread);
+      setThread(nextThread);
       setReply("");
       uploads.clearAttachments();
     } catch (error) {
