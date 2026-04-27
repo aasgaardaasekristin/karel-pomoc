@@ -780,6 +780,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const proposedPartName = (p.proposed_session?.part_name ?? "").trim();
   const proposedAlreadyApproved =
     proposedPartName.length > 0 && approvedTodayParts.has(proposedPartName);
+  const hasPlayroomProposal = !!p.proposed_playroom?.part_name;
   const decisions = (p.decisions ?? []).slice(0, 3);
   const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
   const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
