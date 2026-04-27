@@ -433,7 +433,6 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         setThread((prev) => prev ? { ...prev, messages: [...nextMessages, { role: "assistant", content: childSafe(partial) || partial }] } : prev);
       });
       const sanitizedAiContent = sanitizeAssistantForPlayroom(assistantContent);
-      const isLastBlock = activeProgress.currentBlockIndex >= Math.max(steps.length - 1, 0);
       const wantsProgramContinuation = CONTINUE_PROGRAM_RE.test(lastUserText) && !isStopRequest(lastUserText);
       const offRail = !responseFollowsCurrentStep(sanitizedAiContent, plan, activeProgress);
       const internalLanguage = hasInternalPlayroomLanguage(sanitizedAiContent);
