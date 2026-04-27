@@ -49,7 +49,8 @@ const getChildAddress = (partName: string) => partName.toLocaleUpperCase("cs-CZ"
 const firstChoices = ["jde to", "nejde to", "nevím", "chci jen ticho"];
 const PLAYROOM_TECH_FALLBACK = "Slyším tě. Teď se mi na chvilku zasekl hlas, ale zůstávám tady u dveří a nic nemusíš opravovat. Vyber jen jednu věc: mám být blíž, dál, nebo úplně potichu?";
 const PLAYROOM_PROGRESS_MARKER_RE = /\[PLAYROOM_PROGRESS:(stay|advance|fallback|stop)\]/i;
-const PREMATURE_CLOSING_RE = /(pro\s+dne[sš]ek\s+(se\s+)?(lou[čc][íi]me|kon[čc][íi]me|budeme\s+lou[čc]it)|p[řr]eju\s+ti\s+.*zbytek\s+dne|m[eě]j\s+se\s+moc\s+hezky|kdykoliv\s+bude[šs]\s+cht[íi]t,?\s+jsem\s+tady|jsem\s+moc\s+r[áa]d,?\s+[žz]e\s+jsme\s+.*dnes\s+.*na[šs]li)/i;
+const PREMATURE_CLOSING_RE = /(na[šs]e\s+sezen[íi]\s+v\s+hern[ěe]\s+.*kon[čc][íi]|pro\s+dne[sš]ek\s+(se\s+)?(lou[čc][íi]me|kon[čc][íi]me|budeme\s+lou[čc]it)|pomalou[čc]ku\s+se\s+.*lou[čc]it|p[řr]eju\s+ti\s+.*zbytek\s+dne|m[eě]j\s+se\s+moc\s+hezky|kdykoliv\s+bude[šs]\s+cht[íi]t,?\s+jsem\s+tady|jsem\s+moc\s+r[áa]d,?\s+[žz]e\s+jsme\s+.*dnes\s+.*na[šs]li|[čc]as\s+.*hern[uy]\s+zav[řr][íi]t|sezen[íi]\s+.*zav[řr][íi]t)/i;
+const CONTINUE_PROGRAM_RE = /(nekon[čc][íi]|nekon[čc][íi]me|mus[íi]me\s+pokra[čc]ovat|pokra[čc]uj|pokra[čc]ovat|co\s+d[áa]l|zat[íi]m\s+jsme\s+ud[eě]lali\s+jen|jenom?\s+kous[íi]nek|podle\s+programu)/i;
 
 const getRoomBackground = (partName: string) => {
   if (partName.toLocaleUpperCase("cs-CZ") === "TUNDRUPEK") return tundrupekPlayroomBg;
@@ -169,6 +170,12 @@ const getRoomTone = (plan: PlayroomPlanRow | null, thread: PlayroomThread | null
 const getStepPrompt = (plan: PlayroomPlanRow | null, thread: PlayroomThread | null, progress?: PlayroomProgressState) => {
   const step = currentStepForThread(plan, thread, progress);
   return childSafe(step?.child_facing_prompt_draft) || "Mám být blíž, dál, nebo úplně potichu u dveří?";
+};
+
+const buildProgramContinuationReply = (plan: PlayroomPlanRow | null, progress: PlayroomProgressState, childAddress: string) => {
+  const step = currentStepForThread(plan, null, progress);
+  const prompt = childSafe(step?.child_facing_prompt_draft) || childSafe(step?.karel_response_strategy) || "Vyber jeden malý další krok: A) zůstaneme blízko u světla, B) světlo nám ukáže jedny bezpečné dveře.";
+  return `Máš pravdu, ${childAddress}, nekončíme. Udělali jsme zatím jen kousínek a já se vracím k naší dnešní hře, krok po kroku. Teď nic nezavíráme ani nikam neodcházíme. ${prompt}`;
 };
 
 const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
@@ -350,9 +357,10 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       const steps = getProgramSteps(plan);
       const isLastBlock = progress.currentBlockIndex >= Math.max(steps.length - 1, 0);
       const lastUserText = contentText(userContent);
-      const prematureClose = PREMATURE_CLOSING_RE.test(sanitizedAiContent) && !isLastBlock && !isStopRequest(lastUserText);
+      const wantsProgramContinuation = CONTINUE_PROGRAM_RE.test(lastUserText) && !isStopRequest(lastUserText);
+      const prematureClose = (PREMATURE_CLOSING_RE.test(sanitizedAiContent) || wantsProgramContinuation) && !isLastBlock && !isStopRequest(lastUserText);
       const safeAssistantContent = prematureClose
-        ? `Slyším tě, ${childAddress}. Nechci tu hvězdičku zavřít ani tě posílat pryč; zůstaneme ještě u našeho dnešního kroku. Když je vločka teď modrá a chceš jí dát svobodu, zkus vybrat jedno bezpečné místo pro další kousek hry: A) hvězdička zůstane blízko a svítí nad dlaní, B) hvězdička ukáže jednu malou cestu, kam se můžeme podívat.`
+        ? buildProgramContinuationReply(plan, progress, childAddress)
         : childSafe(sanitizedAiContent) || sanitizedAiContent || PLAYROOM_TECH_FALLBACK;
       const savedMessages = [...nextMessages, { role: "assistant" as const, content: safeAssistantContent }];
       const { error } = await (supabase as any).from("did_threads").update({ messages: savedMessages, last_activity_at: new Date().toISOString(), is_processed: false }).eq("id", currentThread.id);
