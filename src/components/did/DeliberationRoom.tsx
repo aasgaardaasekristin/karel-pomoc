@@ -646,7 +646,9 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
       const res = await sign(d.id, who);
       if (res?.bridged_plan_id) {
         setBridgedPlanId(res.bridged_plan_id);
-        toast.success("Porada schválena. Plán propsán do dnešního live sezení.");
+        toast.success(isPlayroomDeliberation(d as any)
+          ? "Porada schválena. Herna je připravená ke spuštění."
+          : "Porada schválena. Plán propsán do dnešního live sezení.");
       } else if (res?.deliberation?.status === "approved") {
         toast.success("Porada schválena.");
       } else {
