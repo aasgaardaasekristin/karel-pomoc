@@ -742,7 +742,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const p = briefing.payload;
   const yesterdayReview = (p.yesterday_session_review && p.yesterday_session_review.held)
     ? p.yesterday_session_review
-    : yesterdayFallback;
+    : yesterdaySessionFallback;
+  const yesterdayPlayroomReview = yesterdayPlayroomFallback;
   const hasProposed = !!p.proposed_session?.part_name;
   const proposedPartName = (p.proposed_session?.part_name ?? "").trim();
   const proposedAlreadyApproved =
