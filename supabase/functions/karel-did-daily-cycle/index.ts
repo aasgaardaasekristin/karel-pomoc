@@ -7815,6 +7815,19 @@ Vra\u0165 JSON:
       }
     }
 
+    if (sb && typeof consolidationRunId !== "undefined" && consolidationRunId) {
+      try {
+        await sb.from("did_daily_consolidation_runs").update({
+          status: "failed",
+          drive_sync_status: "failed",
+          error_message: (error?.message || String(error)).slice(0, 1000),
+          finished_at: new Date().toISOString(),
+        }).eq("id", consolidationRunId);
+      } catch (consolidationErr) {
+        console.error("[daily-cycle] Failed to mark consolidation run as failed:", consolidationErr);
+      }
+    }
+
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
