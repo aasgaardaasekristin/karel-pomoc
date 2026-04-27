@@ -109,16 +109,13 @@ const progressAfterChildAnswer = (progress: PlayroomProgressState, steps: any[],
   return { currentBlockIndex: firstOpen >= 0 ? firstOpen : Math.max(steps.length - 1, 0), completedBlockIndexes: completed };
 };
 
-const inferProgressFromThread = (steps: any[], messages: PlayroomThread["messages"], savedCompleted: number[]): PlayroomProgressState => {
+const inferProgressFromThread = (steps: any[], _messages: PlayroomThread["messages"], savedCompleted: number[]): PlayroomProgressState => {
   if (!steps.length) return { currentBlockIndex: 0, completedBlockIndexes: [] };
   if (savedCompleted.length) {
     const firstOpen = steps.findIndex((_, index) => !savedCompleted.includes(index));
     return { currentBlockIndex: firstOpen >= 0 ? firstOpen : Math.max(steps.length - 1, 0), completedBlockIndexes: savedCompleted };
   }
-  const userTurns = messages.filter((message) => message.role === "user" && !isStopRequest(contentText(message.content))).length;
-  const inferredCompleted = Array.from({ length: Math.min(userTurns, Math.max(steps.length - 1, 0)) }, (_, index) => index);
-  const firstOpen = steps.findIndex((_, index) => !inferredCompleted.includes(index));
-  return { currentBlockIndex: firstOpen >= 0 ? firstOpen : Math.max(steps.length - 1, 0), completedBlockIndexes: inferredCompleted };
+  return { currentBlockIndex: 0, completedBlockIndexes: [] };
 };
 
 const stepLine = (step: any) => [
