@@ -779,30 +779,29 @@ serve(async (req) => {
       console.warn("[auto-session-plan] crisis_event resolution skipped:", e);
     }
 
-    let karelDirectCandidate: { created: boolean; planId?: string; existingPlanId?: string } | null = null;
-    if (!forcePart) {
-      karelDirectCandidate = await ensureKarelDirectCandidate(sb, {
-        userId,
-        todayPrague,
-        selectedPart,
-        forcePart,
-        crisisEventId,
-      });
+    const partReg = registry.find(p => p.part_name === selectedPart.partName);
 
-      if (therapistLedAutoPlanExists) {
-        return new Response(JSON.stringify({
-          success: true,
-          skipped: true,
-          reason: "plan_exists",
-          existingTherapistLedAutoPlanId,
-          karel_direct_candidate: karelDirectCandidate,
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+    let karelDirectCandidate: { created: boolean; planId?: string; existingPlanId?: string } | null = null;
+    karelDirectCandidate = await ensureKarelDirectCandidate(sb, {
+      userId,
+      todayPrague,
+      selectedPart,
+      forcePart,
+      crisisEventId,
+    });
+
+    if (!forcePart && therapistLedAutoPlanExists) {
+      return new Response(JSON.stringify({
+        success: true,
+        skipped: true,
+        reason: "plan_exists",
+        existingTherapistLedAutoPlanId,
+        karel_direct_candidate: karelDirectCandidate,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const partReg = registry.find(p => p.part_name === selectedPart.partName);
     const isDormant = partReg?.status !== "active" && partReg?.status !== "aktivní";
 
     // Recent sessions for this part
