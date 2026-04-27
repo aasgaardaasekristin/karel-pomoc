@@ -16,6 +16,7 @@ import { Loader2, CheckCircle2, Send, ArrowRight, Users, Brain, AlertTriangle, S
 import { toast } from "sonner";
 import { useTeamDeliberations } from "@/hooks/useTeamDeliberations";
 import DidLiveSessionPanel from "./DidLiveSessionPanel";
+import { getAuthHeaders } from "@/lib/auth";
 import {
   signoffProgress,
   type TeamDeliberation,
@@ -175,6 +176,14 @@ function buildApprovedLivePlanMarkdown(source: LiveDeliberationSource | null | u
   }
 
   return lines.filter(Boolean).join("\n");
+}
+
+function isPlayroomDeliberation(source: LiveDeliberationSource | null | undefined) {
+  const sp = source?.session_params && typeof source.session_params === "object" ? source.session_params : {};
+  return sp.session_actor === "karel_direct" ||
+    sp.ui_surface === "did_kids_playroom" ||
+    sp.session_format === "playroom" ||
+    !!sp.playroom_plan;
 }
 
 function areAllQuestionsAnswered(questions: DeliberationQuestion[] = []) {
@@ -637,7 +646,9 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
       const res = await sign(d.id, who);
       if (res?.bridged_plan_id) {
         setBridgedPlanId(res.bridged_plan_id);
-        toast.success("Porada schválena. Plán propsán do dnešního live sezení.");
+        toast.success(isPlayroomDeliberation(d as any)
+          ? "Porada schválena. Herna je připravená ke spuštění."
+          : "Porada schválena. Plán propsán do dnešního live sezení.");
       } else if (res?.deliberation?.status === "approved") {
         toast.success("Porada schválena.");
       } else {
@@ -734,6 +745,8 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
       const authoritativeMarkdown = buildApprovedLivePlanMarkdown(
         (deliberationRes?.data as LiveDeliberationSource | null) ?? ((d as any) as LiveDeliberationSource | null),
       );
+      const liveSource = (deliberationRes?.data as LiveDeliberationSource | null) ?? ((d as any) as LiveDeliberationSource | null);
+      const isPlayroom = isPlayroomDeliberation(liveSource);
 
       if (authoritativeMarkdown) {
         const { error: syncErr } = await (supabase as any)
@@ -761,6 +774,25 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
         return;
       }
 
+      if (isPlayroom) {
+        const headers = await getAuthHeaders();
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-part-session-prepare`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ part_name: planRow.selected_part, plan_id: planRow.id }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.thread_id) throw new Error(payload.message || payload.error || "Herna nejde otevřít.");
+        try {
+          sessionStorage.setItem("karel_playroom_plan_id", planRow.id);
+          sessionStorage.setItem("karel_playroom_thread_id", payload.thread_id);
+        } catch { /* ignore */ }
+        onClose();
+        window.location.assign(`/chat?workspace_thread=${payload.thread_id}`);
+        toast.success("Herna zahájena.");
+        return;
+      }
+
       setLivePlan({
         ...(planRow as LiveSessionPlanRow),
         plan_markdown: authoritativeMarkdown || planRow.plan_markdown,
@@ -782,6 +814,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
   // ale Káťa může pořád odpovídat / přidávat podněty (a obráceně).
   const hankaLocked = !!d?.hanka_signed_at;
   const kataLocked = !!d?.kata_signed_at;
+  const isPlayroomPlan = isPlayroomDeliberation(d as any);
 
   return (
     <Dialog open={!!deliberationId} onOpenChange={(open) => !open && onClose()}>
@@ -1088,8 +1121,9 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                       Připraveno k zahájení
                     </p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Hanička i Káťa stvrdily podpisem souhlas. Plán je propsán
-                      do dnešního sezení.
+                      Hanička i Káťa stvrdily podpisem souhlas. {isPlayroomPlan
+                        ? "Herna je připravená jako dětská místnost v DID/Kluci/Herna."
+                        : "Plán je propsán do dnešního sezení."}
                     </p>
                   </div>
                 </section>
@@ -1105,7 +1139,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 {startingLive ? (
                   <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                 ) : null}
-                {startingLive ? "Otevírám…" : <>Spustit sezení <ArrowRight className="w-3 h-3 ml-1" /></>}
+                {startingLive ? "Otevírám…" : <>{isPlayroomPlan ? "Spustit hernu" : "Spustit sezení"} <ArrowRight className="w-3 h-3 ml-1" /></>}
               </Button>
             )}
               </div>

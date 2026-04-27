@@ -1030,6 +1030,10 @@ const PlanCard = ({
       }
       if (!threadId) throw new Error("Herna nebyla vytvořena.");
       toast.success(`🎲 Herna s ${plan.selected_part} otevřena.`);
+      try {
+        sessionStorage.setItem("karel_playroom_plan_id", plan.id);
+        sessionStorage.setItem("karel_playroom_thread_id", threadId);
+      } catch { /* ignore */ }
       navigate(`/chat?workspace_thread=${threadId}`);
     } catch (e: any) {
       console.error("[DidDailySessionPlan] onOpenPartRoom failed:", e);
