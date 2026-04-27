@@ -7779,6 +7779,14 @@ Vra\u0165 JSON:
       console.warn(`[PHASE_10] ⚠️ NOT marking ${threadIds.length} threads + ${convIds.length} conversations as processed — critical phases incomplete`);
     }
 
+    if (consolidationRunId) {
+      await sb.from("did_daily_consolidation_runs").update({
+        status: allCriticalOk && !hadCardUpdateErrors ? "completed" : "completed_with_warnings",
+        drive_sync_status: criticalPhaseStatus.queueFlushTriggeredOk ? "synced" : "failed",
+        finished_at: new Date().toISOString(),
+      }).eq("id", consolidationRunId);
+    }
+
     return new Response(JSON.stringify({
       success: !hadCardUpdateErrors,
       threadsProcessed: threads.length,
