@@ -1276,6 +1276,28 @@ Deno.serve(async (req) => {
       } as ProposedSessionItem;
     }
 
+    // ── proposed_playroom carry-over (single object; match by part_name) ──
+    if (payload?.proposed_playroom && typeof payload.proposed_playroom === "object") {
+      const pp = payload.proposed_playroom;
+      const partName = String(pp?.part_name ?? "").trim();
+      const np = normalizeForMatch(partName);
+      let resolvedId: string | null = null;
+      for (const row of sameDayPrev || []) {
+        const oldPp = (row?.payload as any)?.proposed_playroom;
+        if (oldPp && typeof oldPp === "object" && oldPp.id && oldPp.part_name) {
+          const op = normalizeForMatch(String(oldPp.part_name));
+          if (op === np) {
+            resolvedId = String(oldPp.id);
+            break;
+          }
+        }
+      }
+      payload.proposed_playroom = {
+        ...pp,
+        id: resolvedId || crypto.randomUUID(),
+      };
+    }
+
     // 4) Resolve part_id pro proposed_session (kanonická tabulka did_part_registry)
     let proposedPartId: string | null = null;
     if (payload.proposed_session?.part_name) {
