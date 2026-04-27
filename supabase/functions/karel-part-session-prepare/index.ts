@@ -276,6 +276,7 @@ serve(async (req) => {
     const existing = await existingQuery.order("started_at", { ascending: false }).limit(1).maybeSingle();
 
     if (existing.data?.id) {
+      if (planId) await ensurePlayroomProgress(sb, { userId: null, planId, partName, playroomPlan });
       return jsonRes({ thread_id: existing.data.id, created: false });
     }
 
@@ -343,6 +344,7 @@ serve(async (req) => {
     }
 
     console.log(`[part-session-prepare] created room ${created.id} for ${partName} (date=${today})`);
+    if (planId) await ensurePlayroomProgress(sb, { userId, planId, partName, playroomPlan });
     return jsonRes({ thread_id: created.id, created: true });
   } catch (e) {
     console.error("[part-session-prepare] fatal:", e);
@@ -355,4 +357,23 @@ function jsonRes(body: Record<string, unknown>, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+async function ensurePlayroomProgress(sb: any, args: { userId: string | null; planId: string; partName: string; playroomPlan: any }) {
+  const steps = Array.isArray(args.playroomPlan?.therapeutic_program) ? args.playroomPlan.therapeutic_program : [];
+  if (!steps.length) return;
+  const userId = args.userId ?? (await sb.from("did_threads").select("user_id").not("user_id", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle()).data?.user_id ?? null;
+  if (!userId) return;
+  await sb.from("did_live_session_progress").upsert({
+    user_id: userId,
+    plan_id: args.planId,
+    part_name: args.partName,
+    therapist: "karel",
+    items: steps.map((step: any, index: number) => ({ id: `playroom-${index + 1}`, text: String(step?.title ?? `Blok ${index + 1}`), done: false, observation: "" })),
+    turns_by_block: {},
+    artifacts_by_block: {},
+    completed_blocks: 0,
+    total_blocks: steps.length,
+    last_activity_at: new Date().toISOString(),
+  }, { onConflict: "plan_id" });
 }
