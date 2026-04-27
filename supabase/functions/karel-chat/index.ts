@@ -1577,7 +1577,9 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
       const mustStayOnRails = !playroomProgress.isFinal && !isExplicitPlayroomStopRequest(lastPlayroomInput);
       const offRail = !playroomOutputFollowsRuntimeStep(rawPlayroomResponse, runtimeContext);
       const prematureClosing = isPrematurePlayroomClosing(rawPlayroomResponse);
-      const guardedPlayroomResponse = mustStayOnRails && (offRail || prematureClosing)
+      const passiveDrift = isPassivePlayroomDrift(rawPlayroomResponse);
+      const symbolicEscape = isSymbolicEscapeWithoutAnchor(rawPlayroomResponse);
+      const guardedPlayroomResponse = mustStayOnRails && (offRail || prematureClosing || passiveDrift || symbolicEscape)
         ? buildPlayroomRailReply(runtimeContext, didPartName, lastPlayroomInput)
         : rawPlayroomResponse.includes("[PLAYROOM_PROGRESS:")
           ? rawPlayroomResponse
@@ -1592,10 +1594,10 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         prompt_contract_version: promptContractVersion,
         has_multimodal_input: requestHasMultimodalInput,
         has_drive_sync: false,
-        evaluation_status: offRail || prematureClosing ? "playroom_rail_guard_replaced" : "playroom_rail_guard_passed",
+        evaluation_status: offRail || prematureClosing || passiveDrift || symbolicEscape ? "playroom_rail_guard_replaced" : "playroom_rail_guard_passed",
         request_mode: mode,
         part_name: didPartName || null,
-        metadata: { off_rail: offRail, premature_closing: prematureClosing, current_block: playroomProgress.current, final_block: playroomProgress.max },
+        metadata: { off_rail: offRail, premature_closing: prematureClosing, passive_drift: passiveDrift, symbolic_escape: symbolicEscape, current_block: playroomProgress.current, final_block: playroomProgress.max },
       });
       return streamPlayroomText(guardedPlayroomResponse);
     }
