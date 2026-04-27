@@ -176,6 +176,44 @@ function extractPlayroomCurrentProgramPrompt(runtimeContext?: string | null) {
   return childPrompt || strategy || currentBlock || "Vyber jeden mal\u00fd dal\u0161\u00ed krok: A) z\u016fstaneme bl\u00edzko u sv\u011btla, B) sv\u011btlo n\u00e1m uk\u00e1\u017ee jedny bezpe\u010dn\u00e9 dve\u0159e.";
 }
 
+function normalizePlayroomText(input: string) {
+  return String(input || "").toLocaleLowerCase("cs-CZ").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function extractPlayroomProgress(runtimeContext?: string | null) {
+  const match = String(runtimeContext || "").match(/aktualni blok index:\s*(\d+)\s*z\s*(\d+)/i)
+    || normalizePlayroomText(String(runtimeContext || "")).match(/aktualni blok index:\s*(\d+)\s*z\s*(\d+)/i);
+  const current = Number(match?.[1] || 0);
+  const max = Number(match?.[2] || 0);
+  return { current, max, isFinal: current >= max };
+}
+
+function isPrematurePlayroomClosing(output: string) {
+  const text = normalizePlayroomText(output);
+  return /(pro dnesek|louci|loucime|koncime|preju ti|zbytek dne|mej se|kdykoliv budes chtit|zavrit hernu|sezeni zavrit)/i.test(text);
+}
+
+function playroomOutputFollowsRuntimeStep(output: string, runtimeContext?: string | null) {
+  const prompt = extractPlayroomCurrentProgramPrompt(runtimeContext);
+  const source = normalizePlayroomText(prompt);
+  const haystack = normalizePlayroomText(output);
+  const keywords = Array.from(new Set((source.match(/[a-z]{5,}/g) || [])
+    .filter((word) => !/(ktery|ktera|muzes|jeden|maly|dnes|bezpec|tvoje|tebou|vyber|zkusime|muzeme|odpoved|kousek)/i.test(word))
+    .slice(0, 10)));
+  return keywords.length === 0 || keywords.some((word) => haystack.includes(word));
+}
+
+function buildPlayroomRailReply(runtimeContext: string | null | undefined, childName?: string | null, lastInput?: string | null) {
+  const normalizedInput = normalizePlayroomText(lastInput || "");
+  const childAddress = (childName || "").toLocaleUpperCase("cs-CZ") === "TUNDRUPEK" ? "Tundrupku" : (childName || "");
+  const attune = /hvezdi|buh|nahore|svetlo|nebe/i.test(normalizedInput)
+    ? "Sly\u0161\u00edm tu hv\u011bzdi\u010dku i to, \u017ee chce b\u00fdt hodn\u011b bl\u00edzko sv\u011btlu."
+    : /blizko|u tebe|se mnou/i.test(normalizedInput)
+      ? "Sly\u0161\u00edm, \u017ee m\u00e1m b\u00fdt bl\u00edzko, a z\u016fst\u00e1v\u00e1m tady s tebou."
+      : "Sly\u0161\u00edm t\u011b a beru to jako odpov\u011b\u010f na n\u00e1\u0161 krok.";
+  return `${attune} Te\u010f nejdeme pry\u010d a neuzav\u00edr\u00e1me to${childAddress ? `, ${childAddress}` : ""}; pokra\u010dujeme p\u0159esn\u011b dal\u0161\u00edm kouskem dne\u0161n\u00ed hry. ${extractPlayroomCurrentProgramPrompt(runtimeContext)} [PLAYROOM_PROGRESS:stay]`;
+}
+
 function isExplicitPlayroomContinuationRequest(input: string) {
   return /(nekon\u010d\u00ed|nekon\u010d\u00edme|mus\u00edme\s+pokra\u010dovat|pokra\u010duj|pokra\u010dovat|co\s+d\u00e1l|zat\u00edm\s+jsme\s+ud\u011blali\s+jen|jenom?\s+kous\u00ednek|podle\s+programu)/i.test(input);
 }
