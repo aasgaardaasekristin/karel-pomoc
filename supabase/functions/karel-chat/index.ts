@@ -106,6 +106,44 @@ function normalizeMessageContentForPrompt(content: any): string {
   }).filter(Boolean).join("\n").trim();
 }
 
+function hasMultimodalInput(messages: any[]): boolean {
+  return messages.some((m: any) => Array.isArray(m?.content) && m.content.some((part: any) => part?.type !== "text" || part?.image_url || part?.mime_type || part?.category));
+}
+
+function modelTier(model: string): string {
+  if (/pro|gpt-5\.2|gpt-5(?!-mini|-nano)/i.test(model)) return "high_capability";
+  if (/flash|mini/i.test(model)) return "balanced";
+  if (/lite|nano/i.test(model)) return "lightweight";
+  return "standard";
+}
+
+async function resolveUserIdFromRequest(req: Request): Promise<string | null> {
+  const auth = req.headers.get("Authorization");
+  if (!auth?.startsWith("Bearer ")) return null;
+  try {
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    const userSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: auth } },
+    });
+    const { data: { user } } = await userSb.auth.getUser();
+    return user?.id || null;
+  } catch (e) {
+    console.warn("[karel-chat][audit] user resolve failed:", e);
+    return null;
+  }
+}
+
+async function writeRuntimeAudit(entry: Record<string, any>) {
+  try {
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { error } = await sb.from("karel_runtime_audit_logs").insert(entry);
+    if (error) console.warn("[karel-chat][audit] insert failed:", error.message);
+  } catch (e) {
+    console.warn("[karel-chat][audit] non-fatal failure:", e);
+  }
+}
+
 function streamFallbackReply(mode: string, status: number) {
   const content = mode === "playroom"
     ? "Slyším tě. Teď se mi na chvilku zasekl hlas, ale zůstávám tady u dveří a nic nemusíš opravovat. Vyber jen jednu věc: mám být blíž, dál, nebo úplně potichu?"
