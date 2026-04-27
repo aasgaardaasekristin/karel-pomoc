@@ -814,6 +814,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
   // ale Káťa může pořád odpovídat / přidávat podněty (a obráceně).
   const hankaLocked = !!d?.hanka_signed_at;
   const kataLocked = !!d?.kata_signed_at;
+  const isPlayroomPlan = isPlayroomDeliberation(d as any);
 
   return (
     <Dialog open={!!deliberationId} onOpenChange={(open) => !open && onClose()}>
@@ -1120,8 +1121,9 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                       Připraveno k zahájení
                     </p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Hanička i Káťa stvrdily podpisem souhlas. Plán je propsán
-                      do dnešního sezení.
+                      Hanička i Káťa stvrdily podpisem souhlas. {isPlayroomPlan
+                        ? "Herna je připravená jako dětská místnost v DID/Kluci/Herna."
+                        : "Plán je propsán do dnešního sezení."}
                     </p>
                   </div>
                 </section>
@@ -1137,7 +1139,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 {startingLive ? (
                   <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                 ) : null}
-                {startingLive ? "Otevírám…" : <>Spustit sezení <ArrowRight className="w-3 h-3 ml-1" /></>}
+                {startingLive ? "Otevírám…" : <>{isPlayroomPlan ? "Spustit hernu" : "Spustit sezení"} <ArrowRight className="w-3 h-3 ml-1" /></>}
               </Button>
             )}
               </div>
