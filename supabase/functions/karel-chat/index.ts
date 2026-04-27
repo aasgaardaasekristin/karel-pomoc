@@ -180,6 +180,10 @@ function isExplicitPlayroomContinuationRequest(input: string) {
   return /(nekon\u010d\u00ed|nekon\u010d\u00edme|mus\u00edme\s+pokra\u010dovat|pokra\u010duj|pokra\u010dovat|co\s+d\u00e1l|zat\u00edm\s+jsme\s+ud\u011blali\s+jen|jenom?\s+kous\u00ednek|podle\s+programu)/i.test(input);
 }
 
+function isExplicitPlayroomStopRequest(input: string) {
+  return /(^|\b)(stop|kon\u010d\u00edm|nechci\s+pokra\u010dovat|dnes\s+nechci|sta\u010d\u00ed|ukon\u010dit)(\b|$)/i.test(input);
+}
+
 function streamPlayroomText(content: string) {
   const payload = JSON.stringify({ choices: [{ delta: { content } }] });
   const stream = new ReadableStream({
