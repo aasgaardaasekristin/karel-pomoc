@@ -309,9 +309,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         const completedIndexes = Array.isArray(progressRow?.items)
           ? progressRow.items.map((item: any, index: number) => item?.done ? index : -1).filter((index: number) => index >= 0)
           : [];
-        const steps = getProgramSteps(selectedPlan);
-        const firstOpen = steps.findIndex((_, index) => !completedIndexes.includes(index));
-        setProgress({ currentBlockIndex: firstOpen >= 0 ? firstOpen : 0, completedBlockIndexes: completedIndexes });
+        setProgress(inferProgressFromThread(getProgramSteps(selectedPlan), [], completedIndexes));
       }
 
       if (preferredThreadId) {
@@ -322,13 +320,15 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
           .eq("sub_mode", "karel_part_session")
           .maybeSingle();
         if (!threadError && threadRow) {
-          setThread({
+          const loadedThread = {
             id: threadRow.id,
             messages: ((threadRow.messages || []) as PlayroomThread["messages"]).map((message) => ({
               ...message,
               content: childSafe(contentText(message.content)) || "Jsem tady. Můžeme zůstat potichu.",
             })),
-          });
+          };
+          setThread(loadedThread);
+          setProgress(inferProgressFromThread(getProgramSteps(selectedPlan), loadedThread.messages, completedIndexes));
         }
       }
     } catch (error) {
