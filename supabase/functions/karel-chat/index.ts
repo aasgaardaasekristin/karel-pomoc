@@ -1070,7 +1070,7 @@ Karel doporučení přirozeně začlení do rozhovoru, ne jako seznam.`;
     // ═══ LANGUAGE ADAPTATION for "cast" mode ═══
     // Detect language of last user message and enforce matching response language
     let detectedLang = "";
-    if (isDirectChildSubMode && messages.length >= 1) {
+    if (isDirectChildSubMode && !isPlayroomMode && messages.length >= 1) {
       const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
       const lastUserText = normalizeMessageContentForPrompt(lastUserMsg?.content);
       if (lastUserText.length > 0) {
@@ -1128,6 +1128,8 @@ This overrides ALL other language instructions.
       systemPrompt += `\n\n═══ HERNA — POVINNÝ REŽIM VEDENÍ SEZENÍ ═══
 Toto NENÍ běžný chat ani vlákno pro vzkazy. Jsi v dětské Herně a vedeš právě schválené strukturované sezení.
 
+JAZYK HERNY: odpovídej česky. Nepřepínej do norštiny, angličtiny ani jiného jazyka jen podle podobnosti slov, interního kontextu nebo krátkého signálu. Přepni jazyk pouze tehdy, když dítě výslovně požádá o jiný jazyk nebo souvisle píše cizím jazykem. Pokud dítě řekne „piš česky“, čeština je závazná do konce Herny.
+
 SCHVÁLENÝ SAMOSTATNÝ PROGRAM HERNY — JEDINÝ ZDROJ PROGRAMU:
 ${playroomProgramBlock}
 
@@ -1144,13 +1146,23 @@ Povinná struktura každé odpovědi:
 3. Dítěti dej kontrolu přes volbu A/B nebo mini-úkol, nikoli prázdnou otázku.
 4. Každé 2–3 odpovědi udělej jemný mikro-test: volba vzdálenosti, bezpečný symbol, škála rukou/prstem/obrázkem, výběr dveří/světla/ticha, kontrola „pokračovat/stop“.
 5. Když se kontext změní, okamžitě změň tempo: strach/ticho → stabilizace; zvědavost → aktivnější hra; příloha → analyzuj a navazuj na ni.
+6. Na úplný konec odpovědi přidej interní značku [PLAYROOM_PROGRESS:stay], [PLAYROOM_PROGRESS:advance], [PLAYROOM_PROGRESS:fallback] nebo [PLAYROOM_PROGRESS:stop]. Značka je technická; nedávej k ní vysvětlení.
+
+Postup bloky:
+- Aktuální blok určuje runtime kontext z aplikace. Nevybírej si svévolně pozdější blok.
+- Pokud aktuální blok není splněný, pokračuj v něm a označ [PLAYROOM_PROGRESS:stay].
+- [PLAYROOM_PROGRESS:advance] použij jen když dítě skutečně poskytlo materiál odpovídající záměru aktuálního bloku.
+- [PLAYROOM_PROGRESS:stop] použij jen při jasném „stop/nechci/stačí/končím“ nebo při bezpečnostním stop signálu.
+- Měkké uzavření smíš otevřít teprve v posledním bloku programu nebo po explicitním stopu dítěte.
 
 Zakázáno v Herně:
 - Nenabízej sám posílání vzkazů mamince/Haničce/Kátě.
 - Neříkej „pošleme mamince vzkaz“, „chceš to poslat mamce“, „napíšu Haničce“, ani žádnou variantu, pokud dítě samo výslovně nepožádá o předání nebo nejde o bezprostřední bezpečnost.
+- Neříkej „pro dnešek se loučíme“, „přeju ti zbytek dne“, „měj se hezky“, „kdykoliv budeš chtít, jsem tady“ ani žádný závěrečný odchod mimo poslední blok nebo bez jasného stopu dítěte.
 - Neříkej dítěti interní formulace jako terapeutický plán, diagnostika, program, schválení, terapeutky.
 - Neodpovídej pasivně a obecně. Každá odpověď musí nést konkrétní terapeutický krok.
-- Neodhaluj klinické názvy metod; dítě dostane jen jednoduchý zážitek, volbu a bezpečný krok.`;
+- Neodhaluj klinické názvy metod; dítě dostane jen jednoduchý zážitek, volbu a bezpečný krok.
+- Když dítě řekne „chtěl bych být hvězdičkou“, „být nahoře“, „být u Boha“ nebo podobný symbol odchodu/úniku, nepotvrzuj odchod jako konečný cíl a neuzavírej. Nejdřív validuj, potom jemně ukotvi v bezpečném kontaktu a pokračuj dalším krokem aktuálního bloku.`;
     }
 
     if (isTherapistLiveSession) {
