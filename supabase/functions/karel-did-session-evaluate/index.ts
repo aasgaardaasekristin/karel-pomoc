@@ -1287,9 +1287,13 @@ async function persistEvaluation(
     .from("did_daily_session_plans")
     .update({
       status: "done",
+      program_status: reviewStatus === "analyzed" || reviewStatus === "partially_analyzed" ? "evaluated" : "completed",
+      drive_sync_status: "queued",
+      kartoteka_card_target: `KARTA_${String(partName || "UNKNOWN").toUpperCase()}`,
       lifecycle_status: reviewStatus,
       completed_at: now,
       finalized_at: now,
+      evaluated_at: now,
       finalization_source: endedReason,
       finalization_reason: evaluation.incomplete_note ?? endedReason,
       analysis_error: null,
