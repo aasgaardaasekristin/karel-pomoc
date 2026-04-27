@@ -767,6 +767,21 @@ POKYN: Pokud valence klesá (↓), buď citlivější. Pokud spolupráce roste (
       const isLive = mode === "live-session";
       const fastModel = isLive ? "google/gemini-2.5-flash" : "google/gemini-3-flash-preview";
       console.log(`[karel-chat] Fast-path (${mode}): model=${fastModel}, skipping Drive/Perplexity/tasks`);
+      await writeRuntimeAudit({
+        user_id: requestUserId,
+        runtime_packet_id: runtimePacketId,
+        function_name: "karel-chat",
+        model_used: fastModel,
+        model_tier: modelTier(fastModel),
+        did_sub_mode: didSubMode || null,
+        prompt_contract_version: promptContractVersion,
+        has_multimodal_input: requestHasMultimodalInput,
+        has_drive_sync: false,
+        evaluation_status: "live_response_requested",
+        request_mode: mode,
+        part_name: didPartName || null,
+        metadata: { fast_path: true, runtime_packet_id: runtimePacketId },
+      });
 
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
@@ -785,7 +800,25 @@ POKYN: Pokud valence klesá (↓), buď citlivější. Pokud spolupráce roste (
       });
 
       if (!response.ok) {
-        if (response.status === 429 || response.status === 402 || response.status >= 500) return streamFallbackReply(mode, response.status);
+        if (response.status === 429 || response.status === 402 || response.status >= 500) {
+          await writeRuntimeAudit({
+            user_id: requestUserId,
+            runtime_packet_id: runtimePacketId,
+            function_name: "karel-chat",
+            model_used: fastModel,
+            model_tier: modelTier(fastModel),
+            did_sub_mode: didSubMode || null,
+            prompt_contract_version: promptContractVersion,
+            has_multimodal_input: requestHasMultimodalInput,
+            has_drive_sync: false,
+            evaluation_status: "fallback_streamed",
+            fallback_reason: response.status === 429 ? "rate_limited" : response.status === 402 ? "credits_required" : "ai_gateway_unavailable",
+            request_mode: mode,
+            part_name: didPartName || null,
+            metadata: { status: response.status, fast_path: true },
+          });
+          return streamFallbackReply(mode, response.status);
+        }
         const text = await response.text();
         console.error(`AI gateway error (${mode}):`, response.status, text);
         return new Response(JSON.stringify({ error: "AI gateway error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
