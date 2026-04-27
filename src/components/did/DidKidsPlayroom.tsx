@@ -387,13 +387,15 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
     setEnding(true);
     try {
       const userTurns = thread.messages.filter((message) => message.role === "user").length;
-      const totalBlocks = Math.max(getProgramSteps(plan).length, userTurns, 1);
+      const totalBlocks = Math.max(getProgramSteps(plan).length, 1);
+      const completedBlocks = Math.min(progress.completedBlockIndexes.length || userTurns, totalBlocks);
+      await persistPlayroomProgress(progress, thread, completedBlocks >= totalBlocks ? "completed" : "partial");
       const { data, error } = await supabase.functions.invoke("karel-did-session-evaluate", {
         body: {
           planId: plan.id,
-          completedBlocks: Math.min(userTurns, totalBlocks),
+          completedBlocks,
           totalBlocks,
-          endedReason: userTurns >= totalBlocks ? "completed" : "partial",
+          endedReason: completedBlocks >= totalBlocks ? "completed" : "partial",
           turnsByBlock: { 0: thread.messages.map((message) => ({ from: message.role === "assistant" ? "karel" : "hana", text: contentText(message.content) })) },
           observationsByBlock: { 0: "Herna ukončena tlačítkem v dětském režimu; vyhodnoť pouze skutečné zprávy a přílohy v transcriptu." },
         },
