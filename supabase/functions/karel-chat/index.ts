@@ -168,6 +168,34 @@ async function loadApprovedPlayroomPlan(partName?: string | null) {
   }
 }
 
+function extractPlayroomCurrentProgramPrompt(runtimeContext?: string | null) {
+  const ctx = String(runtimeContext || "");
+  const childPrompt = ctx.match(/d\u011btsk\u00e1 replika:\s*([^|\n]+)/i)?.[1]?.trim();
+  const strategy = ctx.match(/strategie:\s*([^|\n]+)/i)?.[1]?.trim();
+  const currentBlock = ctx.match(/AKTU\u00c1LN\u00cd BLOK TE\u010e[\s\S]*?\n([^\n]+)/i)?.[1]?.trim();
+  return childPrompt || strategy || currentBlock || "Vyber jeden mal\u00fd dal\u0161\u00ed krok: A) z\u016fstaneme bl\u00edzko u sv\u011btla, B) sv\u011btlo n\u00e1m uk\u00e1\u017ee jedny bezpe\u010dn\u00e9 dve\u0159e.";
+}
+
+function isExplicitPlayroomContinuationRequest(input: string) {
+  return /(nekon\u010d\u00ed|nekon\u010d\u00edme|mus\u00edme\s+pokra\u010dovat|pokra\u010duj|pokra\u010dovat|co\s+d\u00e1l|zat\u00edm\s+jsme\s+ud\u011blali\s+jen|jenom?\s+kous\u00ednek|podle\s+programu)/i.test(input);
+}
+
+function streamPlayroomText(content: string) {
+  const payload = JSON.stringify({ choices: [{ delta: { content } }] });
+  const stream = new ReadableStream({
+    start(controller) {
+      const enc = new TextEncoder();
+      controller.enqueue(enc.encode(`data: ${payload}\n\n`));
+      controller.enqueue(enc.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+  });
+}
+
 function streamFallbackReply(mode: string, status: number) {
   const content = mode === "playroom"
     ? "Slyším tě. Teď se mi na chvilku zasekl hlas, ale zůstávám tady u dveří a nic nemusíš opravovat. Vyber jen jednu věc: mám být blíž, dál, nebo úplně potichu?"
