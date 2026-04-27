@@ -144,6 +144,30 @@ async function writeRuntimeAudit(entry: Record<string, any>) {
   }
 }
 
+async function loadApprovedPlayroomPlan(partName?: string | null) {
+  if (!partName) return null;
+  try {
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+    const { data } = await sb.from("did_daily_session_plans")
+      .select("id,plan_date,selected_part,program_status,urgency_breakdown")
+      .eq("plan_date", today)
+      .ilike("selected_part", partName)
+      .contains("urgency_breakdown", { session_actor: "karel_direct", ui_surface: "did_kids_playroom", lead_entity: "karel" })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const contract = data?.urgency_breakdown && typeof data.urgency_breakdown === "object" ? data.urgency_breakdown as any : null;
+    const plan = contract?.playroom_plan;
+    if (!data || !contract || !plan || !Array.isArray(plan.therapeutic_program)) return null;
+    return { id: data.id, program_status: data.program_status, contract, playroom_plan: plan };
+  } catch (e) {
+    console.warn("[karel-chat][playroom] approved playroom plan load failed:", e);
+    return null;
+  }
+}
+
 function streamFallbackReply(mode: string, status: number) {
   const content = mode === "playroom"
     ? "Slyším tě. Teď se mi na chvilku zasekl hlas, ale zůstávám tady u dveří a nic nemusíš opravovat. Vyber jen jednu věc: mám být blíž, dál, nebo úplně potichu?"
@@ -181,7 +205,7 @@ serve(async (req) => {
     const isTherapistLiveSession = mode === "live-session" || didSubMode === "therapist_session" || didSubMode === "session";
     const runtimePacketId = crypto.randomUUID();
     const promptContractVersion = isPlayroomMode
-      ? "PLAYROOM_SYSTEM_CONTRACT_v2"
+      ? "PLAYROOM_SYSTEM_CONTRACT_v3"
       : isTherapistLiveSession
         ? "THERAPIST_SESSION_ASSISTANT_CONTRACT_v1"
         : "KAREL_CHAT_CONTRACT_v1";
