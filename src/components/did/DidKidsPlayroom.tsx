@@ -139,6 +139,33 @@ const currentStepForThread = (plan: PlayroomPlanRow | null, currentThread?: Play
   return steps[Math.min(Math.max(userTurns, 1) - 1, steps.length - 1)];
 };
 
+const explicitStepPrompt = (step: any) => childSafe(step?.child_facing_prompt_draft)
+  || childSafe(step?.karel_response_strategy)
+  || "Vyber jeden malý další krok: A) ukážeme bezpečné místo, B) necháme bezpečné místo ukázat jednu věc.";
+
+const buildRailReply = (plan: PlayroomPlanRow | null, progress: PlayroomProgressState, childAddress: string, lastUserText: string) => {
+  const step = currentStepForThread(plan, null, progress);
+  const prompt = explicitStepPrompt(step);
+  const attune = /hv[ěe]zdi|b[oů]h|naho[řr]e|sv[ěe]tlo|nebe/i.test(lastUserText)
+    ? "Slyším tu hvězdičku i to, že chce být hodně blízko světlu."
+    : /bl[íi]zko|u tebe|se mnou/i.test(lastUserText)
+      ? "Slyším, že mám být blízko, a zůstávám tady s tebou."
+      : "Slyším tě a beru to jako odpověď na náš krok.";
+  return `${attune} Teď nejdeme pryč a neuzavíráme to, ${childAddress}; pokračujeme přesně dalším kouskem dnešní hry. ${prompt}`;
+};
+
+const responseFollowsCurrentStep = (assistantText: string, plan: PlayroomPlanRow | null, progress: PlayroomProgressState) => {
+  const step = currentStepForThread(plan, null, progress);
+  const haystack = assistantText.toLocaleLowerCase("cs-CZ");
+  const source = [step?.title, step?.method, step?.child_facing_prompt_draft, step?.karel_response_strategy, ...(Array.isArray(step?.expected_response_range) ? step.expected_response_range : [])]
+    .join(" ")
+    .toLocaleLowerCase("cs-CZ");
+  const keywords = Array.from(new Set((source.match(/[a-zá-ž]{5,}/gi) || [])
+    .filter((word) => !/kter[ýa]|m[ůu][žz]e|jeden|mal[ýy]|dnes|bezpe[čc]|tvoje|tebou|te[ďd]/i.test(word))
+    .slice(0, 12)));
+  return keywords.length === 0 || keywords.some((word) => haystack.includes(word));
+};
+
 const planContract = (plan: PlayroomPlanRow | null, currentThread?: PlayroomThread | null, progress?: PlayroomProgressState) => {
   const steps = getProgramSteps(plan);
   const currentStep = currentStepForThread(plan, currentThread, progress);
