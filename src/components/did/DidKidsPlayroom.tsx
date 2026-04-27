@@ -436,7 +436,8 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       const isLastBlock = activeProgress.currentBlockIndex >= Math.max(steps.length - 1, 0);
       const wantsProgramContinuation = CONTINUE_PROGRAM_RE.test(lastUserText) && !isStopRequest(lastUserText);
       const offRail = !responseFollowsCurrentStep(sanitizedAiContent, plan, activeProgress);
-      const forcedRail = ((PREMATURE_CLOSING_RE.test(sanitizedAiContent) || wantsProgramContinuation || offRail) && !isLastBlock && !isStopRequest(lastUserText));
+      const internalLanguage = hasInternalPlayroomLanguage(sanitizedAiContent);
+      const forcedRail = ((PREMATURE_CLOSING_RE.test(sanitizedAiContent) || wantsProgramContinuation || offRail || internalLanguage) && !isStopRequest(lastUserText));
       const safeAssistantContent = forcedRail
         ? buildRailReply(plan, activeProgress, childAddress, lastUserText)
         : childSafe(sanitizedAiContent) || sanitizedAiContent || PLAYROOM_TECH_FALLBACK;
