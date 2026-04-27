@@ -357,9 +357,10 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       const steps = getProgramSteps(plan);
       const isLastBlock = progress.currentBlockIndex >= Math.max(steps.length - 1, 0);
       const lastUserText = contentText(userContent);
-      const prematureClose = PREMATURE_CLOSING_RE.test(sanitizedAiContent) && !isLastBlock && !isStopRequest(lastUserText);
+      const wantsProgramContinuation = CONTINUE_PROGRAM_RE.test(lastUserText) && !isStopRequest(lastUserText);
+      const prematureClose = (PREMATURE_CLOSING_RE.test(sanitizedAiContent) || wantsProgramContinuation) && !isLastBlock && !isStopRequest(lastUserText);
       const safeAssistantContent = prematureClose
-        ? `Slyším tě, ${childAddress}. Nechci tu hvězdičku zavřít ani tě posílat pryč; zůstaneme ještě u našeho dnešního kroku. Když je vločka teď modrá a chceš jí dát svobodu, zkus vybrat jedno bezpečné místo pro další kousek hry: A) hvězdička zůstane blízko a svítí nad dlaní, B) hvězdička ukáže jednu malou cestu, kam se můžeme podívat.`
+        ? buildProgramContinuationReply(plan, progress, childAddress)
         : childSafe(sanitizedAiContent) || sanitizedAiContent || PLAYROOM_TECH_FALLBACK;
       const savedMessages = [...nextMessages, { role: "assistant" as const, content: safeAssistantContent }];
       const { error } = await (supabase as any).from("did_threads").update({ messages: savedMessages, last_activity_at: new Date().toISOString(), is_processed: false }).eq("id", currentThread.id);
