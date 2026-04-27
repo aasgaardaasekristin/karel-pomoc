@@ -1713,6 +1713,63 @@ export type Database = {
         }
         Relationships: []
       }
+      did_daily_consolidation_runs: {
+        Row: {
+          created_at: string
+          drive_sync_status: string
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          partial_sessions: number
+          processed_playrooms: number
+          processed_sessions: number
+          result_json: Json
+          retry_count: number
+          run_date: string
+          scheduled_for: string | null
+          started_at: string
+          status: string
+          timezone: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          drive_sync_status?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          partial_sessions?: number
+          processed_playrooms?: number
+          processed_sessions?: number
+          result_json?: Json
+          retry_count?: number
+          run_date: string
+          scheduled_for?: string | null
+          started_at?: string
+          status?: string
+          timezone?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          drive_sync_status?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          partial_sessions?: number
+          processed_playrooms?: number
+          processed_sessions?: number
+          result_json?: Json
+          retry_count?: number
+          run_date?: string
+          scheduled_for?: string | null
+          started_at?: string
+          status?: string
+          timezone?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       did_daily_context: {
         Row: {
           analysis_json: Json | null
@@ -1802,25 +1859,39 @@ export type Database = {
       did_daily_session_plans: {
         Row: {
           analysis_error: string | null
+          approved_at: string | null
+          approved_by: string | null
+          archived_at: string | null
           completed_at: string | null
           created_at: string
           crisis_event_id: string | null
           distributed_drive: boolean
           distributed_email: boolean
+          drive_document_id: string | null
+          drive_document_url: string | null
+          drive_sync_status: string
+          evaluated_at: string | null
           finalization_reason: string | null
           finalization_source: string | null
           finalized_at: string | null
           generated_by: string
           id: string
+          kartoteka_card_target: string | null
+          last_drive_sync_at: string | null
+          last_drive_sync_error: string | null
           lifecycle_status: string
           overdue_days: number
           part_tier: string
           plan_date: string
           plan_html: string
           plan_markdown: string
+          program_status: string
+          ready_to_start_at: string | null
           selected_part: string
           session_format: string
           session_lead: string
+          start_block_reason: string | null
+          started_at: string | null
           status: string
           therapist: string
           updated_at: string
@@ -1830,25 +1901,39 @@ export type Database = {
         }
         Insert: {
           analysis_error?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          archived_at?: string | null
           completed_at?: string | null
           created_at?: string
           crisis_event_id?: string | null
           distributed_drive?: boolean
           distributed_email?: boolean
+          drive_document_id?: string | null
+          drive_document_url?: string | null
+          drive_sync_status?: string
+          evaluated_at?: string | null
           finalization_reason?: string | null
           finalization_source?: string | null
           finalized_at?: string | null
           generated_by?: string
           id?: string
+          kartoteka_card_target?: string | null
+          last_drive_sync_at?: string | null
+          last_drive_sync_error?: string | null
           lifecycle_status?: string
           overdue_days?: number
           part_tier?: string
           plan_date?: string
           plan_html?: string
           plan_markdown?: string
+          program_status?: string
+          ready_to_start_at?: string | null
           selected_part: string
           session_format?: string
           session_lead?: string
+          start_block_reason?: string | null
+          started_at?: string | null
           status?: string
           therapist?: string
           updated_at?: string
@@ -1858,25 +1943,39 @@ export type Database = {
         }
         Update: {
           analysis_error?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          archived_at?: string | null
           completed_at?: string | null
           created_at?: string
           crisis_event_id?: string | null
           distributed_drive?: boolean
           distributed_email?: boolean
+          drive_document_id?: string | null
+          drive_document_url?: string | null
+          drive_sync_status?: string
+          evaluated_at?: string | null
           finalization_reason?: string | null
           finalization_source?: string | null
           finalized_at?: string | null
           generated_by?: string
           id?: string
+          kartoteka_card_target?: string | null
+          last_drive_sync_at?: string | null
+          last_drive_sync_error?: string | null
           lifecycle_status?: string
           overdue_days?: number
           part_tier?: string
           plan_date?: string
           plan_html?: string
           plan_markdown?: string
+          program_status?: string
+          ready_to_start_at?: string | null
           selected_part?: string
           session_format?: string
           session_lead?: string
+          start_block_reason?: string | null
+          started_at?: string | null
           status?: string
           therapist?: string
           updated_at?: string
@@ -3089,25 +3188,49 @@ export type Database = {
         Row: {
           analysis_json: Json
           analysis_version: string
+          approved_program_id: string | null
+          assistant_persons: Json
+          clinical_findings: string | null
           clinical_summary: string | null
           completed_checklist_items: Json
           created_at: string
+          detail_analysis_drive_id: string | null
+          detail_analysis_drive_url: string | null
+          drive_sync_status: string
           error_message: string | null
           evidence_items: Json
           evidence_limitations: string | null
           id: string
+          implications_for_part: string | null
+          implications_for_whole_system: string | null
           is_current: boolean
+          kartoteka_card_target: string | null
+          last_sync_at: string | null
+          last_sync_error: string | null
+          lead_person: string | null
           live_progress_available: boolean
+          main_topic: string | null
           missing_checklist_items: Json
+          mode: string
           next_session_recommendation: string | null
           part_name: string | null
           plan_id: string
+          practical_report_drive_id: string | null
+          practical_report_drive_url: string | null
+          program_title: string | null
           projection_status: string
+          recommendations_for_next_playroom: string | null
+          recommendations_for_next_session: string | null
+          recommendations_for_therapists: string | null
           retry_count: number
           review_kind: string
           session_date: string
           source_data_summary: string | null
+          source_of_truth_status: string
           status: string
+          sync_attempts: number
+          synced_to_drive: boolean
+          team_closing: string | null
           team_implications: string | null
           therapeutic_implications: string | null
           transcript_available: boolean
@@ -3117,25 +3240,49 @@ export type Database = {
         Insert: {
           analysis_json?: Json
           analysis_version?: string
+          approved_program_id?: string | null
+          assistant_persons?: Json
+          clinical_findings?: string | null
           clinical_summary?: string | null
           completed_checklist_items?: Json
           created_at?: string
+          detail_analysis_drive_id?: string | null
+          detail_analysis_drive_url?: string | null
+          drive_sync_status?: string
           error_message?: string | null
           evidence_items?: Json
           evidence_limitations?: string | null
           id?: string
+          implications_for_part?: string | null
+          implications_for_whole_system?: string | null
           is_current?: boolean
+          kartoteka_card_target?: string | null
+          last_sync_at?: string | null
+          last_sync_error?: string | null
+          lead_person?: string | null
           live_progress_available?: boolean
+          main_topic?: string | null
           missing_checklist_items?: Json
+          mode?: string
           next_session_recommendation?: string | null
           part_name?: string | null
           plan_id: string
+          practical_report_drive_id?: string | null
+          practical_report_drive_url?: string | null
+          program_title?: string | null
           projection_status?: string
+          recommendations_for_next_playroom?: string | null
+          recommendations_for_next_session?: string | null
+          recommendations_for_therapists?: string | null
           retry_count?: number
           review_kind?: string
           session_date: string
           source_data_summary?: string | null
+          source_of_truth_status?: string
           status?: string
+          sync_attempts?: number
+          synced_to_drive?: boolean
+          team_closing?: string | null
           team_implications?: string | null
           therapeutic_implications?: string | null
           transcript_available?: boolean
@@ -3145,25 +3292,49 @@ export type Database = {
         Update: {
           analysis_json?: Json
           analysis_version?: string
+          approved_program_id?: string | null
+          assistant_persons?: Json
+          clinical_findings?: string | null
           clinical_summary?: string | null
           completed_checklist_items?: Json
           created_at?: string
+          detail_analysis_drive_id?: string | null
+          detail_analysis_drive_url?: string | null
+          drive_sync_status?: string
           error_message?: string | null
           evidence_items?: Json
           evidence_limitations?: string | null
           id?: string
+          implications_for_part?: string | null
+          implications_for_whole_system?: string | null
           is_current?: boolean
+          kartoteka_card_target?: string | null
+          last_sync_at?: string | null
+          last_sync_error?: string | null
+          lead_person?: string | null
           live_progress_available?: boolean
+          main_topic?: string | null
           missing_checklist_items?: Json
+          mode?: string
           next_session_recommendation?: string | null
           part_name?: string | null
           plan_id?: string
+          practical_report_drive_id?: string | null
+          practical_report_drive_url?: string | null
+          program_title?: string | null
           projection_status?: string
+          recommendations_for_next_playroom?: string | null
+          recommendations_for_next_session?: string | null
+          recommendations_for_therapists?: string | null
           retry_count?: number
           review_kind?: string
           session_date?: string
           source_data_summary?: string | null
+          source_of_truth_status?: string
           status?: string
+          sync_attempts?: number
+          synced_to_drive?: boolean
+          team_closing?: string | null
           team_implications?: string | null
           therapeutic_implications?: string | null
           transcript_available?: boolean
@@ -4413,6 +4584,66 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      karel_runtime_audit_logs: {
+        Row: {
+          created_at: string
+          did_sub_mode: string | null
+          evaluation_status: string
+          fallback_reason: string | null
+          function_name: string
+          has_drive_sync: boolean
+          has_multimodal_input: boolean
+          id: string
+          metadata: Json
+          model_tier: string | null
+          model_used: string | null
+          part_name: string | null
+          prompt_contract_version: string | null
+          request_mode: string | null
+          runtime_packet_id: string
+          thread_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          did_sub_mode?: string | null
+          evaluation_status?: string
+          fallback_reason?: string | null
+          function_name?: string
+          has_drive_sync?: boolean
+          has_multimodal_input?: boolean
+          id?: string
+          metadata?: Json
+          model_tier?: string | null
+          model_used?: string | null
+          part_name?: string | null
+          prompt_contract_version?: string | null
+          request_mode?: string | null
+          runtime_packet_id?: string
+          thread_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          did_sub_mode?: string | null
+          evaluation_status?: string
+          fallback_reason?: string | null
+          function_name?: string
+          has_drive_sync?: boolean
+          has_multimodal_input?: boolean
+          id?: string
+          metadata?: Json
+          model_tier?: string | null
+          model_used?: string | null
+          part_name?: string | null
+          prompt_contract_version?: string | null
+          request_mode?: string | null
+          runtime_packet_id?: string
+          thread_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
       }
       karel_saved_topics: {
         Row: {

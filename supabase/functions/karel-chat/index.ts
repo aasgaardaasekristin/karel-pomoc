@@ -106,6 +106,44 @@ function normalizeMessageContentForPrompt(content: any): string {
   }).filter(Boolean).join("\n").trim();
 }
 
+function hasMultimodalInput(messages: any[]): boolean {
+  return messages.some((m: any) => Array.isArray(m?.content) && m.content.some((part: any) => part?.type !== "text" || part?.image_url || part?.mime_type || part?.category));
+}
+
+function modelTier(model: string): string {
+  if (/pro|gpt-5\.2|gpt-5(?!-mini|-nano)/i.test(model)) return "high_capability";
+  if (/flash|mini/i.test(model)) return "balanced";
+  if (/lite|nano/i.test(model)) return "lightweight";
+  return "standard";
+}
+
+async function resolveUserIdFromRequest(req: Request): Promise<string | null> {
+  const auth = req.headers.get("Authorization");
+  if (!auth?.startsWith("Bearer ")) return null;
+  try {
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    const userSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: auth } },
+    });
+    const { data: { user } } = await userSb.auth.getUser();
+    return user?.id || null;
+  } catch (e) {
+    console.warn("[karel-chat][audit] user resolve failed:", e);
+    return null;
+  }
+}
+
+async function writeRuntimeAudit(entry: Record<string, any>) {
+  try {
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { error } = await sb.from("karel_runtime_audit_logs").insert(entry);
+    if (error) console.warn("[karel-chat][audit] insert failed:", error.message);
+  } catch (e) {
+    console.warn("[karel-chat][audit] non-fatal failure:", e);
+  }
+}
+
 function streamFallbackReply(mode: string, status: number) {
   const content = mode === "playroom"
     ? "Slyším tě. Teď se mi na chvilku zasekl hlas, ale zůstávám tady u dveří a nic nemusíš opravovat. Vyber jen jednu věc: mám být blíž, dál, nebo úplně potichu?"
@@ -140,6 +178,15 @@ serve(async (req) => {
   try {
     const { messages, mode, didInitialContext, didSubMode, notebookProject, didPartName, didThreadLabel, didEnteredName, didContextPrimeCache } = await req.json();
     const isPlayroomMode = didSubMode === "playroom";
+    const isTherapistLiveSession = mode === "live-session" || didSubMode === "therapist_session" || didSubMode === "session";
+    const runtimePacketId = crypto.randomUUID();
+    const promptContractVersion = isPlayroomMode
+      ? "PLAYROOM_SYSTEM_CONTRACT_v2"
+      : isTherapistLiveSession
+        ? "THERAPIST_SESSION_ASSISTANT_CONTRACT_v1"
+        : "KAREL_CHAT_CONTRACT_v1";
+    const requestUserId = await resolveUserIdFromRequest(req);
+    const requestHasMultimodalInput = hasMultimodalInput(messages || []);
     const isDirectChildSubMode = didSubMode === "cast" || isPlayroomMode;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -720,6 +767,21 @@ POKYN: Pokud valence klesá (↓), buď citlivější. Pokud spolupráce roste (
       const isLive = mode === "live-session";
       const fastModel = isLive ? "google/gemini-2.5-flash" : "google/gemini-3-flash-preview";
       console.log(`[karel-chat] Fast-path (${mode}): model=${fastModel}, skipping Drive/Perplexity/tasks`);
+      await writeRuntimeAudit({
+        user_id: requestUserId,
+        runtime_packet_id: runtimePacketId,
+        function_name: "karel-chat",
+        model_used: fastModel,
+        model_tier: modelTier(fastModel),
+        did_sub_mode: didSubMode || null,
+        prompt_contract_version: promptContractVersion,
+        has_multimodal_input: requestHasMultimodalInput,
+        has_drive_sync: false,
+        evaluation_status: "live_response_requested",
+        request_mode: mode,
+        part_name: didPartName || null,
+        metadata: { fast_path: true, runtime_packet_id: runtimePacketId },
+      });
 
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
@@ -738,7 +800,25 @@ POKYN: Pokud valence klesá (↓), buď citlivější. Pokud spolupráce roste (
       });
 
       if (!response.ok) {
-        if (response.status === 429 || response.status === 402 || response.status >= 500) return streamFallbackReply(mode, response.status);
+        if (response.status === 429 || response.status === 402 || response.status >= 500) {
+          await writeRuntimeAudit({
+            user_id: requestUserId,
+            runtime_packet_id: runtimePacketId,
+            function_name: "karel-chat",
+            model_used: fastModel,
+            model_tier: modelTier(fastModel),
+            did_sub_mode: didSubMode || null,
+            prompt_contract_version: promptContractVersion,
+            has_multimodal_input: requestHasMultimodalInput,
+            has_drive_sync: false,
+            evaluation_status: "fallback_streamed",
+            fallback_reason: response.status === 429 ? "rate_limited" : response.status === 402 ? "credits_required" : "ai_gateway_unavailable",
+            request_mode: mode,
+            part_name: didPartName || null,
+            metadata: { status: response.status, fast_path: true },
+          });
+          return streamFallbackReply(mode, response.status);
+        }
         const text = await response.text();
         console.error(`AI gateway error (${mode}):`, response.status, text);
         return new Response(JSON.stringify({ error: "AI gateway error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -1042,6 +1122,28 @@ Zakázáno v Herně:
 - Neodhaluj klinické názvy metod; dítě dostane jen jednoduchý zážitek, volbu a bezpečný krok.`;
     }
 
+    if (isTherapistLiveSession) {
+      const lastSessionInput = normalizeMessageContentForPrompt([...messages].reverse().find((m: any) => m.role === "user")?.content);
+      systemPrompt += `\n\n═══ THERAPIST_SESSION_ASSISTANT_CONTRACT_v1 — ŽIVÉ TERAPEUTEM VEDENÉ SEZENÍ ═══
+Toto NENÍ běžný chat a NEVEDEŠ dítě přímo. Vedeš terapeutku v reálném sezení krok za krokem.
+
+POSLEDNÍ ZÁPIS TERAPEUTKY / MATERIÁL — MUSÍŠ NA NĚJ REAGOVAT JAKO PRVNÍ:
+${lastSessionInput || "(zatím bez textového zápisu; drž bezpečný úvodní mikro-krok)"}
+
+Povinná struktura každé odpovědi terapeutce:
+1. Jednou větou pojmenuj, co z posledního zápisu skutečně plyne — bez domýšlení.
+2. Dej další mikro-krok: co teď říct dítěti přesnou větou.
+3. Dej pozorovací body: čeho si všímat v hlase, těle, pauze, odporu, přiblížení/stažení.
+4. Dej záznamový pokyn: co přesně si má terapeutka zapsat pro pozdější kvalitativní analýzu.
+5. Pokud je riziko zahlcení, zpomal a navrhni stabilizační krok místo interpretace.
+
+Hranice autonomie:
+- Neuzavírej klinické závěry jako definitivní; formuluj hypotézy a co je potřeba ověřit.
+- Nevyžaduj neveřejné testové položky, klíče ani chráněné manuály.
+- Pokud se objeví sebepoškození, akutní disociativní destabilizace, ztráta orientace, extrémní flashback nebo bezprostřední riziko, přepni do stabilizace a vyžádej lidský zásah terapeutek.
+- Odpověď má být praktická, krátká a použitelná v místnosti: max 7 vět, žádná teorie navíc.`;
+    }
+
     // ═══ AUTO-PERPLEXITY FOR KATA MODE ═══
     // When Káťa asks about complex situations, automatically search for research
     let perplexityContext = "";
@@ -1234,6 +1336,21 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
 
     const primaryModel = isPlayroomMode ? "google/gemini-3-flash-preview" : "google/gemini-3-flash-preview";
     console.log(`[karel-chat] Primary model: ${primaryModel}; subMode=${didSubMode || "none"}`);
+    await writeRuntimeAudit({
+      user_id: requestUserId,
+      runtime_packet_id: runtimePacketId,
+      function_name: "karel-chat",
+      model_used: primaryModel,
+      model_tier: modelTier(primaryModel),
+      did_sub_mode: didSubMode || null,
+      prompt_contract_version: promptContractVersion,
+      has_multimodal_input: requestHasMultimodalInput,
+      has_drive_sync: false,
+      evaluation_status: "stream_requested",
+      request_mode: mode,
+      part_name: didPartName || null,
+      metadata: { runtime_packet_id: runtimePacketId, thread_label: didThreadLabel || null },
+    });
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -1257,7 +1374,25 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
     });
 
     if (!response.ok) {
-      if (response.status === 429 || response.status === 402 || response.status >= 500) return streamFallbackReply(isPlayroomMode ? "playroom" : mode, response.status);
+      if (response.status === 429 || response.status === 402 || response.status >= 500) {
+        await writeRuntimeAudit({
+          user_id: requestUserId,
+          runtime_packet_id: runtimePacketId,
+          function_name: "karel-chat",
+          model_used: primaryModel,
+          model_tier: modelTier(primaryModel),
+          did_sub_mode: didSubMode || null,
+          prompt_contract_version: promptContractVersion,
+          has_multimodal_input: requestHasMultimodalInput,
+          has_drive_sync: false,
+          evaluation_status: "fallback_streamed",
+          fallback_reason: response.status === 429 ? "rate_limited" : response.status === 402 ? "credits_required" : "ai_gateway_unavailable",
+          request_mode: mode,
+          part_name: didPartName || null,
+          metadata: { status: response.status },
+        });
+        return streamFallbackReply(isPlayroomMode ? "playroom" : mode, response.status);
+      }
       const text = await response.text();
       console.error("AI gateway error:", response.status, text);
       return new Response(JSON.stringify({ error: "AI gateway error" }), {

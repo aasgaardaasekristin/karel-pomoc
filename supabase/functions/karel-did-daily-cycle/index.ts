@@ -2496,6 +2496,7 @@ serve(async (req) => {
 
   let cycleId: string | null = null;
   let sb: ReturnType<typeof createClient> | null = null;
+  let consolidationRunId: string | null = null;
 
   try {
     // ═══ FAST-PATH: syncRegistry – batched: list + process_one ═══
@@ -3144,6 +3145,21 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
     const { data: cycle, error: cycleErr } = await sb.from("did_update_cycles").insert(cycleInsertPayload).select().single();
     if (cycleErr) console.error("[daily-cycle] Failed to create cycle record:", cycleErr.message);
     cycleId = cycle?.id || null;
+    try {
+      const pragueRunDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+      const { data: consolidationRun } = await sb.from("did_daily_consolidation_runs").insert({
+        user_id: resolvedUserId,
+        run_date: pragueRunDate,
+        scheduled_for: requestBody?.time || new Date().toISOString(),
+        timezone: "Europe/Prague",
+        status: "started",
+        drive_sync_status: "queued",
+        result_json: { source: requestBody?.source || "manual", target_hour_prague: "03:00", cycle_id: cycleId },
+      }).select("id").single();
+      consolidationRunId = consolidationRun?.id || null;
+    } catch (e) {
+      console.warn("[daily-cycle] consolidation run audit insert failed:", (e as Error)?.message || e);
+    }
 
     // ─── HEARTBEAT HELPER (E1) ────────────────────────────────────────────
     // Zapisuje phase + heartbeat_at na začátku každé hlavní fáze daily-cycle.
@@ -7333,6 +7349,8 @@ Vra\u0165 JSON:
         console.warn("[PHASE_8A5] Failed to query stale plans:", spErr.message);
       } else {
         console.log(`[PHASE_8A5] Found ${stalePlans?.length ?? 0} yesterday plan(s) (${pragueYesterday}) without did_session_reviews`);
+        let phase8a5ProcessedSessions = 0;
+        let phase8a5PartialSessions = 0;
         for (const plan of stalePlans ?? []) {
           try {
             const { data: liveProgress } = await sb
@@ -7397,9 +7415,18 @@ Vra\u0165 JSON:
             clearTimeout(evalTo);
             const okText = evalRes.ok ? "OK" : `HTTP ${evalRes.status}`;
             console.log(`[PHASE_8A5] Plan ${(plan as any).id} (${(plan as any).selected_part}, ${(plan as any).plan_date}): ${okText}`);
+            if (evalRes.ok) phase8a5ProcessedSessions++;
+            if (((liveProgress as any)?.completed_blocks ?? 0) < ((liveProgress as any)?.total_blocks ?? 1)) phase8a5PartialSessions++;
           } catch (evalErr) {
             console.warn(`[PHASE_8A5] Evaluator failed for plan ${(plan as any).id}:`, (evalErr as any)?.message ?? evalErr);
           }
+        }
+        if (consolidationRunId) {
+          await sb.from("did_daily_consolidation_runs").update({
+            processed_sessions: phase8a5ProcessedSessions,
+            partial_sessions: phase8a5PartialSessions,
+            result_json: { phase_8a5_yesterday: pragueYesterday, stale_plans: stalePlans?.length ?? 0, processed_sessions: phase8a5ProcessedSessions, partial_sessions: phase8a5PartialSessions },
+          }).eq("id", consolidationRunId);
         }
       }
     } catch (safetyErr) {
@@ -7752,6 +7779,14 @@ Vra\u0165 JSON:
       console.warn(`[PHASE_10] ⚠️ NOT marking ${threadIds.length} threads + ${convIds.length} conversations as processed — critical phases incomplete`);
     }
 
+    if (consolidationRunId) {
+      await sb.from("did_daily_consolidation_runs").update({
+        status: allCriticalOk && !hadCardUpdateErrors ? "completed" : "completed_with_warnings",
+        drive_sync_status: criticalPhaseStatus.queueFlushTriggeredOk ? "synced" : "failed",
+        finished_at: new Date().toISOString(),
+      }).eq("id", consolidationRunId);
+    }
+
     return new Response(JSON.stringify({
       success: !hadCardUpdateErrors,
       threadsProcessed: threads.length,
@@ -7777,6 +7812,19 @@ Vra\u0165 JSON:
         }).eq("id", cycleId);
       } catch (cycleUpdateErr) {
         console.error("[daily-cycle] Failed to mark cycle as failed:", cycleUpdateErr);
+      }
+    }
+
+    if (sb && typeof consolidationRunId !== "undefined" && consolidationRunId) {
+      try {
+        await sb.from("did_daily_consolidation_runs").update({
+          status: "failed",
+          drive_sync_status: "failed",
+          error_message: (error?.message || String(error)).slice(0, 1000),
+          finished_at: new Date().toISOString(),
+        }).eq("id", consolidationRunId);
+      } catch (consolidationErr) {
+        console.error("[daily-cycle] Failed to mark consolidation run as failed:", consolidationErr);
       }
     }
 

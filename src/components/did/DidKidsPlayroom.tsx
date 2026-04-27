@@ -16,6 +16,8 @@ const PREFERRED_PLAN_ID = "8d2deb4f-4e9e-48a2-8abc-c3f5be8d7914";
 interface PlayroomPlanRow {
   id: string;
   selected_part: string;
+  status?: string;
+  program_status?: string;
   urgency_breakdown: Record<string, any>;
   plan_markdown?: string;
   created_at?: string;
@@ -139,6 +141,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const [thread, setThread] = useState<PlayroomThread | null>(null);
   const [reply, setReply] = useState("");
   const [saving, setSaving] = useState(false);
+  const [ending, setEnding] = useState(false);
   const uploads = useUniversalUpload();
   const recorder = useAudioRecorder();
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -157,7 +160,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
     try {
       const { data, error } = await (supabase as any)
         .from("did_daily_session_plans")
-        .select("id, selected_part, urgency_breakdown, plan_markdown, created_at")
+        .select("id, selected_part, status, program_status, urgency_breakdown, plan_markdown, created_at")
         .eq("plan_date", pragueTodayISO())
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -167,7 +170,8 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         return c.session_actor === "karel_direct"
           && c.lead_entity === "karel"
           && c.ui_surface === "did_kids_playroom"
-          && c.approved_for_child_session === true;
+          && c.approved_for_child_session === true
+          && ["approved", "ready_to_start", "in_progress"].includes(row.program_status || c.review_state || c.approval?.review_state || "");
       });
       setPlan(candidates.find((row) => row.id === PREFERRED_PLAN_ID) || candidates[0] || null);
     } catch (error) {
@@ -259,6 +263,34 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
   const sendReply = async (content: string) => {
     if (!thread) return;
     await saveReply(thread, content, uploads.attachments);
+  };
+
+  const endPlayroom = async () => {
+    if (!plan || !thread || ending) return;
+    setEnding(true);
+    try {
+      const userTurns = thread.messages.filter((message) => message.role === "user").length;
+      const totalBlocks = Math.max(getProgramSteps(plan).length, userTurns, 1);
+      const { data, error } = await supabase.functions.invoke("karel-did-session-evaluate", {
+        body: {
+          planId: plan.id,
+          completedBlocks: Math.min(userTurns, totalBlocks),
+          totalBlocks,
+          endedReason: userTurns >= totalBlocks ? "completed" : "partial",
+          turnsByBlock: { 0: thread.messages.map((message) => ({ from: message.role === "assistant" ? "karel" : "hana", text: contentText(message.content) })) },
+          observationsByBlock: { 0: "Herna ukončena tlačítkem v dětském režimu; vyhodnoť pouze skutečné zprávy a přílohy v transcriptu." },
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.ok === false) throw new Error((data as any)?.error || "Vyhodnocení Herny selhalo.");
+      toast.success("Herna je ukončená. Karel ji zahrne do zítřejšího přehledu.");
+      onBack();
+    } catch (error: any) {
+      console.error("[DidKidsPlayroom] end failed", error);
+      toast.error(error?.message || "Herna se nepodařila vyhodnotit, ale záznam zůstává uložený.");
+    } finally {
+      setEnding(false);
+    }
   };
 
   const attachRecording = async () => {
@@ -381,7 +413,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
               {recorder.state === "recorded" ? <Button variant="outline" onClick={attachRecording} className="bg-background/22 text-foreground/72 backdrop-blur-[2px]"><Mic className="mr-2 h-4 w-4" />Přiložit hlas</Button> : null}
               <Button onClick={() => sendReply(reply)} disabled={saving || uploads.attachments.some((attachment) => attachment.uploading) || (!reply.trim() && uploads.attachments.length === 0)} className="bg-primary/62 text-primary-foreground/88 backdrop-blur-[2px]"><Send className="mr-2 h-4 w-4" />Odeslat</Button>
               <Button variant="secondary" onClick={() => sendReply("Dnes nechci.")} disabled={saving}>Dnes nechci</Button>
-              <Button variant="outline" onClick={onBack} disabled={saving}><XCircle className="mr-2 h-4 w-4" />Skončit</Button>
+              <Button variant="outline" onClick={endPlayroom} disabled={saving || ending}><XCircle className="mr-2 h-4 w-4" />{ending ? "Ukončuji" : "Ukončit hernu"}</Button>
             </div>
           </section>
           ) : null}
