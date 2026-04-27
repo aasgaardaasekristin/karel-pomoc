@@ -40,8 +40,12 @@ interface SessionPlan {
 const isKarelDirectPlan = (plan: SessionPlan) =>
   plan.urgency_breakdown?.session_actor === "karel_direct" &&
   plan.urgency_breakdown?.lead_entity === "karel" &&
-  plan.urgency_breakdown?.ui_surface === "did_kids_playroom" &&
-  !!plan.urgency_breakdown?.playroom_plan;
+  plan.urgency_breakdown?.ui_surface === "did_kids_playroom";
+const hasPlayroomPlan = (plan: SessionPlan) =>
+  !!plan.urgency_breakdown?.playroom_plan &&
+  typeof plan.urgency_breakdown.playroom_plan === "object" &&
+  Array.isArray(plan.urgency_breakdown.playroom_plan.therapeutic_program) &&
+  plan.urgency_breakdown.playroom_plan.therapeutic_program.length > 0;
 const LEGACY_PLAN_GENERATORS = new Set(["auto", "manual"]);
 const ANALYTIC_PLAN_GENERATORS = new Set(["analyst_loop", "recovery_mode", "karel-did-apply-analysis", "crisis-retroactive-scan"]);
 
@@ -51,6 +55,7 @@ const hasExplicitRoleContract = (plan: SessionPlan) =>
 
 const isKarelDirectApprovedForHerna = (plan: SessionPlan) =>
   isKarelDirectPlan(plan) &&
+  hasPlayroomPlan(plan) &&
   plan.urgency_breakdown?.human_review_required === true &&
   plan.urgency_breakdown?.approved_for_child_session === true &&
   ["approved", "ready_to_start", "in_progress"].includes(String(plan.program_status || plan.urgency_breakdown?.review_state || plan.urgency_breakdown?.approval?.review_state || ""));
@@ -510,9 +515,11 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
 
   // Split plans into runtime, hidden legacy/analytic drafts, and archived.
   const pendingPlans = plans.filter(p => (p.status === "generated" || p.status === "in_progress") && !isQuarantinedPlan(p));
+  const playroomPlans = pendingPlans.filter(isKarelDirectPlan);
+  const therapistSessionPlans = pendingPlans.filter(p => !isKarelDirectPlan(p));
   const quarantinedPlans = plans.filter(p => ["pending", "generated", "in_progress"].includes(p.status) && isQuarantinedPlan(p));
   const archivedPlans = plans.filter(p => p.status === "done" || p.status === "skipped");
-  const hasKarelDirectPlan = pendingPlans.some(isKarelDirectPlan);
+  const hasKarelDirectPlan = playroomPlans.length > 0;
 
   return (
     <>
@@ -520,7 +527,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
             {hasKarelDirectPlan ? <Dices className="w-3.5 h-3.5 text-primary" /> : <Target className="w-3.5 h-3.5 text-primary" />}
-            {hasKarelDirectPlan ? "Karlova herna" : "Plán dnešního sezení"}
+            Denní programy
           </h4>
           <div className="flex items-center gap-1.5">
             {!generating && !compact && (
@@ -652,25 +659,55 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
           </div>
         )}
 
-        {/* ═══ PENDING PLANS ═══ */}
-        {pendingPlans.map((plan) => (
-          <PlanCard
-            key={plan.id}
-            plan={plan}
-            isExpanded={expandedPlanId === plan.id}
-            onToggleExpand={() => setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)}
-            onStartSession={() => startSession(plan)}
-            onEndSession={() => endSession(plan)}
-            onRevert={() => revertStatus(plan)}
-            onMarkDone={() => markDone(plan.id)}
-            onDelete={() => deletePlan(plan.id)}
-            onRegenerate={() => handlePartSelected(plan.selected_part)}
-            onOpenLive={() => setActiveLivePlanId(plan.id)}
-            prevSession={plan.id === firstPendingPlan?.id ? prevSession : null}
-            compact={compact}
-            onOpenPrepRoom={onOpenPrepRoom}
-          />
-        ))}
+        {/* ═══ PLAYROOM PLANS ═══ */}
+        {playroomPlans.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-[0.5625rem] text-muted-foreground font-medium uppercase tracking-wider">Herna na dnes</p>
+            {playroomPlans.map((plan) => (
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                isExpanded={expandedPlanId === plan.id}
+                onToggleExpand={() => setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)}
+                onStartSession={() => startSession(plan)}
+                onEndSession={() => endSession(plan)}
+                onRevert={() => revertStatus(plan)}
+                onMarkDone={() => markDone(plan.id)}
+                onDelete={() => deletePlan(plan.id)}
+                onRegenerate={() => handlePartSelected(plan.selected_part)}
+                onOpenLive={() => setActiveLivePlanId(plan.id)}
+                prevSession={null}
+                compact={compact}
+                onOpenPrepRoom={onOpenPrepRoom}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* ═══ THERAPIST-LED SESSION PLANS ═══ */}
+        {therapistSessionPlans.length > 0 && (
+          <div className="mt-3 space-y-1.5">
+            <p className="text-[0.5625rem] text-muted-foreground font-medium uppercase tracking-wider">Sezení na dnes</p>
+            {therapistSessionPlans.map((plan) => (
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                isExpanded={expandedPlanId === plan.id}
+                onToggleExpand={() => setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)}
+                onStartSession={() => startSession(plan)}
+                onEndSession={() => endSession(plan)}
+                onRevert={() => revertStatus(plan)}
+                onMarkDone={() => markDone(plan.id)}
+                onDelete={() => deletePlan(plan.id)}
+                onRegenerate={() => handlePartSelected(plan.selected_part)}
+                onOpenLive={() => setActiveLivePlanId(plan.id)}
+                prevSession={plan.id === firstPendingPlan?.id ? prevSession : null}
+                compact={compact}
+                onOpenPrepRoom={onOpenPrepRoom}
+              />
+            ))}
+          </div>
+        )}
 
         {/* ═══ DEBUG-ONLY LEGACY / ANALYTIC DRAFTS ═══ */}
         {showLegacyDrafts && quarantinedPlans.length > 0 && (
@@ -911,8 +948,14 @@ const PlanCard = ({
           approved_for_child_session: action === "approve",
           review_state: action === "approve" ? "approved" : action === "defer" ? "deferred" : "rejected",
         },
-        playroom_plan: playroomPlan ? {
+        playroom_plan: hasPlayroomPlan(plan) ? {
           ...playroomPlan,
+          therapist_review: {
+            ...(playroomPlan.therapist_review ?? {}),
+            required: action !== "approve",
+            approved_for_child_session: action === "approve",
+            review_state: action === "approve" ? "approved" : action === "defer" ? "deferred" : "rejected",
+          },
           approval: {
             ...(playroomPlan.approval ?? {}),
             required: action !== "approve",
@@ -943,7 +986,7 @@ const PlanCard = ({
       return;
     }
     if (!playroomPlan) {
-      toast.error("Herna nemá vlastní schválený program. Neotevírám program sezení jako hernu.");
+      toast.error("Integritní chyba: dnešní Herna nemá playroom_plan. Spusť znovu Karlův přehled, aby se program doplnil.");
       return;
     }
     setOpeningPartRoom(true);
@@ -1346,32 +1389,31 @@ const PlanCard = ({
             {karelDirect && playroomPlan ? (
               <div className="space-y-3 text-[0.6875rem] leading-relaxed">
                 <div>
-                  <p className="font-semibold text-foreground">Návrh programu pro terapeuty</p>
+                  <p className="font-semibold text-foreground">Samostatný program Herny pro terapeutky</p>
                   <p className="text-muted-foreground">Pro: <strong>{plan.selected_part}</strong> · Stav: {hernaStatusLabel}</p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <p><strong>Proč dnes:</strong> {playroomPlan.why_this_part_today}</p>
                   <p><strong>Cíl:</strong> {playroomPlan.clinical_goal}</p>
-                  <p><strong>Rámec:</strong> {playroomPlan.therapeutic_frame}</p>
-                  <p><strong>Riziko:</strong> {playroomPlan.risk_assessment}</p>
+                  <p><strong>Prakticky:</strong> {playroomPlan.practical_goal || playroomPlan.therapeutic_frame}</p>
+                  <p><strong>Režim:</strong> {playroomPlan.session_mode || plan.urgency_breakdown?.session_mode} · {playroomPlan.duration_min || "?"} min</p>
                 </div>
-                <div>
+                {playroomPlan.room_design && <div>
                   <p className="font-semibold text-foreground mb-1">Místnost</p>
                   <p>{playroomPlan.room_design?.visual_theme}</p>
                   <p className="text-muted-foreground">Vstup: {playroomPlan.room_design?.opening_scene} · Konec: {playroomPlan.room_design?.exit_symbol}</p>
-                </div>
+                </div>}
                 <div className="space-y-2">
                   <p className="font-semibold text-foreground">Terapeutický program ({therapeuticProgram.length} kroků)</p>
                   {therapeuticProgram.map((step: any, index: number) => (
                     <div key={`${step.step ?? index}-${step.title ?? "krok"}`} className="rounded-md border border-border/50 bg-background/50 p-2">
                       <p className="font-medium text-foreground">{step.step}. {step.title}</p>
-                      <p><strong>Cíl:</strong> {step.clinical_intent}</p>
-                      <p><strong>Metoda:</strong> {step.method} — {step.why_this_method}</p>
-                      <p><strong>Karel interně:</strong> {step.karel_internal_instruction}</p>
-                      <p><strong>Draft promptu:</strong> {step.child_facing_prompt_draft}</p>
-                      <p><strong>Sledovat v textu:</strong> {(step.text_signals_to_observe ?? []).join(", ")}</p>
-                      <p><strong>Stop:</strong> {(step.stop_if ?? []).join(", ")}</p>
-                      <p><strong>Fallback:</strong> {step.fallback}</p>
+                      <p><strong>Instrukce pro Karla:</strong> {step.instruction_for_karel || step.karel_internal_instruction}</p>
+                      <p><strong>Sledovat:</strong> {step.expected_signal || (step.text_signals_to_observe ?? []).join(", ")}</p>
+                      {step.clinical_intent && <p><strong>Cíl:</strong> {step.clinical_intent}</p>}
+                      {step.method && <p><strong>Metoda:</strong> {step.method} {step.why_this_method ? `— ${step.why_this_method}` : ""}</p>}
+                      {step.stop_if && <p><strong>Stop:</strong> {(step.stop_if ?? []).join(", ")}</p>}
+                      {step.fallback && <p><strong>Fallback:</strong> {step.fallback}</p>}
                     </div>
                   ))}
                 </div>

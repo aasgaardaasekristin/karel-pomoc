@@ -49,6 +49,31 @@ function pragueTodayISO(): string {
  * obrazovku — žádné fyzické pomůcky (papír, pastelky, balónky), žádný
  * scénář z perspektivy terapeuta v jedné místnosti.
  */
+function hasApprovedPlayroomContract(contract: Record<string, unknown>): boolean {
+  const playroomPlan = contract.playroom_plan as any;
+  const approval = (playroomPlan?.therapist_review ?? playroomPlan?.approval ?? contract.approval ?? {}) as Record<string, unknown>;
+  return contract.session_actor === "karel_direct" &&
+    contract.ui_surface === "did_kids_playroom" &&
+    contract.lead_entity === "karel" &&
+    !!playroomPlan &&
+    typeof playroomPlan === "object" &&
+    Array.isArray(playroomPlan.therapeutic_program) &&
+    playroomPlan.therapeutic_program.length > 0 &&
+    (contract.approved_for_child_session === true || approval.approved_for_child_session === true);
+}
+
+function buildSafePlayroomHint(playroomPlan: any) {
+  return {
+    first_question: playroomPlan?.first_question,
+    readiness_today: playroomPlan?.readiness_today,
+    session_mode: playroomPlan?.session_mode,
+    duration_min: playroomPlan?.duration_min,
+    safe_opening_options: Array.isArray(playroomPlan?.therapeutic_program)
+      ? playroomPlan.therapeutic_program.slice(0, 2).map((step: any) => ({ title: step.title, expected_signal: step.expected_signal }))
+      : [],
+  };
+}
+
 async function generateChildOpener(partName: string, briefingHint: any): Promise<string> {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   if (!apiKey) {
@@ -68,6 +93,10 @@ async function generateChildOpener(partName: string, briefingHint: any): Promise
         `Povolený child-facing vstup:`,
         `- part_name: ${partName}`,
         firstQuestion ? `- first_question: ${firstQuestion}` : `- first_question: Jak ti dnes je, když jsme spolu tady přes obrazovku?`,
+        briefingHint?.duration_min ? `- rámcová délka: ${briefingHint.duration_min} minut` : null,
+        Array.isArray(briefingHint?.safe_opening_options) && briefingHint.safe_opening_options.length
+          ? `- bezpečné úvodní možnosti: ${briefingHint.safe_opening_options.map((x: any) => x.title).join("; ")}`
+          : null,
         treatmentPhase ? `- jemný tón podle fáze: ${treatmentPhase}` : null,
         readiness ? `- jemný tón podle readiness: ${readiness}` : null,
       ]
@@ -201,19 +230,21 @@ serve(async (req) => {
 
     const planId = isUuid(body?.plan_id) ? String(body.plan_id) : null;
     let planContract: Record<string, unknown> = {};
+    let planProgramStatus = "";
     if (planId) {
       const { data: plan, error: planErr } = await sb
         .from("did_daily_session_plans")
-        .select("urgency_breakdown")
+        .select("urgency_breakdown,program_status")
         .eq("id", planId)
         .maybeSingle();
       if (planErr) return jsonRes({ ok: false, error: planErr.message }, 500);
       planContract = plan?.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown : {};
-      if (planContract.approved_for_child_session !== true) {
+      planProgramStatus = String((plan as any)?.program_status ?? "");
+      if (!hasApprovedPlayroomContract(planContract) || !["approved", "ready_to_start", "in_progress"].includes(planProgramStatus)) {
         return jsonRes({
           ok: false,
-          error: "human_review_required",
-          message: "Karlova herna se může otevřít až po schválení terapeutkami.",
+          error: "playroom_program_not_approved",
+          message: "Karlova herna vyžaduje vlastní schválený program Herny.",
         }, 403);
       }
     }
@@ -221,8 +252,11 @@ serve(async (req) => {
     const sessionActor = String(planContract.session_actor ?? body?.session_actor ?? body?.briefing_proposed_session?.session_actor ?? "").trim();
     const sessionMode = String(planContract.session_mode ?? body?.session_mode ?? body?.briefing_proposed_session?.session_mode ?? "").trim();
     const readinessToday = String(planContract.readiness_today ?? body?.readiness_today ?? body?.briefing_proposed_session?.readiness_today ?? "").trim();
+    const playroomPlan = (planContract as any).playroom_plan && typeof (planContract as any).playroom_plan === "object" ? (planContract as any).playroom_plan : null;
+    const safePlayroomHint = playroomPlan ? buildSafePlayroomHint(playroomPlan) : {};
     const briefingHint = {
-      first_question: planContract.first_question ?? body?.first_question ?? body?.briefing_proposed_session?.first_question,
+      ...safePlayroomHint,
+      first_question: (safePlayroomHint as any).first_question ?? planContract.first_question ?? body?.first_question ?? body?.briefing_proposed_session?.first_question,
       session_actor: sessionActor || undefined,
       session_mode: sessionMode || undefined,
       readiness_today: readinessToday || undefined,

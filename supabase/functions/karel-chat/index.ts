@@ -144,6 +144,30 @@ async function writeRuntimeAudit(entry: Record<string, any>) {
   }
 }
 
+async function loadApprovedPlayroomPlan(partName?: string | null) {
+  if (!partName) return null;
+  try {
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+    const { data } = await sb.from("did_daily_session_plans")
+      .select("id,plan_date,selected_part,program_status,urgency_breakdown")
+      .eq("plan_date", today)
+      .ilike("selected_part", partName)
+      .contains("urgency_breakdown", { session_actor: "karel_direct", ui_surface: "did_kids_playroom", lead_entity: "karel" })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const contract = data?.urgency_breakdown && typeof data.urgency_breakdown === "object" ? data.urgency_breakdown as any : null;
+    const plan = contract?.playroom_plan;
+    if (!data || !contract || !plan || !Array.isArray(plan.therapeutic_program)) return null;
+    return { id: data.id, program_status: data.program_status, contract, playroom_plan: plan };
+  } catch (e) {
+    console.warn("[karel-chat][playroom] approved playroom plan load failed:", e);
+    return null;
+  }
+}
+
 function streamFallbackReply(mode: string, status: number) {
   const content = mode === "playroom"
     ? "Slyším tě. Teď se mi na chvilku zasekl hlas, ale zůstávám tady u dveří a nic nemusíš opravovat. Vyber jen jednu věc: mám být blíž, dál, nebo úplně potichu?"
@@ -181,7 +205,7 @@ serve(async (req) => {
     const isTherapistLiveSession = mode === "live-session" || didSubMode === "therapist_session" || didSubMode === "session";
     const runtimePacketId = crypto.randomUUID();
     const promptContractVersion = isPlayroomMode
-      ? "PLAYROOM_SYSTEM_CONTRACT_v2"
+      ? "PLAYROOM_SYSTEM_CONTRACT_v3"
       : isTherapistLiveSession
         ? "THERAPIST_SESSION_ASSISTANT_CONTRACT_v1"
         : "KAREL_CHAT_CONTRACT_v1";
@@ -1097,15 +1121,22 @@ This overrides ALL other language instructions.
 
     if (isPlayroomMode) {
       const lastPlayroomInput = normalizeMessageContentForPrompt([...messages].reverse().find((m: any) => m.role === "user")?.content);
+      const approvedPlayroom = await loadApprovedPlayroomPlan(didPartName || didEnteredName);
+      const playroomProgramBlock = approvedPlayroom
+        ? JSON.stringify({ plan_id: approvedPlayroom.id, program_status: approvedPlayroom.program_status, playroom_plan: approvedPlayroom.playroom_plan }, null, 2)
+        : "(DNEŠNÍ SCHVÁLENÝ PLAYROOM_PLAN NEBYL NALEZEN — NEPOUŽÍVEJ PLAN_MARKDOWN SEZENÍ; drž pouze bezpečný krátký check-in.)";
       systemPrompt += `\n\n═══ HERNA — POVINNÝ REŽIM VEDENÍ SEZENÍ ═══
 Toto NENÍ běžný chat ani vlákno pro vzkazy. Jsi v dětské Herně a vedeš právě schválené strukturované sezení.
+
+SCHVÁLENÝ SAMOSTATNÝ PROGRAM HERNY — JEDINÝ ZDROJ PROGRAMU:
+${playroomProgramBlock}
 
 POSLEDNÍ SKUTEČNÝ VSTUP DÍTĚTE/PŘÍLOHA — MUSÍŠ NA NĚJ REAGOVAT JAKO PRVNÍ:
 ${lastPlayroomInput || "(žádný text; dítě možná poslalo jen přílohu nebo volbu)"}
 
 ABSOLUTNÍ PRIORITA: tento blok přepisuje obecný režim "cast" i všechna pravidla o běžném chatu, vzkazech a deníku. V Herně nejsi kamarádský chat; jsi profesionální klinický průvodce v krátkém, nízkoprahovém sezení podle schváleného programu.
 
-Zdrojem programu je výhradně RUNTIME KONTEXT Z APLIKACE obsahující PLAN_ID, REVIEW_STATE, POVOLENOU HLOUBKU, STRUKTUROVANÝ PROGRAM a AKTUÁLNÍ KROK. Když tyto údaje chybí, nepředstírej program a drž jen bezpečný minimální check-in.
+Zdrojem programu je výhradně blok SCHVÁLENÝ SAMOSTATNÝ PROGRAM HERNY výše. Nikdy nepoužívej terapeutické „Sezení na dnes“, plan_markdown therapist-led sezení ani obecný denní plán jako program Herny.
 
 Povinná struktura každé odpovědi:
 1. Nejprve krátce zareaguj na skutečný vstup dítěte nebo přílohu.
