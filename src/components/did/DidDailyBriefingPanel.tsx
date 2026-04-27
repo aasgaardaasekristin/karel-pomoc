@@ -752,6 +752,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     ? p.yesterday_session_review
     : yesterdaySessionFallback;
   const yesterdayPlayroomReview = yesterdayPlayroomFallback;
+  const yesterdaySessionVisible = true;
   const hasProposed = !!p.proposed_session?.part_name;
   const proposedPartName = (p.proposed_session?.part_name ?? "").trim();
   const proposedAlreadyApproved =
@@ -846,83 +847,105 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       )}
 
       {/* 3.6 Včerejší sezení — samostatná vyhrazená sekce, nikdy nesmí splývat s Hernou */}
-      {yesterdayReview && yesterdayReview.held && (
+      {yesterdaySessionVisible && (
         <>
           <NarrativeDivider />
           <SectionHead icon={<Users className="w-3.5 h-3.5 text-primary/70" />}>
             Včerejší sezení
           </SectionHead>
           <div className="mt-2 p-3 rounded-lg border border-border/60 bg-card/40 space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              {yesterdayReview.part_name && (
-                <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">
-                  {yesterdayReview.part_name}
-                </Badge>
-              )}
-              {yesterdayReview.lead && (
-                <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">
-                  vedla {yesterdayReview.lead}
-                </Badge>
-              )}
-              {yesterdayReview.completion && (
-                <Badge
-                  className={`text-[10px] h-5 px-2 border ${
-                    yesterdayReview.completion === "completed"
-                      ? "bg-emerald-500/15 text-emerald-700 border-emerald-500/30"
-                      : yesterdayReview.completion === "partial"
-                      ? "bg-amber-500/15 text-amber-700 border-amber-500/30"
-                      : "bg-destructive/15 text-destructive border-destructive/30"
-                  }`}
-                >
-                  {yesterdayReview.completion === "completed"
-                    ? "Dokončeno"
-                    : yesterdayReview.completion === "partial"
-                    ? "Částečně"
-                    : "Nedokončeno"}
-                </Badge>
-              )}
-            </div>
-            {yesterdayReview.karel_summary ? (
-              <div>
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Karlovo vyhodnocení</p>
-                <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
-                  {yesterdayReview.karel_summary}
-                </p>
-              </div>
+            {yesterdayReview && yesterdayReview.held ? (
+              <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {yesterdayReview.part_name && (
+                    <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">
+                      {yesterdayReview.part_name}
+                    </Badge>
+                  )}
+                  {yesterdayReview.lead && (
+                    <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">
+                      vedla {yesterdayReview.lead}
+                    </Badge>
+                  )}
+                  {yesterdayReview.completion && (
+                    <Badge
+                      className={`text-[10px] h-5 px-2 border ${
+                        yesterdayReview.completion === "completed"
+                          ? "bg-emerald-500/15 text-emerald-700 border-emerald-500/30"
+                          : yesterdayReview.completion === "partial"
+                          ? "bg-amber-500/15 text-amber-700 border-amber-500/30"
+                          : "bg-destructive/15 text-destructive border-destructive/30"
+                      }`}
+                    >
+                      {yesterdayReview.completion === "completed"
+                        ? "Dokončeno"
+                        : yesterdayReview.completion === "partial"
+                        ? "Částečně"
+                        : "Nedokončeno"}
+                    </Badge>
+                  )}
+                </div>
+                {yesterdayReview.karel_summary ? (
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Karlovo vyhodnocení</p>
+                    <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
+                      {yesterdayReview.karel_summary}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-[12px] italic text-muted-foreground">
+                    Karlovo přetlumočení se právě dogeneruvává. Pokud se neobjeví do minuty, klikni „Přegenerovat".
+                  </div>
+                )}
+                {yesterdayReview.key_finding_about_part && (
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co teď víme o části</p>
+                    <p className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
+                      {yesterdayReview.key_finding_about_part}
+                    </p>
+                  </div>
+                )}
+                {yesterdayReview.implications_for_plan && (
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co z toho plyne pro plán</p>
+                    <p className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
+                      {yesterdayReview.implications_for_plan}
+                    </p>
+                  </div>
+                )}
+                {yesterdayReview.team_acknowledgement && (
+                  <div className="pt-1 border-t border-border/40">
+                    <p className="text-[11px] uppercase tracking-wide text-primary/70">Týmové uzavření</p>
+                    <p className="text-[12px] leading-relaxed text-foreground/85 italic whitespace-pre-line mt-0.5">
+                      {yesterdayReview.team_acknowledgement}
+                    </p>
+                  </div>
+                )}
+                {(yesterdayReview as YesterdayFallbackReview).detailed_analysis && (
+                  <details className="rounded-md border border-border/50 bg-background/35 p-2">
+                    <summary className="cursor-pointer text-[12px] font-medium text-primary">Přečíst si detailní analýzu ze včerejšího sezení</summary>
+                    <p className="mt-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{(yesterdayReview as YesterdayFallbackReview).detailed_analysis}</p>
+                  </details>
+                )}
+              </>
             ) : (
-              <div className="text-[12px] italic text-muted-foreground">
-                Karlovo přetlumočení se právě dogeneruvává. Pokud se neobjeví do minuty, klikni „Přegenerovat".
-              </div>
-            )}
-            {yesterdayReview.key_finding_about_part && (
-              <div>
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co teď víme o části</p>
-                <p className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
-                  {yesterdayReview.key_finding_about_part}
-                </p>
-              </div>
-            )}
-            {yesterdayReview.implications_for_plan && (
-              <div>
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co z toho plyne pro plán</p>
-                <p className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
-                  {yesterdayReview.implications_for_plan}
-                </p>
-              </div>
-            )}
-            {yesterdayReview.team_acknowledgement && (
-              <div className="pt-1 border-t border-border/40">
-                <p className="text-[11px] uppercase tracking-wide text-primary/70">Týmové uzavření</p>
-                <p className="text-[12px] leading-relaxed text-foreground/85 italic whitespace-pre-line mt-0.5">
-                  {yesterdayReview.team_acknowledgement}
-                </p>
-              </div>
-            )}
-            {(yesterdayReview as YesterdayFallbackReview).detailed_analysis && (
-              <details className="rounded-md border border-border/50 bg-background/35 p-2">
-                <summary className="cursor-pointer text-[12px] font-medium text-primary">Přečíst si detailní analýzu ze včerejšího sezení</summary>
-                <p className="mt-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{(yesterdayReview as YesterdayFallbackReview).detailed_analysis}</p>
-              </details>
+              <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">evidence zatím chybí</Badge>
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Faktický stav</p>
+                  <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">
+                    Samostatná stopa včerejšího terapeutického sezení zatím není v Karlově přehledu dohledaná. Sekce zůstává viditelná schválně, aby se Včerejší sezení nikdy neztratilo za Hernou ani za prázdným briefing payloadem.
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Další krok</p>
+                  <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">
+                    Karel má dohledat nebo dogenerovat evidence-limited review sezení odděleně od playroom review; Herna nesmí být použita jako náhrada terapeutického sezení.
+                  </p>
+                </div>
+              </>
             )}
           </div>
         </>
