@@ -1537,6 +1537,37 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
       });
     }
 
+    if (isPlayroomMode) {
+      const lastPlayroomInput = normalizeMessageContentForPrompt([...messages].reverse().find((m: any) => m.role === "user")?.content);
+      const runtimeContext = typeof didInitialContext === "string" ? didInitialContext : "";
+      const playroomProgress = extractPlayroomProgress(runtimeContext);
+      const rawPlayroomResponse = await readSseContent(response.body!);
+      const mustStayOnRails = !playroomProgress.isFinal && !isExplicitPlayroomStopRequest(lastPlayroomInput);
+      const offRail = !playroomOutputFollowsRuntimeStep(rawPlayroomResponse, runtimeContext);
+      const prematureClosing = isPrematurePlayroomClosing(rawPlayroomResponse);
+      const guardedPlayroomResponse = mustStayOnRails && (offRail || prematureClosing)
+        ? buildPlayroomRailReply(runtimeContext, didPartName, lastPlayroomInput)
+        : rawPlayroomResponse.includes("[PLAYROOM_PROGRESS:")
+          ? rawPlayroomResponse
+          : `${rawPlayroomResponse.trim()} [PLAYROOM_PROGRESS:stay]`;
+      await writeRuntimeAudit({
+        user_id: requestUserId,
+        runtime_packet_id: runtimePacketId,
+        function_name: "karel-chat",
+        model_used: primaryModel,
+        model_tier: modelTier(primaryModel),
+        did_sub_mode: didSubMode || null,
+        prompt_contract_version: promptContractVersion,
+        has_multimodal_input: requestHasMultimodalInput,
+        has_drive_sync: false,
+        evaluation_status: offRail || prematureClosing ? "playroom_rail_guard_replaced" : "playroom_rail_guard_passed",
+        request_mode: mode,
+        part_name: didPartName || null,
+        metadata: { off_rail: offRail, premature_closing: prematureClosing, current_block: playroomProgress.current, final_block: playroomProgress.max },
+      });
+      return streamPlayroomText(guardedPlayroomResponse);
+    }
+
     // ═══ ASYNC TASK EXTRACTION (non-blocking) ═══
     // Collect streamed response and extract tasks after sending
     const [streamForClient, streamForExtract] = response.body!.tee();
