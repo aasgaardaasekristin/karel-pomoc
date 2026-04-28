@@ -2167,7 +2167,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             </Button>
             <div className="min-w-0">
               <h1 className="text-base sm:text-lg font-serif font-medium text-foreground tracking-wide truncate">
-                {hubSection === "did" ? "DID" : hubSection === "research" ? "Profesní zdroje" : "Hana"}
+                {hubSection === "did" ? "DID / Kluci" : hubSection === "research" ? "Profesní zdroje" : hubSection === "karel" ? "Karel chat" : "Hana osobní"}
               </h1>
             </div>
           </div>
@@ -2207,6 +2207,18 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                   Pracovní
                 </button>
               </div>
+            )}
+            {(hubSection === "karel" || hubSection === "hana") && (
+              <Button
+                variant={noSave ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setNoSave((value) => !value)}
+                className="h-8 px-2 gap-1 text-xs"
+                title={APP_MODE_POLICIES.no_save.description}
+              >
+                <ShieldOff className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Bez ukládání</span>
+              </Button>
             )}
             {hubSection !== "research" && hubSection !== "hana" && <ThemeQuickButton storageKey={chatStorageKey || undefined} />}
             <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2">
