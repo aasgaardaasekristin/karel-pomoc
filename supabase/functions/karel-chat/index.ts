@@ -371,6 +371,26 @@ serve(async (req) => {
     const requestUserId = await resolveUserIdFromRequest(req);
     const requestHasMultimodalInput = hasMultimodalInput(messages || []);
     const isDirectChildSubMode = didSubMode === "cast" || isPlayroomMode;
+    if (requestSafety.matched && requestUserId) {
+      writeRuntimeAudit({
+        user_id: requestUserId,
+        runtime_packet_id: runtimePacketId,
+        function_name: "karel-chat",
+        did_sub_mode: didSubMode ?? null,
+        request_mode: mode ?? null,
+        part_name: didPartName ?? null,
+        evaluation_status: "safety_mention_detected",
+        metadata: {
+          event_type: "safety_mention",
+          severity: requestSafety.severity,
+          mode_id: persistencePolicy.mode_id,
+          no_save_context: persistencePolicy.no_save,
+          content_excerpt: persistencePolicy.no_save ? null : redactedSafetyExcerpt(lastRequestUserText),
+          signals: requestSafety.signals,
+          action_taken: "safety_response_and_minimal_audit",
+        },
+      });
+    }
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
