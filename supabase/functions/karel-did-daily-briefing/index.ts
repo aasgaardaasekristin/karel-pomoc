@@ -1282,8 +1282,19 @@ Deno.serve(async (req) => {
     // 2) Sběr kontextu
     const context = await gatherContext(supabase);
 
-    // 3) AI generování
-    const { payload: rawPayload, durationMs } = await generateBriefing(context, candidates, apiKey);
+    // 3) AI generování; playroom review payload musí vzniknout deterministicky i při selhání těžké syntézy.
+    let durationMs = 0;
+    let rawPayload: any;
+    try {
+      const generated = await generateBriefing(context, candidates, apiKey);
+      rawPayload = generated.payload;
+      durationMs = generated.durationMs;
+    } catch (e: any) {
+      console.error("[briefing] AI generation failed; using deterministic playroom-safe fallback", e);
+      rawPayload = buildDeterministicBriefingPayload(context, candidates);
+      durationMs = 0;
+      rawPayload.generation_warning = String(e?.message ?? e).slice(0, 500);
+    }
     const payload = enrichYesterdaySessionReview(rawPayload, context);
     payload.yesterday_playroom_review = buildYesterdayPlayroomReview(context);
     if (!payload.proposed_playroom || typeof payload.proposed_playroom !== "object" || !String(payload.proposed_playroom?.part_name ?? "").trim()) {
