@@ -207,11 +207,13 @@ function buildYesterdaySessionReview(context: any) {
   if (review) {
     const analysis = review.analysis_json && typeof review.analysis_json === "object" ? review.analysis_json : {};
     const evidenceBasis = reviewEvidenceBasis(review);
+    const technicalTest = isTechnicalTestSessionReview(review) || evidenceBasis === "planned_only";
     return {
       exists: true,
-      held: !["pending_review", "analysis_running"].includes(String(review.status)),
-      status: review.status,
+      held: !technicalTest && !["pending_review", "analysis_running"].includes(String(review.status)),
+      status: technicalTest ? "technical_test" : review.status,
       review_status: review.status,
+      fallback_reason: technicalTest ? "planned_session_not_clinically_held" : undefined,
       part_name: review.part_name,
       plan_id: review.plan_id,
       thread_id: analysis.thread_id ?? analysis.confirmed_facts?.thread_id ?? review.evidence_items?.find?.((e: any) => e?.kind === "thread_transcript")?.source_id ?? null,
@@ -219,18 +221,24 @@ function buildYesterdaySessionReview(context: any) {
       lead_person: review.lead_person ?? review.lead ?? null,
       lead: normalizeTherapistLabel(review.lead_person ?? review.lead) ?? undefined,
       assistant_persons: review.assistant_persons ?? [],
-      completion: evidenceBasis === "completed" ? "completed" : review.status === "evidence_limited" || review.status === "partially_analyzed" ? "partial" : "abandoned",
-      practical_report_text: cleanBlockText(analysis.practical_report_text ?? review.clinical_summary ?? ""),
+      completion: technicalTest ? "abandoned" : evidenceBasis === "completed" ? "completed" : review.status === "evidence_limited" || review.status === "partially_analyzed" ? "partial" : "abandoned",
+      practical_report_text: technicalTest
+        ? `Plánované Sezení s ${review.part_name || "částí"} se klinicky neuskutečnilo. Záznam odpovídá technickému testu nebo plánované aktivitě bez klinického průběhu, proto z něj nevyvozujeme nové klinické poznatky. Původní potřeba Sezení — zejména práce s tělesnými potížemi a neverbálním zpracováním — zůstává otevřená.`
+        : cleanBlockText(analysis.practical_report_text ?? review.clinical_summary ?? ""),
       detailed_analysis_text: cleanBlockText(analysis.detailed_analysis_text ?? ""),
       team_closing_text: cleanBlockText(analysis.team_closing_text ?? review.team_closing ?? ""),
-      karel_summary: cleanBlockText(analysis.practical_report_text ?? review.clinical_summary ?? review.evidence_limitations ?? ""),
+      karel_summary: technicalTest
+        ? `Plánované Sezení s ${review.part_name || "částí"} se klinicky neuskutečnilo. Z tohoto záznamu nevyvozujeme nové klinické poznatky; původní potřeba Sezení zůstává otevřená.`
+        : cleanBlockText(analysis.practical_report_text ?? review.clinical_summary ?? review.evidence_limitations ?? ""),
       key_finding_about_part: cleanBlockText(review.implications_for_part ?? review.therapeutic_implications ?? analysis.implications_for_part ?? ""),
       implications_for_plan: cleanBlockText(review.recommendations_for_next_session ?? review.next_session_recommendation ?? analysis.recommendations_for_next_session ?? ""),
       team_acknowledgement: cleanBlockText(analysis.team_closing_text ?? review.team_closing ?? review.team_implications ?? ""),
       implications_for_part: cleanBlockText(review.implications_for_part ?? analysis.implications_for_part ?? ""),
       implications_for_system: cleanBlockText(review.implications_for_whole_system ?? analysis.implications_for_system ?? ""),
       recommendations_for_therapists: cleanBlockText(review.recommendations_for_therapists ?? analysis.recommendations_for_therapists ?? ""),
-      recommendations_for_next_session: cleanBlockText(review.recommendations_for_next_session ?? review.next_session_recommendation ?? analysis.recommendations_for_next_session ?? ""),
+      recommendations_for_next_session: technicalTest
+        ? "Carry-over z neuskutečněného Sezení: nejprve ověřit aktuální tělesný a emoční stav a teprve poté rozhodnout, zda dnes provést terapeutkou vedené Sezení, nízkoprahovou Hernu, nebo jen stabilizační kontakt."
+        : cleanBlockText(review.recommendations_for_next_session ?? review.next_session_recommendation ?? analysis.recommendations_for_next_session ?? ""),
       recommendations_for_next_playroom: cleanBlockText(review.recommendations_for_next_playroom ?? analysis.recommendations_for_next_playroom ?? ""),
       detail_analysis_drive_url: review.detail_analysis_drive_url ?? null,
       practical_report_drive_url: review.practical_report_drive_url ?? null,
