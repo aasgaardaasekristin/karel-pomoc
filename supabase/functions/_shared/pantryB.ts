@@ -23,12 +23,15 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.4
 
 export type PantryBEntryKind =
   | "conclusion"
+  | "observation"
   | "state_change"
   | "proposal"
   | "risk"
   | "followup_need"
   | "plan_change"
-  | "hypothesis_change";
+  | "hypothesis_change"
+  | "task"
+  | "admin_note";
 
 export type PantryBSourceKind =
   | "chat_postwriteback"
@@ -39,6 +42,14 @@ export type PantryBSourceKind =
   | "playroom"
   | "therapy_session"
   | "live_session_reality_override"
+  | "therapist_task_note"
+  | "therapist_note"
+  | "hana_personal_ingestion"
+  | "did_thread_ingestion"
+  | "live_session_progress"
+  | "playroom_progress"
+  | "deliberation_event"
+  | "crisis_safety_event"
   | "did_meeting"
   | "crisis_contact"
   | "manual";

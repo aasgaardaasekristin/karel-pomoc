@@ -2214,6 +2214,135 @@ export type Database = {
           },
         ]
       }
+      did_event_ingestion_cursors: {
+        Row: {
+          created_at: string
+          id: string
+          last_processed_at: string | null
+          last_processed_id: string | null
+          source_name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_processed_at?: string | null
+          last_processed_id?: string | null
+          source_name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_processed_at?: string | null
+          last_processed_id?: string | null
+          source_name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      did_event_ingestion_log: {
+        Row: {
+          author_name: string | null
+          author_role: string | null
+          classification_json: Json
+          clinical_relevance: boolean
+          created_at: string
+          drive_package_id: string | null
+          drive_write_id: string | null
+          error_message: string | null
+          event_kind: string | null
+          evidence_level: string | null
+          id: string
+          message_id: string | null
+          observation_id: string | null
+          occurred_at: string
+          operational_relevance: boolean
+          pantry_entry_id: string | null
+          processed_at: string | null
+          processed_by: string | null
+          raw_excerpt: string | null
+          related_part_name: string | null
+          source_hash: string
+          source_id: string | null
+          source_kind: string
+          source_ref: string
+          source_surface: string | null
+          source_table: string
+          status: string
+          task_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          author_name?: string | null
+          author_role?: string | null
+          classification_json?: Json
+          clinical_relevance?: boolean
+          created_at?: string
+          drive_package_id?: string | null
+          drive_write_id?: string | null
+          error_message?: string | null
+          event_kind?: string | null
+          evidence_level?: string | null
+          id?: string
+          message_id?: string | null
+          observation_id?: string | null
+          occurred_at?: string
+          operational_relevance?: boolean
+          pantry_entry_id?: string | null
+          processed_at?: string | null
+          processed_by?: string | null
+          raw_excerpt?: string | null
+          related_part_name?: string | null
+          source_hash: string
+          source_id?: string | null
+          source_kind: string
+          source_ref: string
+          source_surface?: string | null
+          source_table: string
+          status?: string
+          task_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          author_name?: string | null
+          author_role?: string | null
+          classification_json?: Json
+          clinical_relevance?: boolean
+          created_at?: string
+          drive_package_id?: string | null
+          drive_write_id?: string | null
+          error_message?: string | null
+          event_kind?: string | null
+          evidence_level?: string | null
+          id?: string
+          message_id?: string | null
+          observation_id?: string | null
+          occurred_at?: string
+          operational_relevance?: boolean
+          pantry_entry_id?: string | null
+          processed_at?: string | null
+          processed_by?: string | null
+          raw_excerpt?: string | null
+          related_part_name?: string | null
+          source_hash?: string
+          source_id?: string | null
+          source_kind?: string
+          source_ref?: string
+          source_surface?: string | null
+          source_table?: string
+          status?: string
+          task_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_implications: {
         Row: {
           created_at: string
