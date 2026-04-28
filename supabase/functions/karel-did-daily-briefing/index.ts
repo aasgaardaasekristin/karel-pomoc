@@ -473,6 +473,9 @@ const trimSentence = (value: unknown, max = 360): string => {
   return `${cut.slice(0, Math.max(cut.lastIndexOf("."), cut.lastIndexOf(";"), cut.lastIndexOf(","), 180)).trim()}…`;
 };
 
+const partGenitive = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupka" : name;
+const partDative = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupkovi" : name;
+
 const sanitizeKarelClinicalText = (value: unknown): string =>
   cleanBlockText(value)
     .replace(/DID\s+syst[eé]m/gi, "kluci")
@@ -518,7 +521,7 @@ function buildClinicalLast3Days(payload: any, context: any, candidates: SessionC
   const sessionNotHeld = sess?.exists && sess?.held === false;
   if (!play && !sess && recentNames.length === 0) return "Na toto nemám dost dat.";
   return [
-    `Za posledních 24–72 hodin máme nejvýraznější doloženou aktivitu u ${activePart}. V komunikaci se objevuje zejména ${communicated}; u kormidla to ale neznamená celodenní jistotu, jen nejsilnější dostupnou stopu.`,
+    `Za posledních 24–72 hodin máme nejvýraznější doloženou aktivitu u ${partGenitive(activePart)}. V komunikaci se objevuje zejména ${communicated}; u kormidla to ale neznamená celodenní jistotu, jen nejsilnější dostupnou stopu.`,
     play ? `Včerejší Herna ukázala práci přes symboly bezpečí, domova, světla nebo ochrany; beru je jako aktuální jazyk této části, ne jako hotovou charakteristiku všech kluků.` : "Z Herny za včerejšek nemám dostatečný uzavřený materiál pro klinický závěr.",
     sessionNotHeld ? "Plánované terapeutické Sezení klinicky neproběhlo, případně odpovídá technickému testu; z něj proto nevyvozuji nové klinické poznatky." : sess?.held ? "Včerejší Sezení má doložený klinický vstup a může sloužit jako samostatný zdroj pro dnešní plán." : "O samostatném včerejším Sezení nemám dost dat.",
     "Bezpečný závěr pro dnešek: držet se doloženého materiálu, oddělit jisté poznatky od hypotéz a nejprve ověřit aktuální tělesnou i emoční dostupnost části.",
@@ -527,7 +530,7 @@ function buildClinicalLast3Days(payload: any, context: any, candidates: SessionC
 
 function buildClinicalLingering(payload: any, candidates: SessionCandidate[]): string {
   const part = String(payload?.yesterday_playroom_review?.part_name || payload?.yesterday_session_review?.part_name || candidates?.[0]?.part_name || "Tundrupka").trim();
-  return `Z dřívějška zůstává podstatné, že u ${part} je potřeba pracovat pomalu, nepřetlačovat ho do vysvětlování a umožnit mu vyjadřování přes symbol, obraz nebo tělesný pocit. Bezpečí tady nevzniká přes rychlé odpovědi, ale přes opakovanou zkušenost, že dospělý zůstává dostupný, nespěchá a zároveň drží jasný rámec.`;
+  return `Z dřívějška zůstává podstatné, že u ${partGenitive(part)} je potřeba pracovat pomalu, nepřetlačovat ho do vysvětlování a umožnit mu vyjadřování přes symbol, obraz nebo tělesný pocit. Bezpečí tady nevzniká přes rychlé odpovědi, ale přes opakovanou zkušenost, že dospělý zůstává dostupný, nespěchá a zároveň drží jasný rámec.`;
 }
 
 function buildDailyTherapeuticPriority(payload: any): string {
