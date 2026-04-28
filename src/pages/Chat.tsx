@@ -2228,7 +2228,34 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         </div>
       </header>
 
-      {hubSection === "did" ? (
+      {hubSection === "karel" ? (
+        <div className="flex-1 flex flex-col min-h-0">
+          <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
+            <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
+              {messages.map((message, index) => (
+                <ChatMessage key={index} message={message} />
+              ))}
+              {isLoading && messages[messages.length - 1]?.role === "user" && <LoadingSkeleton />}
+            </div>
+          </ScrollArea>
+          <ChatInputArea
+            input={input} setInput={setInput}
+            onSend={sendMessage} onKeyDown={handleKeyDown}
+            isLoading={isLoading} disabled={isSoapLoading}
+            isAnalyzing={isFileAnalyzing}
+            attachments={attachments}
+            onRemoveAttachment={removeAttachment}
+            onOpenFilePicker={openFilePicker}
+            onCaptureScreenshot={captureScreenshot}
+            onOpenDrivePicker={() => setDrivePickerOpen(true)}
+            onAutoAnalyze={handleAutoAnalyze}
+            fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+            onFileChange={handleFileChange}
+            textareaRef={textareaRef}
+            footerText={`${persistencePolicy.label}: ${persistencePolicy.description}`}
+          />
+        </div>
+      ) : hubSection === "did" ? (
         <>
           {/* Switching Alert Banner */}
           {switchAlert && (
