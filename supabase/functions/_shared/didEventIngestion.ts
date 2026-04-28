@@ -301,7 +301,7 @@ export async function createPantryEntry(sb: SupabaseClient, event: NormalizedDid
   if (classification.entry_kind === "skip" || !classification.include_in_daily_briefing) return null;
   const destinations = new Set<PantryBDestination>(["briefing_input"]);
   if (classification.action_required || classification.entry_kind === "followup_need" || classification.entry_kind === "task") destinations.add("did_therapist_tasks");
-  if (classification.clinical_relevance && classification.evidence_level !== "therapist_factual_correction" && classification.evidence_level !== "external_fact") destinations.add("did_implications");
+  if (isClinicalBridgeEligible(classification)) destinations.add("did_implications");
   const pantry = await appendPantryB(sb, {
     user_id: event.user_id,
     entry_kind: classification.entry_kind as PantryBEntryKind,
@@ -344,9 +344,12 @@ function buildSummary(event: NormalizedDidEvent, classification: DidEventClassif
   return `${prefix}${classification.operational_implication || classification.clinical_implication || event.raw_excerpt}`.slice(0, 1000);
 }
 
+function isClinicalBridgeEligible(classification: DidEventClassification): boolean {
+  return classification.clinical_relevance && !CHILD_CLINICAL_BLOCKED_EVIDENCE.has(classification.evidence_level);
+}
+
 export async function createObservationIfNeeded(sb: SupabaseClient, event: NormalizedDidEvent, classification: DidEventClassification): Promise<{ observationId?: string | null; implicationId?: string | null }> {
-  if (!classification.clinical_relevance) return {};
-  if (classification.evidence_level === "therapist_factual_correction" || classification.evidence_level === "external_fact" || classification.evidence_level === "technical_event") return {};
+  if (!isClinicalBridgeEligible(classification)) return {};
   const fact = `${classification.clinical_implication} Zdroj: ${event.source_ref}`.slice(0, 1200);
   const evidenceMap: Record<string, string> = {
     direct_child_evidence: "D1",
