@@ -579,18 +579,20 @@ Deno.serve(async (req: Request) => {
         updated.status === "approved" && row.status !== "approved";
       if (justApproved) {
         const part = (updated.subject_parts ?? [])[0] ?? null;
-        const summary =
-          updated.deliberation_type === "crisis"
-            ? `Krizová porada uzavřena: ${updated.title}${
-                updated.karel_synthesis?.next_step
-                  ? ` — další krok: ${updated.karel_synthesis.next_step}`
-                  : ""
-              }`
-            : `Porada podepsána: ${updated.title}${
-                updated.final_summary
-                  ? ` — závěr: ${updated.final_summary.slice(0, 240)}`
-                  : ""
-              }`;
+        const existingOutcome = await admin
+          .from("karel_pantry_b_entries")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("source_kind", "team_deliberation")
+          .eq("source_ref", `${deliberationId}:approved_outcome`)
+          .limit(1);
+
+        if (existingOutcome.data && existingOutcome.data.length > 0) {
+          throw new Error("approved_outcome_already_written");
+        }
+
+        const outcome = buildDeliberationOutcomeReport(updated as Record<string, any>, bridgedPlanId, crisisEffects);
+        const summary = `Schválená porada 2/2: ${updated.title} — ${outcome.therapyImplication}`.slice(0, 1800);
 
         const destinations: any[] = ["briefing_input"];
         if (updated.deliberation_type === "session_plan") {
@@ -604,15 +606,24 @@ Deno.serve(async (req: Request) => {
           user_id: userId,
           entry_kind: updated.deliberation_type === "crisis" ? "state_change" : "conclusion",
           source_kind: "team_deliberation",
-          source_ref: deliberationId,
+          source_ref: `${deliberationId}:approved_outcome`,
           summary,
           detail: {
             deliberation_id: deliberationId,
             deliberation_type: updated.deliberation_type,
             priority: updated.priority,
+            approved_status: "approved_2_of_2",
+            signed_by: ["hanka", "kata"],
             subject_parts: updated.subject_parts ?? [],
             final_summary: updated.final_summary ?? null,
             karel_synthesis: updated.karel_synthesis ?? null,
+            outcome_report_md: outcome.reportMd,
+            therapy_implication: outcome.therapyImplication,
+            team_implication: outcome.teamImplication,
+            next_step: outcome.nextStep || null,
+            key_insights: outcome.keyInsights,
+            risk_signals: outcome.riskSignals,
+            protective_signals: outcome.protectiveSignals,
             bridged_plan_id: bridgedPlanId,
             crisis_effects: crisisEffects,
           },
