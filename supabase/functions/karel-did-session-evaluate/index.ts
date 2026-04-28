@@ -2520,7 +2520,15 @@ async function persistEvaluation(
       key_findings: evaluation.key_insights ?? [],
       implications_for_part: outputs.implications_for_part,
       implications_for_system: outputs.implications_for_system,
-      evidence_limitations: outputs.evidence_limitations,
+        evidence_limitations: outputs.evidence_limitations,
+        reality_override_evidence_discipline: liveProgress?.live_replan_patch && typeof liveProgress.live_replan_patch === "object"
+          ? {
+              therapist_factual_correction: "factual frame from therapist, not child clinical evidence",
+              verified_external_fact: "external fact, not child clinical evidence",
+              child_response_to_event: "possible clinical material only when based on child's own words, affect, body reaction or behavior",
+              live_replan_id: liveProgress.active_live_replan_id ?? (liveProgress.live_replan_patch as any)?.id ?? null,
+            }
+          : undefined,
     },
     intended_destinations: [
       "briefing_input",
