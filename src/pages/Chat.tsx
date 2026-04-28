@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import ModeSelector from "@/components/ModeSelector";
+import StarterQuestions from "@/components/StarterQuestions";
 import MainModeToggle from "@/components/MainModeToggle";
 import ChatMessage from "@/components/ChatMessage";
 import ReportForm from "@/components/ReportForm";
@@ -45,7 +46,7 @@ import DidContentRouter from "@/components/did/DidContentRouter";
 import TherapistAvatarBar from "@/components/did/TherapistAvatarBar";
 import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
 import { useAuthReady } from "@/hooks/useAuthReady";
-import { APP_MODE_POLICIES, getAppModeForHub, getModePolicy } from "@/lib/appModePolicy";
+import { APP_MODE_POLICIES, getAppModeForHub, getModePolicy, type StarterQuestion } from "@/lib/appModePolicy";
 import { buildSafetyResponse, detectSafetyMention } from "@/lib/safetyDetection";
 import {
   type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
@@ -190,6 +191,7 @@ const Chat = () => {
     did_relevance_policy: persistencePolicy.did_relevance_policy,
     pantry_policy: persistencePolicy.pantry_policy,
     drive_policy: persistencePolicy.drive_policy,
+    daily_briefing_policy: persistencePolicy.daily_briefing_policy,
     safety_policy: persistencePolicy.safety_policy,
     no_save: noSave,
   };
