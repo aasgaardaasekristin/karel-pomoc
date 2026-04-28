@@ -323,7 +323,7 @@ async function persistPantryAndDrive(sb: any, ctx: any, review: any, reviewId: s
     writeIds.push(writeId);
     await sb.from("did_pantry_packages").update({ metadata: { ...metadata, pending_drive_write_id: writeId } }).eq("id", packageId);
   }
-  await sb.from("did_session_reviews").update({ analysis_json: { ...(review.analysis_json ?? {}), drive_write_ids: writeIds }, drive_sync_status: "queued", source_of_truth_status: "pending_drive_sync" }).eq("id", reviewId);
+  await sb.from("did_session_reviews").update({ analysis_json: mergeAnalysisJson(review.analysis_json, { drive_write_ids: writeIds, processing_status: "completed" }), drive_sync_status: "queued", source_of_truth_status: "pending_drive_sync" }).eq("id", reviewId);
   return { writeIds };
 }
 
@@ -336,8 +336,13 @@ async function persistInvalidAudit(sb: any, ctx: any, userId: string, planId: st
 }
 
 async function ensurePendingReview(sb: any, userId: string, planId: string, threadId: string, partName?: string) {
-  const { data: existing } = await sb.from("did_session_reviews").select("id,status").eq("plan_id", planId).eq("is_current", true).maybeSingle();
-  if (existing?.id) return existing.id as string;
+  const { data: existing } = await sb.from("did_session_reviews").select("id,status,analysis_json").eq("plan_id", planId).eq("is_current", true).maybeSingle();
+  if (existing?.id) {
+    if (!hasCompletedReviewText(existing)) {
+      await sb.from("did_session_reviews").update({ status: "pending_review", analysis_json: mergeAnalysisJson(existing.analysis_json, { processing_status: "pending_review", thread_id: threadId, queued_at: new Date().toISOString(), created_from: "karel-did-playroom-evaluate" }) }).eq("id", existing.id);
+    }
+    return existing.id as string;
+  }
   const { data: plan } = await sb.from("did_daily_session_plans").select("id,user_id,plan_date,selected_part").eq("id", planId).maybeSingle();
   const payload = {
     user_id: userId,
@@ -369,7 +374,8 @@ async function ensurePendingReview(sb: any, userId: string, planId: string, thre
 async function processEvaluation(sb: any, apiKey: string, userId: string, body: any) {
   const planId = String(body.planId || "").trim();
   const threadId = String(body.threadId || "").trim();
-  await sb.from("did_session_reviews").update({ status: "analysis_running", analysis_json: { schema: "did_playroom_review.v1", status: "analysis_running", thread_id: threadId, started_at: new Date().toISOString(), created_from: "karel-did-playroom-evaluate" } }).eq("plan_id", planId).eq("is_current", true);
+  const { data: existingReview } = await sb.from("did_session_reviews").select("id,status,analysis_json").eq("plan_id", planId).eq("is_current", true).maybeSingle();
+  await sb.from("did_session_reviews").update({ status: hasCompletedReviewText(existingReview) ? existingReview.status : "analysis_running", analysis_json: mergeAnalysisJson(existingReview?.analysis_json, { processing_status: "analysis_running", thread_id: threadId, started_at: new Date().toISOString(), created_from: "karel-did-playroom-evaluate" }) }).eq("plan_id", planId).eq("is_current", true);
   const ctx = await loadContext(sb, planId, threadId, userId);
   if (ctx.status !== "valid") {
     const reviewId = await persistInvalidAudit(sb, ctx, userId, planId, ctx.reason || "invalid");
