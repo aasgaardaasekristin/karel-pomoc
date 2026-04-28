@@ -1104,10 +1104,10 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         <>
           <NarrativeDivider />
           <SectionHead icon={<Users className="w-3.5 h-3.5 text-primary/70" />}>
-            Včerejší sezení
+            {yesterdayReview?.held === false ? "Plánované Sezení, které klinicky neproběhlo" : "Včerejší sezení"}
           </SectionHead>
           <div className="mt-2 p-3 rounded-lg border border-border/60 bg-card/40 space-y-2">
-            {yesterdayReview && yesterdayReview.held ? (
+            {yesterdayReview && yesterdayReview.exists ? (
               <>
                 <div className="flex items-center gap-2 flex-wrap">
                   {yesterdayReview.part_name && (
@@ -1123,14 +1123,18 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                   {yesterdayReview.completion && (
                     <Badge
                       className={`text-[10px] h-5 px-2 border ${
-                        yesterdayReview.completion === "completed"
+                        yesterdayReview.held === false
+                          ? "bg-muted text-muted-foreground border-border"
+                          : yesterdayReview.completion === "completed"
                           ? "bg-emerald-500/15 text-emerald-700 border-emerald-500/30"
                           : yesterdayReview.completion === "partial"
                           ? "bg-amber-500/15 text-amber-700 border-amber-500/30"
                           : "bg-destructive/15 text-destructive border-destructive/30"
                       }`}
                     >
-                      {yesterdayReview.completion === "completed"
+                      {yesterdayReview.held === false
+                        ? (yesterdayReview.status === "technical_test" ? "Technický test" : "Neuskutečněno")
+                        : yesterdayReview.completion === "completed"
                         ? "Dokončeno"
                         : yesterdayReview.completion === "partial"
                         ? "Částečně"
