@@ -496,6 +496,87 @@ async function loadLiveProgress(sb: any, planId: string) {
   return data ?? null;
 }
 
+async function enqueueSessionEvaluationJob(sb: any, ctx: any, payload: Record<string, any>) {
+  const now = new Date().toISOString();
+  const dedupeKey = `session_evaluation:${ctx.plan.id}`;
+  const { data: existing } = await sb
+    .from("karel_action_jobs")
+    .select("*")
+    .eq("job_type", "session_evaluation")
+    .eq("dedupe_key", dedupeKey)
+    .in("status", ["pending", "running", "failed_retry", "completed"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existing && !payload.force) return existing;
+
+  const cleanPayload = { ...payload };
+  delete cleanPayload.enqueueOnly;
+  delete cleanPayload.processJob;
+  delete cleanPayload.processPendingJobs;
+  const { data, error } = await sb.from("karel_action_jobs").insert({
+    user_id: ctx.plan.user_id,
+    job_type: "session_evaluation",
+    status: "pending",
+    dedupe_key: dedupeKey,
+    source_function: "karel-did-session-evaluate",
+    target_type: "did_daily_session_plans",
+    target_id: ctx.plan.id,
+    plan_id: ctx.plan.id,
+    thread_id: (ctx.threads ?? [])[0]?.id ?? null,
+    part_name: ctx.plan.selected_part,
+    result_payload: cleanPayload,
+    result_summary: "Session evaluation queued; waiting for worker.",
+    attempt_count: 0,
+    created_at: now,
+    updated_at: now,
+  }).select("*").single();
+  if (error) throw error;
+  return data;
+}
+
+async function markJobRunning(sb: any, job: any) {
+  const now = new Date().toISOString();
+  await sb.from("karel_action_jobs").update({
+    status: "running",
+    started_at: job.started_at ?? now,
+    finished_at: null,
+    completed_at: null,
+    last_error: null,
+    error_message: null,
+    attempt_count: Number(job.attempt_count ?? 0) + 1,
+    updated_at: now,
+  }).eq("id", job.id);
+}
+
+async function markJobCompleted(sb: any, jobId: string | null, result: Record<string, any>) {
+  if (!jobId) return;
+  const now = new Date().toISOString();
+  await sb.from("karel_action_jobs").update({
+    status: "completed",
+    review_id: result.review_id ?? null,
+    result_payload: result,
+    result_summary: `Session evaluation completed: review_id=${result.review_id ?? "n/a"}, status=${result.review_status ?? "n/a"}`,
+    finished_at: now,
+    completed_at: now,
+    updated_at: now,
+  }).eq("id", jobId);
+}
+
+async function markJobFailedRetry(sb: any, jobId: string | null, error: any) {
+  if (!jobId) return;
+  const now = new Date().toISOString();
+  const message = String(error?.message ?? error).slice(0, 1000);
+  await sb.from("karel_action_jobs").update({
+    status: "failed_retry",
+    last_error: message,
+    error_message: message,
+    finished_at: now,
+    result_summary: "Session evaluation failed safely and is available for retry.",
+    updated_at: now,
+  }).eq("id", jobId);
+}
+
 function hasEvidence(turnsByBlock: Record<string, any[]>, observationsByBlock: Record<string, string>, completedBlocks?: number): boolean {
   return (completedBlocks ?? 0) > 0 ||
     Object.values(turnsByBlock || {}).some(v => Array.isArray(v) && v.length > 0) ||
