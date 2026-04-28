@@ -1287,7 +1287,8 @@ Deno.serve(async (req) => {
     let durationMs = 0;
     let rawPayload: any;
     try {
-      const generated = body?.skipAi === true || body?.playroomSafeOnly === true
+      const playroomSafeDefault = body?.fullAi !== true && buildYesterdayPlayroomReview(context)?.exists === true;
+      const generated = body?.skipAi === true || body?.playroomSafeOnly === true || playroomSafeDefault
         ? { payload: buildDeterministicBriefingPayload(context, candidates), durationMs: 0 }
         : await generateBriefing(context, candidates, apiKey);
       rawPayload = generated.payload;
