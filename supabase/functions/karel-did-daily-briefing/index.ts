@@ -425,6 +425,37 @@ function injectPlayroomReviewIntoProposal(payload: any) {
   return payload;
 }
 
+function injectBriefingAskResolutionsIntoProposals(payload: any, context: any) {
+  const entries = Array.isArray(context?.pantry_b_entries) ? context.pantry_b_entries : [];
+  const resolutions = entries.filter((e: any) => e?.source_kind === "briefing_ask_resolution");
+  if (resolutions.length === 0) return payload;
+
+  const latestPlayroom = resolutions.find((e: any) => e?.detail?.target_type === "proposed_playroom" || e?.detail?.decision === "apply_to_playroom_program");
+  const latestSession = resolutions.find((e: any) => e?.detail?.target_type === "proposed_session" || e?.detail?.decision === "apply_to_session_program");
+  const inject = (target: any, entry: any) => {
+    if (!target || !entry) return;
+    target.backend_context_inputs = {
+      ...(target.backend_context_inputs ?? {}),
+      used_briefing_ask_resolution: true,
+      briefing_ask_resolution_id: entry.detail?.resolution_id ?? entry.source_ref ?? entry.id,
+      therapist_response_used: true,
+      decision: entry.detail?.decision ?? null,
+      evidence_level: entry.detail?.evidence_level ?? "therapist_observation_D2",
+      requires_reapproval: Boolean(entry.detail?.requires_reapproval),
+      source_of_truth: "DB/Pantry B",
+      drive_role: "audit/archive",
+    };
+  };
+  inject(payload.proposed_playroom, latestPlayroom);
+  inject(payload.proposed_session, latestSession);
+  payload.opening_monologue = {
+    ...(payload.opening_monologue ?? {}),
+    briefing_ask_resolution_used: true,
+    briefing_ask_resolution_summary: String(resolutions[0]?.summary ?? "").slice(0, 700),
+  };
+  return payload;
+}
+
 function buildDeterministicBriefingPayload(context: any, candidates: SessionCandidate[]) {
   const playroomReview = buildYesterdayPlayroomReview(context);
   const sessionReview = buildYesterdaySessionReview(context);
@@ -639,7 +670,11 @@ function applyOpeningMonologue(payload: any, context: any, candidates: SessionCa
   return {
     ...payload,
     greeting: opening.greeting,
-    opening_monologue: opening,
+    opening_monologue: {
+      ...opening,
+      briefing_ask_resolution_used: payload.opening_monologue?.briefing_ask_resolution_used ?? false,
+      briefing_ask_resolution_summary: payload.opening_monologue?.briefing_ask_resolution_summary ?? undefined,
+    },
     opening_monologue_text: opening.opening_monologue_text,
     technical_note: opening.technical_note,
   };
@@ -1566,6 +1601,7 @@ Deno.serve(async (req) => {
     }
     injectPlayroomReviewIntoProposal(payload);
     injectSessionReviewIntoProposals(payload);
+    injectBriefingAskResolutionsIntoProposals(payload, context);
     payload = applyOpeningMonologue(payload, context, candidates);
 
     // 3b) ── ASK ITEM IDENTITY ──
@@ -1611,6 +1647,14 @@ Deno.serve(async (req) => {
       const intent = isPlayroom ? "playroom_plan" : isSession ? "session_plan" : isTask ? "task" : isObservation ? "observation" : "team_coordination";
       const targetType = isPlayroom ? "proposed_playroom" : isSession ? "proposed_session" : isTask ? "task" : isObservation ? "current_handling" : "none";
       const target = isPlayroom ? targetPlayroom : isSession ? targetSession : null;
+      const targetPartName = target?.part_name ? String(target.part_name) : null;
+      const stableTargetId = target?.id
+        ? String(target.id)
+        : targetType === "proposed_playroom"
+          ? `${id}:proposed_playroom:${targetPartName ?? "unknown"}`
+          : targetType === "proposed_session"
+            ? `${id}:proposed_session:${targetPartName ?? "unknown"}`
+            : null;
       return {
         id,
         text,
@@ -1618,8 +1662,8 @@ Deno.serve(async (req) => {
         question_text: text,
         intent,
         target_type: targetType,
-        target_item_id: target?.id ? String(target.id) : null,
-        target_part_name: target?.part_name ? String(target.part_name) : null,
+        target_item_id: stableTargetId,
+        target_part_name: targetPartName,
         requires_immediate_program_update: targetType === "proposed_playroom" || targetType === "proposed_session",
         expected_resolution: targetType === "proposed_playroom" || targetType === "proposed_session" ? "update_program" : isTask ? "create_task" : isObservation ? "add_observation" : "store_memory",
         source: "daily_briefing",
@@ -1805,11 +1849,12 @@ Deno.serve(async (req) => {
           : item.target_type === "proposed_session"
             ? payload.proposed_session
             : null;
+        const targetPartName = target?.part_name ? String(target.part_name) : item.target_part_name ?? null;
         return {
           ...item,
           assignee: role === "ask_hanka" ? "hanka" : "kata",
-          target_item_id: target?.id ? String(target.id) : item.target_item_id ?? null,
-          target_part_name: target?.part_name ? String(target.part_name) : item.target_part_name ?? null,
+          target_item_id: target?.id ? String(target.id) : item.target_item_id ?? (item.target_type === "proposed_playroom" || item.target_type === "proposed_session" ? `${item.briefing_id ?? item.id}:${item.target_type}:${targetPartName ?? "unknown"}` : null),
+          target_part_name: targetPartName,
         };
       });
 

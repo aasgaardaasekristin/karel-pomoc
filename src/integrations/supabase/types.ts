@@ -57,16 +57,29 @@ export type Database = {
           ask_id: string
           assignee: string
           briefing_id: string
+          clinical_caution: boolean
+          confidence: string | null
           created_at: string
+          decision: string | null
+          decision_before_apply: Json
+          decision_result: Json
+          drive_package_id: string | null
+          drive_write_id: string | null
           error_message: string | null
+          evidence_level: string
           id: string
           intent: string
+          pantry_entry_id: string | null
           processed_at: string | null
           processed_by: string | null
+          program_diff: Json
+          requires_reapproval: boolean
           resolution_mode: string
           resolution_status: string
           response_hash: string
+          session_params_diff: Json
           target_item_id: string | null
+          target_item_key: string | null
           target_part_name: string | null
           target_type: string
           therapist_response: string | null
@@ -83,16 +96,29 @@ export type Database = {
           ask_id: string
           assignee: string
           briefing_id: string
+          clinical_caution?: boolean
+          confidence?: string | null
           created_at?: string
+          decision?: string | null
+          decision_before_apply?: Json
+          decision_result?: Json
+          drive_package_id?: string | null
+          drive_write_id?: string | null
           error_message?: string | null
+          evidence_level?: string
           id?: string
           intent?: string
+          pantry_entry_id?: string | null
           processed_at?: string | null
           processed_by?: string | null
+          program_diff?: Json
+          requires_reapproval?: boolean
           resolution_mode: string
           resolution_status?: string
           response_hash: string
+          session_params_diff?: Json
           target_item_id?: string | null
+          target_item_key?: string | null
           target_part_name?: string | null
           target_type?: string
           therapist_response?: string | null
@@ -109,16 +135,29 @@ export type Database = {
           ask_id?: string
           assignee?: string
           briefing_id?: string
+          clinical_caution?: boolean
+          confidence?: string | null
           created_at?: string
+          decision?: string | null
+          decision_before_apply?: Json
+          decision_result?: Json
+          drive_package_id?: string | null
+          drive_write_id?: string | null
           error_message?: string | null
+          evidence_level?: string
           id?: string
           intent?: string
+          pantry_entry_id?: string | null
           processed_at?: string | null
           processed_by?: string | null
+          program_diff?: Json
+          requires_reapproval?: boolean
           resolution_mode?: string
           resolution_status?: string
           response_hash?: string
+          session_params_diff?: Json
           target_item_id?: string | null
+          target_item_key?: string | null
           target_part_name?: string | null
           target_type?: string
           therapist_response?: string | null

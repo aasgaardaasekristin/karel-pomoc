@@ -337,6 +337,7 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
       : null;
   }, [didSubMode, activeThread?.partName, crisisCards]);
   const [askResolveBusy, setAskResolveBusy] = useState<"apply" | "close" | null>(null);
+  const [askResolveResult, setAskResolveResult] = useState<any | null>(null);
   const isBriefingAskThread = activeThread?.workspaceType === "ask_hanka" || activeThread?.workspaceType === "ask_kata";
   const hasTherapistAnswer = React.useMemo(
     () => messages.some((m) => m.role === "user" && String(m.content ?? "").trim().length > 0),
@@ -361,7 +362,8 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || "Započítání odpovědi selhalo.");
       setActiveThread((prev) => prev && prev.id === activeThread.id ? { ...prev, isProcessed: true } : prev);
-      toast.success(data?.status_text || "Briefingový bod byl zpracován.");
+      setAskResolveResult(data);
+      toast.success(data?.status_text || "Briefingový bod byl zpracován s auditní stopou.");
       if (data?.deliberation?.id) {
         try { sessionStorage.setItem("karel_open_deliberation_id", data.deliberation.id); } catch { /* ignore */ }
         setDidFlowState("terapeut");
@@ -817,6 +819,23 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
                   Uzavřít bez změny
                 </Button>
               </div>
+            </div>
+          )}
+          {isBriefingAskThread && askResolveResult && (
+            <div className="rounded-md border border-primary/25 bg-primary/5 p-3 space-y-2 text-[12px] text-foreground/80">
+              <div className="font-medium text-foreground">{askResolveResult.status_text || "Odpověď byla započítána."}</div>
+              {askResolveResult.decision?.decision && (
+                <div>Rozhodnutí: <span className="font-medium">{askResolveResult.decision.decision}</span></div>
+              )}
+              {Array.isArray(askResolveResult.program_diff?.changed_blocks) && askResolveResult.program_diff.changed_blocks.length > 0 && (
+                <div>Změněné bloky: {askResolveResult.program_diff.changed_blocks.slice(0, 6).join(", ")}</div>
+              )}
+              {askResolveResult.decision?.clinical_caution && (
+                <div>Doplněno: observační prvky místo diagnostických testů; závěry až po konkrétních odpovědích a review.</div>
+              )}
+              {askResolveResult.decision?.requires_reapproval && (
+                <div>Stav: čeká na podpis Haničky a Káti.</div>
+              )}
             </div>
           )}
           {/* 2026-04-22 — Karel + část room banner. Vykresluje se uvnitř
