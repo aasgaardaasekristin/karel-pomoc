@@ -670,7 +670,11 @@ function applyOpeningMonologue(payload: any, context: any, candidates: SessionCa
   return {
     ...payload,
     greeting: opening.greeting,
-    opening_monologue: opening,
+    opening_monologue: {
+      ...opening,
+      briefing_ask_resolution_used: payload.opening_monologue?.briefing_ask_resolution_used ?? false,
+      briefing_ask_resolution_summary: payload.opening_monologue?.briefing_ask_resolution_summary ?? undefined,
+    },
     opening_monologue_text: opening.opening_monologue_text,
     technical_note: opening.technical_note,
   };
