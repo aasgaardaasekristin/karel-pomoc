@@ -1129,6 +1129,7 @@ MUSÍŠ vždy navrhnout proposed_playroom. Pokud jsou signály slabé, zvol nejb
 
   const res = await fetch(AI_URL, {
     method: "POST",
+    signal: AbortSignal.timeout(45_000),
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
@@ -1286,7 +1287,9 @@ Deno.serve(async (req) => {
     let durationMs = 0;
     let rawPayload: any;
     try {
-      const generated = await generateBriefing(context, candidates, apiKey);
+      const generated = body?.skipAi === true || body?.playroomSafeOnly === true
+        ? { payload: buildDeterministicBriefingPayload(context, candidates), durationMs: 0 }
+        : await generateBriefing(context, candidates, apiKey);
       rawPayload = generated.payload;
       durationMs = generated.durationMs;
     } catch (e: any) {
