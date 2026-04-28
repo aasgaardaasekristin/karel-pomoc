@@ -82,17 +82,23 @@ export const clearNoHistoryChatStorage = () => {
 
 export const countMarkerInBrowserStorage = (marker: string) => {
   const includesMarker = (value: string | null) => Boolean(value && marker && value.includes(marker));
-  let localStorageCount = 0;
-  let sessionStorageCount = 0;
+  let localStorageKeyCount = 0;
+  let localStorageValueCount = 0;
+  let sessionStorageKeyCount = 0;
+  let sessionStorageValueCount = 0;
   try {
     for (let i = 0; i < localStorage.length; i += 1) {
-      if (includesMarker(localStorage.getItem(localStorage.key(i) || ""))) localStorageCount += 1;
+      const key = localStorage.key(i) || "";
+      if (includesMarker(key)) localStorageKeyCount += 1;
+      if (includesMarker(localStorage.getItem(key))) localStorageValueCount += 1;
     }
     for (let i = 0; i < sessionStorage.length; i += 1) {
-      if (includesMarker(sessionStorage.getItem(sessionStorage.key(i) || ""))) sessionStorageCount += 1;
+      const key = sessionStorage.key(i) || "";
+      if (includesMarker(key)) sessionStorageKeyCount += 1;
+      if (includesMarker(sessionStorage.getItem(key))) sessionStorageValueCount += 1;
     }
   } catch {}
-  return { localStorageCount, sessionStorageCount };
+  return { localStorageKeyCount, localStorageValueCount, sessionStorageKeyCount, sessionStorageValueCount };
 };
 
 export const markExplicitLogout = () => {

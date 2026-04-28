@@ -52,23 +52,26 @@ describe("chatHelpers", () => {
       saveMessages("debrief", [{ role: "user", content: marker }]);
       localStorage.setItem(ACTIVE_MODE_KEY, "debrief");
       sessionStorage.setItem("chat_draft:karel:debrief:none:none", marker);
-      expect(countMarkerInBrowserStorage(marker)).toEqual({ localStorageCount: 1, sessionStorageCount: 1 });
+      localStorage.setItem(`${marker}:key`, "clean");
+      sessionStorage.setItem(`${marker}:draft`, "clean");
+      expect(countMarkerInBrowserStorage(marker)).toEqual({
+        localStorageKeyCount: 1,
+        localStorageValueCount: 1,
+        sessionStorageKeyCount: 1,
+        sessionStorageValueCount: 1,
+      });
       clearNoHistoryChatStorage();
+      localStorage.removeItem(`${marker}:key`);
+      sessionStorage.removeItem(`${marker}:draft`);
       expect(localStorage.getItem(`${STORAGE_KEY_PREFIX}debrief`)).toBeNull();
       expect(localStorage.getItem(ACTIVE_MODE_KEY)).toBeNull();
       expect(sessionStorage.getItem("chat_draft:karel:debrief:none:none")).toBeNull();
-      expect(countMarkerInBrowserStorage(marker)).toEqual({ localStorageCount: 0, sessionStorageCount: 0 });
-    });
-
-    it("models no-history refresh UI state as empty messages and empty input", () => {
-      const input = NO_HISTORY_REFRESH_MARKER;
-      const messages = [{ role: "user", content: NO_HISTORY_REFRESH_MARKER }];
-      clearNoHistoryChatStorage();
-      const refreshedInput = "";
-      const refreshedMessages: typeof messages = [];
-      expect(refreshedInput).toBe("");
-      expect(refreshedMessages).toHaveLength(0);
-      expect(input).toContain("NO_HISTORY_REFRESH_E2E_MARKER_2026_04_28");
+      expect(countMarkerInBrowserStorage(marker)).toEqual({
+        localStorageKeyCount: 0,
+        localStorageValueCount: 0,
+        sessionStorageKeyCount: 0,
+        sessionStorageValueCount: 0,
+      });
     });
   });
 
