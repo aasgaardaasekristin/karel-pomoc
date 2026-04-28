@@ -538,7 +538,7 @@ const DidDailySessionPlan = ({
         })
         .ilike("part_name", plan.selected_part);
 
-      await (supabase as any)
+      const { error: startErr } = await (supabase as any)
         .from("did_daily_session_plans")
         .update({
           status: "in_progress",
@@ -548,6 +548,8 @@ const DidDailySessionPlan = ({
         })
         .eq("id", plan.id);
 
+      if (startErr) throw startErr;
+
       setPlans((prev) =>
         prev.map((p) =>
           p.id === plan.id ? { ...p, status: "in_progress" } : p,
@@ -556,7 +558,11 @@ const DidDailySessionPlan = ({
       setActiveLivePlanId(plan.id);
       toast.success(`Sezení s ${plan.selected_part} zahájeno`);
     } catch (e: any) {
-      toast.error("Nepodařilo se zahájit sezení");
+      toast.error(
+        isSignatureGuardError(e)
+          ? approvalDesyncMessage
+          : "Nepodařilo se zahájit sezení",
+      );
       console.error(e);
     }
   }, []);
