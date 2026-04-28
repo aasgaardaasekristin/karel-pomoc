@@ -420,6 +420,73 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
     }
   }, [planId]);
 
+  const persistLiveReplan = useCallback(async (patch: LiveReplanPatch, therapistCorrection: string) => {
+    setActiveLiveReplan(patch);
+    if (typeof patch.current_block_index === "number") {
+      try {
+        const key = `live_program_${planId ?? "ad-hoc"}`;
+        const raw = window.localStorage.getItem(key);
+        if (raw) {
+          const arr = JSON.parse(raw) as Array<Record<string, unknown>>;
+          if (Array.isArray(arr) && arr[patch.current_block_index]) {
+            arr[patch.current_block_index] = {
+              ...arr[patch.current_block_index],
+              status: patch.current_block_status ?? "paused_by_reality_override",
+              paused_by_reality_override: true,
+              active_live_replan_id: patch.id,
+            };
+            window.localStorage.setItem(key, JSON.stringify(arr));
+            setPlanRefreshTick((v) => v + 1);
+          }
+        }
+      } catch (e) {
+        console.warn("[live-replan] local block pause failed:", e);
+      }
+    }
+
+    if (!planId) return;
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData?.user?.id;
+      if (!userId) return;
+      await (supabase as any).from("did_live_session_progress").upsert({
+        user_id: userId,
+        plan_id: planId,
+        part_name: partName,
+        therapist: therapistName,
+        current_block_status: patch.current_block_status ?? "paused_by_reality_override",
+        active_live_replan_id: patch.id ?? null,
+        live_replan_patch: patch,
+        reality_verification: patch.factual_frame ?? {},
+        last_activity_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "plan_id" });
+      await (supabase as any).from("karel_pantry_b_entries").insert({
+        user_id: userId,
+        entry_kind: "plan_change",
+        source_kind: "live_session_reality_override",
+        source_ref: `live-session:${planId}:reality-override:${patch.id ?? Date.now()}`,
+        summary: "Terapeutka opravila realitní rámec; Karel pozastavil původní plán a přešel na real-event protocol.",
+        detail: {
+          therapist_correction: therapistCorrection,
+          url: patch.factual_frame?.source_url ?? null,
+          verification_status: patch.factual_frame?.verification_status ?? "therapist_report_only",
+          original_intervention_blocked: true,
+          new_micro_plan: patch.new_micro_steps ?? [],
+          what_to_record: patch.data_to_record ?? [],
+          evidence_limits: "Therapist factual correction and verified external fact are not child clinical evidence; only child_response_to_event can become clinical material.",
+          child_facing_safety_notes: "Dítěti jen krátké bezpečné minimum; nepřidávat dramatické detaily z externího zdroje.",
+          live_replan_patch: patch,
+        },
+        intended_destinations: ["briefing_input", "did_implications", "did_therapist_tasks"],
+        related_part_name: partName,
+        related_therapist: therapistName === "Káťa" ? "kata" : "hanka",
+      });
+    } catch (e) {
+      console.warn("[live-replan] persistence failed:", e);
+    }
+  }, [partName, planId, therapistName]);
+
   // ── Jádro odeslání: streamuje karel-chat odpověď. Vrací true při úspěchu. ──
   // Klíčové oproti původní verzi: NIKDY nemažeme uživatelskou zprávu z chatu.
   // Při chybě jen označíme zprávu `failed=true` (UI nabídne „Zkusit znovu").
