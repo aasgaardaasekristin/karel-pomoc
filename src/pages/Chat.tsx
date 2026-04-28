@@ -578,12 +578,12 @@ const Chat = () => {
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === "hidden") {
-        if (messages.length > 0) {
+        if (!noSave && hubSection !== "karel" && messages.length > 0) {
           saveMessages(mode, messages);
           if (activeThread) didThreads.updateThreadMessages(activeThread.id, messages);
           if (activeResearchThread) researchThreads.updateMessages(activeResearchThread.id, messages);
         }
-        if (mode === "childcare" && didSubMode && didSubMode !== "cast" && messages.length >= 2) {
+        if (!noSave && mode === "childcare" && didSubMode && didSubMode !== "cast" && messages.length >= 2) {
           saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
         }
       }
@@ -597,7 +597,7 @@ const Chat = () => {
 
   useEffect(() => {
     const persistNow = () => {
-      if (messages.length > 0) {
+      if (!noSave && hubSection !== "karel" && messages.length > 0) {
         saveMessages(mode, messages);
         if (activeThread) didThreads.updateThreadMessages(activeThread.id, messages);
         if (activeResearchThread) researchThreads.updateMessages(activeResearchThread.id, messages);
