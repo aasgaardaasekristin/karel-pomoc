@@ -176,7 +176,7 @@ ${status}
 
 Program měním na mikro-plán: realita → emoce → potřeba → bezpečí.
 
-1. Nezadávej kresbu „Nakresli člověka“.
+1. Nezadávej původní projektivní kresbu.
 2. Zeptej se krátce a klidně, co ${patch?.part_name ?? "část"} o události ví.
 3. Pak se zeptej, co se v něm děje, když na ni myslí.
 4. Zapisuj jeho vlastní slova, afekt, tělesnou reakci a míru zahlcení.
