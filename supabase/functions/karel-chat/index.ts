@@ -1693,7 +1693,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
           console.warn("[language-guard] violations in chat response:", audit.violations);
         }
 
-        if (fullResponse.length > 20 && !persistencePolicy.no_save && persistencePolicy.mode_id !== "karel_chat" && (mode === "childcare" || effectiveMode === "kata")) {
+        if (fullResponse.length > 20 && !persistencePolicy.no_save && persistencePolicy.mode_id === "did_kluci" && persistencePolicy.pantry_policy !== "none" && (mode === "childcare" || effectiveMode === "kata")) {
           const extractedTasks = extractTasksFromResponse(fullResponse, didSubMode || "general");
           if (extractedTasks.length > 0) {
             const { createClient: createSbForTasks } = await import("https://esm.sh/@supabase/supabase-js@2");
@@ -1814,7 +1814,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         const isCastMode = isDirectChildSubMode;
         const isMemoryMode = isHanaPersonal || didSubMode === "mamka" || didSubMode === "kata" || isCastMode;
 
-        if (isMemoryMode && fullResponse.length > 30 && !persistencePolicy.no_save && persistencePolicy.mode_id !== "karel_chat") {
+        if (isMemoryMode && fullResponse.length > 30 && !persistencePolicy.no_save && persistencePolicy.mode_id !== "karel_chat" && persistencePolicy.drive_policy !== "none") {
           const { createClient: createSbForMem } = await import("https://esm.sh/@supabase/supabase-js@2");
           const sbMem = createSbForMem(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -2074,7 +2074,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         }
 
         // ═══ SAFETY CHECK (fire-and-forget via separate edge function) ═══
-        if (isDirectChildSubMode && didPartName && !persistencePolicy.no_save) {
+        if (isDirectChildSubMode && didPartName && !persistencePolicy.no_save && persistencePolicy.mode_id === "did_kluci") {
           const lastUserMsg = (messages as any[]).filter((m: any) => m.role === "user").pop();
           const userText = typeof lastUserMsg?.content === "string" ? lastUserMsg.content : "";
           if (userText.length > 5) {
