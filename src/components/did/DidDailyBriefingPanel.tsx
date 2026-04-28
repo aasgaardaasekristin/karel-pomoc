@@ -1423,7 +1423,13 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                 <button
                   type="button"
                   disabled={openingItemId === item.id}
-                  onClick={() => openAskWorkspace("ask_hanka", item)}
+                  onClick={() => {
+                    if (item.requires_immediate_program_update || item.expected_resolution === "update_program") {
+                      void openProgramAskDeliberation("ask_hanka", item);
+                    } else {
+                      void openAskWorkspace("ask_hanka", item);
+                    }
+                  }}
                   className="w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-primary/5 transition-colors cursor-pointer group disabled:opacity-60"
                 >
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/40 group-hover:bg-primary/70 transition-colors" />
@@ -1453,7 +1459,13 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                 <button
                   type="button"
                   disabled={openingItemId === item.id}
-                  onClick={() => openAskWorkspace("ask_kata", item)}
+                  onClick={() => {
+                    if (item.requires_immediate_program_update || item.expected_resolution === "update_program") {
+                      void openProgramAskDeliberation("ask_kata", item);
+                    } else {
+                      void openAskWorkspace("ask_kata", item);
+                    }
+                  }}
                   className="w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-accent/5 transition-colors cursor-pointer group disabled:opacity-60"
                 >
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent/40 group-hover:bg-accent/70 transition-colors" />
