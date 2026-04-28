@@ -619,6 +619,15 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
 }
 
 function applyOpeningMonologue(payload: any, context: any, candidates: SessionCandidate[]) {
+  payload.last_3_days = buildClinicalLast3Days(payload, context, candidates);
+  payload.lingering = buildClinicalLingering(payload, candidates);
+  payload.daily_therapeutic_priority = buildDailyTherapeuticPriority(payload);
+  if (payload?.yesterday_playroom_review && typeof payload.yesterday_playroom_review === "object") {
+    for (const key of ["practical_report_text", "detailed_analysis_text", "implications_for_part", "implications_for_system", "recommendations_for_therapists", "recommendations_for_next_playroom", "recommendations_for_next_session"]) {
+      payload.yesterday_playroom_review[key] = sanitizeKarelClinicalText(payload.yesterday_playroom_review[key]);
+    }
+    payload.yesterday_playroom_review.spiritual_symbolics_safety_frame = "Duchovní symbolika se v této Herně objevila jako zdroj bezpečí a úlevy. Je důležité ji respektovat, nepřerámovat ji příliš racionálně a nebrat ji části. Zároveň ji nesmíme nekriticky posilovat směrem k odpojení od reality nebo k představě, že bezpečí existuje jen mimo současný život. Praktický cíl je pomoci Tundrupkovi přenést pocit ochrany zpět do přítomného těla, dne a vztahu s bezpečnými dospělými.";
+  }
   const opening = buildOpeningMonologue(payload, context, candidates);
   return {
     ...payload,
