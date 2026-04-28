@@ -162,7 +162,7 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
   const isRisk = hasAny(text, [/rizik|kriz|sebepo|ubl[ií]žit|nebezpe|stop sign[aá]l|disoci/i]);
   const isTask = hasAny(text, [/úkol|ukol|domluv|zařiď|zarid|follow[- ]?up|ověř|over|připomeň|pripomen/i]);
   const isPlan = hasAny(text, [/pl[aá]n|program|zm[eě]na|příště|priste|sezen[ií]|herna|blok/i]);
-  const isClinical = hasAny(text, [/část|cast|kluci|tundrupek|timmy|arthur|úzkost|uzkost|strach|pl[aá]č|tělo|telo|afekt|reakc|potřeb|potreb|bezpe/i]);
+  const isClinical = hasAny(text, [/část|cast|kluci|tundrupek|timmy|arthur|úzkost|uzkost|strach|pl[aá]č|tělo|telo|afekt|reakc|potřeb|potreb|bezpe|ztichl|ramen|nechci být s[aá]m|nechci byt sam/i]);
   const isAdminOnly = hasAny(text, [/technick|login|tlač[ií]tko|tlacitko|chyba ui|export|soubor/i]) && !isClinical && !isRisk;
 
   if (!event.raw_excerpt || event.raw_excerpt.length < 8) {
