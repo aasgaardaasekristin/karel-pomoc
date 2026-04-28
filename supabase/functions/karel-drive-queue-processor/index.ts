@@ -540,6 +540,17 @@ async function updatePlayroomReviewSync(sb: any, p: { sourceType: string | null;
   }
 }
 
+async function updatePantryPackageSync(sb: any, writeId: string, status: "flushed" | "pending_drive" | "failed", error: string | null, completed: boolean) {
+  try {
+    await sb
+      .from("did_pantry_packages")
+      .update({ status, flushed_at: completed ? new Date().toISOString() : null, flush_error: error ? error.slice(0, 1000) : null, updated_at: new Date().toISOString() })
+      .eq("metadata->>pending_drive_write_id", writeId);
+  } catch (e) {
+    console.warn("[drive-queue] pantry package sync patch failed", e);
+  }
+}
+
 async function heartbeat(
   sb: any,
   lane: Lane,
