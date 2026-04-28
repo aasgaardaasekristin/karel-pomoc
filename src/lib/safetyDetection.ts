@@ -27,14 +27,14 @@ export interface SafetyDetectionResult {
 }
 
 const SAFETY_PATTERNS: Array<{ signal: string; category: SafetyCategory; severity: SafetySeverity; current?: boolean; pattern: RegExp }> = [
-  { signal: "žádost o škodlivý návod", category: "unsafe_instruction_request", severity: "critical", current: true, pattern: /jak (se )?(zab[ií]t|otravit|p[oř]ed[aá]vkovat|ubl[ií][zž]it|vyrobit zbra[nň]|obej[ií]t bezpe[cč]nost)|návod.*(sebevra|ubl[ií][zž]|zbra[nň])/i },
+  { signal: "žádost o škodlivý návod", category: "unsafe_instruction_request", severity: "critical", current: true, pattern: /jak (se )?(zab[ií]t|otravit|p[oř]ed[aá]vkovat|ubl[ií][zž]it|vyrobit zbra[nň]|obej[ií]t bezpe[cč]nost)|návod.*(sebevra|ubl[ií][zž]|zbra[nň])|dej mi n[aá]vod.*ubl[ií][zž]/i },
   { signal: "sebevražedné myšlenky", category: "suicidal_ideation", severity: "critical", current: true, pattern: /sebevra\w*|suicid|zab[ií]t se|nechci [zž][ií]t|ukon[cč]it [zž]ivot/i },
-  { signal: "sebepoškození", category: "self_harm", severity: "critical", current: true, pattern: /sebepo\w*|řez[aá]t se|rezat se|ubl[ií][zž]it si|ublizit si/i },
+  { signal: "sebepoškození", category: "self_harm", severity: "critical", current: true, pattern: /sebepo\w*|řez[aá]t se|rezat se|ubl[ií][zž]it si|ublizit si|chci.*ubl[ií][zž]it/i },
   { signal: "ublížení druhým", category: "harm_to_others", severity: "critical", current: true, pattern: /ubl[ií][zž]it (mu|j[ií]|jim|n[eě]komu)|zabiju|napadnu|chci mu ubl/i },
   { signal: "dítě v bezprostředním nebezpečí", category: "child_immediate_danger", severity: "critical", current: true, pattern: /d[ií]t[eě].*(nebezpe[cč][ií]|ohro[zž]en|akutn|pr[aá]v[eě].*(bij|t[yý]r|zneu[zž]))|bezprost[rř]edn[íi].*nebezpe[cč][ií]/i },
   { signal: "aktuální násilí nebo zneužití", category: "abuse_or_violence_current", severity: "high", current: true, pattern: /(te[dď]|pr[aá]v[eě]|aktu[aá]ln[eě]).*(zneu[zž]|n[aá]sil|bij|tyr[aá]n|napad)/i },
   { signal: "zdravotní urgentní stav", category: "medical_emergency", severity: "critical", current: true, pattern: /nem[uů][zž]u d[yý]chat|bolest na hrudi|bezv[eě]dom[ií]|p[oř]ed[aá]vkov[aá]n[ií]|krv[aá]c[ií]m/i },
-  { signal: "těžká disociace nebo ztráta času", category: "severe_dissociation_or_lost_time", severity: "high", current: true, pattern: /nev[ií]m kde jsem|ztratil[ao]? jsem [cč]as|probral[ao]? jsem se.*nev[ií]m|nejsem v realit[eě]/i },
+  { signal: "těžká disociace nebo ztráta času", category: "severe_dissociation_or_lost_time", severity: "high", current: true, pattern: /nev[ií]m kde jsem|ztratil[ao]? jsem [cč]as|ztr[aá]c[ií]m [cč]as|probral[ao]? jsem se.*nev[ií]m|nejsem v realit[eě]/i },
   { signal: "sexuální nebo exploatační obsah", category: "sexual_or_exploitative_content", severity: "high", current: true, pattern: /(d[ií]t[eě]|nezletil).*sex|sexu[aá]ln[ií].*(zneu[zž]|n[aá]tlak|vyko[rř]is)/i },
   { signal: "terapeutický kontext traumatu", category: "abuse_or_violence_current", severity: "low", current: false, pattern: /flashback|trauma|minul[eě].*(zneu[zž]|n[aá]sil)|boj[ií] se us[ií]n[aá]n[ií]/i },
 ];

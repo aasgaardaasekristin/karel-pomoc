@@ -12,6 +12,7 @@ import {
   DID_DOCS_LOADED_KEY,
   DID_SESSION_ID_KEY,
   HANA_PIN_KEY,
+  clearNoHistoryChatStorage,
 } from "@/lib/chatHelpers";
 
 describe("chatHelpers", () => {
@@ -42,6 +43,17 @@ describe("chatHelpers", () => {
 
     it("returns null for empty storage", () => {
       expect(loadMessages("nonexistent")).toBeNull();
+    });
+
+    it("clears no-history chat content across refresh storage surfaces", () => {
+      const marker = "NO_HISTORY_REFRESH_TEST_2026_04_28";
+      saveMessages("debrief", [{ role: "user", content: marker }]);
+      localStorage.setItem(ACTIVE_MODE_KEY, "debrief");
+      sessionStorage.setItem("chat_draft:karel:debrief:none:none", marker);
+      clearNoHistoryChatStorage();
+      expect(localStorage.getItem(`${STORAGE_KEY_PREFIX}debrief`)).toBeNull();
+      expect(localStorage.getItem(ACTIVE_MODE_KEY)).toBeNull();
+      expect(sessionStorage.getItem("chat_draft:karel:debrief:none:none")).toBeNull();
     });
   });
 

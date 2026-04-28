@@ -14,6 +14,7 @@ import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import ModeSelector from "@/components/ModeSelector";
 import StarterQuestions from "@/components/StarterQuestions";
+import ModeAuditPanel from "@/components/ModeAuditPanel";
 import MainModeToggle from "@/components/MainModeToggle";
 import ChatMessage from "@/components/ChatMessage";
 import ReportForm from "@/components/ReportForm";
@@ -52,7 +53,7 @@ import {
   type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
   STORAGE_KEY_PREFIX, ACTIVE_MODE_KEY, DID_DOCS_LOADED_KEY, DID_SESSION_ID_KEY, HANA_PIN_KEY, HANA_PIN_ACCESS_TOKEN_KEY,
   getRandomCastGreeting, saveMessages, loadMessages, clearMessages, handleApiError,
-  parseSSEStream, WELCOME_MESSAGES, clearActiveWorkStorageForLogout, isExplicitLogoutActive, markExplicitLogout,
+  parseSSEStream, WELCOME_MESSAGES, clearActiveWorkStorageForLogout, clearNoHistoryChatStorage, isExplicitLogoutActive, markExplicitLogout,
 } from "@/lib/chatHelpers";
 
 const LoadingSkeleton = () => (
@@ -183,6 +184,8 @@ const Chat = () => {
   const [noSave, setNoSave] = useState(() => {
     try { return sessionStorage.getItem("karel_no_save") === "1"; } catch { return false; }
   });
+  const [lastSafetyDetection, setLastSafetyDetection] = useState<ReturnType<typeof detectSafetyMention> | null>(null);
+  const [lastWritebackDecision, setLastWritebackDecision] = useState("zatím bez rozhodnutí");
   const appModeId = getAppModeForHub(hubSection);
   const persistencePolicy = getModePolicy(appModeId, noSave);
   const persistenceRequest = {
@@ -198,10 +201,21 @@ const Chat = () => {
 
   useEffect(() => {
     try {
-      if (noSave) sessionStorage.setItem("karel_no_save", "1");
+      if (noSave) {
+        sessionStorage.setItem("karel_no_save", "1");
+        clearNoHistoryChatStorage();
+        setLastWritebackDecision("no-history: běžná perzistence vypnutá");
+      }
       else sessionStorage.removeItem("karel_no_save");
     } catch {}
   }, [noSave]);
+
+  useEffect(() => {
+    if (!noSave) return;
+    clearNoHistoryChatStorage();
+    setMessages([]);
+    setInput("");
+  }, []);
 
   const hasStoredDidWork = (() => {
     try {
@@ -1946,6 +1960,8 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     clearAttachments();
     const userContent = buildAttachmentContent(userMessage, currentAttachments);
     const safety = detectSafetyMention(userMessage);
+    setLastSafetyDetection(safety.matched ? safety : null);
+    setLastWritebackDecision(noSave ? "no-history: běžná perzistence vypnutá" : `${persistencePolicy.mode_id}: ${persistencePolicy.save_policy}`);
     setMessages((prev) => [...prev, { role: "user", content: userContent as any }]);
     if (mode === "childcare") didContextPrime.trackMessage();
     setIsLoading(true);
@@ -2184,6 +2200,11 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
               <h1 className="text-base sm:text-lg font-serif font-medium text-foreground tracking-wide truncate">
                 {hubSection === "did" ? "DID / Kluci" : hubSection === "research" ? "Profesní zdroje" : hubSection === "karel" ? "Karel chat" : "Hana osobní"}
               </h1>
+              {noSave && hubSection !== "research" && (
+                <div className="mt-0.5 inline-flex rounded-full border border-[hsl(var(--border-subtle))] bg-[hsl(var(--surface-secondary))]/70 px-2 py-0.5 text-[10px] font-medium text-[hsl(var(--text-secondary))]">
+                  Bez historie
+                </div>
+              )}
             </div>
           </div>
            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
@@ -2227,7 +2248,15 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
               <Button
                 variant={noSave ? "default" : "ghost"}
                 size="sm"
-                onClick={() => setNoSave((value) => !value)}
+                onClick={() => setNoSave((value) => {
+                  const next = !value;
+                  if (next) {
+                    clearNoHistoryChatStorage();
+                    setMessages([]);
+                    setInput("");
+                  }
+                  return next;
+                })}
                 className="h-8 px-2 gap-1 text-xs"
                 title={APP_MODE_POLICIES.no_save.description}
               >
@@ -2242,6 +2271,15 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           </div>
         </div>
       </header>
+
+      {hubSection !== "research" && (
+        <ModeAuditPanel
+          policy={persistencePolicy}
+          noSave={noSave}
+          lastSafetyDetection={lastSafetyDetection}
+          lastWritebackDecision={lastWritebackDecision}
+        />
+      )}
 
       {hubSection === "karel" ? (
         <div className="flex-1 flex flex-col min-h-0">

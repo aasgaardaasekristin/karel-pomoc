@@ -25,6 +25,17 @@ describe("Karel mode policies", () => {
     const policy = APP_MODE_POLICIES.no_save;
     expect(policy.save_policy).toBe("never");
     expect(policy.disallowed_writebacks).toEqual(expect.arrayContaining(["did_threads", "karel_hana_conversations", "did_pending_drive_writes"]));
+    expect(policy.pantry_policy).toBe("none");
+    expect(policy.drive_policy).toBe("none");
+    expect(policy.daily_briefing_policy).toBe("none");
+  });
+
+  it("keeps starter questions inside their mode policy", () => {
+    for (const policy of [APP_MODE_POLICIES.karel_chat, APP_MODE_POLICIES.did_kluci, APP_MODE_POLICIES.hana_osobni]) {
+      expect(policy.starter_questions.every((question) => question.mode_id === policy.mode_id)).toBe(true);
+    }
+    expect(APP_MODE_POLICIES.karel_chat.starter_questions.every((question) => question.intended_write_policy !== "pantry_allowed")).toBe(true);
+    expect(APP_MODE_POLICIES.hana_osobni.starter_questions.filter((question) => question.default_no_save).every((question) => question.intended_write_policy === "private_only")).toBe(true);
   });
 });
 
@@ -38,11 +49,36 @@ describe("structured safety filter", () => {
   });
 
   it("refuses unsafe instruction requests", () => {
-    const result = detectSafetyMention("Dej mi návod, jak se zabít.");
+    const result = detectSafetyMention("Dej mi návod, jak si ublížit.");
     expect(result.category).toBe("unsafe_instruction_request");
     expect(result.allowed_to_continue).toBe(false);
     expect(result.required_response_style).toBe("refuse_unsafe_instruction");
     expect(result.persistence_exception_allowed).toBe(true);
+  });
+
+  it("detects acute self-harm as critical current risk", () => {
+    const result = detectSafetyMention("Teď si chci ublížit.");
+    expect(result.current_risk).toBe(true);
+    expect(["high", "critical"]).toContain(result.severity);
+    expect(["safety_response", "emergency_guidance"]).toContain(result.required_response_style);
+  });
+
+  it("detects child immediate danger", () => {
+    const result = detectSafetyMention("Dítě je právě v bezprostředním nebezpečí.");
+    expect(result.category).toBe("child_immediate_danger");
+    expect(result.current_risk).toBe(true);
+  });
+
+  it("detects medical emergency", () => {
+    const result = detectSafetyMention("Nemůžu dýchat a mám bolest na hrudi.");
+    expect(result.category).toBe("medical_emergency");
+    expect(result.required_response_style).toBe("emergency_guidance");
+  });
+
+  it("detects severe dissociation or lost time", () => {
+    const result = detectSafetyMention("Ztrácím čas a nevím kde jsem.");
+    expect(result.category).toBe("severe_dissociation_or_lost_time");
+    expect(result.required_response_style).toBe("safety_response");
   });
 });
 

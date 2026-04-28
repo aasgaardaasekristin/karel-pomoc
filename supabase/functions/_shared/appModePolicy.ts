@@ -65,14 +65,14 @@ export function resolvePersistencePolicy(input: { mode_id?: string; no_save?: bo
 }
 
 const safetyPatterns: Array<{ signal: string; category: SafetyCategory; severity: SafetySeverity; current?: boolean; pattern: RegExp }> = [
-  { signal: "unsafe_instruction_request", category: "unsafe_instruction_request", severity: "critical", current: true, pattern: /jak (se )?(zab[i\u00ed]t|otravit|p[o\u0159]ed[a\u00e1]vkovat|ubl[i\u00ed][z\u017e]it|vyrobit zbra[n\u0148])|n[a\u00e1]vod.*(sebevra|ubl[i\u00ed][z\u017e]|zbra[n\u0148])/i },
+  { signal: "unsafe_instruction_request", category: "unsafe_instruction_request", severity: "critical", current: true, pattern: /jak (se )?(zab[i\u00ed]t|otravit|p[o\u0159]ed[a\u00e1]vkovat|ubl[i\u00ed][z\u017e]it|vyrobit zbra[n\u0148])|n[a\u00e1]vod.*(sebevra|ubl[i\u00ed][z\u017e]|zbra[n\u0148])|dej mi n[a\u00e1]vod.*ubl[i\u00ed][z\u017e]/i },
   { signal: "suicidal_ideation", category: "suicidal_ideation", severity: "critical", current: true, pattern: /sebevra\w*|suicid|zab[i\u00ed]t se|nechci [z\u017e][i\u00ed]t|ukon[c\u010d]it [z\u017e]ivot/i },
-  { signal: "self_harm", category: "self_harm", severity: "critical", current: true, pattern: /sebepo\w*|\u0159ez[a\u00e1]t se|rezat se|ubl[i\u00ed][z\u017e]it si|ublizit si/i },
+  { signal: "self_harm", category: "self_harm", severity: "critical", current: true, pattern: /sebepo\w*|\u0159ez[a\u00e1]t se|rezat se|ubl[i\u00ed][z\u017e]it si|ublizit si|chci.*ubl[i\u00ed][z\u017e]it/i },
   { signal: "harm_to_others", category: "harm_to_others", severity: "critical", current: true, pattern: /ubl[i\u00ed][z\u017e]it (mu|j[i\u00ed]|jim|n[e\u011b]komu)|zabiju|napadnu|chci mu ubl/i },
   { signal: "child_immediate_danger", category: "child_immediate_danger", severity: "critical", current: true, pattern: /d[i\u00ed]t[e\u011b].*(nebezpe[c\u010d][i\u00ed]|ohro[z\u017e]en|akutn|pr[a\u00e1]v[e\u011b].*(bij|t[y\u00fd]r|zneu[z\u017e]))|bezprost[r\u0159]edn[\u00edi].*nebezpe[c\u010d][i\u00ed]/i },
   { signal: "abuse_or_violence_current", category: "abuse_or_violence_current", severity: "high", current: true, pattern: /(te[d\u010f]|pr[a\u00e1]v[e\u011b]|aktu[a\u00e1]ln[e\u011b]).*(zneu[z\u017e]|n[a\u00e1]sil|bij|tyr[a\u00e1]n|napad)/i },
   { signal: "medical_emergency", category: "medical_emergency", severity: "critical", current: true, pattern: /nem[u\u016f][z\u017e]u d[y\u00fd]chat|bolest na hrudi|bezv[e\u011b]dom[i\u00ed]|p[o\u0159]ed[a\u00e1]vkov[a\u00e1]n[i\u00ed]|krv[a\u00e1]c[i\u00ed]m/i },
-  { signal: "severe_dissociation_or_lost_time", category: "severe_dissociation_or_lost_time", severity: "high", current: true, pattern: /nev[i\u00ed]m kde jsem|ztratil[ao]? jsem [c\u010d]as|probral[ao]? jsem se.*nev[i\u00ed]m|nejsem v realit[e\u011b]/i },
+  { signal: "severe_dissociation_or_lost_time", category: "severe_dissociation_or_lost_time", severity: "high", current: true, pattern: /nev[i\u00ed]m kde jsem|ztratil[ao]? jsem [c\u010d]as|ztr[a\u00e1]c[i\u00ed]m [c\u010d]as|probral[ao]? jsem se.*nev[i\u00ed]m|nejsem v realit[e\u011b]/i },
   { signal: "sexual_or_exploitative_content", category: "sexual_or_exploitative_content", severity: "high", current: true, pattern: /(d[i\u00ed]t[e\u011b]|nezletil).*sex|sexu[a\u00e1]ln[i\u00ed].*(zneu[z\u017e]|n[a\u00e1]tlak|vyko[r\u0159]is)/i },
   { signal: "therapeutic_trauma_context", category: "abuse_or_violence_current", severity: "low", current: false, pattern: /flashback|trauma|minul[e\u011b].*(zneu[z\u017e]|n[a\u00e1]sil)|boj[i\u00ed] se us[i\u00ed]n[a\u00e1]n[i\u00ed]/i },
 ];
