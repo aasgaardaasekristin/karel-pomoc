@@ -1650,65 +1650,110 @@ async function persistEvaluation(
     }
   }
 
-  // 4) did_pantry_packages — session_summary balík → KARTA_<part>
+  // 4) did_pantry_packages + did_pending_drive_writes — nové autoritativní typy, starý session_summary zachován kompatibilně
   const cardTarget = `KARTA_${partName.toUpperCase()}`;
   const sessionLogTarget = `KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG`;
+  const assistants = Array.isArray((ctx.plan.urgency_breakdown as any)?.assistant_persons) ? (ctx.plan.urgency_breakdown as any).assistant_persons : [];
+  const commonMetadata = {
+    review_id: reviewId,
+    plan_id: ctx.plan.id,
+    thread_id: (ctx.threads ?? [])[0]?.id ?? null,
+    part_name: partName,
+    session_date: ctx.plan.plan_date,
+    lead_person: therapistLabel,
+    assistant_persons: assistants,
+    mode: "session",
+  };
+  const packageSpecs = [
+    {
+      package_type: "session_detail_analysis",
+      content_type: "session_detail_analysis",
+      report_kind: "detail_analysis",
+      target: cardTarget,
+      content: sessionDetailMarkdown({ text: outputs.detailed_analysis_text, plan: ctx.plan, reviewId, lead: therapistLabel, assistants }),
+    },
+    {
+      package_type: "session_practical_report",
+      content_type: "session_practical_report",
+      report_kind: "practical_report",
+      target: cardTarget,
+      content: sessionPracticalMarkdown({ text: outputs.practical_report_text, teamClosing: outputs.team_closing_text, plan: ctx.plan, reviewId, lead: therapistLabel, assistants }),
+    },
+    {
+      package_type: "session_log",
+      content_type: "session_log",
+      report_kind: "session_log",
+      target: sessionLogTarget,
+      content: `### ${ctx.plan.plan_date} · ${partName} · ${therapistLabel}
+plan_id: ${ctx.plan.id}
+review_id: ${reviewId}
+status: ${reviewStatus}
 
-  // Anti-dup: smaž případné staré balíky se stejným source_id (planId).
-  if (force) {
-    await sb
-      .from("did_pantry_packages")
-      .delete()
-      .eq("source_id", ctx.plan.id)
-      .in("status", ["pending_drive", "flushed"]);
-  } else {
-    const { data: existingPkgs } = await sb
-      .from("did_pantry_packages")
-      .select("id")
-      .eq("source_id", ctx.plan.id)
-      .eq("package_type", "session_summary");
-    if (existingPkgs && existingPkgs.length > 0) {
-      console.log(`[evaluate] Pantry package session_summary for plan ${ctx.plan.id} already exists, skipping`);
-      return { sessionLogTarget, cardTarget };
-    }
+**Stručný praktický report:**
+${outputs.practical_report_text.slice(0, 1600)}
+
+**Doporučený další krok:**
+${outputs.recommendations_for_next_session || evaluation.recommended_next_step || "doplnit evidenci"}
+`,
+    },
+  ];
+  const writeIds: string[] = [];
+  for (const spec of packageSpecs) {
+    const metadata = { ...commonMetadata, report_kind: spec.report_kind, content_type: spec.content_type };
+    const packageId = await insertPackageOnce(sb, {
+      user_id: userId,
+      package_type: spec.package_type,
+      source_id: ctx.plan.id,
+      source_table: "did_daily_session_plans",
+      content_md: spec.content,
+      drive_target_path: spec.target,
+      metadata,
+      status: "pending_drive",
+    }, force);
+    const governed = encodeGovernedWrite(`<!-- session_evaluate plan_id=${ctx.plan.id} review_id=${reviewId} content_type=${spec.content_type} -->
+
+${spec.content}`, {
+      source_type: "did_session_review",
+      source_id: reviewId ?? ctx.plan.id,
+      content_type: spec.content_type,
+      subject_type: spec.target === sessionLogTarget ? "system" : "part",
+      subject_id: partName,
+      payload_fingerprint: `${reviewId}:${spec.content_type}:${spec.target}`,
+    });
+    const writeId = await insertDriveWriteOnce(sb, {
+      user_id: userId,
+      target_document: spec.target,
+      content: governed,
+      write_type: "append",
+      priority: spec.content_type === "session_log" ? "normal" : "high",
+      status: "pending",
+    }, { reviewId, contentType: spec.content_type, target: spec.target }, force);
+    if (writeId) writeIds.push(writeId);
+    if (packageId && writeId) await sb.from("did_pantry_packages").update({ metadata: { ...metadata, pending_drive_write_id: writeId } }).eq("id", packageId);
   }
 
-  // Session summary → karta části
-  await sb.from("did_pantry_packages").insert({
-    user_id: userId,
-    package_type: "session_summary",
-    source_id: ctx.plan.id,
-    source_table: "did_daily_session_plans",
-    content_md: `<!-- session_evaluate plan_id=${ctx.plan.id} ended_reason=${endedReason} -->\n\n${markdown}`,
-    drive_target_path: cardTarget,
-    metadata: {
-      part_name: partName,
-      session_date: ctx.plan.plan_date,
-      therapist: therapistLabel,
-      completion_status: evaluation.completion_status,
-      completed_blocks: completedBlocks,
-      total_blocks: totalBlocks,
-      ended_reason: endedReason,
-    },
-    status: "pending_drive",
-  });
+  const { data: legacySummary } = await sb.from("did_pantry_packages").select("id").eq("source_id", ctx.plan.id).eq("package_type", "session_summary").limit(1);
+  if (!legacySummary?.length) {
+    await sb.from("did_pantry_packages").insert({
+      user_id: userId,
+      package_type: "session_summary",
+      source_id: ctx.plan.id,
+      source_table: "did_daily_session_plans",
+      content_md: `<!-- backward_compatible session_summary plan_id=${ctx.plan.id} review_id=${reviewId} -->
 
-  // Globální session log
-  const logEntry = `### ${ctx.plan.plan_date} · ${partName} · ${therapistLabel}\n` +
-    `_${evaluation.completion_status === "completed" ? "dokončené" : evaluation.completion_status === "partial" ? "neukončené" : "sotva začaté"}_\n\n` +
-    `**Co prožívalo dítě:** ${evaluation.child_perspective.slice(0, 600)}\n\n` +
-    `**Doporučený další krok:** ${evaluation.recommended_next_step}\n`;
+${outputs.practical_report_text}`,
+      drive_target_path: cardTarget,
+      metadata: { ...commonMetadata, report_kind: "backward_compatible_summary", authoritative: false },
+      status: "pending_drive",
+    });
+  }
 
-  await sb.from("did_pantry_packages").insert({
-    user_id: userId,
-    package_type: "session_log",
-    source_id: ctx.plan.id,
-    source_table: "did_daily_session_plans",
-    content_md: logEntry,
-    drive_target_path: sessionLogTarget,
-    metadata: { part_name: partName, session_date: ctx.plan.plan_date },
-    status: "pending_drive",
-  });
+  await sb.from("did_session_reviews").update({
+    analysis_json: { ...analysisJson, drive_write_ids: writeIds },
+    drive_sync_status: "queued",
+    source_of_truth_status: "pending_drive_sync",
+    updated_at: now,
+  }).eq("id", reviewId);
 
   return { sessionLogTarget, cardTarget, reviewId, reviewStatus };
 }
