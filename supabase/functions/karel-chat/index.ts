@@ -2090,7 +2090,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
 
         // ═══ ASYNC CRISIS CONVERSATION ANALYSIS (fire-and-forget) ═══
         // If the part has an active crisis, analyze each exchange for risk signals
-        if (isDirectChildSubMode && didPartName && fullResponse.length > 10) {
+        if (!persistencePolicy.no_save && isDirectChildSubMode && didPartName && fullResponse.length > 10) {
           try {
             const { createClient: createSbCrisisPost } = await import("https://esm.sh/@supabase/supabase-js@2");
             const sbCrisisPost = createSbCrisisPost(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
