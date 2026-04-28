@@ -73,6 +73,7 @@ interface ProposedSession {
   duration_min?: number;
   first_draft: string;
   kata_involvement?: string;
+  carry_over_reason?: string;
   /** SLICE 3 — minutáž sezení (3-6 bloků). */
   agenda_outline?: AgendaBlock[];
   /** SLICE 3 — předem připravené otázky pro Haničku k tomuto sezení. */
