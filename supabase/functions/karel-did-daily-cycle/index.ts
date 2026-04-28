@@ -3204,6 +3204,35 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
       }
     };
     const AUDIT_DRIVE_TIMEOUT_MS = 60_000;
+
+    await setPhase("phase_0_global_event_ingestion", "Fáze 0: globální sběr DID událostí");
+    try {
+      if (resolvedUserId) {
+        const ingestionSummary = await runGlobalDidEventIngestion(sb as any, resolvedUserId, {
+          mode: "since_cursor",
+          sinceISO: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+        });
+        await sb.from("did_update_cycles").update({
+          report_summary: {
+            phase_0_global_event_ingestion: ingestionSummary,
+            db_pantry_b_role: "operational_source",
+            drive_role: "audit_archive",
+            drive_to_pantry_refresh: "not_implemented_in_this_pass",
+          },
+        }).eq("id", cycleId);
+        console.log("[PHASE_0] Global DID ingestion", JSON.stringify({
+          processed_count: ingestionSummary.processed_count,
+          pantry: ingestionSummary.routed_to_pantry_count,
+          skipped: ingestionSummary.skipped_count,
+          failed: ingestionSummary.failed_count,
+          duplicate: ingestionSummary.duplicate_count,
+          blocked: ingestionSummary.blocked_sources,
+        }));
+      }
+    } catch (ingestionErr) {
+      console.error("[PHASE_0] Global DID ingestion failed (non-fatal):", ingestionErr);
+    }
+
     await setPhase("normalize_cards", "Fáze 2: Normalizace struktury karet A–M");
 
     // 2. NORMALIZACE STRUKTURY KARET A-M (probíhá vždy)
