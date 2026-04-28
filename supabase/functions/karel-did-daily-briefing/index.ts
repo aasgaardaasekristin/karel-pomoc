@@ -1627,6 +1627,21 @@ Deno.serve(async (req) => {
       rawPayload.generation_warning = String(e?.message ?? e).slice(0, 500);
     }
     let payload = enrichYesterdaySessionReview(rawPayload, context);
+    payload.event_ingestion_summary = {
+      processed_count: context.event_ingestion_summary?.processed_count ?? 0,
+      routed_to_pantry_count: context.event_ingestion_summary?.routed_to_pantry_count ?? 0,
+      skipped_count: context.event_ingestion_summary?.skipped_count ?? 0,
+      failed_count: context.event_ingestion_summary?.failed_count ?? 0,
+      duplicate_count: context.event_ingestion_summary?.duplicate_count ?? 0,
+      important_sources: context.event_ingestion_summary?.important_sources ?? [],
+      missing_sources: context.event_ingestion_summary?.missing_sources ?? [],
+      blocked_sources: context.event_ingestion_summary?.blocked_sources ?? [],
+    };
+    payload.task_note_implications = context.task_note_implications ?? [];
+    payload.hana_personal_did_relevant_implications = context.hana_personal_did_relevant_implications ?? [];
+    payload.live_replan_patches = context.live_replan_patches ?? [];
+    payload.reality_override_events = context.reality_override_events ?? [];
+    payload.blocked_or_failed_ingestion = context.blocked_or_failed_ingestion ?? [];
     payload.yesterday_playroom_review = buildYesterdayPlayroomReview(context);
     if (!payload.proposed_playroom || typeof payload.proposed_playroom !== "object" || !String(payload.proposed_playroom?.part_name ?? "").trim()) {
       console.warn("[briefing] AI payload missing proposed_playroom — applying mandatory backend fallback.");
