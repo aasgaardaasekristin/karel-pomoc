@@ -199,7 +199,7 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
           ? "observation"
           : "conclusion";
 
-  const clinicalAllowed = isClinicalBridgeEligible(classificationDraft(evidence_level, isClinical || isChild || isRisk));
+  const clinicalAllowed = (isClinical || isChild || isRisk) && !CHILD_CLINICAL_BLOCKED_EVIDENCE.has(evidence_level);
   const clinical_implication = isFactualCorrection
     ? "Faktický rámec od terapeutky/externí informace upravuje práci v realitě, ale není klinickým důkazem o části."
     : clinicalAllowed
