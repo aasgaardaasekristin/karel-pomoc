@@ -1029,7 +1029,7 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
       const { data: planRow, error: fetchErr } = await (supabase as any)
         .from("did_daily_session_plans")
         .select(
-          "id, selected_part, session_lead, therapist, plan_markdown, status, program_status, urgency_breakdown",
+          "id, selected_part, session_lead, therapist, plan_markdown, status, program_status, approved_at, urgency_breakdown",
         )
         .eq("id", planId)
         .single();
