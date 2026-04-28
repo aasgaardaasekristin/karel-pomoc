@@ -1798,6 +1798,24 @@ Deno.serve(async (req) => {
       };
     }
 
+    const refreshAskTargets = (role: AskRole, items: AskItem[]): AskItem[] =>
+      items.map((item) => {
+        const target = item.target_type === "proposed_playroom"
+          ? payload.proposed_playroom
+          : item.target_type === "proposed_session"
+            ? payload.proposed_session
+            : null;
+        return {
+          ...item,
+          assignee: role === "ask_hanka" ? "hanka" : "kata",
+          target_item_id: target?.id ? String(target.id) : item.target_item_id ?? null,
+          target_part_name: target?.part_name ? String(target.part_name) : item.target_part_name ?? null,
+        };
+      });
+
+    payload.ask_hanka = refreshAskTargets("ask_hanka", payload.ask_hanka as AskItem[]);
+    payload.ask_kata = refreshAskTargets("ask_kata", payload.ask_kata as AskItem[]);
+
     // 4) Resolve part_id pro proposed_session (kanonická tabulka did_part_registry)
     let proposedPartId: string | null = null;
     if (payload.proposed_session?.part_name) {
@@ -1835,6 +1853,11 @@ Deno.serve(async (req) => {
       .single();
 
     if (insertErr) throw insertErr;
+
+    payload.ask_hanka = (payload.ask_hanka as AskItem[]).map((item) => ({ ...item, briefing_id: inserted.id }));
+    payload.ask_kata = (payload.ask_kata as AskItem[]).map((item) => ({ ...item, briefing_id: inserted.id }));
+    await supabase.from("did_daily_briefings").update({ payload }).eq("id", inserted.id);
+    inserted.payload = payload;
 
     // ── PANTRY B: označit načtené entries jako processed ──
     // Brifing je jediný místo, kde Pantry B implikace mají oficiální dopad.
