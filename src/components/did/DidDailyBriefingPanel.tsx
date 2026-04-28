@@ -664,6 +664,11 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       if (openingItemId) return; // de-dup paralelní double-click
       setOpeningItemId(item.id);
       try {
+        if (item.requires_immediate_program_update || item.expected_resolution === "update_program") {
+          const opened = await openProgramAskDeliberation(role, item);
+          if (opened) return;
+        }
+
         const subMode = role === "ask_hanka" ? "mamka" : "kata";
         const recipientName = role === "ask_hanka" ? "Hanička" : "Káťa";
 
@@ -710,7 +715,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         setOpeningItemId(null);
       }
     },
-    [didThreads, navigate, openingItemId],
+    [didThreads, navigate, openingItemId, openProgramAskDeliberation],
   );
 
   /**
