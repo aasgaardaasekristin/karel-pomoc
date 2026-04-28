@@ -439,7 +439,7 @@ const HanaChatInner = ({ noSave = false }: { noSave?: boolean }) => {
       setIsLoading(false);
       textareaRef.current?.focus();
     }
-  }, [input, attachments, isLoading, messages, conversationId, clearAttachments, contextPrimeCache, createConversation, persistConversation]);
+  }, [input, attachments, isLoading, messages, conversationId, clearAttachments, contextPrimeCache, createConversation, persistConversation, noSave]);
 
   const handleNewConversation = useCallback(async () => {
     if (conversationId) {
