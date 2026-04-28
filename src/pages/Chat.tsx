@@ -2201,6 +2201,11 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
               <h1 className="text-base sm:text-lg font-serif font-medium text-foreground tracking-wide truncate">
                 {hubSection === "did" ? "DID / Kluci" : hubSection === "research" ? "Profesní zdroje" : hubSection === "karel" ? "Karel chat" : "Hana osobní"}
               </h1>
+              {noSave && hubSection !== "research" && (
+                <div className="mt-0.5 inline-flex rounded-full border border-[hsl(var(--border-subtle))] bg-[hsl(var(--surface-secondary))]/70 px-2 py-0.5 text-[10px] font-medium text-[hsl(var(--text-secondary))]">
+                  Bez historie
+                </div>
+              )}
             </div>
           </div>
            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
@@ -2259,6 +2264,15 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           </div>
         </div>
       </header>
+
+      {hubSection !== "research" && (
+        <ModeAuditPanel
+          policy={persistencePolicy}
+          noSave={noSave}
+          lastSafetyDetection={lastSafetyDetection}
+          lastWritebackDecision={lastWritebackDecision}
+        />
+      )}
 
       {hubSection === "karel" ? (
         <div className="flex-1 flex flex-col min-h-0">
