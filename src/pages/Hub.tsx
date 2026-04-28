@@ -133,10 +133,7 @@ const Hub = () => {
           if (!ok) return;
         }
       }
-      if (privateModeActive && previousSection && previousSection !== key) {
-        if (!ok) return;
-        sessionStorage.removeItem("karel_no_save");
-      }
+      if (privateModeActive && previousSection && previousSection !== key) sessionStorage.removeItem("karel_no_save");
     } catch {}
     if (key === "hana") {
       try {
