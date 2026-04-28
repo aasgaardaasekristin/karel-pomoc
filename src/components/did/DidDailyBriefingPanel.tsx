@@ -152,8 +152,28 @@ interface YesterdayPlayroomReviewPayload {
   drive_sync_status?: string;
 }
 
+interface OpeningMonologuePayload {
+  greeting?: string;
+  team_recognition?: string;
+  executive_summary?: string;
+  parts_at_helm?: string;
+  yesterday_new_information?: string;
+  clinical_formulation?: string;
+  recommendations_for_hana?: string;
+  recommendations_for_katka?: string;
+  what_not_to_do_today?: string;
+  priority_of_the_day?: string;
+  team_closing_line?: string;
+  evidence_limits?: string;
+  opening_monologue_text?: string;
+  technical_note?: string;
+}
+
 interface BriefingPayload {
   greeting: string;
+  opening_monologue?: OpeningMonologuePayload | null;
+  opening_monologue_text?: string;
+  technical_note?: string;
   last_3_days: string;
   lingering?: string;
   yesterday_session_review?: YesterdaySessionReview | null;
