@@ -879,6 +879,19 @@ async function gatherContext(supabase: any, proofReviewId?: string | null, reque
         sinceISO: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
       });
       pantryBEntries = await readUnprocessedPantryB(supabase, userIdResolved);
+      const { data: recentLiveOverrides } = await supabase
+        .from("karel_pantry_b_entries")
+        .select("id, entry_kind, source_kind, source_ref, summary, detail, intended_destinations, related_part_name, related_therapist, related_crisis_event_id, created_at, flush_result")
+        .eq("user_id", userIdResolved)
+        .in("source_kind", ["live_session_reality_override", "live_session_progress"])
+        .gte("created_at", new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
+        .order("created_at", { ascending: false })
+        .limit(20);
+      const mergedById = new Map<string, any>();
+      for (const entry of [...pantryBEntries, ...(recentLiveOverrides ?? [])]) {
+        if (entry?.id) mergedById.set(entry.id, entry);
+      }
+      pantryBEntries = Array.from(mergedById.values());
       const { data: approved } = await supabase
         .from("did_team_deliberations")
         .select("id, title, deliberation_type, subject_parts, status, final_summary, karel_synthesis, questions_for_hanka, questions_for_kata, discussion_log, updated_at")
