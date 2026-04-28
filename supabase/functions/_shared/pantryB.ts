@@ -35,6 +35,7 @@ export type PantryBSourceKind =
   | "team_deliberation"
   | "team_deliberation_answer"
   | "crisis_session"
+  | "playroom"
   | "therapy_session"
   | "did_meeting"
   | "crisis_contact"
