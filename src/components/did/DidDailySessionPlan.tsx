@@ -60,6 +60,26 @@ const isKarelDirectApprovedForHerna = (plan: SessionPlan) =>
   plan.urgency_breakdown?.approved_for_child_session === true &&
   ["approved", "ready_to_start", "in_progress"].includes(String(plan.program_status || plan.urgency_breakdown?.review_state || plan.urgency_breakdown?.approval?.review_state || ""));
 
+const PROGRAM_START_BLOCKED_STATUSES = new Set(["draft", "in_revision", "awaiting_signatures", "awaiting_signature", "pending_review"]);
+
+const programStartBlockedReason = (plan: SessionPlan) => {
+  const programStatus = String(plan.program_status || plan.urgency_breakdown?.review_state || plan.urgency_breakdown?.approval?.review_state || "").toLowerCase();
+  const humanReviewRequired = plan.urgency_breakdown?.human_review_required === true
+    || plan.urgency_breakdown?.approval?.required === true
+    || plan.urgency_breakdown?.playroom_plan?.approval?.required === true
+    || plan.urgency_breakdown?.playroom_plan?.therapist_review?.required === true;
+  const childFacingPlayroom = isKarelDirectPlan(plan) || !!plan.urgency_breakdown?.playroom_plan;
+  const approvedForChild = plan.urgency_breakdown?.approved_for_child_session === true
+    || plan.urgency_breakdown?.approval?.approved_for_child_session === true
+    || plan.urgency_breakdown?.playroom_plan?.approval?.approved_for_child_session === true
+    || plan.urgency_breakdown?.playroom_plan?.therapist_review?.approved_for_child_session === true;
+
+  if (humanReviewRequired || PROGRAM_START_BLOCKED_STATUSES.has(programStatus) || (childFacingPlayroom && !approvedForChild)) {
+    return "Program byl upraven podle odpovědi terapeutky a čeká na podpis Haničky a Káti.";
+  }
+  return null;
+};
+
 const isQuarantinedPlan = (plan: SessionPlan) =>
   LEGACY_PLAN_GENERATORS.has(plan.generated_by) ||
   (ANALYTIC_PLAN_GENERATORS.has(plan.generated_by) && !hasExplicitRoleContract(plan));
