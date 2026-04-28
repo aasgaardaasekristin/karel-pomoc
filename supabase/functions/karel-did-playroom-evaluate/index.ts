@@ -2,6 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 import { appendPantryB } from "../_shared/pantryB.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 
+declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void };
+
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-2.5-pro";
