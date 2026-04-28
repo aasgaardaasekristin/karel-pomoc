@@ -56,8 +56,17 @@ interface LiveSessionPlanRow {
   plan_markdown: string;
   status?: string | null;
   program_status?: string | null;
+  approved_at?: string | null;
   urgency_breakdown?: Record<string, unknown> | null;
 }
+
+const isSignatureGuardError = (error: unknown) =>
+  String((error as any)?.message ?? error ?? "").includes(
+    "daily_session_plan_requires_signatures_before_start",
+  );
+
+const approvalDesyncMessage =
+  "Porada je podepsaná, ale denní plán nemá aktuální approval metadata. Karel právě synchronizuje schválení.";
 
 const PROGRAM_START_BLOCKED_STATUSES = new Set([
   "draft",
@@ -89,7 +98,7 @@ function unsignedStartBlockReason(
   const reviewFulfilled =
     ["approved", "ready_to_start", "in_progress", "completed"].includes(
       programStatus,
-    ) || !!contract.approved_at;
+    ) || !!plan?.approved_at || !!contract.approved_at;
   const childFacingPlayroom =
     contract.session_actor === "karel_direct" ||
     contract.ui_surface === "did_kids_playroom" ||
@@ -983,7 +992,11 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
           "[DeliberationRoom] startLiveSession status update failed:",
           statusErr,
         );
-        toast.error("Nepodařilo se zahájit sezení (DB update).");
+        toast.error(
+          isSignatureGuardError(statusErr)
+            ? approvalDesyncMessage
+            : "Nepodařilo se zahájit sezení (DB update).",
+        );
         return;
       }
 
