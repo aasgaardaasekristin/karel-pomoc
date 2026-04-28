@@ -68,13 +68,15 @@ const programStartBlockedReason = (plan: SessionPlan) => {
     || plan.urgency_breakdown?.approval?.required === true
     || plan.urgency_breakdown?.playroom_plan?.approval?.required === true
     || plan.urgency_breakdown?.playroom_plan?.therapist_review?.required === true;
+  const reviewFulfilled = ["approved", "ready_to_start", "in_progress", "completed"].includes(programStatus)
+    || !!plan.urgency_breakdown?.approved_at;
   const childFacingPlayroom = isKarelDirectPlan(plan) || !!plan.urgency_breakdown?.playroom_plan;
   const approvedForChild = plan.urgency_breakdown?.approved_for_child_session === true
     || plan.urgency_breakdown?.approval?.approved_for_child_session === true
     || plan.urgency_breakdown?.playroom_plan?.approval?.approved_for_child_session === true
     || plan.urgency_breakdown?.playroom_plan?.therapist_review?.approved_for_child_session === true;
 
-  if (humanReviewRequired || PROGRAM_START_BLOCKED_STATUSES.has(programStatus) || (childFacingPlayroom && !approvedForChild)) {
+  if ((humanReviewRequired && !reviewFulfilled) || PROGRAM_START_BLOCKED_STATUSES.has(programStatus) || (childFacingPlayroom && !approvedForChild)) {
     return "Program byl upraven podle odpovědi terapeutky a čeká na podpis Haničky a Káti.";
   }
   return null;
