@@ -370,6 +370,7 @@ serve(async (req) => {
         : "KAREL_CHAT_CONTRACT_v1";
     const requestUserId = await resolveUserIdFromRequest(req);
     const requestHasMultimodalInput = hasMultimodalInput(messages || []);
+    const canWriteRuntimeAudit = !persistencePolicy.no_save;
     const isDirectChildSubMode = didSubMode === "cast" || isPlayroomMode;
     if (requestSafety.matched && requestUserId) {
       writeRuntimeAudit({
@@ -970,7 +971,7 @@ POKYN: Pokud valence klesá (↓), buď citlivější. Pokud spolupráce roste (
       const isLive = mode === "live-session";
       const fastModel = isLive ? "google/gemini-2.5-flash" : "google/gemini-3-flash-preview";
       console.log(`[karel-chat] Fast-path (${mode}): model=${fastModel}, skipping Drive/Perplexity/tasks`);
-      await writeRuntimeAudit({
+      if (canWriteRuntimeAudit) await writeRuntimeAudit({
         user_id: requestUserId,
         runtime_packet_id: runtimePacketId,
         function_name: "karel-chat",
@@ -1004,7 +1005,7 @@ POKYN: Pokud valence klesá (↓), buď citlivější. Pokud spolupráce roste (
 
       if (!response.ok) {
         if (response.status === 429 || response.status === 402 || response.status >= 500) {
-          await writeRuntimeAudit({
+          if (canWriteRuntimeAudit) await writeRuntimeAudit({
             user_id: requestUserId,
             runtime_packet_id: runtimePacketId,
             function_name: "karel-chat",
@@ -1560,7 +1561,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
 
     const primaryModel = isPlayroomMode ? "google/gemini-3-flash-preview" : "google/gemini-3-flash-preview";
     console.log(`[karel-chat] Primary model: ${primaryModel}; subMode=${didSubMode || "none"}`);
-    await writeRuntimeAudit({
+    if (canWriteRuntimeAudit) await writeRuntimeAudit({
       user_id: requestUserId,
       runtime_packet_id: runtimePacketId,
       function_name: "karel-chat",
@@ -1599,7 +1600,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
 
     if (!response.ok) {
       if (response.status === 429 || response.status === 402 || response.status >= 500) {
-        await writeRuntimeAudit({
+        if (canWriteRuntimeAudit) await writeRuntimeAudit({
           user_id: requestUserId,
           runtime_packet_id: runtimePacketId,
           function_name: "karel-chat",
@@ -1642,7 +1643,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
           ? rawPlayroomResponse
           : `${rawPlayroomResponse.trim()} [PLAYROOM_PROGRESS:stay]`;
       const childSafePlayroomResponse = sanitizePlayroomChildVisibleText(guardedPlayroomResponse, runtimeContext, didPartName, lastPlayroomInput);
-      await writeRuntimeAudit({
+      if (canWriteRuntimeAudit) await writeRuntimeAudit({
         user_id: requestUserId,
         runtime_packet_id: runtimePacketId,
         function_name: "karel-chat",
