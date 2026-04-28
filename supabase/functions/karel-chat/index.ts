@@ -2073,7 +2073,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         }
 
         // ═══ SAFETY CHECK (fire-and-forget via separate edge function) ═══
-        if (isDirectChildSubMode && didPartName && (!persistencePolicy.no_save || requestSafety.matched)) {
+        if (isDirectChildSubMode && didPartName && !persistencePolicy.no_save) {
           const lastUserMsg = (messages as any[]).filter((m: any) => m.role === "user").pop();
           const userText = typeof lastUserMsg?.content === "string" ? lastUserMsg.content : "";
           if (userText.length > 5) {
@@ -2197,7 +2197,7 @@ Odpověz v JSON:
 
         // ═══ ASYNC CRISIS DETECTOR (non-blocking) ═══
         // Runs for every "cast" message — detects crisis signals in conversation
-        if (isDirectChildSubMode && fullResponse.length > 10 && (!persistencePolicy.no_save || requestSafety.matched)) {
+        if (isDirectChildSubMode && fullResponse.length > 10 && !persistencePolicy.no_save) {
           try {
             // Build last 6-10 messages for analysis
             const recentMessages = (messages as any[]).slice(-10).map((m: any) => {
