@@ -2314,17 +2314,21 @@ export type Database = {
       }
       did_live_session_progress: {
         Row: {
+          active_live_replan_id: string | null
           artifacts_by_block: Json
           completed_blocks: number
           created_at: string
+          current_block_status: string | null
           finalized_at: string | null
           finalized_reason: string | null
           id: string
           items: Json
           last_activity_at: string
+          live_replan_patch: Json
           part_name: string
           plan_id: string
           post_session_result: Json
+          reality_verification: Json
           therapist: string
           total_blocks: number
           turns_by_block: Json
@@ -2332,17 +2336,21 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          active_live_replan_id?: string | null
           artifacts_by_block?: Json
           completed_blocks?: number
           created_at?: string
+          current_block_status?: string | null
           finalized_at?: string | null
           finalized_reason?: string | null
           id?: string
           items?: Json
           last_activity_at?: string
+          live_replan_patch?: Json
           part_name?: string
           plan_id: string
           post_session_result?: Json
+          reality_verification?: Json
           therapist?: string
           total_blocks?: number
           turns_by_block?: Json
@@ -2350,17 +2358,21 @@ export type Database = {
           user_id: string
         }
         Update: {
+          active_live_replan_id?: string | null
           artifacts_by_block?: Json
           completed_blocks?: number
           created_at?: string
+          current_block_status?: string | null
           finalized_at?: string | null
           finalized_reason?: string | null
           id?: string
           items?: Json
           last_activity_at?: string
+          live_replan_patch?: Json
           part_name?: string
           plan_id?: string
           post_session_result?: Json
+          reality_verification?: Json
           therapist?: string
           total_blocks?: number
           turns_by_block?: Json
