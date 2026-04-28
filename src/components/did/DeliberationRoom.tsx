@@ -56,9 +56,10 @@ function unsignedStartBlockReason(d: TeamDeliberation | null | undefined, plan?:
   const contract = (plan?.urgency_breakdown && typeof plan.urgency_breakdown === "object") ? plan.urgency_breakdown as Record<string, any> : {};
   const programStatus = String(plan?.program_status || contract.review_state || contract.approval?.review_state || "").toLowerCase();
   const humanReviewRequired = contract.human_review_required === true || contract.approval?.required === true || contract.playroom_plan?.approval?.required === true || contract.playroom_plan?.therapist_review?.required === true;
+  const reviewFulfilled = ["approved", "ready_to_start", "in_progress", "completed"].includes(programStatus) || !!contract.approved_at;
   const childFacingPlayroom = contract.session_actor === "karel_direct" || contract.ui_surface === "did_kids_playroom" || !!contract.playroom_plan;
   const approvedForChild = contract.approved_for_child_session === true || contract.approval?.approved_for_child_session === true || contract.playroom_plan?.approval?.approved_for_child_session === true || contract.playroom_plan?.therapist_review?.approved_for_child_session === true;
-  if (!d || d.hanka_signed_at === null || d.kata_signed_at === null || d.status !== "approved" || humanReviewRequired || PROGRAM_START_BLOCKED_STATUSES.has(programStatus) || (childFacingPlayroom && !approvedForChild)) {
+  if (!d || d.hanka_signed_at === null || d.kata_signed_at === null || d.status !== "approved" || (humanReviewRequired && !reviewFulfilled) || PROGRAM_START_BLOCKED_STATUSES.has(programStatus) || (childFacingPlayroom && !approvedForChild)) {
     return "Program byl upraven podle odpovědi terapeutky a čeká na podpis Haničky a Káti.";
   }
   return null;
