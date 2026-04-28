@@ -1219,10 +1219,9 @@ const PlanCard = ({
             <strong>Zahájit nelze bez schválené týmové přípravy.</strong>{" "}
             {prepInProgress
               ? <>Porada už běží — chybí {prepProgress?.missing
-                  ?.filter(m => m !== "karel")
                   .map(m => m === "hanka" ? "Hanička" : "Káťa")
                   .join(" + ") || "podpis"}.</>
-              : <>Otevřete přípravnou místnost (Karel ↔ Hanička ↔ Káťa). Karel se podepíše automaticky, jakmile podepíše Hanička i Káťa.</>}
+              : <>Otevřete přípravnou místnost (Karel ↔ Hanička ↔ Káťa). Schválení vyžaduje podpis Haničky a Káti.</>}
           </p>
         </div>
       )}

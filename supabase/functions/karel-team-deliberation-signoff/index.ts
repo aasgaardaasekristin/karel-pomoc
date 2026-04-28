@@ -63,6 +63,50 @@ function buildApprovedSessionPlanMarkdown(updated: Record<string, any>) {
   ].filter(Boolean).join("\n");
 }
 
+function buildDeliberationOutcomeReport(updated: Record<string, any>, bridgedPlanId: string | null, crisisEffects: Record<string, any>) {
+  const synth = updated.karel_synthesis && typeof updated.karel_synthesis === "object" ? updated.karel_synthesis as Record<string, any> : {};
+  const subjectParts = Array.isArray(updated.subject_parts) ? updated.subject_parts.filter(Boolean).join(", ") : "";
+  const programBlocks = Array.isArray(updated.program_draft) && updated.program_draft.length > 0
+    ? updated.program_draft
+    : Array.isArray(updated.agenda_outline) ? updated.agenda_outline : [];
+  const finalSummary = String(updated.final_summary ?? "").trim();
+  const nextStep = String(synth.next_step ?? "").trim();
+  const keyInsights = Array.isArray(synth.key_insights) ? synth.key_insights.map((x: any) => String(x)).filter(Boolean) : [];
+  const riskSignals = Array.isArray(synth.risk_signals) ? synth.risk_signals.map((x: any) => String(x)).filter(Boolean) : [];
+  const protectiveSignals = Array.isArray(synth.protective_signals) ? synth.protective_signals.map((x: any) => String(x)).filter(Boolean) : [];
+  const programSummary = programBlocks.slice(0, 6).map((b: any, i: number) => {
+    const label = String(b?.block ?? b?.title ?? "").trim();
+    const detail = String(b?.detail ?? b?.clinical_intent ?? b?.playful_form ?? "").trim();
+    return label ? `${i + 1}. ${label}${detail ? ` — ${detail.slice(0, 260)}` : ""}` : "";
+  }).filter(Boolean);
+
+  const therapyImplication = finalSummary || nextStep || (programSummary.length ? `Schválený program: ${programSummary.join("; ")}` : "Porada byla schválena 2/2 a je závazným vstupem pro další vedení.");
+  const teamImplication = updated.deliberation_type === "crisis"
+    ? "Tým musí dál postupovat podle krizové syntézy, sledovat rizikové a ochranné signály a navázat doporučeným dalším krokem."
+    : "Tým bere schválený závěr jako platný rámec pro další práci a ranní briefing ho musí zohlednit jako závazné pozadí.";
+
+  const reportMd = [
+    `## Výsledek schválené porady: ${updated.title}`,
+    `- Stav: schváleno 2/2 (Hanička + Káťa)`,
+    `- Typ: ${updated.deliberation_type}`,
+    subjectParts ? `- Dotčené části: ${subjectParts}` : "",
+    bridgedPlanId ? `- Navázaný plán sezení: ${bridgedPlanId}` : "",
+    "",
+    `### Co z porady závazně plyne pro terapii`,
+    therapyImplication,
+    "",
+    `### Co z porady plyne pro terapeutický tým`,
+    teamImplication,
+    nextStep ? `\n### Další krok\n${nextStep}` : "",
+    keyInsights.length ? `\n### Klíčové vhledy\n${keyInsights.map((x) => `- ${x}`).join("\n")}` : "",
+    riskSignals.length ? `\n### Rizikové signály\n${riskSignals.map((x) => `- ${x}`).join("\n")}` : "",
+    protectiveSignals.length ? `\n### Ochranné signály\n${protectiveSignals.map((x) => `- ${x}`).join("\n")}` : "",
+    programSummary.length ? `\n### Schválený program / dohoda\n${programSummary.map((x) => `- ${x}`).join("\n")}` : "",
+  ].filter(Boolean).join("\n");
+
+  return { reportMd, therapyImplication, teamImplication, nextStep, keyInsights, riskSignals, protectiveSignals, crisisEffects };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -535,18 +579,17 @@ Deno.serve(async (req: Request) => {
         updated.status === "approved" && row.status !== "approved";
       if (justApproved) {
         const part = (updated.subject_parts ?? [])[0] ?? null;
-        const summary =
-          updated.deliberation_type === "crisis"
-            ? `Krizová porada uzavřena: ${updated.title}${
-                updated.karel_synthesis?.next_step
-                  ? ` — další krok: ${updated.karel_synthesis.next_step}`
-                  : ""
-              }`
-            : `Porada podepsána: ${updated.title}${
-                updated.final_summary
-                  ? ` — závěr: ${updated.final_summary.slice(0, 240)}`
-                  : ""
-              }`;
+        const existingOutcome = await admin
+          .from("karel_pantry_b_entries")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("source_kind", "team_deliberation")
+          .eq("source_ref", `${deliberationId}:approved_outcome`)
+          .limit(1);
+
+        if (existingOutcome.data && existingOutcome.data.length === 0) {
+          const outcome = buildDeliberationOutcomeReport(updated as Record<string, any>, bridgedPlanId, crisisEffects);
+          const summary = `Schválená porada 2/2: ${updated.title} — ${outcome.therapyImplication}`.slice(0, 1800);
 
         const destinations: any[] = ["briefing_input"];
         if (updated.deliberation_type === "session_plan") {
@@ -556,19 +599,28 @@ Deno.serve(async (req: Request) => {
           destinations.push("crisis_event_update");
         }
 
-        await appendPantryB(admin as any, {
+          await appendPantryB(admin as any, {
           user_id: userId,
           entry_kind: updated.deliberation_type === "crisis" ? "state_change" : "conclusion",
           source_kind: "team_deliberation",
-          source_ref: deliberationId,
+          source_ref: `${deliberationId}:approved_outcome`,
           summary,
           detail: {
             deliberation_id: deliberationId,
             deliberation_type: updated.deliberation_type,
             priority: updated.priority,
+            approved_status: "approved_2_of_2",
+            signed_by: ["hanka", "kata"],
             subject_parts: updated.subject_parts ?? [],
             final_summary: updated.final_summary ?? null,
             karel_synthesis: updated.karel_synthesis ?? null,
+            outcome_report_md: outcome.reportMd,
+            therapy_implication: outcome.therapyImplication,
+            team_implication: outcome.teamImplication,
+            next_step: outcome.nextStep || null,
+            key_insights: outcome.keyInsights,
+            risk_signals: outcome.riskSignals,
+            protective_signals: outcome.protectiveSignals,
             bridged_plan_id: bridgedPlanId,
             crisis_effects: crisisEffects,
           },
@@ -577,7 +629,8 @@ Deno.serve(async (req: Request) => {
           related_crisis_event_id: (crisisEffects as any).crisis_event_updated
             ?? updated.linked_crisis_event_id
             ?? undefined,
-        });
+          });
+        }
       }
     } catch (pErr) {
       console.warn("[delib-signoff] pantry-b append failed (non-fatal):", pErr);

@@ -901,7 +901,7 @@ async function generateBriefing(
     return `- [${e.entry_kind}/${e.source_kind}]${part}${ther} ${String(e.summary || "").slice(0, 220)}`;
   };
   const pantryBSection = pbEntries.length > 0
-    ? `═══ SPIŽÍRNA B — VČEREJŠÍ IMPLIKACE PRO DNEŠEK ═══\nTo jsou věci, které z včerejších vláken / porad / sezení přímo plynou pro dnešní rozhodování. Použij je v greeting, last_3_days a hlavně v decisions a ask_*. NEIGNORUJ je.\n${pbEntries.slice(0, 30).map(formatPantryBLine).join("\n")}\n\n`
+    ? `═══ SPIŽÍRNA B — VČEREJŠÍ IMPLIKACE PRO DNEŠEK ═══\nTo jsou věci, které z včerejších vláken / porad / sezení přímo plynou pro dnešní rozhodování. Použij je v greeting, last_3_days a hlavně v decisions a ask_*. NEIGNORUJ je. Pokud je zde záznam source_kind=team_deliberation se schválenou poradou, MUSÍŠ výslovně zmínit, že porada byla schválena, o čem byla, co z ní vyplynulo a jak se k tomu dnes terapeuticky postavíme.\n${pbEntries.slice(0, 30).map(formatPantryBLine).join("\n")}\n\n`
     : "";
   const approvedDelibsSection = approvedDelibs.length > 0
     ? `═══ NEDÁVNÉ PORADY A ODPOVĚDI TERAPEUTEK (posledních 7 dní) — ZÁVAZNÉ POZADÍ ═══
@@ -922,6 +922,7 @@ ${approvedDelibs.map((d: any) => {
   1) NIKDY pro tyto subject_parts/téma nezakládej nové decisions se stejným nebo téměř stejným titulkem.
   2) Pokud odpověď terapeutky upřesňuje lék/Derin/dohodu, zacházej s ní jako s aktuální evidencí, ne jako s otevřenou neznámou.
   3) V proposed_session.first_draft a why_today VYUŽIJ závěr porady i konkrétní odpovědi — neopakuj, co tým už vyjasnil.
+  4) U schválených porad uveď ve výstupu jasně: schváleno 2/2, téma, závěr a dnešní terapeutický postoj.
 
 `
     : "";

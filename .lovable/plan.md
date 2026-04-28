@@ -1,436 +1,176 @@
-# Oprava Herny: program binding + bezpečné neukončování
+# Plán opravy: porady na dashboardu, podpisy 2/2 a závazný výstup do Spižírny
 
-Tento plán nahrazuje původní dílčí opravu. Cílem už není jen zabránit předčasnému ukončování, ale pevně napojit Hernu na schválený `playroom_plan` tak, aby Karel nejel jako volný chat s počítadlem, ale jako programově řízené, auditovatelné Karel-led sezení.
+## Co jsem zjistil
 
-## Jádro opravy
-
-Herna nebude řízená volným chatem ani samotným počítadlem `completed_blocks`. Každý turn bude řízen aktuálním blokem schváleného `playroom_plan`, jeho cílem, dětsky bezpečnou instrukcí, povolenými aktivitami, completion criteria, posledním vstupem dítěte a backendovým rozhodnutím o progressu založeným na evidenci.
-
-Autoritativní řetězec musí být:
+Konkrétní porada **„Krizová porada: Zhoršení stavu Tundrupka – únava a diskomfort“** je v databázi už fakticky schválená:
 
 ```text
-approved playroom_plan
-  -> konkrétní plan_id
-  -> konkrétní thread_id Herny
-  -> aktuální block_id
-  -> completion criteria
-  -> POSLEDNÍ VSTUP DÍTĚTE
-  -> backendové rozhodnutí o posunu
-  -> evidence každého dokončeného bloku
+status = approved
+Hanička podepsala
+Káťa podepsala
+Karel timestamp existuje jen jako auditní stopa
+final_summary existuje
+karel_synthesis existuje
 ```
 
-## Klinická hranice
+Takže problém není v tom, že by tato porada nebyla v DB schválená. Problém je v prezentační a synchronizační vrstvě dashboardu:
 
-Cílem není nutit dítě dokončit celý program za každou cenu.
+1. dashboard / karta stále mluví jazykem starého 3-podpisového modelu,
+2. v některých místech se stále zobrazuje Karel jako chybějící podepisující,
+3. karta neukazuje explicitně stav „porada schválena“ + `podpisy 2/2`,
+4. po podpisu není zajištěené okamžité parent refresh propojení mezi modalem a dashboard kartou,
+5. výstup do Spižírny B už existuje, ale je příliš slabý a není formulovaný jako závazný výsledný report porady pro další terapeutické vedení.
 
-Správné pravidlo je:
+## Cíl opravy
+
+Porady budou mít jednotné pravidlo:
 
 ```text
-Karel nesmí sám od sebe předčasně uzavřít Hernu, pokud dítě chce pokračovat a není safety důvod.
+Schválení porady = podpis Haničky + podpis Káti.
+Karel není podepisující osoba.
+Karlův timestamp je jen auditní serverová stopa po schválení.
+Dashboard nikdy nesmí ukazovat podpisy 0/3 ani „chybí Karel“.
 ```
 
-Program se může zastavit nebo přerušit pouze pokud:
-
-- dítě jasně řekne stop / nechci pokračovat / končím / stačí,
-- vznikne bezpečnostní důvod,
-- terapeutka ručně ukončí režim,
-- nebo je stisknuto tlačítko „Ukončit hernu“.
-
-Pokud dítě píše „co dál?“, „co teď dál?“ nebo „co budeme dělat teďka?“, je to continuation signal, ne closing signal a ne completion signal.
-
-## 1. Povinné předání identity Herny do backendu
-
-`DidKidsPlayroom.tsx` musí při každém turnu posílat do `karel-chat` tvrdé identifikátory:
-
-- `mode = "playroom"`,
-- `didSubMode = "playroom"`,
-- `session_actor = "karel_direct"`,
-- `ui_surface = "did_kids_playroom"`,
-- `lead_entity = "karel"`,
-- `planId`,
-- `threadId`,
-- `partId` / `partName`,
-- lokální progress pouze jako neautoritativní hint.
-
-Historické `sub_mode = "karel_part_session"` nesmí přebít rozhodování podle `mode = "playroom"`, `session_actor = "karel_direct"` a `ui_surface = "did_kids_playroom"`.
-
-Frontend nebude hlavní autorita pro posun programu. Bude pouze zobrazovat stav, posílat vstup dítěte a ukládat thread.
-
-## 2. Backend musí ověřit `planId`, ne mu slepě věřit
-
-`planId` z frontendu je pouze identifikátor/hint. Backend musí ověřit, že:
-
-- `planId` patří k danému `threadId`,
-- thread patří dané části,
-- thread je dnešní / aktuální Herna,
-- uživatel má oprávnění s tímto threadem pracovat,
-- plán je ve stavu `approved`, `ready_to_start` nebo `in_progress`,
-- plán je opravdu určený pro dětskou Hernu.
-
-Thread Herny musí být pevně svázaný s plánem, ideálně přes:
+Dashboard má ukazovat například:
 
 ```text
-workspace_id = planId
-workspace_type = playroom_plan
-mode = playroom
-session_actor = karel_direct
-ui_surface = did_kids_playroom
+otevřená · podpisy 0/2 · chybí Hanička, Káťa
+čeká na podpis · podpisy 1/2 · chybí Káťa
+porada schválena · podpisy 2/2
 ```
 
-Backend nesmí párovat Hernu s programem jen podle data a jména části.
+## 1. Sjednotit signoff model v typu porady
 
-## 3. Backend bude načítat schválený `playroom_plan`
+Upravím `src/types/teamDeliberation.ts` tak, aby dokumentace i helper `signoffProgress()` byly jednoznačně dvoupodpisové pro všechny běžné porady:
 
-V `karel-chat` musí playroom větev při každé odpovědi:
+- total vždy `2`,
+- signers pouze `hanka`, `kata`,
+- missing nikdy neobsahuje `karel`,
+- `karel_signed_at` zůstává pouze auditní pole, ne UI podpis.
 
-1. vzít `planId` z requestu,
-2. ověřit vazbu `planId` ↔ `threadId`,
-3. načíst přesně tento schválený `playroom_plan`,
-4. ověřit metadata:
-   - `session_actor = karel_direct`,
-   - `ui_surface = did_kids_playroom`,
-   - `lead_entity = karel`,
-   - `approved_for_child_session = true`,
-   - existuje `playroom_plan.therapeutic_program`,
-5. odmítnout použít `plan_markdown`, `first_draft` nebo terapeutické Sezení jako náhradní program.
+Současně odstraním zastaralé komentáře v souboru, které ještě popisují trojnásobný podpis jako pravdu.
 
-Tvrdé pravidlo:
+## 2. Opravit dashboard kartu porad
+
+V `src/components/did/TeamDeliberationsPanel.tsx` upravím render řádku porady:
+
+- pro `status = approved` nebo `closed` se badge změní z nejasného „uzavřeno“ na **„porada schválena“**,
+- podpisová věta bude používat jen `Hanička` a `Káťa`,
+- nebude existovat žádný text „chybí Karel“,
+- karta bude zřetelně odlišovat:
+  - otevřená bez podpisů,
+  - čeká na podpis druhé terapeutky,
+  - schválená.
+
+Také opravím text sekce „Další otevřené porady“, aby se do ní nestrkaly schválené karty pod zavádějícím názvem. Buď budou schválené karty v samostatném bucketu „Nedávno schválené“, nebo se v overflow popisku nebude tvrdit, že jsou otevřené.
+
+## 3. Opravit refresh po podpisu
+
+V `DidContentRouter.tsx` je `refreshTrigger` teď konstantní `0`, takže parent panel nemá jasný signál, že modal právě změnil poradu.
+
+Upravím to takto:
 
 ```text
-Herna smí používat pouze validní approved playroom_plan.
+DeliberationRoom po podpisu / syntéze / uzavření zavolá onChanged()
+PracovnaSurface zvýší refreshTrigger
+TeamDeliberationsPanel a KarelOverviewPanel znovu načtou data
 ```
 
-Pokud validní `playroom_plan` chybí, dítěti se nesmí zobrazit technická zpráva. Dítě dostane bezpečný check-in, například:
+Důsledek: když se v modalu podepíše Hanička nebo Káťa, karta na dashboardu se hned přepočítá na `1/2` nebo `2/2`, bez čekání na náhodný realtime event.
+
+## 4. Opravit modal porady, aby nikde netvrdil 3 podpisy
+
+V `DeliberationRoom.tsx` zachovám správný dvoupodpisový model:
+
+- v hlavičce `podpisy 0/2`, `1/2`, `2/2`,
+- badge `Schválily: Hanička, Káťa`,
+- žádný požadavek na Karlův podpis,
+- u schválené porady text „Odpovědi, podpisy a Karlova syntéza jsou uzavřené“ upravím přesněji podle typu:
+  - krizová porada: obsahuje Karlovu syntézu,
+  - session_plan: obsahuje finální program / plán, ne starou syntézu.
+
+## 5. Backend: schválení musí vždy vytvořit závazný výsledný report do Spižírny B
+
+V `supabase/functions/karel-team-deliberation-signoff/index.ts` už existuje zápis do `karel_pantry_b_entries`, ale zpřesním ho tak, aby nebyl jen krátká poznámka „porada uzavřena“, nýbrž kanonický **výsledný report porady**.
+
+Při přechodu do `approved` se zapíše do Spižírny B záznam s obsahem:
 
 ```text
-Dnes začneme jen malým bezpečným krokem. Neotevřu teď nic těžkého, dokud pro to nemám připravený plán.
+- název porady
+- typ porady
+- dotčená část / části
+- kdo podepsal
+- že porada byla schválena 2/2
+- Karlovo klinické vyhodnocení / final_summary
+- závazné důsledky pro terapii
+- závazné důsledky pro terapeutický tým
+- další doporučený krok
+- případná krizová rizika / ochranné signály
+- vazba na linked_crisis_event_id / linked_live_session_id
 ```
 
-Terapeutkám se interně zobrazí/audituje:
+Pro krizové porady použiji `karel_synthesis` a `final_summary` jako primární zdroj. Pro session_plan použiji schválený program / plan bridge.
+
+Tento záznam bude mít:
 
 ```text
-Chybí validní approved playroom_plan. Herna neběží v plném programovém režimu.
+source_kind = team_deliberation
+entry_kind = state_change nebo conclusion
+intended_destinations = briefing_input + případně crisis_event_update / did_therapist_tasks
+source_ref = deliberation_id
 ```
 
-## 4. Normalizace bloků programu
+A doplním anti-dup logiku, aby opakovaný refresh nebo znovupodpis nevložil duplicitní „schváleno“ záznam pro stejnou poradu.
 
-Backend vytvoří normalizační vrstvu pro `therapeutic_program`, aby každý blok měl stabilní runtime tvar:
+## 6. Ranní Karlův přehled musí schválenou poradu výslovně zohlednit
 
-```ts
-{
-  block_id,
-  index,
-  title,
-  goal,
-  child_safe_instruction,
-  allowed_activities,
-  minimum_completion_criteria,
-  do_not_advance_when,
-  forbidden_directions,
-  fallback
-}
-```
-
-Když starší plán nemá explicitní `block_id` nebo criteria, backend je bezpečně odvodí z existujících polí, ale do auditu zapíše, že criteria byla odvozená.
-
-Každý blok musí mít minimálně:
-
-- cíl,
-- dětsky bezpečnou instrukci,
-- povolené aktivity,
-- minimum completion criteria,
-- podmínky, kdy neposouvat,
-- zakázané směry.
-
-## 5. Prompt musí obsahovat program i poslední vstup dítěte
-
-Backendový prompt musí obsahovat dva povinné bloky:
+`karel-did-daily-briefing` už čte Spižírnu B i nedávné porady. Zpřesním prompt tak, aby pro schválené porady typu `team_deliberation` / `crisis` musel v ranním přehledu zohlednit:
 
 ```text
-AKTUÁLNÍ PROGRAM HERNY
-POSLEDNÍ VSTUP DÍTĚTE
+- která porada byla schválena,
+- čeho se týkala,
+- co z ní vyplynulo,
+- jak se k tomu dnes terapeuticky postavíme.
 ```
 
-Karel musí odpovídat na průnik obou:
+Nebude stačit, že to AI „může použít“. Prompt dostane povinnost: pokud existuje čerstvý schválený poradní výstup ve Spižírně B, musí být promítnut do greeting / last_3_days / decisions podle klinické relevance.
+
+## 7. Jednorázová oprava existujících nekonzistentních porad
+
+Provedu databázovou opravu pro existující řádky, které mají:
 
 ```text
-program + poslední vstup dítěte = další odpověď Karla
+hanka_signed_at is not null
+kata_signed_at is not null
+status != approved
 ```
 
-Do promptu se vloží runtime packet:
+Tyto porady se překlopí na `approved` a doplní se auditní `karel_signed_at`, pokud chybí. Tím se opraví i historické karty, které jsou fakticky podepsané 2/2, ale zůstaly viset jako otevřené.
 
-```text
-AKTUÁLNÍ PROGRAM HERNY:
-- plan_id:
-- thread_id:
-- part_name:
-- current_block_id:
-- current_block_index:
-- current_block_title:
-- current_block_goal:
-- child_safe_instruction:
-- allowed_activities:
-- minimum_completion_criteria:
-- do_not_advance_when:
-- forbidden_directions:
-- fallback:
-- program_completed:
-- playroom_finalized:
-```
+Zároveň ověřím konkrétní Tundrupkovu krizovou poradu a případně doplním / deduplikuji její Spižírna B záznam, aby se dostala do dalšího Karlova ranního přehledu.
 
-A současně:
+## 8. Ověření po implementaci
 
-```text
-POSLEDNÍ VSTUP DÍTĚTE:
-- raw_text:
-- detected_intent:
-- continuation_signal:
-- stop_signal:
-- safety_signal:
-- candidate_completion_evidence:
-```
+Po změnách ověřím:
 
-Karel nesmí jet slepě podle programu a ignorovat dítě. Zároveň nesmí reagovat jen na dítě a ignorovat aktuální blok programu.
+1. `signoffProgress()` vrací pro rozpracovanou poradu jen `0/2`, `1/2`, `2/2`.
+2. Dashboard nikdy nezobrazí `0/3` ani `chybí Karel`.
+3. Po podpisu Haničky karta ukáže `podpisy 1/2 · chybí Káťa`.
+4. Po podpisu Káti karta ukáže `porada schválena · podpisy 2/2`.
+5. Schválená krizová porada má záznam ve Spižírně B jako závazný report.
+6. Ranní briefing prompt dostává tento report jako povinný vstup.
 
-## 6. Backendové rozhodování o progressu
+## Dotčené soubory
 
-Značka `[PLAYROOM_PROGRESS:advance]` už nebude autoritativní.
+- `src/types/teamDeliberation.ts`
+- `src/components/did/TeamDeliberationsPanel.tsx`
+- `src/components/did/DeliberationRoom.tsx`
+- `src/components/did/DidContentRouter.tsx`
+- `supabase/functions/karel-team-deliberation-signoff/index.ts`
+- `supabase/functions/karel-did-daily-briefing/index.ts`
+- databázová migrace pro opravu historických stavů a případně anti-dup index / kontrolu Spižírny B
 
-Progress rozhoduje backend podle:
+## Poznámka k Herna program binding plánu
 
-- posledního vstupu dítěte,
-- aktuálního bloku,
-- completion criteria,
-- odpovědi Karla,
-- stop / continuation / safety signálů,
-- historie daného bloku.
-
-Výsledkem bude `progress_decision`:
-
-```text
-stay
-advance
-blocked
-fallback
-stop_requested
-safety_stop
-manual_therapist_stop
-post_program_holding
-```
-
-Backend nesmí vyhodnotit blok jako dokončený pouze podle odpovědi Karla. Dokončení bloku musí být opřené hlavně o:
-
-- odpověď dítěte,
-- splněné completion criteria,
-- ruční zásah terapeutky,
-- nebo safety důvod.
-
-Blok se nesmí označit jako completed pouze proto, že:
-
-- Karel položil otázku,
-- Karel nabídl aktivitu,
-- dítě napsalo „co dál?“,
-- dítě napsalo pouze „nevím“,
-- AI vrátila `[PLAYROOM_PROGRESS:advance]`.
-
-Příklad: pokud Karel řekne „Vyber A, B nebo C“, blok ještě není hotový. Completion evidence může vzniknout až po odpovědi dítěte, například „A, někdo blízký vedle něj“.
-
-Progress tagy jako `[PLAYROOM_PROGRESS:advance]` nesmí být viditelné pro dítě. Ideálně se progress rozhodnutí vrací jako server-side metadata / structured output, ne jako text v odpovědi Karla.
-
-## 7. Evidence každého completed blocku
-
-Při každém skutečném posunu backend uloží evidence:
-
-- `block_id`,
-- `completion_reason`,
-- `evidence_message_id` / `turn_id`,
-- `child_response_excerpt`,
-- `karel_action_excerpt`,
-- `criteria_matched`,
-- `decision_source`,
-- `completed_at`,
-- případně `blocked_reason`.
-
-`child_response_excerpt` a `karel_action_excerpt` jsou určené pro audit, terapeutky a pozdější analýzu. Nesmí se automaticky zobrazovat dítěti.
-
-Cílem je, aby už nikdy neexistovalo jen:
-
-```text
-completed_blocks = 5
-```
-
-bez důkazu, proč jsou bloky dokončené.
-
-## 8. Idempotence a ochrana proti race condition
-
-Progress update musí být idempotentní a chráněný proti souběžným turnům.
-
-Pravidla:
-
-- jeden `message_id` / `turn_id` nesmí posunout blok více než jednou,
-- dva rychlé požadavky nesmí přeskočit dva bloky,
-- backend musí před zápisem znovu ověřit aktuální `current_block_id`,
-- pokud stav mezitím změnil jiný turn, druhý turn musí skončit jako `blocked` nebo `stale_turn`.
-
-## 9. `completed_blocks = total_blocks` bez `finalized_at`
-
-Tyto tři stavy musí být oddělené:
-
-```text
-program_completed
-playroom_finalized
-review_generated
-```
-
-`completed_blocks = total_blocks` bez `finalized_at` neznamená ukončenou Hernu.
-
-Pokud jsou všechny bloky skutečně dokončené, ale Herna není finalized, systém nepřejde automaticky do loučení a nemusí falešně opakovat starý blok. Použije bezpečný post-program holding / integration block, například:
-
-```text
-Teď už nemusíme otevírat nic těžkého. Můžeme udělat malý bezpečný krok: vybrat, co si velrybí mládě vezme s sebou, než se Herna ukončí.
-```
-
-Karel ale pořád nesmí Hernu sám uzavřít bez tlačítka, jasného stopu, terapeutického ukončení nebo safety důvodu.
-
-## 10. Guardrail po odpovědi Karla
-
-Po každé vygenerované odpovědi backend ověří:
-
-- je odpověď v souladu s aktuálním blokem?
-- navazuje na poslední vstup dítěte?
-- dává další krok z programu?
-- neuzavírá předčasně?
-- nevymýšlí aktivitu mimo program?
-- nepoužívá interní terapeutické formulace před dítětem?
-- není příliš volná typu „co chceš dělat?“ místo programového mikro-kroku?
-
-Pokud dítě píše „co teď dál?“, Karel musí odpovědět pokračováním z aktuálního programu, například u velrybího mláděte:
-
-```text
-Dobře, teď nebudeme končit. Půjdeme na další malý krok s velrybím mládětem.
-Zkusíme zjistit, co by mu nejvíc pomohlo:
-A) někdo blízký vedle něj,
-B) bezpečné místo,
-C) chvilka klidu bez mluvení.
-```
-
-Ne:
-
-```text
-Pro dnešek to uložíme a rozloučíme se.
-```
-
-A ne příliš volně:
-
-```text
-Co bys chtěl dělat?
-```
-
-## 11. Audit log pro každý playroom turn
-
-Do audit metadata u každé playroom odpovědi se doplní:
-
-- `plan_id`,
-- `thread_id`,
-- `playroom_plan_hash`,
-- `runtime_packet_id`,
-- `has_playroom_plan`,
-- `has_runtime_packet`,
-- `current_block_id`,
-- `current_block_index`,
-- `current_block_title`,
-- `last_child_input_excerpt`,
-- `detected_child_intent`,
-- `progress_decision`,
-- `progress_blocked_reason`,
-- `completion_reason`,
-- `criteria_matched`,
-- `premature_closing_repaired`,
-- `continuation_forced`,
-- `used_plan_markdown: false`,
-- `used_first_draft: false`,
-- `used_session_plan_as_fallback: false`.
-
-Tím půjde zpětně doložit, jestli Karel skutečně jel podle programu.
-
-## 12. Oprava aktuální Tundrupkovy Herny
-
-Po nasazení oprav se zkontroluje dnešní Tundrupkova Herna:
-
-- použitý `plan_id`,
-- aktivní `thread_id`,
-- zda byl načten validní `playroom_plan`,
-- `current_block_id` u posledních turnů,
-- proč se bloky označily jako dokončené,
-- zda existuje completion evidence,
-- stav `completed_blocks = 5/5`,
-- stav `finalized_at = null`.
-
-Protože Herna není finalized, nesmí být považovaná za ukončenou. Historie se nemaže. Pokud jsou bloky důvěryhodně dokončené, použije se holding/integration block. Pokud evidence chybí, backend nesmí z tohoto stavu automaticky generovat závěr.
-
-## 13. Testy / ověření
-
-Doplnit testovací scénáře pro edge logiku a/nebo helpery:
-
-1. Herna bez validního `playroom_plan` nepoužije terapeutické Sezení ani `plan_markdown`.
-2. `planId` z frontendu se ověřuje proti `threadId` a není slepě důvěryhodný.
-3. „co dál?“ neposune blok a nevygeneruje závěr.
-4. `[PLAYROOM_PROGRESS:advance]` sám o sobě neposune blok bez splněných criteria.
-5. Blok se neposune ve stejném turnu jen proto, že Karel položil otázku.
-6. Completion vzniká až z odpovědi dítěte, ručního zásahu terapeutky nebo safety důvodu.
-7. `completed_blocks = total_blocks` + `finalized_at = null` neznamená uzavřenou Hernu.
-8. Pokud jsou bloky hotové, ale Herna není finalized, použije se `post_program_holding_block`.
-9. Prompt/runtime obsahuje `AKTUÁLNÍ PROGRAM HERNY` i `POSLEDNÍ VSTUP DÍTĚTE`.
-10. Odpověď Karla navazuje na unikátní symbol/aktivitu z programu.
-11. Audit log obsahuje `plan_id`, `thread_id`, `current_block_id`, `playroom_plan_hash` a `progress_decision`.
-12. Souběžné turny neposunou progress dvakrát.
-
-## 14. Soubory k úpravě
-
-### `src/components/did/DidKidsPlayroom.tsx`
-
-- rozšířit request payload o `planId`, `threadId`, `mode`, `didSubMode`, `session_actor`, `ui_surface`, `lead_entity`,
-- odstranit autoritativní frontend advance podle textové značky,
-- progress zobrazovat podle backendového rozhodnutí,
-- zajistit, že progress tagy nejsou viditelné dítěti,
-- držet UI napojené na správný historický thread a správný `workspace_id = planId`.
-
-### `supabase/functions/karel-chat/index.ts`
-
-- načítat a validovat `playroom_plan` podle `planId`,
-- ověřovat vazbu `planId` ↔ `threadId`,
-- odmítnout fallback na `plan_markdown` / `first_draft` / terapeutické Sezení,
-- normalizovat bloky programu,
-- vytvářet runtime packet s `AKTUÁLNÍ PROGRAM HERNY`,
-- vkládat `POSLEDNÍ VSTUP DÍTĚTE`,
-- rozhodovat progress na backendu podle criteria a evidence,
-- ukládat completion evidence,
-- chránit progress update proti souběhu,
-- zapisovat audit metadata,
-- opravovat předčasné závěry na programové pokračování.
-
-### `supabase/functions/karel-part-session-prepare/index.ts`
-
-- zajistit, že thread Herny vzniká s vazbou `workspace_id = planId`,
-- neotevírat duplicitní prázdnou Hernu, pokud dnešní reálná aktivita existuje,
-- nepřepínat aktivní thread na novější prázdný plán bez zpráv.
-
-## 15. Důkaz po implementaci
-
-Po opravě musí být možné pro poslední Tundrupkovu Hernu ukázat:
-
-1. `plan_id`,
-2. `thread_id`,
-3. `playroom_plan_hash`,
-4. zda byl načten validní `playroom_plan`,
-5. `current_block_id` u posledních 5 turnů,
-6. runtime blok `AKTUÁLNÍ PROGRAM HERNY` u jednoho turnu,
-7. runtime blok `POSLEDNÍ VSTUP DÍTĚTE` u jednoho turnu,
-8. `progress_decision` u posledních 5 turnů,
-9. `completion_reason` a evidence pro každý completed block,
-10. proč `completed_blocks = 5/5` nevygenerovalo finalized stav,
-11. jak systém odpověděl na „co teď dál?“.
-
-## Očekávaný výsledek
-
-Herna bude programově řízené, auditovatelné Karel-led sezení. Karel nebude uzavírat Hernu bez explicitního důvodu, nebude improvizovat mimo schválený `playroom_plan`, nebude posouvat bloky bez evidence a nebude používat samotné `completed_blocks` jako důkaz, že Herna skutečně proběhla nebo byla ukončena.
+Tato oprava je samostatná, ale související. Neodstraňuje předchozí plán tvrdého napojení Herny na schválený `playroom_plan`. Naopak: opravuje poradní workflow, ze kterého schválené plány a závazná rozhodnutí vznikají, aby dashboard a ranní Karel pracovaly se skutečně schváleným stavem.

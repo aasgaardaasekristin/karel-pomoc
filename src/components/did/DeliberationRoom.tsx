@@ -28,6 +28,7 @@ import {
 interface Props {
   deliberationId: string | null;
   onClose: () => void;
+  onChanged?: () => void;
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -558,7 +559,7 @@ function KarelSynthesisBlock({
   );
 }
 
-const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
+const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
   const { sign, synthesize, answerQuestion, postMessage, iterateProgram, reload, items } = useTeamDeliberations(0);
   const [d, setD] = useState<TeamDeliberation | null>(null);
   const [loading, setLoading] = useState(true);
@@ -644,6 +645,8 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
     setSigning(who);
     try {
       const res = await sign(d.id, who);
+      setD((res as any)?.deliberation ?? d);
+      onChanged?.();
       if (res?.bridged_plan_id) {
         setBridgedPlanId(res.bridged_plan_id);
         toast.success(isPlayroomDeliberation(d as any)
@@ -666,6 +669,8 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
     setSynthesizing(true);
     try {
       const res = await synthesize(d.id);
+      setD((res as any)?.deliberation ?? d);
+      onChanged?.();
       if (res?.synthesis) {
         toast.success("Karlova syntéza hotová. Můžeš podepsat.");
       }
@@ -888,7 +893,9 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                       Porada je schválená — náhled jen pro čtení
                     </h4>
                     <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Odpovědi, podpisy i Karlova syntéza jsou uzavřené. Nelze měnit, jen prohlížet.
+                      {d.deliberation_type === "session_plan"
+                        ? "Odpovědi, podpisy a finální program jsou uzavřené. Nelze měnit, jen prohlížet."
+                        : "Odpovědi, podpisy i Karlova syntéza jsou uzavřené. Nelze měnit, jen prohlížet."}
                       Pro nové rozhodnutí počkej na další briefing.
                     </p>
                   </div>

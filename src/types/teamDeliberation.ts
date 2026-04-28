@@ -5,9 +5,10 @@
  * NENÍ to live sezení. Live sezení žije v `did_daily_session_plans`
  * (kanonický plán) + Chat (`didFlowState=live-session`, runtime).
  *
- * Porada končí trojnásobným podpisem (hanka_signed_at, kata_signed_at,
- * karel_signed_at) → status = 'approved' → bridge propíše schválený
- * plán do `did_daily_session_plans` (pro typ `session_plan`).
+ * Porada končí dvěma terapeutickými podpisy (hanka_signed_at, kata_signed_at)
+ * → status = 'approved' → bridge propíše schválený plán do
+ * `did_daily_session_plans` (pro typ `session_plan`). `karel_signed_at` je
+ * pouze serverová auditní stopa okamžiku schválení, ne UI podpis.
  */
 
 export type DeliberationStatus =
@@ -249,26 +250,22 @@ export function isAllowedDeliberationReason(
 }
 
 /**
- * SESSION PREP SIGNOFF FIX (2026-04-21):
- * Pro `session_plan` je workflow gated POUZE dvěma terapeutickými podpisy
- * (Hanička + Káťa). Karel se podepíše automaticky na serveru.
- * Pro ostatní typy zůstává klasický 3-podpisový model (vč. krize, kde
- * Karlův podpis je gated synthesí).
+ * TEAM SIGNOFF TRUTH (2026-04-28):
+ * Každá porada je v UI schválená výhradně dvěma terapeutickými podpisy
+ * (Hanička + Káťa). Karel není podepisující strana; jeho timestamp je pouze
+ * auditní serverová stopa po dosažení 2/2.
  */
 export function signoffProgress(d: TeamDeliberation): {
   signed: number;
   total: number;
-  missing: Array<"hanka" | "kata" | "karel">;
+  missing: Array<"hanka" | "kata">;
 } {
-  const isSessionPlan = d.deliberation_type === "session_plan";
-  const requiredSigners: Array<"hanka" | "kata" | "karel"> = isSessionPlan
-    ? ["hanka", "kata"]
-    : ["hanka", "kata", "karel"];
-  const missing: Array<"hanka" | "kata" | "karel"> = [];
+  const requiredSigners: Array<"hanka" | "kata"> = ["hanka", "kata"];
+  const missing: Array<"hanka" | "kata"> = [];
   for (const who of requiredSigners) {
     const ts =
       who === "hanka" ? d.hanka_signed_at :
-      who === "kata" ? d.kata_signed_at : d.karel_signed_at;
+      d.kata_signed_at;
     if (!ts) missing.push(who);
   }
   return {

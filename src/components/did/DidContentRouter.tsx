@@ -1022,7 +1022,7 @@ interface PracovnaSurfaceProps {
 }
 
 const PracovnaSurface: React.FC<PracovnaSurfaceProps> = () => {
-  const [refreshTrigger] = useState(0);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [openDeliberationId, setOpenDeliberationId] = useState<string | null>(null);
 
   // SLICE 2 deep-link: Chat handler ukládá deliberation_id do sessionStorage.
@@ -1133,6 +1133,7 @@ const PracovnaSurface: React.FC<PracovnaSurfaceProps> = () => {
       <DeliberationRoom
         deliberationId={openDeliberationId}
         onClose={() => setOpenDeliberationId(null)}
+        onChanged={() => setRefreshTrigger((v) => v + 1)}
       />
     </div>
   );
