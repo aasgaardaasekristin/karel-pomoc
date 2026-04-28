@@ -956,6 +956,38 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     [briefing, navigate, onOpenDeliberation, openingItemId],
   );
 
+  const openProgramAskDeliberation = useCallback(
+    async (role: "ask_hanka" | "ask_kata", item: AskItemObj) => {
+      if (!briefing) return false;
+      if (item.target_type === "proposed_session" && briefing.payload.proposed_session) {
+        const session = {
+          ...briefing.payload.proposed_session,
+          id: item.target_item_id || briefing.payload.proposed_session.id,
+          questions_for_hanka: role === "ask_hanka" ? [item.text] : (briefing.payload.proposed_session.questions_for_hanka ?? []),
+          questions_for_kata: role === "ask_kata" ? [item.text] : (briefing.payload.proposed_session.questions_for_kata ?? []),
+        };
+        await openProposedSessionDeliberation(session);
+        toast.info("Otázka je napojená na plán Sezení a otevřela se v poradě.");
+        return true;
+      }
+
+      if (item.target_type === "proposed_playroom" && briefing.payload.proposed_playroom) {
+        const playroom = {
+          ...briefing.payload.proposed_playroom,
+          id: item.target_item_id || briefing.payload.proposed_playroom.id,
+          questions_for_hanka: role === "ask_hanka" ? [item.text] : (briefing.payload.proposed_playroom.questions_for_hanka ?? []),
+          questions_for_kata: role === "ask_kata" ? [item.text] : (briefing.payload.proposed_playroom.questions_for_kata ?? []),
+        };
+        await openProposedPlayroomDeliberation(playroom);
+        toast.info("Otázka je napojená na program Herny a otevřela se v poradě.");
+        return true;
+      }
+
+      return false;
+    },
+    [briefing, openProposedPlayroomDeliberation, openProposedSessionDeliberation],
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-10">
