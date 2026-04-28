@@ -773,7 +773,7 @@ async function scoreSessionCandidates(supabase: any): Promise<SessionCandidate[]
 // ───────────────────────────────────────────────────────────
 // KONTEXT: posledních 3 dní + lingering
 // ───────────────────────────────────────────────────────────
-async function gatherContext(supabase: any, proofReviewId?: string | null) {
+async function gatherContext(supabase: any, proofReviewId?: string | null, requestedUserId?: string | null) {
   const threeDaysAgo = daysAgoISO(3);
   const sevenDaysAgo = daysAgoISO(7);
   const yesterdayISO = daysAgoISO(1);
@@ -862,7 +862,7 @@ async function gatherContext(supabase: any, proofReviewId?: string | null) {
   let approvedDeliberations: any[] = [];
   let eventIngestionSummary: any = null;
   try {
-    const userIdForB: string | null = null;
+    const userIdForB: string | null = requestedUserId ?? null;
     let userIdResolved: string | null = userIdForB;
     if (!userIdResolved) {
       const { data: anyCtxRow } = await supabase
@@ -1610,7 +1610,7 @@ Deno.serve(async (req) => {
     const candidates = await scoreSessionCandidates(supabase);
 
     // 2) Sběr kontextu
-    const context = await gatherContext(supabase, body?.proofReviewId ?? body?.sessionReviewId ?? null);
+    const context = await gatherContext(supabase, body?.proofReviewId ?? body?.sessionReviewId ?? null, body?.userId ?? null);
 
     // 3) AI generování; playroom review payload musí vzniknout deterministicky i při selhání těžké syntézy.
     let durationMs = 0;
