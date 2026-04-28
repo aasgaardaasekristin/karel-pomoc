@@ -24,6 +24,7 @@ import {
 } from "../_shared/roleScopeClassifier.ts";
 import { classifyJungRelevance, shouldActivateJungOriginal } from "../_shared/jungTopicClassifier.ts";
 import { buildJungOriginalInjection } from "../_shared/jungOriginalInjection.ts";
+import { detectSafetyMention, redactedSafetyExcerpt, resolvePersistencePolicy } from "../_shared/appModePolicy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -717,7 +718,15 @@ serve(async (req) => {
   const { user, supabase: userClient } = authResult;
 
   try {
-    const { messages, conversationId, contextPrimeCache } = await req.json();
+    const { messages, conversationId, contextPrimeCache, mode_id, no_save } = await req.json();
+    const persistencePolicy = resolvePersistencePolicy({ mode_id: mode_id || "hana_osobni", no_save, mode: "childcare", didSubMode: "general" });
+    const lastUserMsgForSafety = [...(messages || [])].reverse().find((m: any) => m.role === "user");
+    const lastUserTextForSafety = typeof lastUserMsgForSafety?.content === "string"
+      ? lastUserMsgForSafety.content
+      : Array.isArray(lastUserMsgForSafety?.content)
+        ? (lastUserMsgForSafety.content.find((c: any) => c?.type === "text")?.text || "")
+        : "";
+    const safety = detectSafetyMention(lastUserTextForSafety);
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
@@ -838,7 +847,25 @@ serve(async (req) => {
         await writer.close();
         
         // ═══ STEP 4: Background episode creation ═══
-        if (fullResponse.length > 10) {
+        if (safety.matched) {
+          getServiceClient().from("karel_runtime_audit_logs").insert({
+            user_id: user.id,
+            function_name: "karel-hana-chat",
+            request_mode: "hana_osobni",
+            evaluation_status: "safety_mention_detected",
+            metadata: {
+              event_type: "safety_mention",
+              severity: safety.severity,
+              mode_id: persistencePolicy.mode_id,
+              no_save_context: persistencePolicy.no_save,
+              content_excerpt: persistencePolicy.no_save ? null : redactedSafetyExcerpt(lastUserTextForSafety),
+              signals: safety.signals,
+              action_taken: "safety_response_and_minimal_audit",
+            },
+          }).then(() => {}).catch((e: any) => console.warn("[hana-safety] audit failed:", e));
+        }
+
+        if (fullResponse.length > 10 && !persistencePolicy.no_save) {
           saveEpisodeInBackground(user.id, analysis, fullResponse, conversationId || null)
             .catch(e => console.error("Episode save failed:", e));
         }
@@ -847,7 +874,7 @@ serve(async (req) => {
         // 1. Classify role_scope of user message
         // 2. Store role_scope_meta into conversation (non-blocking)
         // 3. Route writeback with role_scope guard
-        if (fullResponse.length > 30) {
+        if (fullResponse.length > 30 && !persistencePolicy.no_save) {
           const lastUserMsg = (messages as any[]).filter((m: any) => m.role === "user").pop();
           const userTextHana = typeof lastUserMsg?.content === "string"
             ? lastUserMsg.content
