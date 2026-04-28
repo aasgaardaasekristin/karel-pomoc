@@ -679,7 +679,7 @@ async function loadLiveProgress(sb: any, planId: string) {
   const { data } = await sb
     .from("did_live_session_progress")
     .select(
-      "items, turns_by_block, artifacts_by_block, completed_blocks, total_blocks, finalized_reason, post_session_result, last_activity_at",
+      "items, turns_by_block, artifacts_by_block, completed_blocks, total_blocks, finalized_reason, post_session_result, last_activity_at, current_block_status, active_live_replan_id, live_replan_patch, reality_verification",
     )
     .eq("plan_id", planId)
     .maybeSingle();
