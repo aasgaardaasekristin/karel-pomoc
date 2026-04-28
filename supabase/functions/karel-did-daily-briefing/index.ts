@@ -29,6 +29,7 @@ import { selectPantryA, summarizePantryAForPrompt, type PantryASnapshot } from "
 import { readUnprocessedPantryB, markPantryBProcessed } from "../_shared/pantryB.ts";
 import { summarizeToolboxForPrompt } from "../_shared/therapeuticToolbox.ts";
 import { runGlobalDidEventIngestion } from "../_shared/didEventIngestion.ts";
+import { requireAuth } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1522,6 +1523,21 @@ Deno.serve(async (req) => {
 
     let body: any = {};
     try { body = await req.json(); } catch { /* GET / no body */ }
+    const authHeader = req.headers.get("Authorization") || "";
+    const isServiceCall = serviceKey && authHeader === `Bearer ${serviceKey}`;
+    let authenticatedUserId: string | null = null;
+    if (!isServiceCall) {
+      const authResult = await requireAuth(req);
+      if (authResult instanceof Response) return authResult;
+      authenticatedUserId = String((authResult as { user: any }).user?.id ?? "");
+    }
+    if (!isServiceCall && body?.userId && String(body.userId) !== authenticatedUserId) {
+      return new Response(JSON.stringify({ error: "user_scope_mismatch" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const scopedUserId = isServiceCall ? (body?.userId ?? null) : authenticatedUserId;
     const generationMethod = body?.method || "manual";
     const forceRegenerate = body?.force === true;
 
@@ -1607,6 +1623,7 @@ Deno.serve(async (req) => {
         .select("*")
         .eq("briefing_date", today)
         .eq("is_stale", false)
+        .eq("user_id", scopedUserId)
         .order("generated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -1623,7 +1640,7 @@ Deno.serve(async (req) => {
     const candidates = await scoreSessionCandidates(supabase);
 
     // 2) Sběr kontextu
-    const context = await gatherContext(supabase, body?.proofReviewId ?? body?.sessionReviewId ?? null, body?.userId ?? null);
+    const context = await gatherContext(supabase, body?.proofReviewId ?? body?.sessionReviewId ?? null, scopedUserId);
 
     // 3) AI generování; playroom review payload musí vzniknout deterministicky i při selhání těžké syntézy.
     let durationMs = 0;
@@ -1941,7 +1958,8 @@ Deno.serve(async (req) => {
       await supabase
         .from("did_daily_briefings")
         .update({ is_stale: true })
-        .eq("briefing_date", today);
+        .eq("briefing_date", today)
+        .eq("user_id", scopedUserId);
     }
 
     // 6) Insert nový briefing
@@ -1949,6 +1967,7 @@ Deno.serve(async (req) => {
       .from("did_daily_briefings")
       .insert({
         briefing_date: today,
+        user_id: scopedUserId,
         payload,
         proposed_session_part_id: proposedPartId,
         proposed_session_score: candidates[0]?.score || null,
