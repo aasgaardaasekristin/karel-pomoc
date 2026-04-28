@@ -997,6 +997,7 @@ async function gatherContext(supabase: any, proofReviewId?: string | null) {
     pantry_a_summary: pantryASummary,
     pantry_b_entries: pantryBEntries,
     event_ingestion_summary: eventIngestionSummary,
+    new_observations: (recentObsRes.data || []).filter((o: any) => o.source_ref && String(o.source_ref).startsWith("did_")),
     task_note_implications: pantryBEntries.filter((e: any) => e.source_kind === "therapist_task_note"),
     hana_personal_did_relevant_implications: pantryBEntries.filter((e: any) => e.source_kind === "hana_personal_ingestion"),
     live_replan_patches: pantryBEntries.filter((e: any) => e.source_kind === "live_session_progress" || e.source_kind === "live_session_reality_override"),
@@ -1367,6 +1368,7 @@ event_ingestion_summary: ${JSON.stringify({
   })}
 task_note_implications: ${JSON.stringify((context.task_note_implications ?? []).slice(0, 8))}
 hana_personal_did_relevant_implications: ${JSON.stringify((context.hana_personal_did_relevant_implications ?? []).slice(0, 8))}
+new_observations: ${JSON.stringify((context.new_observations ?? []).slice(0, 8))}
 live_replan_patches: ${JSON.stringify((context.live_replan_patches ?? []).slice(0, 8))}
 reality_override_events: ${JSON.stringify((context.reality_override_events ?? []).slice(0, 8))}
 blocked_or_failed_ingestion: ${JSON.stringify(context.blocked_or_failed_ingestion ?? [])}
@@ -1639,6 +1641,7 @@ Deno.serve(async (req) => {
     };
     payload.task_note_implications = context.task_note_implications ?? [];
     payload.hana_personal_did_relevant_implications = context.hana_personal_did_relevant_implications ?? [];
+    payload.new_observations = context.new_observations ?? [];
     payload.live_replan_patches = context.live_replan_patches ?? [];
     payload.reality_override_events = context.reality_override_events ?? [];
     payload.blocked_or_failed_ingestion = context.blocked_or_failed_ingestion ?? [];
