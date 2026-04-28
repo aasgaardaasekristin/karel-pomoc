@@ -210,6 +210,7 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
   // Drží se referenci na poslední aktivovaný bod, aby přímé výzvy v hlavním
   // chatu typu "napiš mi ty slova" mohly být přesměrovány na produce endpoint.
   const [activeBlock, setActiveBlock] = useState<{ index: number; text: string; detail?: string } | null>(null);
+  const [activeLiveReplan, setActiveLiveReplan] = useState<LiveReplanPatch | null>(null);
 
   // ── BLOCK WORKSPACE MODE (2026-04-23 hard reset) ──
   // Když je nastaven, celá obrazovka se přepne do dedikovaného pracovního
