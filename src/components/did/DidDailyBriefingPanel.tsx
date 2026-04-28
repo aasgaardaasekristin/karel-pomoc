@@ -1055,6 +1055,16 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
+      {p.daily_therapeutic_priority && (
+        <>
+          <NarrativeDivider />
+          <SectionHead>Dnešní terapeutická priorita</SectionHead>
+          <p className="text-[13px] leading-relaxed text-foreground/85 mt-2 whitespace-pre-line">
+            {p.daily_therapeutic_priority}
+          </p>
+        </>
+      )}
+
       {/* 3.5 Včerejší herna — samostatná vyhrazená sekce, nikdy nesmí splývat se sezením */}
       {yesterdayPlayroomReview && yesterdayPlayroomReview.held && (
         <>
@@ -1077,6 +1087,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             {(yesterdayPlayroomReview as any).recommendations_for_therapists && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro terapeutky</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).recommendations_for_therapists}</p></div>}
             {yesterdayPlayroomReview.implications_for_plan && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro další hernu</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{yesterdayPlayroomReview.implications_for_plan}</p></div>}
             {(yesterdayPlayroomReview as any).recommendations_for_next_session && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro další sezení</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).recommendations_for_next_session}</p></div>}
+            {(yesterdayPlayroomReview as any).spiritual_symbolics_safety_frame && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Bezpečné rámování duchovní symboliky</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).spiritual_symbolics_safety_frame}</p></div>}
             {((yesterdayPlayroomReview as any).detail_analysis_drive_url || (yesterdayPlayroomReview as any).practical_report_drive_url) && <p className="text-[11px] text-muted-foreground">Drive: {(yesterdayPlayroomReview as any).detail_analysis_drive_url ? "detailní analýza uložena" : "detail čeká"} · {(yesterdayPlayroomReview as any).practical_report_drive_url ? "praktický report uložen" : "report čeká"}</p>}
             {yesterdayPlayroomReview.detailed_analysis && (
               <details className="rounded-md border border-border/50 bg-background/35 p-2">
