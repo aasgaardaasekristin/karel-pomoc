@@ -873,19 +873,27 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
               </div>
             </div>
           )}
-          {isBriefingAskThread && askResolveResult && (
+          {isBriefingAskThread && activeThread?.isProcessed && askResolutionLoading && (
+            <div className="rounded-md border border-border/60 bg-muted/30 p-3 text-[12px] text-muted-foreground">
+              Načítám započítaný stav z databáze…
+            </div>
+          )}
+          {isBriefingAskThread && resolvedAskFeedback && (
             <div className="rounded-md border border-primary/25 bg-primary/5 p-3 space-y-2 text-[12px] text-foreground/80">
-              <div className="font-medium text-foreground">{askResolveResult.status_text || "Odpověď byla započítána."}</div>
-              {askResolveResult.decision?.decision && (
-                <div>Rozhodnutí: <span className="font-medium">{askResolveResult.decision.decision}</span></div>
+              <div className="font-medium text-foreground">{resolvedAskFeedback.statusText}</div>
+              {resolvedAskFeedback.loadedFromDb && (
+                <div className="text-muted-foreground">Stav je načtený z uloženého resolution záznamu.</div>
               )}
-              {Array.isArray(askResolveResult.program_diff?.changed_blocks) && askResolveResult.program_diff.changed_blocks.length > 0 && (
-                <div>Změněné bloky: {askResolveResult.program_diff.changed_blocks.slice(0, 6).join(", ")}</div>
+              {resolvedAskFeedback.decision && (
+                <div>Rozhodnutí: <span className="font-medium">{resolvedAskFeedback.decision}</span></div>
               )}
-              {askResolveResult.decision?.clinical_caution && (
+              {resolvedAskFeedback.changedBlocks.length > 0 && (
+                <div>Změněné bloky: {resolvedAskFeedback.changedBlocks.slice(0, 6).join(", ")}</div>
+              )}
+              {resolvedAskFeedback.clinicalCaution && (
                 <div>Doplněno: observační prvky místo diagnostických testů; závěry až po konkrétních odpovědích a review.</div>
               )}
-              {askResolveResult.decision?.requires_reapproval && (
+              {resolvedAskFeedback.requiresReapproval && (
                 <div>Stav: čeká na podpis Haničky a Káti.</div>
               )}
             </div>
