@@ -348,6 +348,22 @@ function isClinicalBridgeEligible(classification: DidEventClassification): boole
   return classification.clinical_relevance && !CHILD_CLINICAL_BLOCKED_EVIDENCE.has(classification.evidence_level);
 }
 
+function observationSourceType(event: NormalizedDidEvent): string {
+  if (event.source_kind === "therapist_task_note") return "task_feedback";
+  if (event.source_kind === "therapist_note" || event.source_kind === "briefing_ask_resolution") return "therapist_message";
+  if (event.source_kind === "playroom_progress") return "part_direct";
+  if (event.source_kind === "live_session_progress") return "session";
+  if (event.source_kind === "deliberation_event") return "meeting";
+  return "thread";
+}
+
+function observationEvidenceKind(classification: DidEventClassification): string {
+  if (classification.evidence_level === "hypothesis") return "INFERENCE";
+  if (classification.entry_kind === "plan_change") return "PLAN";
+  if (classification.evidence_level === "unknown") return "UNKNOWN";
+  return "FACT";
+}
+
 export async function createObservationIfNeeded(sb: SupabaseClient, event: NormalizedDidEvent, classification: DidEventClassification): Promise<{ observationId?: string | null; implicationId?: string | null }> {
   if (!isClinicalBridgeEligible(classification)) return {};
   const fact = `${classification.clinical_implication} Zdroj: ${event.source_ref}`.slice(0, 1200);
@@ -360,13 +376,13 @@ export async function createObservationIfNeeded(sb: SupabaseClient, event: Norma
   const evidence = evidenceMap[classification.evidence_level] ?? "I1";
   const { data: existing } = await sb.from("did_observations").select("id").eq("source_ref", event.source_ref).limit(1).maybeSingle();
   const observationId = existing?.id ?? (await sb.from("did_observations").insert({
-    source_type: event.source_kind,
+    source_type: observationSourceType(event),
     source_ref: event.source_ref,
     subject_type: classification.related_part_name ? "part" : "system",
     subject_id: classification.related_part_name || "global",
     fact,
     evidence_level: evidence,
-    evidence_kind: classification.evidence_level,
+    evidence_kind: observationEvidenceKind(classification),
     confidence: evidence === "D1" ? 0.9 : evidence === "D2" ? 0.7 : 0.4,
     time_horizon: classification.urgency === "crisis" ? "hours" : "0_14d",
     status: "active",
