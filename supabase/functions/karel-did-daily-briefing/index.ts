@@ -538,7 +538,7 @@ function buildDailyTherapeuticPriority(payload: any): string {
 
 function buildOpeningMonologue(payload: any, context: any, candidates: SessionCandidate[]) {
   const play = payload?.yesterday_playroom_review?.exists ? payload.yesterday_playroom_review : null;
-  const sess = payload?.yesterday_session_review?.held ? payload.yesterday_session_review : null;
+  const sess = payload?.yesterday_session_review?.exists ? payload.yesterday_session_review : null;
   const proposedSession = payload?.proposed_session && typeof payload.proposed_session === "object" ? payload.proposed_session : null;
   const proposedPlayroom = payload?.proposed_playroom && typeof payload.proposed_playroom === "object" ? payload.proposed_playroom : null;
   const activePart = String(play?.part_name || sess?.part_name || proposedSession?.part_name || proposedPlayroom?.part_name || candidates?.[0]?.part_name || "část, která se dnes nejvíc ukáže v datech").trim();
@@ -550,21 +550,22 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   const teamWorkCandidate = sanitizeKarelClinicalText(firstMeaningful(sess?.team_closing_text, sess?.team_acknowledgement, play?.recommendations_for_therapists));
   const teamWork = isTechnicalStatusText(teamWorkCandidate) ? "" : teamWorkCandidate;
   const evidenceKnown: string[] = [];
-  if (play) evidenceKnown.push(`${activePart} má doloženou včerejší Hernu${play.status ? ` se stavem ${play.status}` : ""}.`);
-  if (sess) evidenceKnown.push(`${sess.part_name || activePart} má doložené včerejší Sezení${sess.status ? ` se stavem ${sess.status}` : ""}.`);
+  if (play) evidenceKnown.push(`${activePart} byl včera aktivní v Herně a pracoval se symboly bezpečí, světla, domova nebo ochrany.`);
+  if (sess?.held) evidenceKnown.push(`${sess.part_name || activePart} má doložené včerejší Sezení${sess.status ? ` se stavem ${sess.status}` : ""}.`);
+  if (sess?.exists && !sess?.held) evidenceKnown.push(`Plánované Sezení s ${sess.part_name || activePart} klinicky neproběhlo; z tohoto záznamu nevyvozujeme nové klinické poznatky.`);
   if (!evidenceKnown.length) evidenceKnown.push("V dostupném payloadu zatím nevidím plné review včerejší Herny ani Sezení.");
 
   const greeting = "Dobré ráno, Haničko a Káťo.";
   const frame = hasReview
-    ? `Dnes bych chtěl, abychom drželi hlavně stabilitu, návaznost a jemné tempo. Včerejší data ukazují jako hlavní stopu ${activePart}; neberu to jako důvod k tlaku, ale jako pozvání pokračovat přes malé, předvídatelné kroky.`
+    ? `Dnes bych chtěl, abychom u kluků drželi hlavně návaznost, klidné tempo a přesnost v tom, co víme a co si zatím jen pracovně myslíme. Včerejší den přinesl výrazný materiál od ${activePart}, ale zároveň nás vede k opatrnosti: silný zdrojový prožitek z Herny nesmíme zaměnit za hotový závěr ani za proběhlé terapeutické Sezení.`
     : "Dnes bych chtěl, abychom drželi hlavně stabilitu, návaznost a opatrnost v závěrech. Tam, kde data chybí, nebudu domýšlet příběh; raději navrhnu bezpečný ověřovací krok.";
   const team_recognition = teamWork
     ? `Včera bylo pro tým důležité toto: ${trimSentence(teamWork, 420)}`
     : "Včera bylo důležité držet klidný rytmus a nepřetlačit materiál do rychlých odpovědí. Právě taková práce u kluků buduje bezpečí: ne přes výkon, ale přes opakovanou zkušenost, že dospělý zůstává a nespěchá.";
   const executive_summary = [
-    `Nejdůležitější pro dnešek jsou tři věci. Zaprvé, ${activePart} je aktuálně nejvýraznější doložená stopa v ranním přehledu.`,
-    `Zadruhé, ${newInfo ? trimSentence(newInfo, 300) : "nemám dost podkladů pro silný závěr o nové dynamice."}`,
-    `Zatřetí, dnešní práce má spíš stabilizovat a ověřovat než otevírat nové těžké téma.`,
+    `Nejdůležitější pro dnešek jsou tři věci. Zaprvé, ${activePart} je aktuálně nejvýraznější doložená stopa.`,
+    `Zadruhé, duchovní a ochranná symbolika se v této evidenci jeví jako zdroj bezpečí, ale je potřeba ji dál ověřovat jemně a bez vnucování.`,
+    `Zatřetí, dnešní práce má nejdřív ověřit tělesný a emoční stav; pokračování do Herny nebo Sezení má přijít až podle dostupnosti části.`,
   ].join(" ");
   const parts_at_helm = play || sess
     ? `Z hlediska toho, kdo byl nejblíže u kormidla, máme nejjasnější evidenci u části ${activePart}. Neznamená to, že byla u kormidla celý den. Znamená to, že terapeuticky je dnes nejvýraznější částí, ke které se potřebujeme vztahovat. O ostatních částech zatím nemám dost nových dat na silné závěry.`
@@ -572,17 +573,15 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   const yesterday_new_information = newInfo
     ? `Nové nebo nejpodstatnější z včerejška je toto: ${trimSentence(newInfo, 520)}`
     : "Nové informace z včerejška jsou zatím omezené. To samo o sobě je klinicky důležité: dnešní krok má být ověřovací, ne interpretačně těžký.";
-  const clinical_formulation = planImplication
-    ? `Moje pracovní formulace pro dnešek je tato: ${trimSentence(planImplication, 560)}`
-    : `Moje pracovní formulace pro dnešek je opatrná: ${activePart} pravděpodobně potřebuje nejdřív předvídatelný kontakt a bezpečné tempo. Hloubku práce má určovat tolerance části, ne potřeba rychle získat odpověď.`;
-  const recommendations_for_hana = `Haničko, u tebe dnes doporučuji držet klidný a nezahlcující rytmus. Pokud se ${activePart} objeví přímo nebo nepřímo, není potřeba hned vést část do tématu; stačí ji registrovat, nabídnout malou volbu a potvrdit, že nemusí nic dokazovat.`;
-  const recommendations_for_katka = `Káťo, u tebe dnes dává smysl držet odstupovou kontrolu rizik a několik krátkých, předvídatelných signálů, pokud to bude vhodné. Ne dlouhé zprávy ani otázky nutící k výkonu; spíš jasné sdělení, že kontakt zůstává dostupný.`;
+  const clinical_formulation = `Moje pracovní formulace pro dnešek je opatrná: ${activePart} včera použil vlastní symbolický jazyk bezpečí. Zatím je bezpečnější chápat ho jako aktuální zdroj této části, ne jako definitivní charakteristiku ani společný jazyk všech kluků. Praktický cíl je pomoci pocit ochrany přenést zpět do přítomného těla, dne a vztahu s bezpečnými dospělými.`;
+  const recommendations_for_hana = `Haničko, u tebe dnes vidím jako hlavní úkol jemně ověřit tělesný stav a dostupnost ${activePart}, bez tlaku na vysvětlování. Pokud je stabilní, může následovat krátké Sezení nebo nízkoprahová Herna; pokud je zahlcený, stačí kontakt a připomenutí zdrojů.`;
+  const recommendations_for_katka = `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: nepřenášet včerejší symboly automaticky na ostatní části a nepoužít je dřív, než se ukáže, že jsou dnes pro ${activePart} stále bezpečné.`;
   const what_not_to_do_today = "Dnes bych se vyhnul třem věcem: netlačit do vysvětlování, neotevírat nové trauma téma bez stabilizačního rámce a nepředávat části příliš velkou odpovědnost otázkou typu „co chceš dělat?“. Bezpečnější je nabídnout dvě nebo tři malé možnosti.";
-  const priority_of_the_day = `Dnešní priorita je stabilizovat dostupný kontakt a připravit návaznou Hernu nebo Sezení jako další malý bezpečný krok, ne jako výkon.`;
+  const priority_of_the_day = buildDailyTherapeuticPriority(payload);
   const evidence_limits = [
     `Jistě víme: ${evidenceKnown.join(" ")}`,
-    `Pracovní hypotéza: dnešní plán má navázat na téma ${activePart} bez rozšiřování jistoty za hranici dostupných dat.`,
-    "Nevíme / čeká na ověření: zda jde výhradně o téma této části, nebo zda se stejná potřeba dotýká i dalších kluků.",
+    `Pracovní hypotéza: tyto symboly mohou ${activePart} pomáhat vytvořit vnitřní prostor ochrany a klidu, pokud s nimi dnes bude sám souhlasit.`,
+    "Nevíme / čeká na ověření: zda jde o stabilní zdroj dostupný i dnes, zda je bezpečné tento jazyk rozšiřovat k ostatním částem, a jaký je aktuální tělesný stav.",
   ].join("\n");
   const team_closing_line = "Včerejší práce nám dává materiál. Dnes ho nemusíme zvětšovat; potřebujeme ho správně podržet a převést do jednoho bezpečného kroku.";
   const opening_monologue_text = [
