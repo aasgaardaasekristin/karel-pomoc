@@ -239,6 +239,11 @@ ANTI-FABRIKACE:
   napiš, že chybí záznam o průběhu / formálním ukončení; nesmíš tvrdit, že sezení
   bylo sotva začaté, přerušeno nebo neuskutečněno.
 - Pokud většina bodů programu proběhla, completion_status nesmí být abandoned.
+- Pokud liveProgress obsahuje LIVE_REPLAN_PATCH / reality override, rozliš tři vrstvy evidence:
+  1. therapist_factual_correction = faktický rámec od terapeutky, NENÍ klinický důkaz o části.
+  2. verified_external_fact = ověřená externí informace, NENÍ klinický důkaz o části.
+  3. child_response_to_event = vlastní slova, afekt, tělesná reakce nebo chování části; pouze to může být klinický materiál.
+- Nesmíš udělat závěr typu „externí událost uvízla → část se cítí uvězněná“. Smíš říct: „Událost byla faktickým rámcem; klinický význam lze posuzovat až podle reakce části.“
 
 TÓN:
 - Kultivovaná čeština. Konkrétně, klinicky, bez patosu.
