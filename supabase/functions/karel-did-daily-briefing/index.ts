@@ -433,6 +433,17 @@ const trimSentence = (value: unknown, max = 360): string => {
   return `${cut.slice(0, Math.max(cut.lastIndexOf("."), cut.lastIndexOf(";"), cut.lastIndexOf(","), 180)).trim()}…`;
 };
 
+const sanitizeKarelClinicalText = (value: unknown): string =>
+  cleanBlockText(value)
+    .replace(/DID\s+syst[eé]m/gi, "kluci")
+    .replace(/\bsyst[eé]mu\b/gi, "kluků")
+    .replace(/\bsyst[eé]m\b/gi, "kluci")
+    .replace(/\bklient(?:a|em|ovi|ů|i)?\b/gi, "kluci")
+    .trim();
+
+const isTechnicalStatusText = (value: unknown): boolean =>
+  /(t[eě][žz]k[áa]\s+synt[eé]za|fallback|bezpe[čc]n[ýy]\s+re[žz]im|technick|funk[čc]nost|v[šs]e\s+b[eě][žz][íi]|db review|payload|backend)/i.test(cleanBlockText(value));
+
 function buildOpeningMonologue(payload: any, context: any, candidates: SessionCandidate[]) {
   const play = payload?.yesterday_playroom_review?.exists ? payload.yesterday_playroom_review : null;
   const sess = payload?.yesterday_session_review?.held ? payload.yesterday_session_review : null;
@@ -440,11 +451,12 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   const proposedPlayroom = payload?.proposed_playroom && typeof payload.proposed_playroom === "object" ? payload.proposed_playroom : null;
   const activePart = String(play?.part_name || sess?.part_name || proposedSession?.part_name || proposedPlayroom?.part_name || candidates?.[0]?.part_name || "část, která se dnes nejvíc ukáže v datech").trim();
   const hasReview = Boolean(play || sess);
-  const playReport = firstMeaningful(play?.practical_report_text, play?.implications_for_part, play?.recommendations_for_therapists);
-  const sessionReport = firstMeaningful(sess?.practical_report_text, sess?.karel_summary, sess?.key_finding_about_part);
-  const newInfo = firstMeaningful(play?.implications_for_part, sess?.key_finding_about_part, playReport, sessionReport);
-  const planImplication = firstMeaningful(sess?.implications_for_plan, play?.recommendations_for_next_session, play?.recommendations_for_next_playroom, proposedSession?.why_today, proposedPlayroom?.why_this_part_today);
-  const teamWork = firstMeaningful(sess?.team_closing_text, sess?.team_acknowledgement, play?.recommendations_for_therapists);
+  const playReport = sanitizeKarelClinicalText(firstMeaningful(play?.practical_report_text, play?.implications_for_part, play?.recommendations_for_therapists));
+  const sessionReport = sanitizeKarelClinicalText(firstMeaningful(sess?.practical_report_text, sess?.karel_summary, sess?.key_finding_about_part));
+  const newInfo = sanitizeKarelClinicalText(firstMeaningful(play?.implications_for_part, sess?.key_finding_about_part, playReport, sessionReport));
+  const planImplication = sanitizeKarelClinicalText(firstMeaningful(sess?.implications_for_plan, play?.recommendations_for_next_session, play?.recommendations_for_next_playroom, proposedSession?.why_today, proposedPlayroom?.why_this_part_today));
+  const teamWorkCandidate = sanitizeKarelClinicalText(firstMeaningful(sess?.team_closing_text, sess?.team_acknowledgement, play?.recommendations_for_therapists));
+  const teamWork = isTechnicalStatusText(teamWorkCandidate) ? "" : teamWorkCandidate;
   const evidenceKnown: string[] = [];
   if (play) evidenceKnown.push(`${activePart} má doloženou včerejší Hernu${play.status ? ` se stavem ${play.status}` : ""}.`);
   if (sess) evidenceKnown.push(`${sess.part_name || activePart} má doložené včerejší Sezení${sess.status ? ` se stavem ${sess.status}` : ""}.`);
