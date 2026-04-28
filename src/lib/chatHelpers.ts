@@ -66,6 +66,20 @@ export const clearMessages = (mode: string) => {
   localStorage.removeItem(`${STORAGE_KEY_PREFIX}${mode}`);
 };
 
+export const clearNoHistoryChatStorage = () => {
+  try {
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith(STORAGE_KEY_PREFIX) || key === ACTIVE_MODE_KEY || key === "karel_did_submode" || key === "karel_did_context" || key === DID_DOCS_LOADED_KEY || key === DID_SESSION_ID_KEY) {
+        localStorage.removeItem(key);
+      }
+    });
+    for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {
+      const key = sessionStorage.key(i);
+      if (key?.startsWith("chat_draft:")) sessionStorage.removeItem(key);
+    }
+  } catch {}
+};
+
 export const markExplicitLogout = () => {
   try { sessionStorage.setItem(EXPLICIT_LOGOUT_KEY, String(Date.now())); } catch {}
 };
