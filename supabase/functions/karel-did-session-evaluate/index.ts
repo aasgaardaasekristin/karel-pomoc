@@ -1296,6 +1296,63 @@ ${tasksLines || "(žádné)"}
 `.trim();
 }
 
+async function insertPackageOnce(sb: any, row: any, force = false): Promise<string | null> {
+  const reviewId = String(row.metadata?.review_id ?? "");
+  let q = sb.from("did_pantry_packages").select("id,status").eq("source_id", row.source_id).eq("package_type", row.package_type);
+  if (reviewId) q = q.eq("metadata->>review_id", reviewId);
+  const { data: existing } = await q.limit(1);
+  if (existing?.length && !force) return existing[0].id;
+  if (existing?.length && force) await sb.from("did_pantry_packages").delete().eq("id", existing[0].id);
+  const { data, error } = await sb.from("did_pantry_packages").insert(row).select("id").single();
+  if (error) throw error;
+  return data?.id ?? null;
+}
+
+async function insertDriveWriteOnce(sb: any, row: any, dedupe: { reviewId?: string; contentType: string; target: string }, force = false): Promise<string | null> {
+  const marker = dedupe.reviewId ? `review_id=${dedupe.reviewId}` : `content_type=${dedupe.contentType}`;
+  const { data: existing } = await sb
+    .from("did_pending_drive_writes")
+    .select("id,status")
+    .eq("target_document", dedupe.target)
+    .ilike("content", `%${marker}%`)
+    .limit(1);
+  if (existing?.length && !force) return existing[0].id;
+  if (existing?.length && force) await sb.from("did_pending_drive_writes").delete().eq("id", existing[0].id);
+  const { data, error } = await sb.from("did_pending_drive_writes").insert(row).select("id").single();
+  if (error) throw error;
+  return data?.id ?? null;
+}
+
+function sessionDetailMarkdown(args: { text: string; plan: SessionPlan; reviewId?: string; lead: string; assistants: any[] }) {
+  return `## SEZENÍ — DETAILNÍ PROFESIONÁLNÍ ANALÝZA
+plan_id: ${args.plan.id}
+review_id: ${args.reviewId ?? "pending"}
+datum: ${args.plan.plan_date}
+část: ${args.plan.selected_part}
+vedla: ${args.lead}
+asistovali: ${args.assistants.length ? args.assistants.join(", ") : "Karel jako live asistent terapeutky"}
+
+${args.text}`;
+}
+
+function sessionPracticalMarkdown(args: { text: string; teamClosing: string; plan: SessionPlan; reviewId?: string; lead: string; assistants: any[] }) {
+  return `## SEZENÍ — PRAKTICKÝ REPORT PRO KARLŮV PŘEHLED
+plan_id: ${args.plan.id}
+review_id: ${args.reviewId ?? "pending"}
+datum: ${args.plan.plan_date}
+část: ${args.plan.selected_part}
+vedla: ${args.lead}
+asistovali: ${args.assistants.length ? args.assistants.join(", ") : "Karel jako live asistent terapeutky"}
+
+${args.text}
+
+## SEZENÍ — TÝMOVÉ UZAVŘENÍ
+plan_id: ${args.plan.id}
+review_id: ${args.reviewId ?? "pending"}
+
+${args.teamClosing}`;
+}
+
 async function persistEvaluation(
   sb: any,
   ctx: { plan: SessionPlan; existingSession: PartSessionRow | null; threads?: any[]; partCard?: any; partCardLookup?: PartCardLookup },
