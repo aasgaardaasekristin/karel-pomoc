@@ -587,9 +587,7 @@ Deno.serve(async (req: Request) => {
           .eq("source_ref", `${deliberationId}:approved_outcome`)
           .limit(1);
 
-        if (existingOutcome.data && existingOutcome.data.length > 0) {
-          throw new Error("approved_outcome_already_written");
-        }
+        if (existingOutcome.data && existingOutcome.data.length > 0) return;
 
         const outcome = buildDeliberationOutcomeReport(updated as Record<string, any>, bridgedPlanId, crisisEffects);
         const summary = `Schválená porada 2/2: ${updated.title} — ${outcome.therapyImplication}`.slice(0, 1800);
