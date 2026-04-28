@@ -918,7 +918,26 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const yesterdayReview = (p.yesterday_session_review && p.yesterday_session_review.held)
     ? p.yesterday_session_review
     : yesterdaySessionFallback;
-  const yesterdayPlayroomReview = yesterdayPlayroomFallback;
+  const backendPlayroom = p.yesterday_playroom_review?.exists ? p.yesterday_playroom_review : null;
+  const yesterdayPlayroomReview = backendPlayroom ? {
+    held: true,
+    mode: "playroom" as const,
+    part_name: backendPlayroom.part_name || undefined,
+    completion: backendPlayroom.status === "analyzed" ? "completed" as const : backendPlayroom.status === "partially_analyzed" ? "partial" as const : "abandoned" as const,
+    karel_summary: backendPlayroom.practical_report_text || backendPlayroom.fallback_reason || "Herna je evidovaná, ale praktický report zatím není hotový.",
+    key_finding_about_part: backendPlayroom.implications_for_part || "Význam pro část zatím čeká na playroom review.",
+    implications_for_plan: backendPlayroom.recommendations_for_next_playroom || "Další Herna má navázat až po dokončení review.",
+    team_acknowledgement: backendPlayroom.recommendations_for_therapists || "Karel drží Hernu odděleně od terapeutického sezení.",
+    practical_report: backendPlayroom.practical_report_text || null,
+    detailed_analysis: backendPlayroom.detailed_analysis_text || null,
+    sync_status: backendPlayroom.drive_sync_status || backendPlayroom.status || null,
+    status_label: backendPlayroom.status,
+    implications_for_system: backendPlayroom.implications_for_system,
+    recommendations_for_therapists: backendPlayroom.recommendations_for_therapists,
+    recommendations_for_next_session: backendPlayroom.recommendations_for_next_session,
+    detail_analysis_drive_url: backendPlayroom.detail_analysis_drive_url,
+    practical_report_drive_url: backendPlayroom.practical_report_drive_url,
+  } as YesterdayFallbackReview & Record<string, any> : yesterdayPlayroomFallback;
   const yesterdaySessionVisible = true;
   const hasProposed = !!p.proposed_session?.part_name;
   const proposedPartName = (p.proposed_session?.part_name ?? "").trim();
