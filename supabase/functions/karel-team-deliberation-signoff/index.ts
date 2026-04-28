@@ -63,6 +63,50 @@ function buildApprovedSessionPlanMarkdown(updated: Record<string, any>) {
   ].filter(Boolean).join("\n");
 }
 
+function buildDeliberationOutcomeReport(updated: Record<string, any>, bridgedPlanId: string | null, crisisEffects: Record<string, any>) {
+  const synth = updated.karel_synthesis && typeof updated.karel_synthesis === "object" ? updated.karel_synthesis as Record<string, any> : {};
+  const subjectParts = Array.isArray(updated.subject_parts) ? updated.subject_parts.filter(Boolean).join(", ") : "";
+  const programBlocks = Array.isArray(updated.program_draft) && updated.program_draft.length > 0
+    ? updated.program_draft
+    : Array.isArray(updated.agenda_outline) ? updated.agenda_outline : [];
+  const finalSummary = String(updated.final_summary ?? "").trim();
+  const nextStep = String(synth.next_step ?? "").trim();
+  const keyInsights = Array.isArray(synth.key_insights) ? synth.key_insights.map((x: any) => String(x)).filter(Boolean) : [];
+  const riskSignals = Array.isArray(synth.risk_signals) ? synth.risk_signals.map((x: any) => String(x)).filter(Boolean) : [];
+  const protectiveSignals = Array.isArray(synth.protective_signals) ? synth.protective_signals.map((x: any) => String(x)).filter(Boolean) : [];
+  const programSummary = programBlocks.slice(0, 6).map((b: any, i: number) => {
+    const label = String(b?.block ?? b?.title ?? "").trim();
+    const detail = String(b?.detail ?? b?.clinical_intent ?? b?.playful_form ?? "").trim();
+    return label ? `${i + 1}. ${label}${detail ? ` — ${detail.slice(0, 260)}` : ""}` : "";
+  }).filter(Boolean);
+
+  const therapyImplication = finalSummary || nextStep || (programSummary.length ? `Schválený program: ${programSummary.join("; ")}` : "Porada byla schválena 2/2 a je závazným vstupem pro další vedení.");
+  const teamImplication = updated.deliberation_type === "crisis"
+    ? "Tým musí dál postupovat podle krizové syntézy, sledovat rizikové a ochranné signály a navázat doporučeným dalším krokem."
+    : "Tým bere schválený závěr jako platný rámec pro další práci a ranní briefing ho musí zohlednit jako závazné pozadí.";
+
+  const reportMd = [
+    `## Výsledek schválené porady: ${updated.title}`,
+    `- Stav: schváleno 2/2 (Hanička + Káťa)`,
+    `- Typ: ${updated.deliberation_type}`,
+    subjectParts ? `- Dotčené části: ${subjectParts}` : "",
+    bridgedPlanId ? `- Navázaný plán sezení: ${bridgedPlanId}` : "",
+    "",
+    `### Co z porady závazně plyne pro terapii`,
+    therapyImplication,
+    "",
+    `### Co z porady plyne pro terapeutický tým`,
+    teamImplication,
+    nextStep ? `\n### Další krok\n${nextStep}` : "",
+    keyInsights.length ? `\n### Klíčové vhledy\n${keyInsights.map((x) => `- ${x}`).join("\n")}` : "",
+    riskSignals.length ? `\n### Rizikové signály\n${riskSignals.map((x) => `- ${x}`).join("\n")}` : "",
+    protectiveSignals.length ? `\n### Ochranné signály\n${protectiveSignals.map((x) => `- ${x}`).join("\n")}` : "",
+    programSummary.length ? `\n### Schválený program / dohoda\n${programSummary.map((x) => `- ${x}`).join("\n")}` : "",
+  ].filter(Boolean).join("\n");
+
+  return { reportMd, therapyImplication, teamImplication, nextStep, keyInsights, riskSignals, protectiveSignals, crisisEffects };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
