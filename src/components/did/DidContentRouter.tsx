@@ -338,11 +338,62 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
   }, [didSubMode, activeThread?.partName, crisisCards]);
   const [askResolveBusy, setAskResolveBusy] = useState<"apply" | "close" | null>(null);
   const [askResolveResult, setAskResolveResult] = useState<any | null>(null);
+  const [askResolutionRecord, setAskResolutionRecord] = useState<any | null>(null);
+  const [askResolutionLoading, setAskResolutionLoading] = useState(false);
   const isBriefingAskThread = activeThread?.workspaceType === "ask_hanka" || activeThread?.workspaceType === "ask_kata";
   const hasTherapistAnswer = React.useMemo(
     () => messages.some((m) => m.role === "user" && String(m.content ?? "").trim().length > 0),
     [messages],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPersistedAskResolution = async () => {
+      if (!activeThread?.id || !isBriefingAskThread || !activeThread.isProcessed) {
+        setAskResolutionRecord(null);
+        setAskResolutionLoading(false);
+        return;
+      }
+      setAskResolutionLoading(true);
+      const { data, error } = await supabase
+        .from("briefing_ask_resolutions" as any)
+        .select("id, decision, confidence, requires_reapproval, clinical_caution, evidence_level, resolution_status, program_diff, session_params_diff, applied_to_deliberation_id, pantry_entry_id, drive_package_id, drive_write_id, processed_at")
+        .eq("thread_id", activeThread.id)
+        .order("processed_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        console.error("[DidContentRouter] persisted briefing ask resolution load failed:", error);
+        setAskResolutionRecord(null);
+      } else {
+        setAskResolutionRecord(data ?? null);
+      }
+      setAskResolutionLoading(false);
+    };
+    loadPersistedAskResolution();
+    return () => { cancelled = true; };
+  }, [activeThread?.id, activeThread?.isProcessed, isBriefingAskThread]);
+
+  const resolvedAskFeedback = React.useMemo(() => {
+    const source = askResolveResult || askResolutionRecord;
+    if (!source) return null;
+    const programDiff = source.program_diff ?? {};
+    const changedBlocks = Array.isArray(programDiff.changed_blocks)
+      ? programDiff.changed_blocks
+      : Array.isArray(programDiff.after)
+        ? programDiff.after.map((block: any) => block?.block).filter(Boolean)
+        : [];
+    return {
+      statusText: source.status_text || (source.resolution_status === "applied_to_program" ? "Odpověď byla započítána do programu." : "Odpověď byla zpracována."),
+      decision: source.decision?.decision || source.decision,
+      changedBlocks,
+      clinicalCaution: Boolean(source.decision?.clinical_caution ?? source.clinical_caution),
+      requiresReapproval: Boolean(source.decision?.requires_reapproval ?? source.requires_reapproval),
+      loadedFromDb: !askResolveResult && Boolean(askResolutionRecord?.id),
+    };
+  }, [askResolveResult, askResolutionRecord]);
 
   const resolveBriefingAsk = async (resolutionMode: "apply_to_program" | "close_no_change") => {
     if (!activeThread || !isBriefingAskThread || askResolveBusy) return;
@@ -363,6 +414,7 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
       if (!response.ok) throw new Error(data?.error || "Započítání odpovědi selhalo.");
       setActiveThread((prev) => prev && prev.id === activeThread.id ? { ...prev, isProcessed: true } : prev);
       setAskResolveResult(data);
+      setAskResolutionRecord(data?.resolution ?? data ?? null);
       toast.success(data?.status_text || "Briefingový bod byl zpracován s auditní stopou.");
       if (data?.deliberation?.id) {
         try { sessionStorage.setItem("karel_open_deliberation_id", data.deliberation.id); } catch { /* ignore */ }
