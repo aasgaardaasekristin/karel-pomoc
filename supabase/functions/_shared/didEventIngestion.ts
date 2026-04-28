@@ -1,0 +1,623 @@
+/**
+ * didEventIngestion.ts — centrální sběr DID-relevantních událostí.
+ *
+ * Cíl: převést vstupy z různých povrchů na normalizované události,
+ * klasifikovat je s důkazovou disciplínou a routovat zpracovaný význam
+ * do operační DB vrstvy. Drive zůstává audit/archive výstup, ne ranní
+ * source-of-truth.
+ */
+
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { encodeGovernedWrite } from "./documentWriteEnvelope.ts";
+import { appendPantryB, type PantryBEntryKind, type PantryBSourceKind, type PantryBDestination } from "./pantryB.ts";
+
+type IngestionStatus = "captured" | "classified" | "routed" | "skipped" | "failed" | "duplicate";
+type EvidenceLevel =
+  | "direct_child_evidence"
+  | "therapist_observation_D2"
+  | "therapist_factual_correction"
+  | "external_fact"
+  | "technical_event"
+  | "hypothesis"
+  | "admin_note"
+  | "unknown";
+
+export interface NormalizedDidEvent {
+  user_id: string;
+  source_table: string;
+  source_kind: PantryBSourceKind;
+  source_ref: string;
+  source_hash: string;
+  source_id?: string | null;
+  message_id?: string | null;
+  occurred_at: string;
+  author_role?: string | null;
+  author_name?: string | null;
+  source_surface?: string | null;
+  raw_excerpt: string;
+  related_part_name?: string | null;
+  context_type?: string | null;
+  evidence_level?: EvidenceLevel;
+  event_kind?: string | null;
+}
+
+export interface DidEventClassification {
+  entry_kind: PantryBEntryKind | "skip";
+  evidence_level: EvidenceLevel;
+  clinical_implication: string;
+  operational_implication: string;
+  recommended_action: string;
+  what_not_to_conclude: string;
+  action_required: boolean;
+  requires_human_review: boolean;
+  include_in_daily_briefing: boolean;
+  include_in_next_session_plan: boolean;
+  include_in_next_playroom_plan: boolean;
+  write_to_drive: boolean;
+  related_part_name?: string | null;
+  urgency: "low" | "normal" | "high" | "crisis";
+  clinical_relevance: boolean;
+  operational_relevance: boolean;
+  skip_reason?: string;
+}
+
+export interface IngestionResult {
+  source_ref: string;
+  status: IngestionStatus;
+  log_id?: string;
+  pantry_entry_id?: string | null;
+  observation_id?: string | null;
+  implication_id?: string | null;
+  task_id?: string | null;
+  drive_package_id?: string | null;
+  drive_write_id?: string | null;
+  reason?: string;
+}
+
+export interface IngestionSummary {
+  processed_count: number;
+  routed_to_pantry_count: number;
+  observation_count: number;
+  implication_count: number;
+  task_count: number;
+  drive_package_count: number;
+  skipped_count: number;
+  failed_count: number;
+  duplicate_count: number;
+  blocked_count: number;
+  important_sources: string[];
+  blocked_sources: string[];
+  missing_sources: string[];
+  results: IngestionResult[];
+}
+
+const SUPPORTED_SOURCES = [
+  "therapist_task_note",
+  "therapist_note",
+  "hana_personal_ingestion",
+  "did_thread_ingestion",
+  "live_session_progress",
+  "playroom_progress",
+  "briefing_ask_resolution",
+  "deliberation_event",
+  "crisis_safety_event",
+];
+
+function stableHash(input: string): string {
+  let hash = 5381;
+  for (let i = 0; i < input.length; i++) hash = ((hash << 5) + hash + input.charCodeAt(i)) >>> 0;
+  return hash.toString(16).padStart(8, "0");
+}
+
+function compactText(value: unknown, max = 1200): string {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function hasAny(text: string, needles: RegExp[]) {
+  return needles.some((re) => re.test(text));
+}
+
+function inferPartName(text: string, fallback?: string | null): string | null {
+  if (fallback && fallback.trim()) return fallback.trim();
+  const match = text.match(/\b(?:Tundrupek|Timmy|Arthur|Maru(?:š|s)ka|Marianna|Aneta|Eli(?:š|s)ka|Tom(?:á|a)(?:š|s))\b/i);
+  return match?.[0] ?? null;
+}
+
+export function normalizeEvent(input: Omit<NormalizedDidEvent, "source_hash"> & { source_hash?: string }): NormalizedDidEvent {
+  const raw = compactText(input.raw_excerpt, 1600);
+  const sourceHash = input.source_hash || stableHash(`${input.source_ref}|${raw}`);
+  return {
+    ...input,
+    raw_excerpt: raw,
+    source_hash: sourceHash,
+    related_part_name: inferPartName(raw, input.related_part_name),
+  };
+}
+
+export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassification {
+  const text = event.raw_excerpt.toLowerCase();
+  const sourceKind = event.source_kind;
+  const isChild = event.author_role === "child" || sourceKind === "playroom_progress";
+  const isTechnical = sourceKind === "live_session_progress" && hasAny(text, [/replan|override|paused|stop|zastav/i]);
+  const isFactualCorrection = hasAny(text, [/skutečn|reáln|faktick|odkaz|url|extern/i]);
+  const isRisk = hasAny(text, [/rizik|kriz|sebepo|ubl[ií]žit|nebezpe|stop sign[aá]l|disoci/i]);
+  const isTask = hasAny(text, [/úkol|ukol|domluv|zařiď|zarid|follow[- ]?up|ověř|over|připomeň|pripomen/i]);
+  const isPlan = hasAny(text, [/pl[aá]n|program|zm[eě]na|příště|priste|sezen[ií]|herna|blok/i]);
+  const isClinical = hasAny(text, [/část|cast|kluci|tundrupek|timmy|arthur|úzkost|uzkost|strach|pl[aá]č|tělo|telo|afekt|reakc|potřeb|potreb|bezpe/i]);
+  const isAdminOnly = hasAny(text, [/technick|login|tlač[ií]tko|tlacitko|chyba ui|export|soubor/i]) && !isClinical && !isRisk;
+
+  if (!event.raw_excerpt || event.raw_excerpt.length < 8) {
+    return skipped("empty_or_too_short", event);
+  }
+  if (isAdminOnly) {
+    return {
+      ...skipped("admin_only_no_did_relevance", event),
+      entry_kind: "admin_note",
+      evidence_level: "admin_note",
+      operational_relevance: true,
+    };
+  }
+
+  const evidence_level: EvidenceLevel = isChild
+    ? "direct_child_evidence"
+    : isFactualCorrection
+      ? "therapist_factual_correction"
+      : isTechnical
+        ? "technical_event"
+        : sourceKind === "therapist_task_note" || sourceKind === "therapist_note"
+          ? "therapist_observation_D2"
+          : isClinical
+            ? "hypothesis"
+            : "unknown";
+
+  const entry_kind: PantryBEntryKind = isRisk
+    ? "risk"
+    : isTask
+      ? "followup_need"
+      : isPlan || isTechnical
+        ? "plan_change"
+        : isClinical || isChild
+          ? "observation"
+          : "conclusion";
+
+  const clinicalAllowed = evidence_level === "direct_child_evidence" || evidence_level === "therapist_observation_D2" || evidence_level === "hypothesis";
+  const clinical_implication = isFactualCorrection
+    ? "Faktický rámec od terapeutky/externí informace upravuje práci v realitě, ale není klinickým důkazem o části."
+    : clinicalAllowed
+      ? `Z události plyne pracovní klinický signál k ${event.related_part_name || "části"}; validitu je nutné držet podle zdroje evidence.`
+      : "Událost má hlavně operační význam; klinický závěr nelze bezpečně dělat bez přímé reakce části.";
+
+  return {
+    entry_kind,
+    evidence_level,
+    clinical_implication,
+    operational_implication: isPlan || isTask || isTechnical
+      ? "Zohlednit v nejbližším plánování, briefingu nebo follow-upu."
+      : "Zařadit do denního kontextu, pokud se potvrdí relevance pro dnešní vedení.",
+    recommended_action: isFactualCorrection
+      ? "Držet realitu → emoci → potřebu → bezpečí; zaznamenat vlastní slova a reakci části zvlášť."
+      : isRisk
+        ? "Označit jako rizikový signál a vyžádat lidskou revizi."
+        : "Použít jako zpracovaný vstup v dalším Karlově přehledu; neukládat surový text mimo původní zdroj.",
+    what_not_to_conclude: isFactualCorrection
+      ? "Neuzavírat, že externí událost je projekce nebo diagnostický signál bez přímého materiálu části."
+      : "Nedělat definitivní závěr bez opakované nebo přímé evidence.",
+    action_required: isRisk || isTask || isPlan || isTechnical,
+    requires_human_review: isRisk || evidence_level === "hypothesis",
+    include_in_daily_briefing: isClinical || isRisk || isTask || isPlan || isTechnical || isFactualCorrection,
+    include_in_next_session_plan: isClinical || isRisk || isPlan,
+    include_in_next_playroom_plan: isChild || sourceKind === "playroom_progress" || isFactualCorrection,
+    write_to_drive: isRisk || isPlan || sourceKind === "briefing_ask_resolution" || sourceKind === "deliberation_event",
+    related_part_name: event.related_part_name,
+    urgency: isRisk ? "crisis" : isTask || isPlan || isTechnical ? "high" : isClinical ? "normal" : "low",
+    clinical_relevance: isClinical || isChild || isRisk,
+    operational_relevance: isTask || isPlan || isTechnical || isFactualCorrection || sourceKind === "briefing_ask_resolution",
+  };
+}
+
+function skipped(reason: string, event: NormalizedDidEvent): DidEventClassification {
+  return {
+    entry_kind: "skip",
+    evidence_level: event.evidence_level ?? "unknown",
+    clinical_implication: "",
+    operational_implication: "",
+    recommended_action: "",
+    what_not_to_conclude: "",
+    action_required: false,
+    requires_human_review: false,
+    include_in_daily_briefing: false,
+    include_in_next_session_plan: false,
+    include_in_next_playroom_plan: false,
+    write_to_drive: false,
+    related_part_name: event.related_part_name,
+    urgency: "low",
+    clinical_relevance: false,
+    operational_relevance: false,
+    skip_reason: reason,
+  };
+}
+
+export async function dedupeBySourceRefAndHash(sb: SupabaseClient, event: NormalizedDidEvent): Promise<{ duplicate: boolean; logId?: string }> {
+  const { data, error } = await sb
+    .from("did_event_ingestion_log")
+    .select("id,status")
+    .eq("user_id", event.user_id)
+    .eq("source_ref", event.source_ref)
+    .eq("source_hash", event.source_hash)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.id ? { duplicate: true, logId: data.id } : { duplicate: false };
+}
+
+async function insertLog(sb: SupabaseClient, event: NormalizedDidEvent, classification: DidEventClassification, status: IngestionStatus) {
+  const { data, error } = await sb.from("did_event_ingestion_log").insert({
+    user_id: event.user_id,
+    source_table: event.source_table,
+    source_kind: event.source_kind,
+    source_ref: event.source_ref,
+    source_hash: event.source_hash,
+    source_id: event.source_id ?? null,
+    message_id: event.message_id ?? null,
+    occurred_at: event.occurred_at,
+    processed_at: status === "skipped" ? new Date().toISOString() : null,
+    processed_by: status === "skipped" ? "did-event-ingestion" : null,
+    status,
+    classification_json: classification,
+    event_kind: classification.entry_kind,
+    evidence_level: classification.evidence_level,
+    related_part_name: classification.related_part_name ?? event.related_part_name ?? null,
+    author_role: event.author_role ?? null,
+    author_name: event.author_name ?? null,
+    source_surface: event.source_surface ?? null,
+    raw_excerpt: event.raw_excerpt,
+    clinical_relevance: classification.clinical_relevance,
+    operational_relevance: classification.operational_relevance,
+  }).select("id").single();
+  if (error) throw error;
+  return data.id as string;
+}
+
+export async function createPantryEntry(sb: SupabaseClient, event: NormalizedDidEvent, classification: DidEventClassification) {
+  if (classification.entry_kind === "skip" || !classification.include_in_daily_briefing) return null;
+  const destinations = new Set<PantryBDestination>(["briefing_input"]);
+  if (classification.action_required || classification.entry_kind === "followup_need" || classification.entry_kind === "task") destinations.add("did_therapist_tasks");
+  if (classification.clinical_relevance && classification.evidence_level !== "therapist_factual_correction" && classification.evidence_level !== "external_fact") destinations.add("did_implications");
+  const pantry = await appendPantryB(sb, {
+    user_id: event.user_id,
+    entry_kind: classification.entry_kind as PantryBEntryKind,
+    source_kind: event.source_kind,
+    source_ref: event.source_ref,
+    summary: buildSummary(event, classification),
+    detail: {
+      evidence_level: classification.evidence_level,
+      clinical_implication: classification.clinical_implication,
+      operational_implication: classification.operational_implication,
+      recommended_action: classification.recommended_action,
+      what_not_to_conclude: classification.what_not_to_conclude,
+      action_required: classification.action_required,
+      requires_human_review: classification.requires_human_review,
+      include_in_next_session_plan: classification.include_in_next_session_plan,
+      include_in_next_playroom_plan: classification.include_in_next_playroom_plan,
+      source_trace: {
+        source_table: event.source_table,
+        source_kind: event.source_kind,
+        source_id: event.source_id ?? null,
+        message_id: event.message_id ?? null,
+        source_ref: event.source_ref,
+        source_hash: event.source_hash,
+      },
+      privacy_note: event.source_kind === "hana_personal_ingestion" ? "Raw osobní obsah zůstává pouze v původním vlákně; do spíže jde zpracovaná implikace." : undefined,
+    },
+    intended_destinations: Array.from(destinations),
+    related_part_name: classification.related_part_name ?? undefined,
+    related_therapist: event.author_role === "kata" ? "kata" : event.author_role === "hanka" ? "hanka" : undefined,
+  });
+  return pantry?.id ?? null;
+}
+
+function buildSummary(event: NormalizedDidEvent, classification: DidEventClassification): string {
+  const part = classification.related_part_name || event.related_part_name;
+  const prefix = part ? `${part}: ` : "";
+  if (classification.evidence_level === "therapist_factual_correction") {
+    return `${prefix}faktická korekce reality má přednost před původním plánem; držet evidence discipline.`.slice(0, 1000);
+  }
+  return `${prefix}${classification.operational_implication || classification.clinical_implication || event.raw_excerpt}`.slice(0, 1000);
+}
+
+export async function createObservationIfNeeded(sb: SupabaseClient, event: NormalizedDidEvent, classification: DidEventClassification): Promise<{ observationId?: string | null; implicationId?: string | null }> {
+  if (!classification.clinical_relevance) return {};
+  if (classification.evidence_level === "therapist_factual_correction" || classification.evidence_level === "external_fact" || classification.evidence_level === "technical_event") return {};
+  const fact = `${classification.clinical_implication} Zdroj: ${event.source_ref}`.slice(0, 1200);
+  const evidenceMap: Record<string, string> = {
+    direct_child_evidence: "D1",
+    therapist_observation_D2: "D2",
+    hypothesis: "H1",
+    unknown: "I1",
+  };
+  const evidence = evidenceMap[classification.evidence_level] ?? "I1";
+  const { data: existing } = await sb.from("did_observations").select("id").eq("source_ref", event.source_ref).limit(1).maybeSingle();
+  const observationId = existing?.id ?? (await sb.from("did_observations").insert({
+    source_type: event.source_kind,
+    source_ref: event.source_ref,
+    subject_type: classification.related_part_name ? "part" : "system",
+    subject_id: classification.related_part_name || "global",
+    fact,
+    evidence_level: evidence,
+    evidence_kind: classification.evidence_level,
+    confidence: evidence === "D1" ? 0.9 : evidence === "D2" ? 0.7 : 0.4,
+    time_horizon: classification.urgency === "crisis" ? "hours" : "0_14d",
+    status: "active",
+    needs_verification: classification.requires_human_review,
+  }).select("id").single()).data?.id;
+
+  let implicationId: string | null = null;
+  if (observationId && classification.clinical_implication) {
+    const { data: existingImp } = await sb.from("did_implications").select("id").eq("observation_id", observationId).limit(1).maybeSingle();
+    if (existingImp?.id) implicationId = existingImp.id;
+    else {
+      const { data: imp } = await sb.from("did_implications").insert({
+        observation_id: observationId,
+        impact_type: classification.urgency === "crisis" ? "risk" : classification.action_required ? "immediate_plan" : "context_only",
+        destinations: [
+          classification.include_in_next_session_plan ? "next_session_plan" : "daily_briefing",
+          classification.include_in_next_playroom_plan ? "next_playroom_plan" : "briefing_context",
+        ],
+        implication_text: classification.clinical_implication.slice(0, 1200),
+        status: "active",
+      }).select("id").single();
+      implicationId = imp?.id ?? null;
+    }
+  }
+  return { observationId: observationId ?? null, implicationId };
+}
+
+export async function createTaskIfNeeded(sb: SupabaseClient, event: NormalizedDidEvent, classification: DidEventClassification): Promise<string | null> {
+  if (!classification.action_required || classification.entry_kind === "risk") return null;
+  const marker = `did_event_ingestion:${event.source_ref}:${event.source_hash}`;
+  const { data: existing } = await sb.from("did_therapist_tasks").select("id").ilike("note", `%${marker}%`).limit(1).maybeSingle();
+  if (existing?.id) return existing.id;
+  const assigned = event.author_role === "kata" ? "kata" : event.author_role === "hanka" ? "hanka" : "both";
+  const { data, error } = await sb.from("did_therapist_tasks").insert({
+    user_id: event.user_id,
+    task: classification.recommended_action.slice(0, 500),
+    assigned_to: assigned,
+    status: "pending",
+    priority: classification.urgency === "high" || classification.urgency === "crisis" ? "high" : "normal",
+    source: "did_event_ingestion",
+    category: classification.entry_kind,
+    note: JSON.stringify({ marker, source_ref: event.source_ref, evidence_level: classification.evidence_level, related_part_name: classification.related_part_name ?? null }),
+  }).select("id").single();
+  if (error) throw error;
+  return data?.id ?? null;
+}
+
+export async function createDrivePackageIfNeeded(sb: SupabaseClient, event: NormalizedDidEvent, classification: DidEventClassification): Promise<{ packageId?: string | null; writeId?: string | null }> {
+  if (!classification.write_to_drive) return {};
+  const target = chooseDriveTarget(event, classification);
+  if (!target) return {};
+  const marker = `did_event_ingestion:${event.source_ref}:${event.source_hash}`;
+  const content = `<!-- ${marker} -->\n\n### Zpracovaná událost: ${event.source_kind}\n\n**Evidence:** ${classification.evidence_level}\n**Zdroj:** ${event.source_ref}\n\n${buildSummary(event, classification)}\n\n**Doporučený krok:** ${classification.recommended_action}\n\n**Co neuzavírat:** ${classification.what_not_to_conclude}`;
+  const { data: existingPkg } = await sb.from("did_pantry_packages").select("id").eq("source_table", "did_event_ingestion_log").eq("source_id", marker).limit(1).maybeSingle();
+  if (existingPkg?.id) return { packageId: existingPkg.id };
+  const { data: pkg, error: pkgErr } = await sb.from("did_pantry_packages").insert({
+    user_id: event.user_id,
+    package_type: "event_ingestion_audit",
+    source_id: marker,
+    source_table: "did_event_ingestion_log",
+    content_md: content,
+    drive_target_path: target,
+    metadata: { source_ref: event.source_ref, source_hash: event.source_hash, source_kind: event.source_kind, evidence_level: classification.evidence_level },
+    status: "pending_drive",
+  }).select("id").single();
+  if (pkgErr) throw pkgErr;
+
+  const governed = encodeGovernedWrite(content, {
+    source_type: "did_event_ingestion",
+    source_id: event.source_ref,
+    content_type: target.includes("05E") ? "team_decision_log" : target.includes("05D") ? "playroom_log" : target.includes("05C_SEZENI") ? "session_log" : "daily_plan",
+    subject_type: classification.related_part_name ? "part" : "system",
+    subject_id: classification.related_part_name || "global",
+    payload_fingerprint: event.source_hash,
+  });
+  const { data: existingWrite } = await sb.from("did_pending_drive_writes").select("id").eq("target_document", target).ilike("content", `%${marker}%`).limit(1).maybeSingle();
+  if (existingWrite?.id) return { packageId: pkg?.id ?? null, writeId: existingWrite.id };
+  const { data: write, error: writeErr } = await sb.from("did_pending_drive_writes").insert({
+    user_id: event.user_id,
+    target_document: target,
+    content: governed,
+    write_type: "append",
+    priority: classification.urgency === "crisis" ? "high" : "normal",
+    status: "pending",
+  }).select("id").single();
+  if (writeErr) throw writeErr;
+  await sb.from("did_pantry_packages").update({ metadata: { source_ref: event.source_ref, source_hash: event.source_hash, pending_drive_write_id: write?.id ?? null } }).eq("id", pkg.id);
+  return { packageId: pkg?.id ?? null, writeId: write?.id ?? null };
+}
+
+function chooseDriveTarget(event: NormalizedDidEvent, classification: DidEventClassification): string | null {
+  if (event.source_kind === "deliberation_event" || event.source_kind === "briefing_ask_resolution") return "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG";
+  if (event.source_kind === "playroom_progress") return "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG";
+  if (event.source_kind === "live_session_progress") return "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG";
+  if (classification.related_part_name && classification.clinical_relevance && classification.evidence_level !== "therapist_factual_correction") return `KARTA_${classification.related_part_name.toUpperCase()}`;
+  return "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN";
+}
+
+export async function markIngestionProcessed(sb: SupabaseClient, logId: string, status: IngestionStatus, patch: Record<string, unknown> = {}) {
+  await sb.from("did_event_ingestion_log").update({
+    status,
+    processed_at: new Date().toISOString(),
+    processed_by: "did-event-ingestion",
+    ...patch,
+  }).eq("id", logId);
+}
+
+export async function routeEvent(sb: SupabaseClient, eventInput: Omit<NormalizedDidEvent, "source_hash"> & { source_hash?: string }): Promise<IngestionResult> {
+  const event = normalizeEvent(eventInput);
+  const dedupe = await dedupeBySourceRefAndHash(sb, event);
+  if (dedupe.duplicate) return { source_ref: event.source_ref, status: "duplicate", log_id: dedupe.logId, reason: "source_ref_source_hash_seen" };
+  const classification = classifyDidRelevance(event);
+  const logId = await insertLog(sb, event, classification, classification.entry_kind === "skip" ? "skipped" : "classified");
+  if (classification.entry_kind === "skip") return { source_ref: event.source_ref, status: "skipped", log_id: logId, reason: classification.skip_reason };
+  try {
+    const pantryEntryId = await createPantryEntry(sb, event, classification);
+    const observation = await createObservationIfNeeded(sb, event, classification);
+    const taskId = await createTaskIfNeeded(sb, event, classification);
+    const drive = await createDrivePackageIfNeeded(sb, event, classification);
+    await markIngestionProcessed(sb, logId, "routed", {
+      pantry_entry_id: pantryEntryId,
+      observation_id: observation.observationId ?? null,
+      task_id: taskId,
+      drive_package_id: drive.packageId ?? null,
+      drive_write_id: drive.writeId ?? null,
+    });
+    return { source_ref: event.source_ref, status: "routed", log_id: logId, pantry_entry_id: pantryEntryId, observation_id: observation.observationId ?? null, implication_id: observation.implicationId ?? null, task_id: taskId, drive_package_id: drive.packageId ?? null, drive_write_id: drive.writeId ?? null };
+  } catch (e) {
+    await markIngestionProcessed(sb, logId, "failed", { error_message: String((e as Error)?.message ?? e).slice(0, 1000) });
+    return { source_ref: event.source_ref, status: "failed", log_id: logId, reason: String((e as Error)?.message ?? e) };
+  }
+}
+
+export async function runGlobalDidEventIngestion(sb: SupabaseClient, userId: string, sinceISO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()): Promise<IngestionSummary> {
+  const events: Array<Omit<NormalizedDidEvent, "source_hash"> & { source_hash?: string }> = [];
+  await collectTherapistTaskNotes(sb, userId, sinceISO, events);
+  await collectTherapistNotes(sb, userId, sinceISO, events);
+  await collectHanaPersonal(sb, userId, sinceISO, events);
+  await collectDidThreads(sb, userId, sinceISO, events);
+  await collectLiveProgress(sb, userId, sinceISO, events);
+  await collectBriefingAskResolutions(sb, userId, sinceISO, events);
+  await collectDeliberations(sb, userId, sinceISO, events);
+  await collectCrisisSafety(sb, userId, sinceISO, events);
+
+  const summary: IngestionSummary = { processed_count: 0, routed_to_pantry_count: 0, observation_count: 0, implication_count: 0, task_count: 0, drive_package_count: 0, skipped_count: 0, failed_count: 0, duplicate_count: 0, blocked_count: 0, important_sources: [], blocked_sources: [], missing_sources: [], results: [] };
+  for (const event of events) {
+    const result = await routeEvent(sb, event);
+    summary.results.push(result);
+    if (result.status === "routed") summary.processed_count++;
+    if (result.status === "skipped") summary.skipped_count++;
+    if (result.status === "failed") summary.failed_count++;
+    if (result.status === "duplicate") summary.duplicate_count++;
+    if (result.pantry_entry_id) summary.routed_to_pantry_count++;
+    if (result.observation_id) summary.observation_count++;
+    if (result.implication_id) summary.implication_count++;
+    if (result.task_id) summary.task_count++;
+    if (result.drive_package_id) summary.drive_package_count++;
+  }
+  const seen = new Set(events.map((e) => e.source_kind));
+  summary.important_sources = Array.from(seen);
+  summary.missing_sources = SUPPORTED_SOURCES.filter((s) => !seen.has(s as PantryBSourceKind));
+  summary.blocked_sources = summary.results.filter((r) => r.status === "failed").map((r) => r.source_ref).slice(0, 20);
+  summary.blocked_count = summary.blocked_sources.length;
+  await upsertCursor(sb, userId, "global_did_event_ingestion", sinceISO, summary.results.at(-1)?.source_ref ?? null);
+  return summary;
+}
+
+async function collectTherapistTaskNotes(sb: SupabaseClient, userId: string, sinceISO: string, out: any[]) {
+  const { data } = await sb.from("did_therapist_tasks").select("id, user_id, task, completed_note, note, assigned_to, updated_at, created_at").eq("user_id", userId).gte("updated_at", sinceISO).not("completed_note", "is", null).limit(50);
+  for (const row of data ?? []) {
+    const text = compactText((row as any).completed_note, 1200);
+    if (!text) continue;
+    out.push({ user_id: userId, source_table: "did_therapist_tasks", source_kind: "therapist_task_note", source_ref: `did_therapist_tasks:${(row as any).id}:completed_note`, source_id: (row as any).id, occurred_at: (row as any).updated_at || (row as any).created_at, author_role: (row as any).assigned_to, author_name: (row as any).assigned_to, source_surface: "task_board", raw_excerpt: text, context_type: "task_completed_note" });
+  }
+}
+
+async function collectTherapistNotes(sb: SupabaseClient, userId: string, sinceISO: string, out: any[]) {
+  const { data } = await sb.from("therapist_notes").select("id, author, note_text, note_type, part_name, priority, created_at").gte("created_at", sinceISO).limit(80);
+  for (const row of data ?? []) {
+    const text = compactText((row as any).note_text, 1200);
+    if (!text) continue;
+    const author = String((row as any).author ?? "").toLowerCase();
+    out.push({ user_id: userId, source_table: "therapist_notes", source_kind: "therapist_note", source_ref: `therapist_notes:${(row as any).id}`, source_id: (row as any).id, occurred_at: (row as any).created_at, author_role: author.includes("kat") ? "kata" : "hanka", author_name: (row as any).author, source_surface: "therapist_notes", raw_excerpt: text, related_part_name: (row as any).part_name, context_type: (row as any).note_type });
+  }
+}
+
+async function collectHanaPersonal(sb: SupabaseClient, userId: string, sinceISO: string, out: any[]) {
+  const { data } = await sb.from("karel_hana_conversations").select("id, user_id, messages, sub_mode, thread_label, current_domain, last_activity_at").eq("user_id", userId).gte("last_activity_at", sinceISO).limit(20);
+  for (const thread of data ?? []) {
+    const messages = Array.isArray((thread as any).messages) ? (thread as any).messages : [];
+    for (const [idx, m] of messages.slice(-12).entries()) {
+      if (String(m?.role ?? "") !== "user") continue;
+      const text = compactText(m?.content, 1000);
+      if (!text) continue;
+      out.push({ user_id: userId, source_table: "karel_hana_conversations", source_kind: "hana_personal_ingestion", source_ref: `karel_hana_conversations:${(thread as any).id}:message:${m?.id ?? idx}`, source_id: (thread as any).id, message_id: m?.id ?? String(idx), occurred_at: m?.timestamp || (thread as any).last_activity_at, author_role: "hanka", author_name: "Hanička", source_surface: "Hana/Osobní", raw_excerpt: text, context_type: (thread as any).current_domain || (thread as any).sub_mode });
+    }
+  }
+}
+
+async function collectDidThreads(sb: SupabaseClient, userId: string, sinceISO: string, out: any[]) {
+  const { data } = await sb.from("did_threads").select("id, user_id, messages, sub_mode, part_name, workspace_type, workspace_id, last_activity_at").eq("user_id", userId).gte("last_activity_at", sinceISO).limit(60);
+  for (const thread of data ?? []) {
+    const messages = Array.isArray((thread as any).messages) ? (thread as any).messages : [];
+    const sourceKind = (thread as any).workspace_type === "playroom" || (thread as any).sub_mode === "karel_part_session" ? "playroom_progress" : "did_thread_ingestion";
+    for (const [idx, m] of messages.slice(-12).entries()) {
+      const role = String(m?.role ?? "");
+      if (!role || role === "assistant") continue;
+      const text = compactText(m?.content, 1000);
+      if (!text) continue;
+      out.push({ user_id: userId, source_table: "did_threads", source_kind: sourceKind, source_ref: `did_threads:${(thread as any).id}:message:${m?.id ?? idx}`, source_id: (thread as any).id, message_id: m?.id ?? String(idx), occurred_at: m?.timestamp || (thread as any).last_activity_at, author_role: role === "user" && sourceKind === "playroom_progress" ? "child" : role, source_surface: `${(thread as any).workspace_type || "did_thread"}/${(thread as any).sub_mode || "unknown"}`, raw_excerpt: text, related_part_name: (thread as any).part_name, context_type: (thread as any).workspace_type || (thread as any).sub_mode });
+    }
+  }
+}
+
+async function collectLiveProgress(sb: SupabaseClient, userId: string, sinceISO: string, out: any[]) {
+  const { data } = await sb.from("did_live_session_progress").select("id, plan_id, part_name, therapist, items, turns_by_block, artifacts_by_block, current_block_status, live_replan_patch, reality_verification, updated_at, last_activity_at").eq("user_id", userId).gte("updated_at", sinceISO).limit(40);
+  for (const row of data ?? []) {
+    const bits = [
+      compactText((row as any).current_block_status, 200),
+      compactText(JSON.stringify((row as any).live_replan_patch ?? {}), 700),
+      compactText(JSON.stringify((row as any).reality_verification ?? {}), 500),
+      compactText(JSON.stringify((row as any).items ?? []), 700),
+    ].filter(Boolean).join(" | ");
+    if (!bits) continue;
+    out.push({ user_id: userId, source_table: "did_live_session_progress", source_kind: (row as any).live_replan_patch && Object.keys((row as any).live_replan_patch || {}).length ? "live_session_reality_override" : "live_session_progress", source_ref: `did_live_session_progress:${(row as any).id}:${stableHash(bits)}`, source_id: (row as any).id, occurred_at: (row as any).last_activity_at || (row as any).updated_at, author_role: (row as any).therapist, author_name: (row as any).therapist, source_surface: "live_session_progress", raw_excerpt: bits, related_part_name: (row as any).part_name, context_type: "live_progress" });
+  }
+}
+
+async function collectBriefingAskResolutions(sb: SupabaseClient, userId: string, sinceISO: string, out: any[]) {
+  const { data } = await sb.from("briefing_ask_resolutions").select("id, ask_id, therapist_response, assignee, target_part_name, resolution_mode, resolution_status, evidence_level, updated_at, created_at").eq("user_id", userId).gte("updated_at", sinceISO).limit(40);
+  for (const row of data ?? []) {
+    const text = compactText((row as any).therapist_response || (row as any).resolution_mode, 1000);
+    if (!text) continue;
+    out.push({ user_id: userId, source_table: "briefing_ask_resolutions", source_kind: "briefing_ask_resolution", source_ref: `briefing_ask_resolutions:${(row as any).id}`, source_id: (row as any).id, message_id: (row as any).ask_id, occurred_at: (row as any).updated_at || (row as any).created_at, author_role: (row as any).assignee, author_name: (row as any).assignee, source_surface: "daily_briefing_ask", raw_excerpt: text, related_part_name: (row as any).target_part_name, evidence_level: (row as any).evidence_level || "therapist_observation_D2", context_type: (row as any).resolution_status });
+  }
+}
+
+async function collectDeliberations(sb: SupabaseClient, userId: string, sinceISO: string, out: any[]) {
+  const { data } = await sb.from("did_team_deliberations").select("id, title, deliberation_type, status, final_summary, discussion_log, program_draft, subject_parts, updated_at").eq("user_id", userId).gte("updated_at", sinceISO).limit(30);
+  for (const row of data ?? []) {
+    const text = compactText(`${(row as any).title}\n${(row as any).final_summary ?? ""}\n${JSON.stringify((row as any).program_draft ?? [])}`, 1400);
+    if (!text) continue;
+    out.push({ user_id: userId, source_table: "did_team_deliberations", source_kind: "deliberation_event", source_ref: `did_team_deliberations:${(row as any).id}:${(row as any).status}`, source_id: (row as any).id, occurred_at: (row as any).updated_at, author_role: "team", author_name: "tým", source_surface: "team_deliberation", raw_excerpt: text, related_part_name: Array.isArray((row as any).subject_parts) ? (row as any).subject_parts[0] : null, context_type: (row as any).deliberation_type });
+  }
+}
+
+async function collectCrisisSafety(sb: SupabaseClient, userId: string, sinceISO: string, out: any[]) {
+  const crisisSources = [
+    { table: "crisis_events", textCols: ["part_name", "trigger_description", "clinical_summary", "phase"], dateCol: "updated_at" },
+    { table: "crisis_alerts", textCols: ["part_name", "summary", "severity", "karel_assessment"], dateCol: "created_at" },
+    { table: "safety_alerts", textCols: ["part_name", "summary", "severity", "status"], dateCol: "created_at" },
+    { table: "crisis_daily_assessments", textCols: ["part_name", "karel_decision", "therapist_hana_observation", "therapist_kata_observation"], dateCol: "created_at" },
+  ];
+  for (const src of crisisSources) {
+    try {
+      const { data } = await sb.from(src.table).select("*").gte(src.dateCol, sinceISO).limit(20);
+      for (const row of data ?? []) {
+        const text = compactText(src.textCols.map((c) => (row as any)[c]).filter(Boolean).join(" | "), 1200);
+        if (!text) continue;
+        out.push({ user_id: (row as any).user_id || userId, source_table: src.table, source_kind: "crisis_safety_event", source_ref: `${src.table}:${(row as any).id}`, source_id: (row as any).id, occurred_at: (row as any)[src.dateCol] || new Date().toISOString(), author_role: "karel", source_surface: "crisis_safety", raw_excerpt: text, related_part_name: (row as any).part_name, context_type: src.table });
+      }
+    } catch (e) {
+      console.warn(`[did-event-ingestion] ${src.table} not supported yet:`, e);
+    }
+  }
+}
+
+async function upsertCursor(sb: SupabaseClient, userId: string, sourceName: string, lastProcessedAt: string, lastProcessedId: string | null) {
+  await sb.from("did_event_ingestion_cursors").upsert({
+    user_id: userId,
+    source_name: sourceName,
+    last_processed_at: lastProcessedAt,
+    last_processed_id: lastProcessedId,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "user_id,source_name" });
+}
