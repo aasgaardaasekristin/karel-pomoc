@@ -148,6 +148,26 @@ async function resolveTarget(
   return null;
 }
 
+async function createCentrumDocIfMissing(token: string, kartotekaRoot: string, target: string): Promise<ResolvedFile | null> {
+  if (!target.startsWith("KARTOTEKA_DID/")) return null;
+  const segments = target.replace("KARTOTEKA_DID/", "").split("/");
+  let currentFolder = kartotekaRoot;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const nextFolder = await findFolder(token, segments[i], currentFolder);
+    if (!nextFolder) return null;
+    currentFolder = nextFolder;
+  }
+  const name = segments[segments.length - 1];
+  const res = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name, parents: [currentFolder], mimeType: GDOC_MIME }),
+  });
+  if (!res.ok) throw new Error(`Create missing Drive doc failed: ${res.status} ${await res.text()}`);
+  const doc = await res.json();
+  return { id: doc.id, mimeType: GDOC_MIME };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
