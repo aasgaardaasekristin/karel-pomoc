@@ -104,8 +104,46 @@ interface ProposedPlayroom {
   questions_for_kata?: string[];
 }
 
-/** Nový tvar ask položky (id+text). Edge funkce vrací tohle od 2026-04-19. */
-interface AskItemObj { id: string; text: string }
+type BriefingAskIntent =
+  | "session_plan"
+  | "playroom_plan"
+  | "team_coordination"
+  | "task"
+  | "observation"
+  | "current_handling"
+  | "none";
+
+type BriefingAskTargetType =
+  | "proposed_session"
+  | "proposed_playroom"
+  | "team_deliberation"
+  | "current_handling"
+  | "task"
+  | "none";
+
+type BriefingAskExpectedResolution =
+  | "update_program"
+  | "add_observation"
+  | "create_task"
+  | "store_memory"
+  | "no_program_change";
+
+/** Nový tvar ask položky (id+text+metadata). Edge funkce vrací tohle od 2026-04-19. */
+interface AskItemObj {
+  id: string;
+  text: string;
+  assignee?: "hanka" | "kata";
+  question_text?: string;
+  intent?: BriefingAskIntent;
+  target_type?: BriefingAskTargetType;
+  target_item_id?: string | null;
+  target_part_name?: string | null;
+  requires_immediate_program_update?: boolean;
+  expected_resolution?: BriefingAskExpectedResolution;
+  source?: "daily_briefing" | string;
+  briefing_id?: string;
+  generated_at?: string;
+}
 type AskItemRaw = string | AskItemObj;
 
 interface YesterdaySessionReview {
@@ -316,10 +354,22 @@ const toAskItem = (
   role: "ask_hanka" | "ask_kata",
 ): AskItemObj => {
   if (raw && typeof raw === "object" && "id" in raw && "text" in raw) {
-    return { id: String(raw.id), text: String(raw.text) };
+    return { ...(raw as AskItemObj), id: String(raw.id), text: String(raw.text) };
   }
   const text = String(raw ?? "");
-  return { id: legacyAskIdFor(briefingId, role, text), text };
+  return {
+    id: legacyAskIdFor(briefingId, role, text),
+    text,
+    assignee: role === "ask_hanka" ? "hanka" : "kata",
+    intent: "none",
+    target_type: "none",
+    target_item_id: null,
+    target_part_name: null,
+    requires_immediate_program_update: false,
+    expected_resolution: "store_memory",
+    source: "daily_briefing",
+    briefing_id: briefingId,
+  };
 };
 
 const createFallbackPlayroomProposal = (payload: BriefingPayload): ProposedPlayroom => {
