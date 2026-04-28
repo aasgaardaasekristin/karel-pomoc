@@ -920,6 +920,7 @@ const PlanCard = ({
   const analyticDraftWithoutContract = ANALYTIC_PLAN_GENERATORS.has(plan.generated_by) && !hasExplicitRoleContract(plan);
   const quarantinedDraft = legacyDraft || analyticDraftWithoutContract;
   const hernaApproved = localHernaApproved;
+  const startBlockedReason = programStartBlockedReason(plan);
   const hernaStatusLabel = hernaApproved ? "Schváleno" : "Čeká na schválení terapeutkami";
   // „Zahájit" je v Pracovně dostupné JEN když je plán schválený přes prep room.
   // Mimo Pracovnu (prepGateEnabled=false) zůstává staré chování.
@@ -1254,7 +1255,7 @@ const PlanCard = ({
         <div className="mb-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5">
           <p className="text-[0.625rem] leading-4 text-amber-800 dark:text-amber-300">
             <Lock className="mr-1 inline h-2.5 w-2.5 -mt-px" />
-            Čeká na schválení terapeutkami.
+            {startBlockedReason || "Čeká na schválení terapeutkami."}
           </p>
         </div>
       )}
@@ -1343,10 +1344,10 @@ const PlanCard = ({
                 variant="outline"
                 size="sm"
                 onClick={onStartSession}
-                disabled={startBlockedByPrep}
-                title={startBlockedByPrep
+                disabled={startBlockedByPrep || !!startBlockedReason}
+                title={startBlockedReason || (startBlockedByPrep
                   ? "Nejdřív tým musí v přípravné místnosti podepsat plán."
-                  : undefined}
+                  : undefined)}
                 className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-50"
               >
                 <Play className="mr-0.5 h-2.5 w-2.5" /> Zahájit
@@ -1364,9 +1365,9 @@ const PlanCard = ({
                 variant="default"
                 size="sm"
                 onClick={onOpenPartRoom}
-                disabled={openingPartRoom || (karelDirect && !hernaApproved)}
+                disabled={openingPartRoom || !!startBlockedReason || (karelDirect && !hernaApproved)}
                 className="h-6 px-2 text-[10px]"
-                title={`Otevřít hernu s ${plan.selected_part}`}
+                title={startBlockedReason || `Otevřít hernu s ${plan.selected_part}`}
               >
                 {openingPartRoom ? (
                   <Loader2 className="mr-0.5 h-2.5 w-2.5 animate-spin" />
