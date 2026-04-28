@@ -1836,6 +1836,7 @@ ${outputs.practical_report_text}`,
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  let requestBody: any = {};
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1845,6 +1846,7 @@ Deno.serve(async (req: Request) => {
     const sb = createClient(supabaseUrl, serviceKey);
 
     const body = await req.json().catch(() => ({}));
+    requestBody = body;
     const planId = body?.planId as string | undefined;
     let completedBlocks = typeof body?.completedBlocks === "number" ? body.completedBlocks : undefined;
     let totalBlocks = typeof body?.totalBlocks === "number" ? body.totalBlocks : undefined;
@@ -2092,7 +2094,7 @@ POVINNÉ ROZDĚLENÍ VÝSTUPU:
     );
   } catch (e: any) {
     console.error("[karel-did-session-evaluate] fatal:", e);
-    const failedJobId = (() => { try { return (typeof body?.jobId === "string" ? body.jobId : null); } catch { return null; } })();
+    const failedJobId = typeof requestBody?.jobId === "string" ? requestBody.jobId : null;
     if (failedJobId) await markJobFailedRetry(createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!), failedJobId, e);
     return new Response(
       JSON.stringify({ ok: false, error: e?.message ?? String(e) }),
