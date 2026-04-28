@@ -996,6 +996,12 @@ async function gatherContext(supabase: any, proofReviewId?: string | null) {
     pantry_a: pantryA,
     pantry_a_summary: pantryASummary,
     pantry_b_entries: pantryBEntries,
+    event_ingestion_summary: eventIngestionSummary,
+    task_note_implications: pantryBEntries.filter((e: any) => e.source_kind === "therapist_task_note"),
+    hana_personal_did_relevant_implications: pantryBEntries.filter((e: any) => e.source_kind === "hana_personal_ingestion"),
+    live_replan_patches: pantryBEntries.filter((e: any) => e.source_kind === "live_session_progress" || e.source_kind === "live_session_reality_override"),
+    reality_override_events: pantryBEntries.filter((e: any) => e.source_kind === "live_session_reality_override"),
+    blocked_or_failed_ingestion: eventIngestionSummary?.blocked_sources ?? [],
     approved_deliberations: approvedDeliberations,
   };
 }
