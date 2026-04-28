@@ -352,7 +352,7 @@ Deno.serve(async (req) => {
 
         // Resolve target
         let resolved = await resolveTarget(token, kartotekaRoot, target);
-        if (!resolved && target === "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG") {
+        if (!resolved && (target === "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG" || target === "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG")) {
           resolved = await createCentrumDocIfMissing(token, kartotekaRoot, target);
           if (resolved) addLog(`Created missing centrum doc for '${target}' (file ${resolved.id})`);
         }
@@ -396,7 +396,7 @@ Deno.serve(async (req) => {
           .eq("id", writeId);
 
         await audit(sb, { sourceType, sourceId, target, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: true, status: "ok" });
-        await updatePlayroomReviewSync(sb, { sourceType, sourceId, contentType, fileId: resolved.id, status: "completed" });
+        await updateReviewDriveSync(sb, { sourceType, sourceId, contentType, fileId: resolved.id, status: "completed" });
         await updatePantryPackageSync(sb, writeId, "flushed", null, true);
         writeResults.push({ write_id: writeId, status: "completed", target_document: target });
         addLog(`OK ${writeId}: ${writeType} → '${target}' (file ${resolved.id})`);
@@ -405,7 +405,7 @@ Deno.serve(async (req) => {
         const errMsg = err instanceof Error ? err.message : String(err);
         const result = await markFailedWithRetry(sb, writeId, currentRetry, errMsg);
         await audit(sb, { sourceType, sourceId, target, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: result.status, err: errMsg });
-        await updatePlayroomReviewSync(sb, { sourceType, sourceId, contentType, status: result.permanent ? "failed" : "retrying", error: errMsg });
+        await updateReviewDriveSync(sb, { sourceType, sourceId, contentType, status: result.permanent ? "failed" : "retrying", error: errMsg });
         await updatePantryPackageSync(sb, writeId, result.permanent ? "failed" : "pending_drive", errMsg, false);
         if (result.permanent) permanent++; else failed++;
         writeResults.push({ write_id: writeId, status: "failed", target_document: target, error: errMsg });
@@ -507,8 +507,11 @@ async function audit(sb: any, p: {
   } catch (_) { /* ignore audit errors */ }
 }
 
-async function updatePlayroomReviewSync(sb: any, p: { sourceType: string | null; sourceId: string; contentType: string | null; fileId?: string; status: "completed" | "retrying" | "failed"; error?: string }) {
-  if (p.sourceType !== "did_session_review" || !p.sourceId || !String(p.contentType || "").startsWith("playroom_")) return;
+async function updateReviewDriveSync(sb: any, p: { sourceType: string | null; sourceId: string; contentType: string | null; fileId?: string; status: "completed" | "retrying" | "failed"; error?: string }) {
+  const contentType = String(p.contentType || "");
+  const isPlayroom = contentType.startsWith("playroom_");
+  const isSession = contentType.startsWith("session_");
+  if (p.sourceType !== "did_session_review" || !p.sourceId || (!isPlayroom && !isSession)) return;
   try {
     const patch: Record<string, unknown> = {
       last_sync_at: new Date().toISOString(),
@@ -516,11 +519,11 @@ async function updatePlayroomReviewSync(sb: any, p: { sourceType: string | null;
       drive_sync_status: p.status === "completed" ? "syncing" : p.status,
       last_sync_error: p.error ? String(p.error).slice(0, 1000) : null,
     };
-    if (p.fileId && p.contentType === "playroom_detail_analysis") {
+    if (p.fileId && (contentType === "playroom_detail_analysis" || contentType === "session_detail_analysis")) {
       patch.detail_analysis_drive_id = p.fileId;
       patch.detail_analysis_drive_url = `https://drive.google.com/open?id=${p.fileId}`;
     }
-    if (p.fileId && p.contentType === "playroom_practical_report") {
+    if (p.fileId && (contentType === "playroom_practical_report" || contentType === "session_practical_report")) {
       patch.practical_report_drive_id = p.fileId;
       patch.practical_report_drive_url = `https://drive.google.com/open?id=${p.fileId}`;
     }
@@ -529,14 +532,15 @@ async function updatePlayroomReviewSync(sb: any, p: { sourceType: string | null;
       .select("id,detail_analysis_drive_id,practical_report_drive_id")
       .eq("id", p.sourceId)
       .maybeSingle();
-    if (review && (p.status !== "completed" || (review.detail_analysis_drive_id || patch.detail_analysis_drive_id) && (review.practical_report_drive_id || patch.practical_report_drive_id))) {
+    const hasBoth = review && (review.detail_analysis_drive_id || patch.detail_analysis_drive_id) && (review.practical_report_drive_id || patch.practical_report_drive_id);
+    if (review && (p.status !== "completed" || hasBoth)) {
       patch.drive_sync_status = p.status === "completed" ? "synced" : p.status;
       patch.source_of_truth_status = p.status === "completed" ? "drive_synced" : "drive_failed";
       if (p.status === "completed") patch.synced_to_drive = true;
     }
     await sb.from("did_session_reviews").update(patch).eq("id", p.sourceId);
   } catch (e) {
-    console.warn("[drive-queue] playroom review sync patch failed", e);
+    console.warn("[drive-queue] session/playroom review sync patch failed", e);
   }
 }
 

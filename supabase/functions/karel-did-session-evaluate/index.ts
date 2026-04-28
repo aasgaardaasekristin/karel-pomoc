@@ -150,6 +150,26 @@ const SESSION_EVAL_TOOL = {
             "Návrh dalšího sezení / pauzy / krizové intervence (1-2 věty). " +
             "Konkrétní část, kdy, proč, jakou metodou.",
         },
+        detailed_analysis_text: {
+          type: "string",
+          description: "Detailní profesionální analýza Sezení: role terapeutky, role Karla jako live asistenta, program, proběhlé bloky, pozorování vs hypotézy, limity evidence, rizika, stabilizační/destabilizační faktory a doporučení.",
+        },
+        practical_report_text: {
+          type: "string",
+          description: "Kratší praktický report pro Karlův přehled: co se stalo, co víme o části, co z toho plyne pro kluky, co mají terapeutky udělat, čemu se vyvarovat a doporučení pro další Sezení/Hernu.",
+        },
+        team_closing_text: {
+          type: "string",
+          description: "Konkrétní týmové uzavření navázané na průběh Sezení; poděkování terapeutce/terapeutkám a posílení týmové soudržnosti bez obecné fráze.",
+        },
+        implications_for_part: { type: "string" },
+        implications_for_system: { type: "string" },
+        recommendations_for_therapists: { type: "string" },
+        recommendations_for_next_session: { type: "string" },
+        recommendations_for_next_playroom: { type: "string" },
+        risks: { type: "array", items: { type: "string" } },
+        evidence_limitations: { type: "string" },
+        what_not_to_do: { type: "array", items: { type: "string" } },
       },
       required: [
         "completion_status",
@@ -162,6 +182,15 @@ const SESSION_EVAL_TOOL = {
         "implications_for_tomorrow",
         "tasks",
         "recommended_next_step",
+        "detailed_analysis_text",
+        "practical_report_text",
+        "team_closing_text",
+        "implications_for_part",
+        "implications_for_system",
+        "recommendations_for_therapists",
+        "recommendations_for_next_session",
+        "recommendations_for_next_playroom",
+        "evidence_limitations",
       ],
       additionalProperties: false,
     },
@@ -176,7 +205,8 @@ ABSOLUTNÍ PRAVIDLA:
 - ŽÁDNÉ "systém"/"DID systém". Vždy "kluci" nebo konkrétní jméno části.
 - ŽÁDNÝ "klient". Kluci jsou kluci.
 - HLAVNÍ DŮRAZ = PROŽITEK ČÁSTI (dítěte). Jak na tom bylo, co prožívalo, co fungovalo / nefungovalo z jeho pohledu.
-- Práce terapeutky (Hanička / Káťa) je SEKUNDÁRNÍ vrstva — pojmenuj v 1-2 větách, ale neorientuj na to celý report.
+- Sezení je THERAPIST-LED: fyzicky ho vede terapeutka; Karel je live real-time asistent terapeutky, ne přímý vedoucí dítěte.
+- Práce terapeutky (Hanička / Káťa) je důležitá týmová vrstva, ale klinické závěry odděluj od podpory terapeutky.
 - Pokud sezení nebylo dokončené, NEPŘEDSTÍREJ, že bylo. Explicitně to napiš v completion_status + incomplete_note,
   a vyhodnoť POUZE to, co reálně proběhlo. Nevymýšlej si bloky, které nikdo neudělal.
 
@@ -192,7 +222,13 @@ TÓN:
 - Kultivovaná čeština. Konkrétně, klinicky, bez patosu.
 - Žádné "celkově to byl posun" / "skvělá práce" — místo toho konkrétní moment z dat.
 
-Vrať VÝHRADNĚ tool call emit_session_evaluation.`;
+Vrať VÝHRADNĚ tool call emit_session_evaluation.
+
+POVINNÉ ROZDĚLENÍ VÝSTUPU:
+- detailed_analysis_text = odborná detailní analýza, delší a strukturovaná.
+- practical_report_text = kratší report pro Karlův přehled a další plánování.
+- team_closing_text = konkrétní týmové uzavření navázané na průběh Sezení.
+- Pokud evidence nestačí, nevyplňuj falešnou plnou analýzu; jasně popiš limity a bezpečný další krok.`;
 
 interface SessionPlan {
   id: string;
@@ -209,7 +245,7 @@ interface SessionPlan {
   crisis_event_id: string | null;
 }
 
-type ReviewStatus = "analyzed" | "partially_analyzed" | "evidence_limited" | "failed_analysis" | "cancelled";
+type ReviewStatus = "analyzed" | "partially_analyzed" | "evidence_limited" | "pending_review" | "analysis_running" | "failed_retry" | "failed_analysis" | "cancelled";
 type KarelDirectOutcome = "completed" | "partial" | "unavailable" | "deferred" | "actual_part_differs";
 
 interface PartSessionRow {
@@ -600,6 +636,116 @@ function reviewStatusFor(evaluation: any, evidencePresent: boolean, completedBlo
   return "partially_analyzed";
 }
 
+
+function cleanText(value: unknown, max = 20000): string {
+  return String(value ?? "").replace(/
+/g, "").replace(/
+{4,}/g, "
+
+
+").trim().slice(0, max);
+}
+
+function listLines(items: unknown): string {
+  return Array.isArray(items) && items.length > 0 ? items.map((x) => `- ${String(x).trim()}`).join("
+") : "- nebylo zaznamenáno";
+}
+
+function deriveSessionOutputs(args: { evaluation: any; plan: SessionPlan; markdown: string; diagnosticValidity: string; reviewStatus: ReviewStatus; completedBlocks?: number; totalBlocks?: number; endedReason: EndedReason }) {
+  const e = args.evaluation ?? {};
+  const part = args.plan.selected_part;
+  const lead = args.plan.session_lead || args.plan.therapist || "Hanička";
+  const assistants = Array.isArray((args.plan.urgency_breakdown as any)?.assistant_persons) ? (args.plan.urgency_breakdown as any).assistant_persons.join(", ") : "Karel jako live asistent terapeutky";
+  const evidenceLine = args.reviewStatus === "evidence_limited"
+    ? "Evidence je omezená; výstup odděluje doložené poznatky od hypotéz a nepředstírá plnou analýzu."
+    : "Výstup vychází z dostupného programu, průběhových poznámek, checklistu a navázaného threadu.";
+  const detailedFallback = `## SEZENÍ — DETAILNÍ PROFESIONÁLNÍ ANALÝZA
+plan_id: ${args.plan.id}
+datum: ${args.plan.plan_date}
+část: ${part}
+vedla: ${lead}
+asistovali: ${assistants}
+role Karla: live real-time asistent terapeutky
+stav review: ${args.reviewStatus}
+
+### Identifikace a program
+Sezení bylo vedeno terapeutkou (${lead}) podle schváleného programu ${args.plan.id}. Karel nevystupoval jako přímý vedoucí dítěte, ale jako průběžný asistent terapeutky. Dokončení bloků: ${args.completedBlocks ?? "?"}/${args.totalBlocks ?? "?"}. Důvod ukončení: ${args.endedReason}.
+
+### Co proběhlo
+${cleanText(e.session_arc || "nebylo zaznamenáno")}
+
+### Co zapsala terapeutka / co projevila část
+${cleanText(e.child_perspective || "nebylo zaznamenáno")}
+
+### Co navrhl Karel a role týmu
+${cleanText(e.therapist_motivation || "nebylo zaznamenáno")}
+
+### Pozorování vs hypotézy
+Pozorování: ${cleanText(e.session_arc || "nebylo zaznamenáno")}
+
+Hypotézy:
+${listLines(e.key_insights)}
+
+### Význam pro část
+${cleanText(e.implications_for_part || e.child_perspective || "nebylo zaznamenáno")}
+
+### Význam pro kluky
+${cleanText(e.implications_for_system || e.implications_for_tomorrow || "nebylo zaznamenáno")}
+
+### Rizika a limity evidence
+Rizika:
+${listLines(e.risks)}
+
+${cleanText(e.evidence_limitations || args.diagnosticValidity || evidenceLine)}
+
+### Doporučení
+Pro terapeutky: ${cleanText(e.recommendations_for_therapists || e.therapist_motivation || "nebylo zaznamenáno")}
+
+Pro další Sezení: ${cleanText(e.recommendations_for_next_session || e.recommended_next_step || "nebylo zaznamenáno")}
+
+Pro další Hernu: ${cleanText(e.recommendations_for_next_playroom || "není jasně indikováno; zvážit jen podle stability části")}
+
+### Čeho se vyvarovat
+${listLines(e.what_not_to_do)}
+
+### Otevřené otázky
+${cleanText(e.incomplete_note || "nebylo zaznamenáno")}`;
+  const practicalFallback = `## SEZENÍ — PRAKTICKÝ REPORT PRO KARLŮV PŘEHLED
+S částí ${part} pracovala ${lead}; Karel byl live asistent terapeutky. Hlavní téma: ${cleanText((args.plan.urgency_breakdown as any)?.main_topic || e.session_arc || "nebylo zaznamenáno", 600)}
+
+Co se stalo: ${cleanText(e.session_arc || "nebylo zaznamenáno", 1000)}
+
+Co víme o části: ${cleanText(e.child_perspective || "nebylo zaznamenáno", 1000)}
+
+Co z toho plyne pro část: ${cleanText(e.implications_for_part || e.child_perspective || "nebylo zaznamenáno", 900)}
+
+Co z toho plyne pro kluky: ${cleanText(e.implications_for_system || e.implications_for_tomorrow || "nebylo zaznamenáno", 900)}
+
+Co mají terapeutky udělat: ${cleanText(e.recommendations_for_therapists || e.recommended_next_step || "doplnit a ověřit evidenci", 900)}
+
+Čeho se vyvarovat: ${Array.isArray(e.what_not_to_do) && e.what_not_to_do.length ? e.what_not_to_do.join("; ") : "nepřetěžovat část a nevyvozovat závěry nad rámec evidence"}.
+
+Doporučení pro další Sezení: ${cleanText(e.recommendations_for_next_session || e.recommended_next_step || "navázat opatrně podle dostupnosti části", 900)}
+
+Doporučení pro další Hernu: ${cleanText(e.recommendations_for_next_playroom || "pouze pokud bude část stabilní a bude jasný bezpečný nízkoprahový cíl", 900)}
+
+Bezpečnostní závěr: ${cleanText(e.evidence_limitations || evidenceLine, 700)}`;
+  const teamFallback = cleanText(e.team_closing_text) || `${String(lead).includes("Ká") ? "Káťo" : "Haničko"}, bylo důležité, že jsi dnes držela tempo podle dostupné evidence a nepřetlačila ${part} za hranici záznamu. Karel zůstává v roli asistenta a tým se může opřít o malé, přesné kroky místo rychlých závěrů.`;
+  return {
+    detailed_analysis_text: cleanText(e.detailed_analysis_text || detailedFallback),
+    practical_report_text: cleanText(e.practical_report_text || practicalFallback, 8000),
+    team_closing_text: teamFallback,
+    implications_for_part: cleanText(e.implications_for_part || e.child_perspective || ""),
+    implications_for_system: cleanText(e.implications_for_system || e.implications_for_tomorrow || ""),
+    recommendations_for_therapists: cleanText(e.recommendations_for_therapists || e.therapist_motivation || ""),
+    recommendations_for_next_session: cleanText(e.recommendations_for_next_session || e.recommended_next_step || ""),
+    recommendations_for_next_playroom: cleanText(e.recommendations_for_next_playroom || ""),
+    risks: Array.isArray(e.risks) ? e.risks : [],
+    evidence_limitations: cleanText(e.evidence_limitations || args.diagnosticValidity || evidenceLine),
+    what_not_to_do: Array.isArray(e.what_not_to_do) ? e.what_not_to_do : [],
+  };
+}
+
 function cleanMemoryLine(value: unknown, max = 520): string {
   return String(value ?? "")
     .replace(/<!--[^]*?-->/g, " ")
@@ -916,8 +1062,20 @@ function buildAnalysisJson(args: {
     review_status: args.reviewStatus,
   };
   return {
-    schema: "did_session_review.analysis.v1",
+    schema: "did_session_review.v2",
     status: "created",
+    detailed_analysis_text: cleanText(args.evaluation?.detailed_analysis_text),
+    practical_report_text: cleanText(args.evaluation?.practical_report_text),
+    team_closing_text: cleanText(args.evaluation?.team_closing_text),
+    key_findings: Array.isArray(args.evaluation?.key_insights) ? args.evaluation.key_insights : [],
+    implications_for_part: cleanText(args.evaluation?.implications_for_part || args.evaluation?.child_perspective),
+    implications_for_system: cleanText(args.evaluation?.implications_for_system || args.evaluation?.implications_for_tomorrow),
+    recommendations_for_therapists: cleanText(args.evaluation?.recommendations_for_therapists || args.evaluation?.therapist_motivation),
+    recommendations_for_next_session: cleanText(args.evaluation?.recommendations_for_next_session || args.evaluation?.recommended_next_step),
+    recommendations_for_next_playroom: cleanText(args.evaluation?.recommendations_for_next_playroom),
+    risks: Array.isArray(args.evaluation?.risks) ? args.evaluation.risks : [],
+    evidence_limitations: cleanText(args.evaluation?.evidence_limitations || args.diagnosticValidity),
+    what_not_to_do: Array.isArray(args.evaluation?.what_not_to_do) ? args.evaluation.what_not_to_do : [],
     confirmed_facts: confirmedFacts,
     narrative_summary: {
       session_arc: args.evaluation?.session_arc ?? null,
@@ -1138,6 +1296,63 @@ ${tasksLines || "(žádné)"}
 `.trim();
 }
 
+async function insertPackageOnce(sb: any, row: any, force = false): Promise<string | null> {
+  const reviewId = String(row.metadata?.review_id ?? "");
+  let q = sb.from("did_pantry_packages").select("id,status").eq("source_id", row.source_id).eq("package_type", row.package_type);
+  if (reviewId) q = q.eq("metadata->>review_id", reviewId);
+  const { data: existing } = await q.limit(1);
+  if (existing?.length && !force) return existing[0].id;
+  if (existing?.length && force) await sb.from("did_pantry_packages").delete().eq("id", existing[0].id);
+  const { data, error } = await sb.from("did_pantry_packages").insert(row).select("id").single();
+  if (error) throw error;
+  return data?.id ?? null;
+}
+
+async function insertDriveWriteOnce(sb: any, row: any, dedupe: { reviewId?: string; contentType: string; target: string }, force = false): Promise<string | null> {
+  const marker = dedupe.reviewId ? `review_id=${dedupe.reviewId}` : `content_type=${dedupe.contentType}`;
+  const { data: existing } = await sb
+    .from("did_pending_drive_writes")
+    .select("id,status")
+    .eq("target_document", dedupe.target)
+    .ilike("content", `%${marker}%`)
+    .limit(1);
+  if (existing?.length && !force) return existing[0].id;
+  if (existing?.length && force) await sb.from("did_pending_drive_writes").delete().eq("id", existing[0].id);
+  const { data, error } = await sb.from("did_pending_drive_writes").insert(row).select("id").single();
+  if (error) throw error;
+  return data?.id ?? null;
+}
+
+function sessionDetailMarkdown(args: { text: string; plan: SessionPlan; reviewId?: string; lead: string; assistants: any[] }) {
+  return `## SEZENÍ — DETAILNÍ PROFESIONÁLNÍ ANALÝZA
+plan_id: ${args.plan.id}
+review_id: ${args.reviewId ?? "pending"}
+datum: ${args.plan.plan_date}
+část: ${args.plan.selected_part}
+vedla: ${args.lead}
+asistovali: ${args.assistants.length ? args.assistants.join(", ") : "Karel jako live asistent terapeutky"}
+
+${args.text}`;
+}
+
+function sessionPracticalMarkdown(args: { text: string; teamClosing: string; plan: SessionPlan; reviewId?: string; lead: string; assistants: any[] }) {
+  return `## SEZENÍ — PRAKTICKÝ REPORT PRO KARLŮV PŘEHLED
+plan_id: ${args.plan.id}
+review_id: ${args.reviewId ?? "pending"}
+datum: ${args.plan.plan_date}
+část: ${args.plan.selected_part}
+vedla: ${args.lead}
+asistovali: ${args.assistants.length ? args.assistants.join(", ") : "Karel jako live asistent terapeutky"}
+
+${args.text}
+
+## SEZENÍ — TÝMOVÉ UZAVŘENÍ
+plan_id: ${args.plan.id}
+review_id: ${args.reviewId ?? "pending"}
+
+${args.teamClosing}`;
+}
+
 async function persistEvaluation(
   sb: any,
   ctx: { plan: SessionPlan; existingSession: PartSessionRow | null; threads?: any[]; partCard?: any; partCardLookup?: PartCardLookup },
@@ -1213,6 +1428,24 @@ async function persistEvaluation(
     partCardLookup: ctx.partCardLookup,
   });
 
+  const outputs = deriveSessionOutputs({
+    evaluation,
+    plan: ctx.plan,
+    markdown,
+    diagnosticValidity,
+    reviewStatus,
+    completedBlocks,
+    totalBlocks,
+    endedReason,
+  });
+  Object.assign(analysisJson, outputs, {
+    processing_status: "completed",
+    generated_at: now,
+    lead_person: therapistLabel,
+    assistant_persons: (ctx.plan.urgency_breakdown as any)?.assistant_persons || [],
+    approved_program_id: ctx.plan.id,
+  });
+
   const reviewPayload = {
     user_id: userId,
     plan_id: ctx.plan.id,
@@ -1225,29 +1458,29 @@ async function persistEvaluation(
     program_title: (ctx.plan.urgency_breakdown as any)?.program_title || (ctx.plan.urgency_breakdown as any)?.main_topic || `Program ${ctx.plan.plan_date} — ${partName}`,
     main_topic: (ctx.plan.urgency_breakdown as any)?.main_topic || null,
     status: reviewStatus,
-    review_kind: endedReason === "auto_safety_net" ? "calendar_day_safety_net" : "scheduled_session",
-    analysis_version: "did-session-review-v1",
+    review_kind: endedReason === "auto_safety_net" ? "calendar_day_safety_net" : "therapist_led_session",
+    analysis_version: "did-session-review-v2",
     source_data_summary: evidenceItems.map((e: any) => `${e.kind}:${e.available ? "available" : "missing"}`).join(", "),
     evidence_items: evidenceItems,
     completed_checklist_items: checklist.completed,
     missing_checklist_items: checklist.missing,
     transcript_available: evidenceItems.some((e: any) => ["turn_by_turn", "thread_transcript"].includes(e.kind) && e.available),
     live_progress_available: !!liveProgress,
-    clinical_summary: markdown,
+    clinical_summary: outputs.practical_report_text.slice(0, 1800),
     clinical_findings: evaluation.child_perspective ?? evaluation.session_arc ?? null,
-    implications_for_part: evaluation.child_perspective ?? null,
-    implications_for_whole_system: evaluation.implications_for_tomorrow ?? null,
-    recommendations_for_therapists: evaluation.therapist_motivation ?? null,
-    recommendations_for_next_session: evaluation.recommended_next_step ?? null,
-    recommendations_for_next_playroom: isPlayroomPlan(ctx.plan) ? evaluation.recommended_next_step ?? null : null,
-    team_closing: `Haničko${String(ctx.plan.therapist || "").toLowerCase().includes("kata") ? " a Káťo" : ""}, děkuji za konkrétní práci se ${partName}. To nejcennější dnes nebyl výkon, ale to, že zůstala zachovaná kontinuita, všímavost a bezpečný rytmus týmu.`,
+    implications_for_part: outputs.implications_for_part || null,
+    implications_for_whole_system: outputs.implications_for_system || null,
+    recommendations_for_therapists: outputs.recommendations_for_therapists || null,
+    recommendations_for_next_session: outputs.recommendations_for_next_session || null,
+    recommendations_for_next_playroom: outputs.recommendations_for_next_playroom || null,
+    team_closing: outputs.team_closing_text,
     kartoteka_card_target: `KARTA_${String(partName || "UNKNOWN").toUpperCase()}`,
     drive_sync_status: "queued",
     source_of_truth_status: "pending_drive_sync",
-    therapeutic_implications: evaluation.implications_for_tomorrow ?? null,
-    team_implications: evaluation.therapist_motivation ?? null,
-    next_session_recommendation: evaluation.recommended_next_step ?? null,
-    evidence_limitations: diagnosticValidity,
+    therapeutic_implications: outputs.implications_for_system || outputs.implications_for_part || null,
+    team_implications: outputs.recommendations_for_therapists || null,
+    next_session_recommendation: outputs.recommendations_for_next_session || null,
+    evidence_limitations: outputs.evidence_limitations,
     analysis_json: analysisJson,
     projection_status: reviewStatus === "failed_analysis" ? "skipped" : "queued",
     error_message: null,
@@ -1320,69 +1553,79 @@ async function persistEvaluation(
       .eq("plan_id", ctx.plan.id);
   }
 
-  // 3) karel_pantry_b_entries — anti-dup podle source_ref
+  // 3) karel_pantry_b_entries — idempotentně podle source_kind + source_ref + entry_kind + related_part_name
   const sourceRef = `session-evaluate:${ctx.plan.id}`;
-  const { data: existingPantryB } = await sb
-    .from("karel_pantry_b_entries")
-    .select("id")
-    .eq("source_ref", sourceRef);
-  if (existingPantryB && existingPantryB.length > 0 && !force) {
-    console.log(`[evaluate] Pantry B already has ${existingPantryB.length} entries for ${sourceRef}, skipping`);
-  } else {
-    if (force && existingPantryB && existingPantryB.length > 0) {
-      await sb.from("karel_pantry_b_entries").delete().eq("source_ref", sourceRef);
-    }
-    // Hlavní conclusion
+  await appendPantryB(sb, {
+    user_id: userId,
+    entry_kind: "conclusion",
+    source_kind: "therapy_session",
+    source_ref: sourceRef,
+    summary: `Sezení s ${partName} (${ctx.plan.plan_date}, vede ${therapistLabel}) — ${outputs.practical_report_text.slice(0, 420)}`,
+    detail: {
+      plan_id: ctx.plan.id,
+      review_id: reviewId,
+      part_name: partName,
+      practical_report_text: outputs.practical_report_text,
+      key_findings: evaluation.key_insights ?? [],
+      implications_for_part: outputs.implications_for_part,
+      implications_for_system: outputs.implications_for_system,
+      evidence_limitations: outputs.evidence_limitations,
+    },
+    intended_destinations: ["briefing_input", "did_implications", "did_therapist_tasks"],
+    related_part_name: partName,
+    related_therapist: therapistKey ?? undefined,
+  });
+
+  const followupSummary = [
+    outputs.recommendations_for_therapists,
+    outputs.recommendations_for_next_session,
+    outputs.recommendations_for_next_playroom,
+  ].filter(Boolean).join("
+
+") || evaluation.recommended_next_step || "Doplnit navazující kroky podle dostupnosti části.";
+  await appendPantryB(sb, {
+    user_id: userId,
+    entry_kind: "followup_need",
+    source_kind: "therapy_session",
+    source_ref: `${sourceRef}:followup`,
+    summary: followupSummary.slice(0, 1000),
+    detail: {
+      plan_id: ctx.plan.id,
+      review_id: reviewId,
+      recommendations_for_therapists: outputs.recommendations_for_therapists,
+      recommendations_for_next_session: outputs.recommendations_for_next_session,
+      recommendations_for_next_playroom: outputs.recommendations_for_next_playroom,
+      what_not_to_do: outputs.what_not_to_do,
+    },
+    intended_destinations: ["did_therapist_tasks", "briefing_input"],
+    related_part_name: partName,
+    related_therapist: therapistKey ?? undefined,
+  });
+
+  if (outputs.risks.length > 0) {
     await appendPantryB(sb, {
       user_id: userId,
-      entry_kind: "conclusion",
+      entry_kind: "risk",
       source_kind: "therapy_session",
-      source_ref: sourceRef,
-      summary: `Sezení s ${partName} (${ctx.plan.plan_date}, vede ${therapistLabel}) — ${evaluation.child_perspective.slice(0, 280)}`,
-      detail: {
-        plan_id: ctx.plan.id,
-        completion_status: evaluation.completion_status,
-        completed_blocks: completedBlocks,
-        total_blocks: totalBlocks,
-        ended_reason: endedReason,
-        child_perspective: evaluation.child_perspective,
-        therapist_motivation: evaluation.therapist_motivation,
-        recommended_next_step: evaluation.recommended_next_step,
-        incomplete_note: evaluation.incomplete_note,
-      },
-      intended_destinations: ["briefing_input", "did_implications", "did_therapist_tasks"],
+      source_ref: `${sourceRef}:risk`,
+      summary: outputs.risks.join("; ").slice(0, 1000),
+      detail: { plan_id: ctx.plan.id, review_id: reviewId, risks: outputs.risks, evidence_limitations: outputs.evidence_limitations },
+      intended_destinations: ["briefing_input", "did_implications"],
       related_part_name: partName,
-      related_therapist: therapistKey ?? undefined,
     });
+  }
 
-    // Followup_need pro každý task
-    for (const task of evaluation.tasks ?? []) {
-      await appendPantryB(sb, {
-        user_id: userId,
-        entry_kind: "followup_need",
-        source_kind: "therapy_session",
-        source_ref: sourceRef,
-        summary: `[${task.owner}/${task.urgency}] ${task.text}`,
-        detail: { plan_id: ctx.plan.id, task },
-        intended_destinations: ["did_therapist_tasks", "briefing_input"],
-        related_part_name: partName,
-        related_therapist: task.owner === "hanka" ? "hanka" : task.owner === "kata" ? "kata" : undefined,
-      });
-    }
-
-    // Hypothesis_change pro každý key_insight
-    for (const insight of evaluation.key_insights ?? []) {
-      await appendPantryB(sb, {
-        user_id: userId,
-        entry_kind: "hypothesis_change",
-        source_kind: "therapy_session",
-        source_ref: sourceRef,
-        summary: insight,
-        detail: { plan_id: ctx.plan.id },
-        intended_destinations: ["did_implications", "briefing_input"],
-        related_part_name: partName,
-      });
-    }
+  for (const insight of (evaluation.key_insights ?? []).slice(0, 3)) {
+    await appendPantryB(sb, {
+      user_id: userId,
+      entry_kind: "hypothesis_change",
+      source_kind: "therapy_session",
+      source_ref: `${sourceRef}:hypothesis:${String(insight).slice(0, 80)}`,
+      summary: String(insight).slice(0, 1000),
+      detail: { plan_id: ctx.plan.id, review_id: reviewId },
+      intended_destinations: ["did_implications", "briefing_input"],
+      related_part_name: partName,
+    });
   }
 
   if (reviewStatus !== "failed_analysis" && reviewId) {
@@ -1407,65 +1650,110 @@ async function persistEvaluation(
     }
   }
 
-  // 4) did_pantry_packages — session_summary balík → KARTA_<part>
+  // 4) did_pantry_packages + did_pending_drive_writes — nové autoritativní typy, starý session_summary zachován kompatibilně
   const cardTarget = `KARTA_${partName.toUpperCase()}`;
   const sessionLogTarget = `KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG`;
+  const assistants = Array.isArray((ctx.plan.urgency_breakdown as any)?.assistant_persons) ? (ctx.plan.urgency_breakdown as any).assistant_persons : [];
+  const commonMetadata = {
+    review_id: reviewId,
+    plan_id: ctx.plan.id,
+    thread_id: (ctx.threads ?? [])[0]?.id ?? null,
+    part_name: partName,
+    session_date: ctx.plan.plan_date,
+    lead_person: therapistLabel,
+    assistant_persons: assistants,
+    mode: "session",
+  };
+  const packageSpecs = [
+    {
+      package_type: "session_detail_analysis",
+      content_type: "session_detail_analysis",
+      report_kind: "detail_analysis",
+      target: cardTarget,
+      content: sessionDetailMarkdown({ text: outputs.detailed_analysis_text, plan: ctx.plan, reviewId, lead: therapistLabel, assistants }),
+    },
+    {
+      package_type: "session_practical_report",
+      content_type: "session_practical_report",
+      report_kind: "practical_report",
+      target: cardTarget,
+      content: sessionPracticalMarkdown({ text: outputs.practical_report_text, teamClosing: outputs.team_closing_text, plan: ctx.plan, reviewId, lead: therapistLabel, assistants }),
+    },
+    {
+      package_type: "session_log",
+      content_type: "session_log",
+      report_kind: "session_log",
+      target: sessionLogTarget,
+      content: `### ${ctx.plan.plan_date} · ${partName} · ${therapistLabel}
+plan_id: ${ctx.plan.id}
+review_id: ${reviewId}
+status: ${reviewStatus}
 
-  // Anti-dup: smaž případné staré balíky se stejným source_id (planId).
-  if (force) {
-    await sb
-      .from("did_pantry_packages")
-      .delete()
-      .eq("source_id", ctx.plan.id)
-      .in("status", ["pending_drive", "flushed"]);
-  } else {
-    const { data: existingPkgs } = await sb
-      .from("did_pantry_packages")
-      .select("id")
-      .eq("source_id", ctx.plan.id)
-      .eq("package_type", "session_summary");
-    if (existingPkgs && existingPkgs.length > 0) {
-      console.log(`[evaluate] Pantry package session_summary for plan ${ctx.plan.id} already exists, skipping`);
-      return { sessionLogTarget, cardTarget };
-    }
+**Stručný praktický report:**
+${outputs.practical_report_text.slice(0, 1600)}
+
+**Doporučený další krok:**
+${outputs.recommendations_for_next_session || evaluation.recommended_next_step || "doplnit evidenci"}
+`,
+    },
+  ];
+  const writeIds: string[] = [];
+  for (const spec of packageSpecs) {
+    const metadata = { ...commonMetadata, report_kind: spec.report_kind, content_type: spec.content_type };
+    const packageId = await insertPackageOnce(sb, {
+      user_id: userId,
+      package_type: spec.package_type,
+      source_id: ctx.plan.id,
+      source_table: "did_daily_session_plans",
+      content_md: spec.content,
+      drive_target_path: spec.target,
+      metadata,
+      status: "pending_drive",
+    }, force);
+    const governed = encodeGovernedWrite(`<!-- session_evaluate plan_id=${ctx.plan.id} review_id=${reviewId} content_type=${spec.content_type} -->
+
+${spec.content}`, {
+      source_type: "did_session_review",
+      source_id: reviewId ?? ctx.plan.id,
+      content_type: spec.content_type,
+      subject_type: spec.target === sessionLogTarget ? "system" : "part",
+      subject_id: partName,
+      payload_fingerprint: `${reviewId}:${spec.content_type}:${spec.target}`,
+    });
+    const writeId = await insertDriveWriteOnce(sb, {
+      user_id: userId,
+      target_document: spec.target,
+      content: governed,
+      write_type: "append",
+      priority: spec.content_type === "session_log" ? "normal" : "high",
+      status: "pending",
+    }, { reviewId, contentType: spec.content_type, target: spec.target }, force);
+    if (writeId) writeIds.push(writeId);
+    if (packageId && writeId) await sb.from("did_pantry_packages").update({ metadata: { ...metadata, pending_drive_write_id: writeId } }).eq("id", packageId);
   }
 
-  // Session summary → karta části
-  await sb.from("did_pantry_packages").insert({
-    user_id: userId,
-    package_type: "session_summary",
-    source_id: ctx.plan.id,
-    source_table: "did_daily_session_plans",
-    content_md: `<!-- session_evaluate plan_id=${ctx.plan.id} ended_reason=${endedReason} -->\n\n${markdown}`,
-    drive_target_path: cardTarget,
-    metadata: {
-      part_name: partName,
-      session_date: ctx.plan.plan_date,
-      therapist: therapistLabel,
-      completion_status: evaluation.completion_status,
-      completed_blocks: completedBlocks,
-      total_blocks: totalBlocks,
-      ended_reason: endedReason,
-    },
-    status: "pending_drive",
-  });
+  const { data: legacySummary } = await sb.from("did_pantry_packages").select("id").eq("source_id", ctx.plan.id).eq("package_type", "session_summary").limit(1);
+  if (!legacySummary?.length) {
+    await sb.from("did_pantry_packages").insert({
+      user_id: userId,
+      package_type: "session_summary",
+      source_id: ctx.plan.id,
+      source_table: "did_daily_session_plans",
+      content_md: `<!-- backward_compatible session_summary plan_id=${ctx.plan.id} review_id=${reviewId} -->
 
-  // Globální session log
-  const logEntry = `### ${ctx.plan.plan_date} · ${partName} · ${therapistLabel}\n` +
-    `_${evaluation.completion_status === "completed" ? "dokončené" : evaluation.completion_status === "partial" ? "neukončené" : "sotva začaté"}_\n\n` +
-    `**Co prožívalo dítě:** ${evaluation.child_perspective.slice(0, 600)}\n\n` +
-    `**Doporučený další krok:** ${evaluation.recommended_next_step}\n`;
+${outputs.practical_report_text}`,
+      drive_target_path: cardTarget,
+      metadata: { ...commonMetadata, report_kind: "backward_compatible_summary", authoritative: false },
+      status: "pending_drive",
+    });
+  }
 
-  await sb.from("did_pantry_packages").insert({
-    user_id: userId,
-    package_type: "session_log",
-    source_id: ctx.plan.id,
-    source_table: "did_daily_session_plans",
-    content_md: logEntry,
-    drive_target_path: sessionLogTarget,
-    metadata: { part_name: partName, session_date: ctx.plan.plan_date },
-    status: "pending_drive",
-  });
+  await sb.from("did_session_reviews").update({
+    analysis_json: { ...analysisJson, drive_write_ids: writeIds },
+    drive_sync_status: "queued",
+    source_of_truth_status: "pending_drive_sync",
+    updated_at: now,
+  }).eq("id", reviewId);
 
   return { sessionLogTarget, cardTarget, reviewId, reviewStatus };
 }
@@ -1627,7 +1915,13 @@ Vyhodnoť toto sezení. Drž se pravidel ze system promptu.
 - Pokud proběhla alespoň polovina bodů, completion_status nesmí být 'abandoned'.
 - HLAVNÍ VRSTVA = child_perspective (4-7 vět, konkrétně, pro Tundrupka / příslušnou část).
 - Therapist_motivation drž stručné (1-2 věty).
-- Vrať VÝHRADNĚ tool call emit_session_evaluation.`;
+- Vrať VÝHRADNĚ tool call emit_session_evaluation.
+
+POVINNÉ ROZDĚLENÍ VÝSTUPU:
+- detailed_analysis_text = odborná detailní analýza, delší a strukturovaná.
+- practical_report_text = kratší report pro Karlův přehled a další plánování.
+- team_closing_text = konkrétní týmové uzavření navázané na průběh Sezení.
+- Pokud evidence nestačí, nevyplňuj falešnou plnou analýzu; jasně popiš limity a bezpečný další krok.`;
 
     const evaluation = sanitizeEvaluation(await callAi(prompt, apiKey), endedReason, completedBlocks, totalBlocks);
     const diagnosticValidity = buildDiagnosticValidityReport(ctx.plan.plan_markdown, turnsByBlock, observationsByBlock, liveProgress);
