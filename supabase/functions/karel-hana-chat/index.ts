@@ -555,7 +555,12 @@ async function runHanaPostChatWriteback(args: {
   conversationId: string | null;
   apiKey: string;
   roleScope: RoleScopeResult;
+  allowDriveWriteback?: boolean;
 }): Promise<void> {
+  if (!args.allowDriveWriteback) {
+    console.log("[hana-writeback] skipped by persistence policy (no raw Drive / no-history)");
+    return;
+  }
   const { userText, karelResponse, conversationId, apiKey, roleScope } = args;
   const sb = getServiceClient();
 
@@ -924,6 +929,7 @@ serve(async (req) => {
               conversationId: conversationId || null,
               apiKey: LOVABLE_API_KEY,
               roleScope,
+              allowDriveWriteback: persistencePolicy.mode_id === "hana_osobni" && persistencePolicy.drive_policy === "no_raw_personal" && persistencePolicy.pantry_policy === "processed_did_implication_only",
             }).catch((e) => console.error("[hana-writeback] failed:", e));
           }
         }

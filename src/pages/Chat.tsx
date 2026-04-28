@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import ModeSelector from "@/components/ModeSelector";
+import StarterQuestions from "@/components/StarterQuestions";
 import MainModeToggle from "@/components/MainModeToggle";
 import ChatMessage from "@/components/ChatMessage";
 import ReportForm from "@/components/ReportForm";
@@ -45,7 +46,7 @@ import DidContentRouter from "@/components/did/DidContentRouter";
 import TherapistAvatarBar from "@/components/did/TherapistAvatarBar";
 import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
 import { useAuthReady } from "@/hooks/useAuthReady";
-import { APP_MODE_POLICIES, getAppModeForHub, getModePolicy } from "@/lib/appModePolicy";
+import { APP_MODE_POLICIES, getAppModeForHub, getModePolicy, type StarterQuestion } from "@/lib/appModePolicy";
 import { buildSafetyResponse, detectSafetyMention } from "@/lib/safetyDetection";
 import {
   type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
@@ -190,6 +191,7 @@ const Chat = () => {
     did_relevance_policy: persistencePolicy.did_relevance_policy,
     pantry_policy: persistencePolicy.pantry_policy,
     drive_policy: persistencePolicy.drive_policy,
+    daily_briefing_policy: persistencePolicy.daily_briefing_policy,
     safety_policy: persistencePolicy.safety_policy,
     no_save: noSave,
   };
@@ -1930,6 +1932,12 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     }
   };
 
+  const handleStarterQuestion = useCallback((question: StarterQuestion) => {
+    if (question.default_no_save) setNoSave(true);
+    setInput(question.prompt);
+    toast.info(question.default_no_save ? "Otázka je připravená v režimu bez ukládání." : "Otázka je připravená v aktivním režimu.");
+  }, []);
+
   const sendMessage = async () => {
     if ((!input.trim() && attachments.length === 0) || isLoading) return;
     const userMessage = input.trim();
@@ -2237,6 +2245,11 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
 
       {hubSection === "karel" ? (
         <div className="flex-1 flex flex-col min-h-0">
+          {noSave && (
+            <div className="border-b border-[hsl(var(--border-subtle))] bg-[hsl(var(--surface-secondary))]/70 px-4 py-2 text-center text-xs text-[hsl(var(--text-secondary))]">
+              Tento chat se neukládá. Po zavření zmizí. Bezpečnostní výjimka: při akutním riziku může vzniknout jen minimální redigovaný safety audit.
+            </div>
+          )}
           <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
             <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
               {messages.map((message, index) => (
@@ -2245,6 +2258,12 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
               {isLoading && messages[messages.length - 1]?.role === "user" && <LoadingSkeleton />}
             </div>
           </ScrollArea>
+          <StarterQuestions
+            modeId="karel_chat"
+            questions={APP_MODE_POLICIES.karel_chat.starter_questions}
+            disabled={isLoading}
+            onSelect={handleStarterQuestion}
+          />
           <ChatInputArea
             input={input} setInput={setInput}
             onSend={sendMessage} onKeyDown={handleKeyDown}
@@ -2306,6 +2325,12 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             </div>
           )}
           <CrisisBriefPanel />
+          <StarterQuestions
+            modeId="did_kluci"
+            questions={APP_MODE_POLICIES.did_kluci.starter_questions}
+            disabled={isLoading}
+            onSelect={handleStarterQuestion}
+          />
           <DidContentRouter
             didFlowState={didFlowState}
             setDidFlowState={setDidFlowState}
@@ -2494,7 +2519,13 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           {mainMode === "chat" ? (
             <>
               <CrisisBriefPanel />
-              <HanaChat noSave={noSave} />
+              <StarterQuestions
+                modeId="hana_osobni"
+                questions={APP_MODE_POLICIES.hana_osobni.starter_questions}
+                disabled={isLoading}
+                onSelect={handleStarterQuestion}
+              />
+              <HanaChat noSave={noSave} starterPrompt={input} onStarterPromptConsumed={() => setInput("")} />
             </>
           ) : (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">

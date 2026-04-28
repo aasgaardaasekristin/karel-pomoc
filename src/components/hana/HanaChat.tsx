@@ -75,7 +75,13 @@ const handleApiError = async (response: Response) => {
 
 // Intro animation removed – now lives in HanaPinScreen
 
-const HanaChatInner = ({ noSave = false }: { noSave?: boolean }) => {
+interface HanaChatProps {
+  noSave?: boolean;
+  starterPrompt?: string;
+  onStarterPromptConsumed?: () => void;
+}
+
+const HanaChatInner = ({ noSave = false, starterPrompt = "", onStarterPromptConsumed }: HanaChatProps) => {
   const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();
   const [messages, setMessages] = useState<Message[]>([]);
   const [viewState, setViewState] = useState<HanaViewState>("list");
@@ -114,6 +120,13 @@ const HanaChatInner = ({ noSave = false }: { noSave?: boolean }) => {
   useEffect(() => {
     console.warn(`[F15-debug] Auth state: ready=${isAuthReady}, session=${session ? "exists" : "null"}`);
   }, [isAuthReady, session]);
+
+  useEffect(() => {
+    if (!starterPrompt) return;
+    setInput(starterPrompt);
+    setViewState("thread-detail");
+    onStarterPromptConsumed?.();
+  }, [starterPrompt, onStarterPromptConsumed]);
 
   const persistConversation = useCallback(async (
     targetConversationId: string | null,
@@ -1131,12 +1144,12 @@ const HanaChatInner = ({ noSave = false }: { noSave?: boolean }) => {
   );
 };
 
-const HanaChat = ({ noSave = false }: { noSave?: boolean }) => {
+const HanaChat = ({ noSave = false, starterPrompt = "", onStarterPromptConsumed }: HanaChatProps) => {
   // We need conversationId to compute the key, but it's internal state.
   // Use a simple wrapper that provides the base key; HanaChatInner will override via prop when conversationId changes.
   return (
     <ThemeStorageKeyProvider value="theme_hana">
-      <HanaChatInner noSave={noSave} />
+      <HanaChatInner noSave={noSave} starterPrompt={starterPrompt} onStarterPromptConsumed={onStarterPromptConsumed} />
     </ThemeStorageKeyProvider>
   );
 };
