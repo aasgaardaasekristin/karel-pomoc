@@ -393,6 +393,39 @@ async function processEvaluation(sb: any, apiKey: string, userId: string, body: 
   return { ok: true, status: persistedReview?.status ?? "analyzed", review_id: reviewId, mode: "playroom", review_kind: "karel_direct_playroom", drive_write_ids: drive.writeIds, model_used: MODEL };
 }
 
+async function markJob(sb: any, jobId: string | null, patch: Record<string, unknown>) {
+  if (!jobId) return;
+  await sb.from("karel_action_jobs").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", jobId);
+}
+
+async function createEvaluationJob(sb: any, args: { userId: string; planId: string; threadId: string; partName?: string; reviewId: string; body: any }) {
+  const payload = { request_body: args.body, plan_id: args.planId, thread_id: args.threadId, part_name: args.partName ?? null };
+  const row = { user_id: args.userId, job_type: "playroom_evaluation", dedupe_key: `playroom_evaluation:${args.planId}:${args.threadId}`, status: "pending", target_type: "did_daily_session_plans", target_id: args.planId, source_function: "karel-did-playroom-evaluate", result_payload: payload, plan_id: args.planId, thread_id: args.threadId, part_name: args.partName ?? null, review_id: args.reviewId };
+  const { data: existing } = await sb.from("karel_action_jobs").select("id,status,attempt_count").eq("dedupe_key", row.dedupe_key).maybeSingle();
+  if (existing?.id) {
+    await sb.from("karel_action_jobs").update({ status: ["completed", "running"].includes(existing.status) ? existing.status : "pending", result_payload: payload, review_id: args.reviewId, last_error: null, updated_at: new Date().toISOString() }).eq("id", existing.id);
+    return existing.id as string;
+  }
+  const { data, error } = await sb.from("karel_action_jobs").insert(row).select("id").single();
+  if (error) throw error;
+  return data.id as string;
+}
+
+async function runEvaluationJob(sb: any, apiKey: string, userId: string, jobId: string, body: any) {
+  await markJob(sb, jobId, { status: "running", started_at: new Date().toISOString(), attempt_count: 1 });
+  try {
+    const result = await processEvaluation(sb, apiKey, userId, body);
+    await markJob(sb, jobId, { status: "completed", completed_at: new Date().toISOString(), finished_at: new Date().toISOString(), result_summary: "playroom_evaluation_completed", result_payload: { ...(result ?? {}), request_body: body } });
+    return result;
+  } catch (e: any) {
+    const msg = String(e?.message ?? e).slice(0, 1000);
+    const { data: job } = await sb.from("karel_action_jobs").select("attempt_count").eq("id", jobId).maybeSingle();
+    const attempts = Number(job?.attempt_count ?? 1);
+    await markJob(sb, jobId, { status: attempts >= 3 ? "failed_permanent" : "failed_retry", error_message: msg, last_error: msg, finished_at: new Date().toISOString() });
+    throw e;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
