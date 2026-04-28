@@ -636,6 +636,115 @@ function reviewStatusFor(evaluation: any, evidencePresent: boolean, completedBlo
   return "partially_analyzed";
 }
 
+
+function cleanText(value: unknown, max = 20000): string {
+  return String(value ?? "").replace(//g, "").replace(/
+{4,}/g, "
+
+
+").trim().slice(0, max);
+}
+
+function listLines(items: unknown): string {
+  return Array.isArray(items) && items.length > 0 ? items.map((x) => `- ${String(x).trim()}`).join("
+") : "- nebylo zaznamenáno";
+}
+
+function deriveSessionOutputs(args: { evaluation: any; plan: SessionPlan; markdown: string; diagnosticValidity: string; reviewStatus: ReviewStatus; completedBlocks?: number; totalBlocks?: number; endedReason: EndedReason }) {
+  const e = args.evaluation ?? {};
+  const part = args.plan.selected_part;
+  const lead = args.plan.session_lead || args.plan.therapist || "Hanička";
+  const assistants = Array.isArray((args.plan.urgency_breakdown as any)?.assistant_persons) ? (args.plan.urgency_breakdown as any).assistant_persons.join(", ") : "Karel jako live asistent terapeutky";
+  const evidenceLine = args.reviewStatus === "evidence_limited"
+    ? "Evidence je omezená; výstup odděluje doložené poznatky od hypotéz a nepředstírá plnou analýzu."
+    : "Výstup vychází z dostupného programu, průběhových poznámek, checklistu a navázaného threadu.";
+  const detailedFallback = `## SEZENÍ — DETAILNÍ PROFESIONÁLNÍ ANALÝZA
+plan_id: ${args.plan.id}
+datum: ${args.plan.plan_date}
+část: ${part}
+vedla: ${lead}
+asistovali: ${assistants}
+role Karla: live real-time asistent terapeutky
+stav review: ${args.reviewStatus}
+
+### Identifikace a program
+Sezení bylo vedeno terapeutkou (${lead}) podle schváleného programu ${args.plan.id}. Karel nevystupoval jako přímý vedoucí dítěte, ale jako průběžný asistent terapeutky. Dokončení bloků: ${args.completedBlocks ?? "?"}/${args.totalBlocks ?? "?"}. Důvod ukončení: ${args.endedReason}.
+
+### Co proběhlo
+${cleanText(e.session_arc || "nebylo zaznamenáno")}
+
+### Co zapsala terapeutka / co projevila část
+${cleanText(e.child_perspective || "nebylo zaznamenáno")}
+
+### Co navrhl Karel a role týmu
+${cleanText(e.therapist_motivation || "nebylo zaznamenáno")}
+
+### Pozorování vs hypotézy
+Pozorování: ${cleanText(e.session_arc || "nebylo zaznamenáno")}
+
+Hypotézy:
+${listLines(e.key_insights)}
+
+### Význam pro část
+${cleanText(e.implications_for_part || e.child_perspective || "nebylo zaznamenáno")}
+
+### Význam pro kluky
+${cleanText(e.implications_for_system || e.implications_for_tomorrow || "nebylo zaznamenáno")}
+
+### Rizika a limity evidence
+Rizika:
+${listLines(e.risks)}
+
+${cleanText(e.evidence_limitations || args.diagnosticValidity || evidenceLine)}
+
+### Doporučení
+Pro terapeutky: ${cleanText(e.recommendations_for_therapists || e.therapist_motivation || "nebylo zaznamenáno")}
+
+Pro další Sezení: ${cleanText(e.recommendations_for_next_session || e.recommended_next_step || "nebylo zaznamenáno")}
+
+Pro další Hernu: ${cleanText(e.recommendations_for_next_playroom || "není jasně indikováno; zvážit jen podle stability části")}
+
+### Čeho se vyvarovat
+${listLines(e.what_not_to_do)}
+
+### Otevřené otázky
+${cleanText(e.incomplete_note || "nebylo zaznamenáno")}`;
+  const practicalFallback = `## SEZENÍ — PRAKTICKÝ REPORT PRO KARLŮV PŘEHLED
+S částí ${part} pracovala ${lead}; Karel byl live asistent terapeutky. Hlavní téma: ${cleanText((args.plan.urgency_breakdown as any)?.main_topic || e.session_arc || "nebylo zaznamenáno", 600)}
+
+Co se stalo: ${cleanText(e.session_arc || "nebylo zaznamenáno", 1000)}
+
+Co víme o části: ${cleanText(e.child_perspective || "nebylo zaznamenáno", 1000)}
+
+Co z toho plyne pro část: ${cleanText(e.implications_for_part || e.child_perspective || "nebylo zaznamenáno", 900)}
+
+Co z toho plyne pro kluky: ${cleanText(e.implications_for_system || e.implications_for_tomorrow || "nebylo zaznamenáno", 900)}
+
+Co mají terapeutky udělat: ${cleanText(e.recommendations_for_therapists || e.recommended_next_step || "doplnit a ověřit evidenci", 900)}
+
+Čeho se vyvarovat: ${Array.isArray(e.what_not_to_do) && e.what_not_to_do.length ? e.what_not_to_do.join("; ") : "nepřetěžovat část a nevyvozovat závěry nad rámec evidence"}.
+
+Doporučení pro další Sezení: ${cleanText(e.recommendations_for_next_session || e.recommended_next_step || "navázat opatrně podle dostupnosti části", 900)}
+
+Doporučení pro další Hernu: ${cleanText(e.recommendations_for_next_playroom || "pouze pokud bude část stabilní a bude jasný bezpečný nízkoprahový cíl", 900)}
+
+Bezpečnostní závěr: ${cleanText(e.evidence_limitations || evidenceLine, 700)}`;
+  const teamFallback = cleanText(e.team_closing_text) || `${String(lead).includes("Ká") ? "Káťo" : "Haničko"}, bylo důležité, že jsi dnes držela tempo podle dostupné evidence a nepřetlačila ${part} za hranici záznamu. Karel zůstává v roli asistenta a tým se může opřít o malé, přesné kroky místo rychlých závěrů.`;
+  return {
+    detailed_analysis_text: cleanText(e.detailed_analysis_text || detailedFallback),
+    practical_report_text: cleanText(e.practical_report_text || practicalFallback, 8000),
+    team_closing_text: teamFallback,
+    implications_for_part: cleanText(e.implications_for_part || e.child_perspective || ""),
+    implications_for_system: cleanText(e.implications_for_system || e.implications_for_tomorrow || ""),
+    recommendations_for_therapists: cleanText(e.recommendations_for_therapists || e.therapist_motivation || ""),
+    recommendations_for_next_session: cleanText(e.recommendations_for_next_session || e.recommended_next_step || ""),
+    recommendations_for_next_playroom: cleanText(e.recommendations_for_next_playroom || ""),
+    risks: Array.isArray(e.risks) ? e.risks : [],
+    evidence_limitations: cleanText(e.evidence_limitations || args.diagnosticValidity || evidenceLine),
+    what_not_to_do: Array.isArray(e.what_not_to_do) ? e.what_not_to_do : [],
+  };
+}
+
 function cleanMemoryLine(value: unknown, max = 520): string {
   return String(value ?? "")
     .replace(/<!--[^]*?-->/g, " ")
