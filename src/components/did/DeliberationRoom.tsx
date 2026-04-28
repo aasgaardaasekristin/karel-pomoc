@@ -45,7 +45,23 @@ interface LiveSessionPlanRow {
   session_lead: string | null;
   therapist: string | null;
   plan_markdown: string;
+  status?: string | null;
+  program_status?: string | null;
   urgency_breakdown?: Record<string, unknown> | null;
+}
+
+const PROGRAM_START_BLOCKED_STATUSES = new Set(["draft", "in_revision", "awaiting_signatures", "awaiting_signature", "pending_review"]);
+
+function unsignedStartBlockReason(d: TeamDeliberation | null | undefined, plan?: LiveSessionPlanRow | null) {
+  const contract = (plan?.urgency_breakdown && typeof plan.urgency_breakdown === "object") ? plan.urgency_breakdown as Record<string, any> : {};
+  const programStatus = String(plan?.program_status || contract.review_state || contract.approval?.review_state || "").toLowerCase();
+  const humanReviewRequired = contract.human_review_required === true || contract.approval?.required === true || contract.playroom_plan?.approval?.required === true || contract.playroom_plan?.therapist_review?.required === true;
+  const childFacingPlayroom = contract.session_actor === "karel_direct" || contract.ui_surface === "did_kids_playroom" || !!contract.playroom_plan;
+  const approvedForChild = contract.approved_for_child_session === true || contract.approval?.approved_for_child_session === true || contract.playroom_plan?.approval?.approved_for_child_session === true || contract.playroom_plan?.therapist_review?.approved_for_child_session === true;
+  if (!d || d.hanka_signed_at === null || d.kata_signed_at === null || d.status !== "approved" || humanReviewRequired || PROGRAM_START_BLOCKED_STATUSES.has(programStatus) || (childFacingPlayroom && !approvedForChild)) {
+    return "Program byl upraven podle odpovědi terapeutky a čeká na podpis Haničky a Káti.";
+  }
+  return null;
 }
 
 type LiveProgramBlock = {
@@ -722,13 +738,18 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
   const goToLiveSession = async () => {
     const planId = bridgedPlanId ?? d?.linked_live_session_id;
     if (!planId || startingLive) return;
+    const preflightReason = unsignedStartBlockReason(d);
+    if (preflightReason) {
+      toast.info(preflightReason);
+      return;
+    }
     setStartingLive(true);
     try {
       const nowIso = new Date().toISOString();
       const [{ error: statusErr }, deliberationRes] = await Promise.all([
         (supabase as any)
           .from("did_daily_session_plans")
-          .update({ status: "in_progress", updated_at: nowIso })
+          .update({ status: "in_progress", lifecycle_status: "in_progress", started_at: nowIso, updated_at: nowIso })
           .eq("id", planId)
           .select("id")
           .single(),
@@ -769,13 +790,19 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
 
       const { data: planRow, error: fetchErr } = await (supabase as any)
         .from("did_daily_session_plans")
-        .select("id, selected_part, session_lead, therapist, plan_markdown, urgency_breakdown")
+        .select("id, selected_part, session_lead, therapist, plan_markdown, status, program_status, urgency_breakdown")
         .eq("id", planId)
         .single();
 
       if (fetchErr || !planRow) {
         console.error("[DeliberationRoom] startLiveSession fetch failed:", fetchErr);
         toast.error("Nepodařilo se načíst aktuální schválený plán.");
+        return;
+      }
+
+      const planBlockReason = unsignedStartBlockReason(d, planRow as LiveSessionPlanRow);
+      if (planBlockReason) {
+        toast.info(planBlockReason);
         return;
       }
 
@@ -1136,19 +1163,30 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                 </section>
               )}
 
-            {(d.status === "approved" || bridgedPlanId) && d.deliberation_type === "session_plan" && (
-              <Button
-                size="sm"
-                className="w-full h-8 text-[11px]"
-                onClick={goToLiveSession}
-                disabled={(!bridgedPlanId && !d.linked_live_session_id) || startingLive}
-              >
-                {startingLive ? (
-                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                ) : null}
-                {startingLive ? "Otevírám…" : <>{isPlayroomPlan ? "Spustit hernu" : "Spustit sezení"} <ArrowRight className="w-3 h-3 ml-1" /></>}
-              </Button>
-            )}
+            {(d.status === "approved" || bridgedPlanId) && d.deliberation_type === "session_plan" && (() => {
+              const startBlockReason = unsignedStartBlockReason(d);
+              return (
+                <div className="space-y-2">
+                  {startBlockReason && (
+                    <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[10px] text-amber-800 dark:text-amber-300">
+                      {startBlockReason}
+                    </div>
+                  )}
+                  <Button
+                    size="sm"
+                    className="w-full h-8 text-[11px]"
+                    onClick={goToLiveSession}
+                    disabled={!!startBlockReason || (!bridgedPlanId && !d.linked_live_session_id) || startingLive}
+                    title={startBlockReason || undefined}
+                  >
+                    {startingLive ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : null}
+                    {startingLive ? "Otevírám…" : <>{isPlayroomPlan ? "Spustit hernu" : "Spustit sezení"} <ArrowRight className="w-3 h-3 ml-1" /></>}
+                  </Button>
+                </div>
+              );
+            })()}
               </div>
             )}
           </>

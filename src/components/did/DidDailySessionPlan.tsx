@@ -60,6 +60,26 @@ const isKarelDirectApprovedForHerna = (plan: SessionPlan) =>
   plan.urgency_breakdown?.approved_for_child_session === true &&
   ["approved", "ready_to_start", "in_progress"].includes(String(plan.program_status || plan.urgency_breakdown?.review_state || plan.urgency_breakdown?.approval?.review_state || ""));
 
+const PROGRAM_START_BLOCKED_STATUSES = new Set(["draft", "in_revision", "awaiting_signatures", "awaiting_signature", "pending_review"]);
+
+const programStartBlockedReason = (plan: SessionPlan) => {
+  const programStatus = String(plan.program_status || plan.urgency_breakdown?.review_state || plan.urgency_breakdown?.approval?.review_state || "").toLowerCase();
+  const humanReviewRequired = plan.urgency_breakdown?.human_review_required === true
+    || plan.urgency_breakdown?.approval?.required === true
+    || plan.urgency_breakdown?.playroom_plan?.approval?.required === true
+    || plan.urgency_breakdown?.playroom_plan?.therapist_review?.required === true;
+  const childFacingPlayroom = isKarelDirectPlan(plan) || !!plan.urgency_breakdown?.playroom_plan;
+  const approvedForChild = plan.urgency_breakdown?.approved_for_child_session === true
+    || plan.urgency_breakdown?.approval?.approved_for_child_session === true
+    || plan.urgency_breakdown?.playroom_plan?.approval?.approved_for_child_session === true
+    || plan.urgency_breakdown?.playroom_plan?.therapist_review?.approved_for_child_session === true;
+
+  if (humanReviewRequired || PROGRAM_START_BLOCKED_STATUSES.has(programStatus) || (childFacingPlayroom && !approvedForChild)) {
+    return "Program byl upraven podle odpovědi terapeutky a čeká na podpis Haničky a Káti.";
+  }
+  return null;
+};
+
 const isQuarantinedPlan = (plan: SessionPlan) =>
   LEGACY_PLAN_GENERATORS.has(plan.generated_by) ||
   (ANALYTIC_PLAN_GENERATORS.has(plan.generated_by) && !hasExplicitRoleContract(plan));
@@ -352,6 +372,11 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
   // ═══ SESSION START ═══
   const startSession = useCallback(async (plan: SessionPlan) => {
     try {
+      const blockedReason = programStartBlockedReason(plan);
+      if (blockedReason) {
+        toast.info(blockedReason);
+        return;
+      }
       const { error: sessErr } = await supabase
         .from("did_part_sessions")
         .insert({
@@ -370,7 +395,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
 
       await (supabase as any)
         .from("did_daily_session_plans")
-        .update({ status: "in_progress", lifecycle_status: "in_progress", updated_at: new Date().toISOString() })
+        .update({ status: "in_progress", lifecycle_status: "in_progress", started_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .eq("id", plan.id);
 
       setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, status: "in_progress" } : p));
@@ -895,6 +920,7 @@ const PlanCard = ({
   const analyticDraftWithoutContract = ANALYTIC_PLAN_GENERATORS.has(plan.generated_by) && !hasExplicitRoleContract(plan);
   const quarantinedDraft = legacyDraft || analyticDraftWithoutContract;
   const hernaApproved = localHernaApproved;
+  const startBlockedReason = programStartBlockedReason(plan);
   const hernaStatusLabel = hernaApproved ? "Schváleno" : "Čeká na schválení terapeutkami";
   // „Zahájit" je v Pracovně dostupné JEN když je plán schválený přes prep room.
   // Mimo Pracovnu (prepGateEnabled=false) zůstává staré chování.
@@ -981,6 +1007,11 @@ const PlanCard = ({
 
   const onOpenPartRoom = useCallback(async () => {
     if (openingPartRoom) return;
+    const blockedReason = programStartBlockedReason(plan);
+    if (blockedReason) {
+      toast.info(blockedReason);
+      return;
+    }
     if (!hernaApproved) {
       toast.info("Čeká na lidské schválení před otevřením herny.");
       return;
@@ -1041,7 +1072,7 @@ const PlanCard = ({
     } finally {
       setOpeningPartRoom(false);
     }
-  }, [navigate, openingPartRoom, hernaApproved, plan.id, plan.selected_part, plan.session_lead, plan.urgency_breakdown, addendumKey, therapistAddendum]);
+  }, [navigate, openingPartRoom, hernaApproved, plan, addendumKey, therapistAddendum]);
 
   // Overdue calculation using Prague timezone
   const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
@@ -1229,7 +1260,7 @@ const PlanCard = ({
         <div className="mb-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5">
           <p className="text-[0.625rem] leading-4 text-amber-800 dark:text-amber-300">
             <Lock className="mr-1 inline h-2.5 w-2.5 -mt-px" />
-            Čeká na schválení terapeutkami.
+            {startBlockedReason || "Čeká na schválení terapeutkami."}
           </p>
         </div>
       )}
@@ -1318,10 +1349,10 @@ const PlanCard = ({
                 variant="outline"
                 size="sm"
                 onClick={onStartSession}
-                disabled={startBlockedByPrep}
-                title={startBlockedByPrep
+                disabled={startBlockedByPrep || !!startBlockedReason}
+                title={startBlockedReason || (startBlockedByPrep
                   ? "Nejdřív tým musí v přípravné místnosti podepsat plán."
-                  : undefined}
+                  : undefined)}
                 className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-50"
               >
                 <Play className="mr-0.5 h-2.5 w-2.5" /> Zahájit
@@ -1339,9 +1370,9 @@ const PlanCard = ({
                 variant="default"
                 size="sm"
                 onClick={onOpenPartRoom}
-                disabled={openingPartRoom || (karelDirect && !hernaApproved)}
+                disabled={openingPartRoom || !!startBlockedReason || (karelDirect && !hernaApproved)}
                 className="h-6 px-2 text-[10px]"
-                title={`Otevřít hernu s ${plan.selected_part}`}
+                title={startBlockedReason || `Otevřít hernu s ${plan.selected_part}`}
               >
                 {openingPartRoom ? (
                   <Loader2 className="mr-0.5 h-2.5 w-2.5 animate-spin" />
