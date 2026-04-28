@@ -164,11 +164,12 @@ Deno.serve(async (req) => {
     const { data: briefingRows } = await admin.from("did_daily_briefings").select("id, payload, briefing_date, generated_at").eq("user_id", userId).order("generated_at", { ascending: false }).limit(10);
     const briefing = (briefingRows ?? []).find((row: any) => findAsk(row.payload, askId));
     if (!briefing) return json({ error: "briefing_ask_not_found" }, 404);
-    const ask = findAsk((briefing as any).payload, askId);
+    const ask = normalizeAskMetadata(briefing, findAsk((briefing as any).payload, askId), assignee);
     const responseHash = await sha256(`${askId}:${threadId}:${therapistResponse}`);
     const targetType = String(ask?.target_type ?? "none");
     const targetItemId = ask?.target_item_id ? String(ask.target_item_id) : null;
     const resolutionMode = String(body.resolution_mode ?? ((ask?.expected_resolution === "update_program" || ask?.requires_immediate_program_update) ? "apply_to_program" : "store_observation"));
+    const decisionBeforeApply = buildDecision(ask, therapistResponse, resolutionMode);
 
     let existingQuery = admin
       .from("briefing_ask_resolutions")
@@ -194,9 +195,16 @@ Deno.serve(async (req) => {
       intent: ask?.intent ?? "none",
       target_type: targetType,
       target_item_id: targetItemId,
+      target_item_key: targetItemId ?? stableTargetKey(briefing.id, targetType, ask?.target_part_name ?? null),
       target_part_name: ask?.target_part_name ?? null,
       resolution_mode: resolutionMode,
       resolution_status: "pending",
+      decision_before_apply: decisionBeforeApply,
+      decision: decisionBeforeApply.decision,
+      confidence: decisionBeforeApply.confidence,
+      requires_reapproval: decisionBeforeApply.requires_reapproval,
+      clinical_caution: decisionBeforeApply.clinical_caution,
+      evidence_level: decisionBeforeApply.evidence_level,
     };
     const { data: inserted, error: insertErr } = await admin.from("briefing_ask_resolutions").insert(baseResolution).select("*").maybeSingle();
     if (insertErr && !existing) throw insertErr;
@@ -222,25 +230,47 @@ Deno.serve(async (req) => {
       const created = await createRes.json();
       if (!createRes.ok || !created?.deliberation?.id) throw new Error(created?.error || "deliberation_create_failed");
       const question = String(ask?.text ?? ask?.question_text ?? "");
+      const { data: beforeDelib } = await admin.from("did_team_deliberations").select("program_draft, session_params, status").eq("id", created.deliberation.id).maybeSingle();
       const iterRes = await fetch(`${SUPABASE_URL}/functions/v1/karel-team-deliberation-iterate`, {
         method: "POST",
         headers: { Authorization: auth, "Content-Type": "application/json" },
-        body: JSON.stringify({ deliberation_id: created.deliberation.id, latest_input: { author: assignee, text: therapistResponse, question } }),
+        body: JSON.stringify({ deliberation_id: created.deliberation.id, latest_input: { author: assignee, text: therapistResponse, question, briefing_ask_resolution: decisionBeforeApply } }),
       });
       const iter = await iterRes.json();
       if (!iterRes.ok) throw new Error(iter?.error || "iterate_failed");
+      const { data: afterDelib } = await admin.from("did_team_deliberations").select("program_draft, session_params, status").eq("id", created.deliberation.id).maybeSingle();
+      const programDiff = { before: beforeDelib?.program_draft ?? [], after: afterDelib?.program_draft ?? [], changed_blocks: Array.isArray(afterDelib?.program_draft) ? afterDelib.program_draft.map((b: any) => String(b?.block ?? "")).filter(Boolean) : [], summary: iter?.karel_inline_comment ?? null };
+      const sessionParamsDiff = { before: beforeDelib?.session_params ?? {}, after: afterDelib?.session_params ?? {}, changed_keys: changedKeys(beforeDelib?.session_params ?? {}, afterDelib?.session_params ?? {}), risk_gate_changed: JSON.stringify(beforeDelib?.session_params?.risk_gate ?? null) !== JSON.stringify(afterDelib?.session_params?.risk_gate ?? null), stop_rules_changed: JSON.stringify(beforeDelib?.session_params?.stop_rules ?? []) !== JSON.stringify(afterDelib?.session_params?.stop_rules ?? []), evidence_limits_changed: true, requires_reapproval: decisionBeforeApply.requires_reapproval };
+      const pantry = await appendPantryB(admin as any, { user_id: userId, entry_kind: "plan_change", source_kind: "briefing_ask_resolution", source_ref: `briefing-ask:${briefing.id}:${askId}:${threadId}:${targetType}:${targetItemId ?? "none"}:${responseHash}`, summary: targetType === "proposed_playroom" ? `Odpověď ${assignee === "hanka" ? "Haničky" : "Káti"} byla započítána do programu Herny: diagnostický jazyk převeden na nízkoprahové observační prvky.` : `Odpověď ${assignee === "hanka" ? "Haničky" : "Káti"} byla započítána do programu Sezení a čeká na revizi/podpisy.`, detail: { briefing_id: briefing.id, ask_id: askId, thread_id: threadId, therapist_response: therapistResponse, ...decisionBeforeApply, deliberation_id: created.deliberation.id, program_diff: programDiff, session_params_diff: sessionParamsDiff, evidence_limits: "Závěry až podle konkrétních odpovědí a následného review; žádné pseudo-diagnostické testování." }, intended_destinations: ["briefing_input", "did_implications", "did_therapist_tasks"], related_part_name: ask?.target_part_name ?? undefined, related_therapist: assignee });
+      const driveMd = [`## BRIEFING ASK — ZAPOČÍTANÁ ODPOVĚĎ TERAPEUTKY`, `datum: ${new Date().toISOString()}`, `briefing_id: ${briefing.id}`, `ask_id: ${askId}`, `thread_id: ${threadId}`, `odpověděla: ${assignee === "hanka" ? "Hanička" : "Káťa"}`, `část: ${ask?.target_part_name ?? "neurčeno"}`, `target: ${targetType}:${targetItemId ?? "none"}`, `decision: ${decisionBeforeApply.decision}`, `dopad na program: ${programDiff.summary ?? "programová revize vytvořena"}`, `schvalovací stav: čeká na podpis Haničky a Káti`, `evidence limits: Závěry budou možné až podle konkrétních odpovědí a následného review.`, ``, `Odpověď terapeutky: ${therapistResponse}`, ``, `Změněné bloky: ${programDiff.changed_blocks.join(", ") || "nezjištěno"}`].join("\n");
+      const { data: pkg } = await admin.from("did_pantry_packages").insert({ user_id: userId, package_type: "briefing_ask_resolution", source_id: pantry?.id ?? null, source_table: "karel_pantry_b_entries", content_md: driveMd, drive_target_path: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN", metadata: { source_kind: "briefing_ask_resolution", briefing_id: briefing.id, ask_id: askId, thread_id: threadId, resolution_id: resolutionId, decision: decisionBeforeApply.decision, target_type: targetType, target_item_id: targetItemId, related_part_name: ask?.target_part_name ?? null }, status: "pending_drive" }).select("id").maybeSingle();
+      let driveWriteId: string | null = null;
+      if (pkg?.id) {
+        try {
+          const flushRes = await fetch(`${SUPABASE_URL}/functions/v1/karel-pantry-flush-to-drive`, { method: "POST", headers: { Authorization: auth, "Content-Type": "application/json" }, body: JSON.stringify({ mode: "scoped", package_ids: [pkg.id] }) });
+          const flushed = await flushRes.json().catch(() => ({}));
+          driveWriteId = flushed?.results?.[0]?.write_id ?? null;
+        } catch (e) { console.warn("[briefing-ask-resolve] drive package flush pending", e); }
+      }
       await admin.from("did_threads").update({ is_processed: true, processed_at: new Date().toISOString() }).eq("id", threadId);
+      const decisionResult = { ...decisionBeforeApply, applied_to_deliberation_id: created.deliberation.id, program_diff: programDiff, session_params_diff: sessionParamsDiff, pantry_entry_id: pantry?.id ?? null, drive_package_id: pkg?.id ?? null, drive_write_id: driveWriteId, resolution_status: "applied_to_program" };
       const patch = {
         resolution_status: "applied_to_program",
         applied_to_deliberation_id: created.deliberation.id,
         applied_to_program_version: new Date().toISOString(),
         applied_to_target_type: targetType,
         applied_to_target_item_id: targetItemId,
+        decision_result: decisionResult,
+        program_diff: programDiff,
+        session_params_diff: sessionParamsDiff,
+        pantry_entry_id: pantry?.id ?? null,
+        drive_package_id: pkg?.id ?? null,
+        drive_write_id: driveWriteId,
         processed_at: new Date().toISOString(),
         processed_by: "karel-briefing-ask-resolve",
       };
       const { data: updated } = await admin.from("briefing_ask_resolutions").update(patch).eq("id", resolutionId).select("*").single();
-      return json({ resolution: updated, deliberation: created.deliberation, iteration: iter, status_text: targetType === "proposed_playroom" ? "Odpověď započítána do programu Herny. Čeká na podpisy." : "Odpověď započítána do programu Sezení. Čeká na podpisy." });
+      return json({ resolution: updated, deliberation: created.deliberation, iteration: iter, decision: decisionResult, program_diff: programDiff, session_params_diff: sessionParamsDiff, status_text: targetType === "proposed_playroom" ? "Odpověď započítána do programu Herny. Změna čeká na podpis Haničky a Káti." : "Odpověď započítána do programu Sezení. Změna čeká na podpis Haničky a Káti." });
     }
 
     if (resolutionMode === "create_task") {
