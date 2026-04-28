@@ -185,6 +185,8 @@ const Chat = () => {
   const [noSave, setNoSave] = useState(() => {
     try { return sessionStorage.getItem("karel_no_save") === "1"; } catch { return false; }
   });
+  const [lastSafetyDetection, setLastSafetyDetection] = useState<ReturnType<typeof detectSafetyMention> | null>(null);
+  const [lastWritebackDecision, setLastWritebackDecision] = useState("zatím bez rozhodnutí");
   const appModeId = getAppModeForHub(hubSection);
   const persistencePolicy = getModePolicy(appModeId, noSave);
   const persistenceRequest = {
@@ -200,10 +202,21 @@ const Chat = () => {
 
   useEffect(() => {
     try {
-      if (noSave) sessionStorage.setItem("karel_no_save", "1");
+      if (noSave) {
+        sessionStorage.setItem("karel_no_save", "1");
+        clearNoHistoryChatStorage();
+        setLastWritebackDecision("no-history: běžná perzistence vypnutá");
+      }
       else sessionStorage.removeItem("karel_no_save");
     } catch {}
   }, [noSave]);
+
+  useEffect(() => {
+    if (!noSave) return;
+    clearNoHistoryChatStorage();
+    setMessages([]);
+    setInput("");
+  }, []);
 
   const hasStoredDidWork = (() => {
     try {
