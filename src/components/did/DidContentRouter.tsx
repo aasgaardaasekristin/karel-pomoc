@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
-import { Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -336,6 +336,43 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
       ? { severity: match.severity || "moderate", eventId: match.eventId }
       : null;
   }, [didSubMode, activeThread?.partName, crisisCards]);
+  const [askResolveBusy, setAskResolveBusy] = useState<"apply" | "close" | null>(null);
+  const isBriefingAskThread = activeThread?.workspaceType === "ask_hanka" || activeThread?.workspaceType === "ask_kata";
+  const hasTherapistAnswer = React.useMemo(
+    () => messages.some((m) => m.role === "user" && String(m.content ?? "").trim().length > 0),
+    [messages],
+  );
+
+  const resolveBriefingAsk = async (resolutionMode: "apply_to_program" | "close_no_change") => {
+    if (!activeThread || !isBriefingAskThread || askResolveBusy) return;
+    if (resolutionMode === "apply_to_program" && !hasTherapistAnswer) {
+      toast.error("Nejdřív napiš odpověď, kterou má Karel započítat.");
+      return;
+    }
+    setAskResolveBusy(resolutionMode === "apply_to_program" ? "apply" : "close");
+    try {
+      await supabase.from("did_threads").update({ messages, last_activity_at: new Date().toISOString() }).eq("id", activeThread.id);
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-briefing-ask-resolve`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ thread_id: activeThread.id, ask_id: activeThread.workspaceId, resolution_mode: resolutionMode }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || "Započítání odpovědi selhalo.");
+      setActiveThread((prev) => prev && prev.id === activeThread.id ? { ...prev, isProcessed: true } : prev);
+      toast.success(data?.status_text || "Briefingový bod byl zpracován.");
+      if (data?.deliberation?.id) {
+        try { sessionStorage.setItem("karel_open_deliberation_id", data.deliberation.id); } catch { /* ignore */ }
+        setDidFlowState("terapeut");
+      }
+    } catch (error) {
+      console.error("[DidContentRouter] briefing ask resolve failed:", error);
+      toast.error(error instanceof Error ? error.message : "Započítání odpovědi selhalo.");
+    } finally {
+      setAskResolveBusy(null);
+    }
+  };
 
   // Entry screen: Terapeut / Kluci
   if (didFlowState === "entry" && !didSubMode) {
