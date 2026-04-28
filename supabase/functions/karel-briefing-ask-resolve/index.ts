@@ -32,6 +32,59 @@ const findAsk = (payload: any, askId: string) => {
   return all.find((item: any) => String(item?.id ?? "") === askId) ?? null;
 };
 
+const norm = (s: unknown) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+const safeJson = (value: unknown) => value && typeof value === "object" ? value as Record<string, unknown> : {};
+const stableTargetKey = (briefingId: string, targetType: string, partName: string | null) => `${briefingId}:${targetType}:${partName || "unknown"}`;
+
+function normalizeAskMetadata(briefing: any, ask: any, assignee: "hanka" | "kata") {
+  const text = String(ask?.text ?? ask?.question_text ?? "");
+  const lower = norm(text);
+  const isPlayroom = lower.includes("herna") || lower.includes("hry") || lower.includes("prakticky report") || lower.includes("hravy");
+  const isSession = !isPlayroom && (lower.includes("sezeni") || lower.includes("session") || lower.includes("terapeutick"));
+  const isTask = lower.includes("ukol") || lower.includes("domluv") || lower.includes("zarid") || lower.includes("pripomen");
+  const isObservation = lower.includes("sleduj") || lower.includes("pozoruj") || lower.includes("over") || lower.includes("zkontroluj") || lower.includes("rizik") || lower.includes("stop signal");
+  const payload = briefing?.payload ?? {};
+  const targetType = String(ask?.target_type ?? (isPlayroom ? "proposed_playroom" : isSession ? "proposed_session" : isTask ? "task" : isObservation ? "current_handling" : "none"));
+  const target = targetType === "proposed_playroom" ? payload.proposed_playroom : targetType === "proposed_session" ? payload.proposed_session : null;
+  const targetPartName = ask?.target_part_name ? String(ask.target_part_name) : (target?.part_name ? String(target.part_name) : null);
+  const targetItemId = ask?.target_item_id ? String(ask.target_item_id) : (target?.id ? String(target.id) : (targetType === "proposed_playroom" || targetType === "proposed_session" ? stableTargetKey(briefing.id, targetType, targetPartName) : null));
+  const intent = String(ask?.intent ?? (targetType === "proposed_playroom" ? "playroom_plan" : targetType === "proposed_session" ? "session_plan" : isTask ? "task" : isObservation ? "observation" : "team_coordination"));
+  return { ...ask, text, assignee, intent, target_type: targetType, target_item_id: targetItemId, target_part_name: targetPartName, requires_immediate_program_update: targetType === "proposed_playroom" || targetType === "proposed_session", expected_resolution: targetType === "proposed_playroom" || targetType === "proposed_session" ? "update_program" : isTask ? "create_task" : isObservation ? "add_observation" : "store_memory" };
+}
+
+function buildDecision(ask: any, therapistResponse: string, resolutionMode: string) {
+  const text = norm(`${ask?.text ?? ""} ${therapistResponse}`);
+  const targetType = String(ask?.target_type ?? "none");
+  const clinicalCaution = /test|diagnost|profesion|vyhodnot|disoci|prep[ií]n|strid|stř[ií]d/.test(text) || targetType !== "none";
+  const decision = resolutionMode === "close_no_change" ? "close_no_change"
+    : resolutionMode === "create_task" ? "create_task"
+    : targetType === "proposed_playroom" ? "apply_to_playroom_program"
+    : targetType === "proposed_session" ? "apply_to_session_program"
+    : targetType === "current_handling" ? "apply_to_current_handling"
+    : therapistResponse.length < 12 ? "ask_for_clarification"
+    : "store_as_observation";
+  return {
+    decision,
+    confidence: targetType === "proposed_playroom" || targetType === "proposed_session" ? "high" : "medium",
+    requires_reapproval: decision === "apply_to_playroom_program" || decision === "apply_to_session_program",
+    clinical_caution: clinicalCaution,
+    evidence_level: "therapist_observation_D2",
+    target_type: targetType,
+    target_item_id: ask?.target_item_id ?? null,
+    target_part_name: ask?.target_part_name ?? null,
+    reasoning_summary: decision === "apply_to_playroom_program"
+      ? "Odpověď terapeutky se vztahuje k dnešní Herně; Karel ji smí použít jen jako D2 terapeutické pozorování a převést diagnostický jazyk do bezpečných observačních prvků."
+      : decision === "apply_to_session_program"
+        ? "Odpověď terapeutky se vztahuje k dnešnímu Sezení; změna programu vyžaduje opatrnou revizi a nové schválení."
+        : "Odpověď nevyžaduje přímý přepis programu; patří do operační paměti nebo úkolů.",
+  };
+}
+
+function changedKeys(before: any, after: any) {
+  const keys = Array.from(new Set([...Object.keys(safeJson(before)), ...Object.keys(safeJson(after))]));
+  return keys.filter((k) => JSON.stringify((before ?? {})[k] ?? null) !== JSON.stringify((after ?? {})[k] ?? null));
+}
+
 function buildProgramPrefill(payload: any, ask: any, assignee: "hanka" | "kata") {
   if (ask.target_type === "proposed_playroom" && payload?.proposed_playroom) {
     const s = payload.proposed_playroom;
