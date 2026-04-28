@@ -49,6 +49,7 @@ const ChatInputArea = ({
         />
         <Textarea
           ref={textareaRef}
+          data-testid="chat-input"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
