@@ -538,9 +538,9 @@ function buildDailyTherapeuticPriority(payload: any): string {
   const sess = payload?.yesterday_session_review?.exists ? payload.yesterday_session_review : null;
   const part = String(play?.part_name || sess?.part_name || payload?.proposed_session?.part_name || payload?.proposed_playroom?.part_name || "části").trim();
   if (sess?.exists && sess?.held === false) {
-    return `Protože plánované Sezení kvůli tělesným nebo neverbálním potížím klinicky neproběhlo, první krok dne má být krátké ověření aktuálního tělesného a emočního stavu ${part}. Teprve podle toho má tým rozhodnout, zda dnes udělat terapeutkou vedené Sezení, nízkoprahovou stabilizační Hernu, nebo jen bezpečný kontakt bez otevírání nového těžkého materiálu.`;
+    return `Protože plánované Sezení kvůli tělesným nebo neverbálním potížím klinicky neproběhlo, první krok dne má být krátké ověření aktuálního tělesného a emočního stavu ${partGenitive(part)}. Teprve podle toho má tým rozhodnout, zda dnes udělat terapeutkou vedené Sezení, nízkoprahovou stabilizační Hernu, nebo jen bezpečný kontakt bez otevírání nového těžkého materiálu.`;
   }
-  return `Dnešní priorita je nejdřív ověřit dostupnost a míru zahlcení ${part}. Pokud je část stabilní, může následovat malý návazný krok; pokud je unavená nebo stažená, přednost má stabilizace a žádné prohlubování tématu.`;
+  return `Dnešní priorita je nejdřív ověřit dostupnost a míru zahlcení ${partGenitive(part)}. Pokud je část stabilní, může následovat malý návazný krok; pokud je unavená nebo stažená, přednost má stabilizace a žádné prohlubování tématu.`;
 }
 
 function buildOpeningMonologue(payload: any, context: any, candidates: SessionCandidate[]) {
