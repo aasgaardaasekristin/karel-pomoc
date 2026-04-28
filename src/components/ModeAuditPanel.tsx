@@ -26,6 +26,7 @@ const ModeAuditPanel = ({ policy, noSave, lastSafetyDetection, lastWritebackDeci
     ["safety_policy", policy.safety_policy],
     ["last_safety_detection", lastSafetyDetection ? `${lastSafetyDetection.category ?? "matched"} / ${lastSafetyDetection.required_response_style}` : "—"],
     ["last_writeback_decision", lastWritebackDecision],
+    ["allows_did_writeback", policy.allows_did_writeback],
   ] as const;
 
   return (

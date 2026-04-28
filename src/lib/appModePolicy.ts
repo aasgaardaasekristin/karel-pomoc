@@ -32,6 +32,7 @@ export interface AppModePolicy {
   starter_questions: StarterQuestion[];
   allowed_surfaces: string[];
   disallowed_writebacks: string[];
+  allows_did_writeback: boolean;
 }
 
 const COMMON_NO_DID_WRITEBACKS = ["did_threads", "karel_pantry_b_entries", "did_event_ingestion_log", "did_pantry_packages", "did_pending_drive_writes", "karel_daily_briefing", "part_card_auto_create"];
@@ -57,6 +58,7 @@ export const APP_MODE_POLICIES: Record<AppModeId, AppModePolicy> = {
     ],
     allowed_surfaces: ["hub", "chat"],
     disallowed_writebacks: COMMON_NO_DID_WRITEBACKS,
+    allows_did_writeback: false,
   },
   did_kluci: {
     mode_id: "did_kluci",
@@ -81,6 +83,7 @@ export const APP_MODE_POLICIES: Record<AppModeId, AppModePolicy> = {
     ],
     allowed_surfaces: ["hub", "did_dashboard", "did_threads", "playroom", "session", "meeting", "kartoteka"],
     disallowed_writebacks: ["raw_hana_personal_to_drive", "raw_private_chat_to_evidence", "unclassified_karel_chat_to_did"],
+    allows_did_writeback: true,
   },
   hana_osobni: {
     mode_id: "hana_osobni",
@@ -102,6 +105,7 @@ export const APP_MODE_POLICIES: Record<AppModeId, AppModePolicy> = {
     ],
     allowed_surfaces: ["hub", "hana_chat", "hana_report"],
     disallowed_writebacks: ["raw_personal_to_drive", "raw_personal_to_daily_briefing", "raw_personal_to_did_threads", "part_card_auto_create"],
+    allows_did_writeback: false,
   },
   no_save: {
     mode_id: "no_save",
@@ -117,6 +121,7 @@ export const APP_MODE_POLICIES: Record<AppModeId, AppModePolicy> = {
     starter_questions: [],
     allowed_surfaces: ["chat", "hana_chat"],
     disallowed_writebacks: ["did_threads", "karel_hana_conversations", "karel_pantry_b_entries", "did_event_ingestion_log", "did_pantry_packages", "did_pending_drive_writes", "daily_briefing", "long_term_memory"],
+    allows_did_writeback: false,
   },
 };
 
