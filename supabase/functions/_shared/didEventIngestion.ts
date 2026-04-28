@@ -537,7 +537,9 @@ async function collectTherapistTaskNotes(sb: SupabaseClient, userId: string, sin
 }
 
 async function collectTherapistNotes(sb: SupabaseClient, userId: string, sinceISO: string, out: any[]) {
-  const { data } = await sb.from("therapist_notes").select("id, author, note_text, note_type, part_name, priority, created_at").gte("created_at", sinceISO).limit(80);
+  console.warn("[did-event-ingestion] therapist_notes adapter blocked: table has no user_id/safe scope", { userId, sinceISO });
+  return;
+  const { data } = await sb.from("therapist_notes").select("id, author, note_text, note_type, part_name, priority, created_at").eq("user_id", userId).gte("created_at", sinceISO).limit(80);
   for (const row of data ?? []) {
     const text = compactText((row as any).note_text, 1200);
     if (!text) continue;
@@ -607,6 +609,8 @@ async function collectDeliberations(sb: SupabaseClient, userId: string, sinceISO
 }
 
 async function collectCrisisSafety(sb: SupabaseClient, userId: string, sinceISO: string, out: any[]) {
+  console.warn("[did-event-ingestion] crisis/safety adapter blocked: source tables have no user_id/safe scope", { userId, sinceISO });
+  return;
   const crisisSources = [
     { table: "crisis_events", textCols: ["part_name", "trigger_description", "clinical_summary", "phase"], dateCol: "updated_at" },
     { table: "crisis_alerts", textCols: ["part_name", "summary", "severity", "karel_assessment"], dateCol: "created_at" },
@@ -615,7 +619,7 @@ async function collectCrisisSafety(sb: SupabaseClient, userId: string, sinceISO:
   ];
   for (const src of crisisSources) {
     try {
-      const { data } = await sb.from(src.table).select("*").gte(src.dateCol, sinceISO).limit(20);
+      const { data } = await sb.from(src.table).select("id,user_id,part_name,trigger_description,clinical_summary,phase,summary,severity,karel_assessment,status,karel_decision,therapist_hana_observation,therapist_kata_observation,created_at,updated_at").eq("user_id", userId).gte(src.dateCol, sinceISO).limit(20);
       for (const row of data ?? []) {
         const text = compactText(src.textCols.map((c) => (row as any)[c]).filter(Boolean).join(" | "), 1200);
         if (!text) continue;
