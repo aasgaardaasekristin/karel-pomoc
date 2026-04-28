@@ -372,6 +372,11 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
   // ═══ SESSION START ═══
   const startSession = useCallback(async (plan: SessionPlan) => {
     try {
+      const blockedReason = programStartBlockedReason(plan);
+      if (blockedReason) {
+        toast.info(blockedReason);
+        return;
+      }
       const { error: sessErr } = await supabase
         .from("did_part_sessions")
         .insert({
@@ -390,7 +395,7 @@ const DidDailySessionPlan = ({ refreshTrigger, compact = false, onOpenPrepRoom }
 
       await (supabase as any)
         .from("did_daily_session_plans")
-        .update({ status: "in_progress", lifecycle_status: "in_progress", updated_at: new Date().toISOString() })
+        .update({ status: "in_progress", lifecycle_status: "in_progress", started_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .eq("id", plan.id);
 
       setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, status: "in_progress" } : p));
