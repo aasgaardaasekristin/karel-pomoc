@@ -441,7 +441,7 @@ export async function createDrivePackageIfNeeded(sb: SupabaseClient, event: Norm
     status: "pending",
   }).select("id").single();
   if (writeErr) throw writeErr;
-  await sb.from("did_pantry_packages").update({ metadata: { source_ref: event.source_ref, source_hash: event.source_hash, pending_drive_write_id: write?.id ?? null } }).eq("id", pkg.id);
+  await sb.from("did_pantry_packages").update({ metadata: { source_marker: marker, source_ref: event.source_ref, source_hash: event.source_hash, source_kind: event.source_kind, evidence_level: classification.evidence_level, pending_drive_write_id: write?.id ?? null } }).eq("id", pkg.id);
   return { packageId: pkg?.id ?? null, writeId: write?.id ?? null };
 }
 
