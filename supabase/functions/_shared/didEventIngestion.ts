@@ -22,6 +22,13 @@ type EvidenceLevel =
   | "admin_note"
   | "unknown";
 
+const CHILD_CLINICAL_BLOCKED_EVIDENCE = new Set<EvidenceLevel>([
+  "therapist_factual_correction",
+  "external_fact",
+  "technical_event",
+  "admin_note",
+]);
+
 export interface NormalizedDidEvent {
   user_id: string;
   source_table: string;
@@ -107,6 +114,7 @@ const SUPPORTED_SOURCES = [
   "hana_personal_ingestion",
   "did_thread_ingestion",
   "live_session_progress",
+  "live_session_reality_override",
   "playroom_progress",
   "briefing_ask_resolution",
   "deliberation_event",
@@ -148,12 +156,13 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
   const text = event.raw_excerpt.toLowerCase();
   const sourceKind = event.source_kind;
   const isChild = event.author_role === "child" || sourceKind === "playroom_progress";
-  const isTechnical = sourceKind === "live_session_progress" && hasAny(text, [/replan|override|paused|stop|zastav/i]);
-  const isFactualCorrection = hasAny(text, [/skutečn|reáln|faktick|odkaz|url|extern/i]);
+  const isRealityOverride = sourceKind === "live_session_reality_override";
+  const isTechnical = (sourceKind === "live_session_progress" || isRealityOverride) && hasAny(text, [/replan|override|paused|stop|zastav/i]);
+  const isFactualCorrection = isRealityOverride || hasAny(text, [/skutečn|reáln|faktick|odkaz|url|extern/i]);
   const isRisk = hasAny(text, [/rizik|kriz|sebepo|ubl[ií]žit|nebezpe|stop sign[aá]l|disoci/i]);
   const isTask = hasAny(text, [/úkol|ukol|domluv|zařiď|zarid|follow[- ]?up|ověř|over|připomeň|pripomen/i]);
   const isPlan = hasAny(text, [/pl[aá]n|program|zm[eě]na|příště|priste|sezen[ií]|herna|blok/i]);
-  const isClinical = hasAny(text, [/část|cast|kluci|tundrupek|timmy|arthur|úzkost|uzkost|strach|pl[aá]č|tělo|telo|afekt|reakc|potřeb|potreb|bezpe/i]);
+  const isClinical = hasAny(text, [/část|cast|kluci|tundrupek|timmy|arthur|úzkost|uzkost|strach|pl[aá]č|tělo|telo|afekt|reakc|potřeb|potreb|bezpe|ztichl|ramen|nechci být s[aá]m|nechci byt sam/i]);
   const isAdminOnly = hasAny(text, [/technick|login|tlač[ií]tko|tlacitko|chyba ui|export|soubor/i]) && !isClinical && !isRisk;
 
   if (!event.raw_excerpt || event.raw_excerpt.length < 8) {
@@ -190,7 +199,7 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
           ? "observation"
           : "conclusion";
 
-  const clinicalAllowed = evidence_level === "direct_child_evidence" || evidence_level === "therapist_observation_D2" || evidence_level === "hypothesis";
+  const clinicalAllowed = (isClinical || isChild || isRisk) && !CHILD_CLINICAL_BLOCKED_EVIDENCE.has(evidence_level);
   const clinical_implication = isFactualCorrection
     ? "Faktický rámec od terapeutky/externí informace upravuje práci v realitě, ale není klinickým důkazem o části."
     : clinicalAllowed
@@ -292,7 +301,7 @@ export async function createPantryEntry(sb: SupabaseClient, event: NormalizedDid
   if (classification.entry_kind === "skip" || !classification.include_in_daily_briefing) return null;
   const destinations = new Set<PantryBDestination>(["briefing_input"]);
   if (classification.action_required || classification.entry_kind === "followup_need" || classification.entry_kind === "task") destinations.add("did_therapist_tasks");
-  if (classification.clinical_relevance && classification.evidence_level !== "therapist_factual_correction" && classification.evidence_level !== "external_fact") destinations.add("did_implications");
+  if (isClinicalBridgeEligible(classification)) destinations.add("did_implications");
   const pantry = await appendPantryB(sb, {
     user_id: event.user_id,
     entry_kind: classification.entry_kind as PantryBEntryKind,
@@ -335,9 +344,28 @@ function buildSummary(event: NormalizedDidEvent, classification: DidEventClassif
   return `${prefix}${classification.operational_implication || classification.clinical_implication || event.raw_excerpt}`.slice(0, 1000);
 }
 
+function isClinicalBridgeEligible(classification: DidEventClassification): boolean {
+  return classification.clinical_relevance && !CHILD_CLINICAL_BLOCKED_EVIDENCE.has(classification.evidence_level);
+}
+
+function observationSourceType(event: NormalizedDidEvent): string {
+  if (event.source_kind === "therapist_task_note") return "task_feedback";
+  if (event.source_kind === "therapist_note" || event.source_kind === "briefing_ask_resolution") return "therapist_message";
+  if (event.source_kind === "playroom_progress") return "part_direct";
+  if (event.source_kind === "live_session_progress") return "session";
+  if (event.source_kind === "deliberation_event") return "meeting";
+  return "thread";
+}
+
+function observationEvidenceKind(classification: DidEventClassification): string {
+  if (classification.evidence_level === "hypothesis") return "INFERENCE";
+  if (classification.entry_kind === "plan_change") return "PLAN";
+  if (classification.evidence_level === "unknown") return "UNKNOWN";
+  return "FACT";
+}
+
 export async function createObservationIfNeeded(sb: SupabaseClient, event: NormalizedDidEvent, classification: DidEventClassification): Promise<{ observationId?: string | null; implicationId?: string | null }> {
-  if (!classification.clinical_relevance) return {};
-  if (classification.evidence_level === "therapist_factual_correction" || classification.evidence_level === "external_fact" || classification.evidence_level === "technical_event") return {};
+  if (!isClinicalBridgeEligible(classification)) return {};
   const fact = `${classification.clinical_implication} Zdroj: ${event.source_ref}`.slice(0, 1200);
   const evidenceMap: Record<string, string> = {
     direct_child_evidence: "D1",
@@ -348,13 +376,13 @@ export async function createObservationIfNeeded(sb: SupabaseClient, event: Norma
   const evidence = evidenceMap[classification.evidence_level] ?? "I1";
   const { data: existing } = await sb.from("did_observations").select("id").eq("source_ref", event.source_ref).limit(1).maybeSingle();
   const observationId = existing?.id ?? (await sb.from("did_observations").insert({
-    source_type: event.source_kind,
+    source_type: observationSourceType(event),
     source_ref: event.source_ref,
     subject_type: classification.related_part_name ? "part" : "system",
     subject_id: classification.related_part_name || "global",
     fact,
     evidence_level: evidence,
-    evidence_kind: classification.evidence_level,
+    evidence_kind: observationEvidenceKind(classification),
     confidence: evidence === "D1" ? 0.9 : evidence === "D2" ? 0.7 : 0.4,
     time_horizon: classification.urgency === "crisis" ? "hours" : "0_14d",
     status: "active",

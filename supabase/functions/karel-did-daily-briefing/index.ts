@@ -773,7 +773,7 @@ async function scoreSessionCandidates(supabase: any): Promise<SessionCandidate[]
 // ───────────────────────────────────────────────────────────
 // KONTEXT: posledních 3 dní + lingering
 // ───────────────────────────────────────────────────────────
-async function gatherContext(supabase: any, proofReviewId?: string | null) {
+async function gatherContext(supabase: any, proofReviewId?: string | null, requestedUserId?: string | null) {
   const threeDaysAgo = daysAgoISO(3);
   const sevenDaysAgo = daysAgoISO(7);
   const yesterdayISO = daysAgoISO(1);
@@ -784,12 +784,12 @@ async function gatherContext(supabase: any, proofReviewId?: string | null) {
       .not("phase", "in", '("closed","CLOSED")')
       .order("severity", { ascending: false }),
     supabase.from("did_observations")
-      .select("subject_type, subject_id, fact, evidence_level, confidence, created_at")
+      .select("id, subject_type, subject_id, source_type, source_ref, fact, evidence_level, confidence, created_at")
       .gte("created_at", `${threeDaysAgo}T00:00:00Z`)
       .order("created_at", { ascending: false })
       .limit(80),
     supabase.from("did_observations")
-      .select("subject_type, subject_id, fact, evidence_level, confidence, created_at")
+      .select("id, subject_type, subject_id, source_type, source_ref, fact, evidence_level, confidence, created_at")
       .gte("created_at", `${sevenDaysAgo}T00:00:00Z`)
       .lt("created_at", `${threeDaysAgo}T00:00:00Z`)
       .in("evidence_level", ["D1", "D2", "D3", "I1"])
@@ -862,7 +862,7 @@ async function gatherContext(supabase: any, proofReviewId?: string | null) {
   let approvedDeliberations: any[] = [];
   let eventIngestionSummary: any = null;
   try {
-    const userIdForB: string | null = null;
+    const userIdForB: string | null = requestedUserId ?? null;
     let userIdResolved: string | null = userIdForB;
     if (!userIdResolved) {
       const { data: anyCtxRow } = await supabase
@@ -997,6 +997,7 @@ async function gatherContext(supabase: any, proofReviewId?: string | null) {
     pantry_a_summary: pantryASummary,
     pantry_b_entries: pantryBEntries,
     event_ingestion_summary: eventIngestionSummary,
+    new_observations: (recentObsRes.data || []).filter((o: any) => o.source_ref && String(o.source_ref).startsWith("did_")),
     task_note_implications: pantryBEntries.filter((e: any) => e.source_kind === "therapist_task_note"),
     hana_personal_did_relevant_implications: pantryBEntries.filter((e: any) => e.source_kind === "hana_personal_ingestion"),
     live_replan_patches: pantryBEntries.filter((e: any) => e.source_kind === "live_session_progress" || e.source_kind === "live_session_reality_override"),
@@ -1367,6 +1368,7 @@ event_ingestion_summary: ${JSON.stringify({
   })}
 task_note_implications: ${JSON.stringify((context.task_note_implications ?? []).slice(0, 8))}
 hana_personal_did_relevant_implications: ${JSON.stringify((context.hana_personal_did_relevant_implications ?? []).slice(0, 8))}
+new_observations: ${JSON.stringify((context.new_observations ?? []).slice(0, 8))}
 live_replan_patches: ${JSON.stringify((context.live_replan_patches ?? []).slice(0, 8))}
 reality_override_events: ${JSON.stringify((context.reality_override_events ?? []).slice(0, 8))}
 blocked_or_failed_ingestion: ${JSON.stringify(context.blocked_or_failed_ingestion ?? [])}
@@ -1608,7 +1610,7 @@ Deno.serve(async (req) => {
     const candidates = await scoreSessionCandidates(supabase);
 
     // 2) Sběr kontextu
-    const context = await gatherContext(supabase, body?.proofReviewId ?? body?.sessionReviewId ?? null);
+    const context = await gatherContext(supabase, body?.proofReviewId ?? body?.sessionReviewId ?? null, body?.userId ?? null);
 
     // 3) AI generování; playroom review payload musí vzniknout deterministicky i při selhání těžké syntézy.
     let durationMs = 0;
@@ -1639,6 +1641,7 @@ Deno.serve(async (req) => {
     };
     payload.task_note_implications = context.task_note_implications ?? [];
     payload.hana_personal_did_relevant_implications = context.hana_personal_did_relevant_implications ?? [];
+    payload.new_observations = context.new_observations ?? [];
     payload.live_replan_patches = context.live_replan_patches ?? [];
     payload.reality_override_events = context.reality_override_events ?? [];
     payload.blocked_or_failed_ingestion = context.blocked_or_failed_ingestion ?? [];
