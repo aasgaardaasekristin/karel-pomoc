@@ -985,7 +985,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const decisions = (p.decisions ?? []).slice(0, 3);
   const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
   const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
-  const openingMonologueText = (p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || p.greeting || "").trim();
+  const legacyTechnicalGreeting = /těžk[áa]\s+syntéza|fallback|bezpečn[ýy]\s+režim/i.test(p.greeting || "");
+  const openingMonologueText = (p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnešní přehled potřebuje držet hlavně klinickou návaznost, opatrnost v závěrech a jasný další bezpečný krok pro kluky. Technický stav generování proto přesouvám jen do poznámky; hlavní prostor patří tomu, co víme, co nevíme a jak dnes postupovat." : p.greeting) || "").trim();
   const technicalNote = (p.technical_note || p.opening_monologue?.technical_note || "").trim();
 
   return (
