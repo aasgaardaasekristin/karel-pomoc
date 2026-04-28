@@ -1692,7 +1692,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
           console.warn("[language-guard] violations in chat response:", audit.violations);
         }
 
-        if (fullResponse.length > 20 && (mode === "childcare" || effectiveMode === "kata")) {
+        if (fullResponse.length > 20 && !persistencePolicy.no_save && persistencePolicy.mode_id !== "karel_chat" && (mode === "childcare" || effectiveMode === "kata")) {
           const extractedTasks = extractTasksFromResponse(fullResponse, didSubMode || "general");
           if (extractedTasks.length > 0) {
             const { createClient: createSbForTasks } = await import("https://esm.sh/@supabase/supabase-js@2");
