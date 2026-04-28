@@ -1472,7 +1472,7 @@ Odpověz v češtině. Buď stručný a praktický. Max 500 slov.`,
     }
 
     // ═══ SWITCHING DETECTION (F2) ═══
-    if (isDirectChildSubMode && didPartName && messages.length >= 2) {
+    if (!persistencePolicy.no_save && isDirectChildSubMode && didPartName && messages.length >= 2) {
       try {
         const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
         const lastUserText = normalizeMessageContentForPrompt(lastUserMsg?.content);
