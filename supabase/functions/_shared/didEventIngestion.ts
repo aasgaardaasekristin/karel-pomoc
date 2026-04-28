@@ -216,7 +216,7 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
     requires_human_review: isRisk || evidence_level === "hypothesis",
     include_in_daily_briefing: isClinical || isRisk || isTask || isPlan || isTechnical || isFactualCorrection,
     include_in_next_session_plan: isClinical || isRisk || isPlan,
-    include_in_next_playroom_plan: isChild || sourceKind === "playroom_progress" || isFactualCorrection,
+    include_in_next_playroom_plan: isChild || isFactualCorrection,
     write_to_drive: isRisk || isPlan || sourceKind === "briefing_ask_resolution" || sourceKind === "deliberation_event",
     related_part_name: event.related_part_name,
     urgency: isRisk ? "crisis" : isTask || isPlan || isTechnical ? "high" : isClinical ? "normal" : "low",
