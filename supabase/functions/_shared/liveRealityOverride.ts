@@ -21,7 +21,7 @@ export type LiveRealityOverrideDetection = {
   trigger_matches: string[];
 };
 
-export const REALITY_OVERRIDE_TRIGGER_RE = /(?:skute(?:č|c)n(?:é|e|á|a)\s+(?:zv(?:í|i)(?:ř|r)e|ud(?:á|a)lost|osoba)|re(?:á|a)ln(?:ě|e)\s+(?:ve\s+sv(?:ě|e)t(?:ě|e)|rozhoduje|děje|deje)|pos(?:í|i)lala\s+jsem\s+(?:ti\s+)?odkaz|tady\s+je\s+odkaz|nepochopil\s+jsi\s+situaci|nen(?:í|i)\s+to\s+(?:fiktivn(?:í|i)|symbol|projekce)|jde\s+o\s+aktu(?:á|a)ln(?:í|i)\s+zpr(?:á|a)vu|dnes\s+se\s+rozhoduje|aktu(?:á|a)ln(?:í|i)\s+z(?:á|a)chrann|url|https?:\/\/)/i;
+export const REALITY_OVERRIDE_TRIGGER_RE = /(?:skute(?:\u010d|c)n(?:\u00e9|e|\u00e1|a)\s+(?:zv(?:\u00ed|i)(?:\u0159|r)e|ud(?:\u00e1|a)lost|osoba)|re(?:\u00e1|a)ln(?:\u011b|e)\s+(?:ve\s+sv(?:\u011b|e)t(?:\u011b|e)|rozhoduje|d\u011bje|deje)|pos(?:\u00ed|i)lala\s+jsem\s+(?:ti\s+)?odkaz|tady\s+je\s+odkaz|nepochopil\s+jsi\s+situaci|nen(?:\u00ed|i)\s+to\s+(?:fiktivn(?:\u00ed|i)|symbol|projekce)|jde\s+o\s+aktu(?:\u00e1|a)ln(?:\u00ed|i)\s+zpr(?:\u00e1|a)vu|dnes\s+se\s+rozhoduje|aktu(?:\u00e1|a)ln(?:\u00ed|i)\s+z(?:\u00e1|a)chrann|url|https?:\/\/)/i;
 
 export const BANNED_REALITY_OVERRIDE_PHRASES = [
   "vůbec to nemění náš plán",
@@ -57,7 +57,7 @@ export function detectLiveRealityOverride(text: string): LiveRealityOverrideDete
   const detected = triggerMatches.length > 0 || urls.length > 0;
   return {
     reality_override_detected: detected,
-    external_event_detected: detected && (urls.length > 0 || /ud(?:á|a)lost|zpr(?:á|a)vu|zv(?:í|i)(?:ř|r)e|velryb|z(?:á|a)chran|re(?:á|a)ln/i.test(text)),
+    external_event_detected: detected && (urls.length > 0 || /ud(?:\u00e1|a)lost|zpr(?:\u00e1|a)vu|zv(?:\u00ed|i)(?:\u0159|r)e|velryb|z(?:\u00e1|a)chran|re(?:\u00e1|a)ln/i.test(text)),
     requires_live_replan: detected,
     original_plan_paused: detected,
     urls,
