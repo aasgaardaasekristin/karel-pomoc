@@ -395,10 +395,9 @@ const Chat = () => {
 
     const checkAuth = async () => {
       if (!session) {
-        if (hasActiveWork) {
-          setAuthChecked(true);
-          return;
-        }
+        clearActiveWorkStorageForLogout();
+        setMessages([]);
+        setInput("");
         navigate("/", { replace: true });
         return;
       }
@@ -425,18 +424,10 @@ const Chat = () => {
             const hasFreshAccessToken = hasValidHanaPinToken();
             console.warn(`[F15-debug] Hana gate: pinToken=${hasFreshAccessToken ? "exists" : "null"}, supabaseSession=${session ? "exists" : "null"}`);
             if (!hasVerifiedPin || !hasFreshAccessToken) {
-              if (hasActiveWork) {
-                setAuthChecked(true);
-                return;
-              }
               navigate("/hub", { replace: true });
               return;
             }
           } catch {
-            if (hasActiveWork) {
-              setAuthChecked(true);
-              return;
-            }
             navigate("/hub", { replace: true });
             return;
           }
@@ -538,7 +529,10 @@ const Chat = () => {
       navigate("/", { replace: true });
       return;
     }
-    if (authChecked && !session && !hasActiveWork) {
+    if (authChecked && !session) {
+      clearActiveWorkStorageForLogout();
+      setMessages([]);
+      setInput("");
       navigate("/", { replace: true });
     }
   }, [authChecked, session, navigate, hasActiveWork]);
@@ -1996,7 +1990,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       }
 
       // ═══ SWITCH DETECTION (tag-based + DB-based) ═══
-      if (activeThread && didSubMode === "cast" && assistantContent) {
+        if (!noSave && activeThread && didSubMode === "cast" && assistantContent) {
         // Tag-based detection from Karel's response
         const switchMatch = assistantContent.match(/\[SWITCH:([^\]]+)\]/);
         if (switchMatch) {
