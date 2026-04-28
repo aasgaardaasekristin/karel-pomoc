@@ -39,10 +39,27 @@ type Message = {
   attachedBlockText?: string;  // krátký label bodu pro UI
 };
 
-type LiveAction = "internet_search" | "drive_read" | "image_stimulus" | null;
+type LiveAction = "reality_override" | "internet_search" | "drive_read" | "image_stimulus" | null;
+
+type LiveReplanPatch = {
+  id?: string;
+  current_block_status?: string;
+  current_block_index?: number | null;
+  current_block_text?: string | null;
+  factual_frame?: { verification_status?: string; source_url?: string | null; source_title?: string | null; event_summary?: string; details_to_avoid_telling_child?: string[] };
+  new_micro_steps?: string[];
+  what_to_avoid?: string[];
+  therapist_script?: string;
+  data_to_record?: string[];
+  return_to_original_plan_allowed?: boolean;
+  condition_for_return_to_plan?: string;
+};
+
+const REALITY_OVERRIDE_RE = /(?:skute(?:č|c)n(?:é|e|á|a)\s+(?:zv(?:í|i)(?:ř|r)e|ud(?:á|a)lost|osoba)|re(?:á|a)ln(?:ě|e)\s+(?:ve\s+sv(?:ě|e)t(?:ě|e)|rozhoduje|děje|deje)|pos(?:í|i)lala\s+jsem\s+(?:ti\s+)?odkaz|tady\s+je\s+odkaz|nepochopil\s+jsi\s+situaci|nen(?:í|i)\s+to\s+(?:fiktivn(?:í|i)|symbol|projekce)|jde\s+o\s+aktu(?:á|a)ln(?:í|i)\s+zpr(?:á|a)vu|dnes\s+se\s+rozhoduje|aktu(?:á|a)ln(?:í|i)\s+z(?:á|a)chrann|url|https?:\/\/)/i;
 
 const detectLiveAction = (text: string): LiveAction => {
   const t = text.toLowerCase();
+  if (REALITY_OVERRIDE_RE.test(text)) return "reality_override";
   if (/(pošli|posli|ukaž|ukaz|dej|vlož|vloz|zobraz).{0,40}(obrázek|obrazek|stimul|skvrn|věž|vez|dveř|dver|cest|les|dům|dum)/i.test(t)) return "image_stimulus";
   if (/(najdi|vyhledej|dohledej|ověř|over|prohledej|internet|googl|kdo je|co je).{0,80}(internet|web|online|zdroj|emma|tustin|článek|clanek|studie|google)|\bemma\s+tustin\b/i.test(t)) return "internet_search";
   if (/(načti|nacti|přečti|precti|podívej|podivej|najdi|otevři|otevri).{0,60}(drive|kartu|kartě|karte|kartot|dokument|soubor)/i.test(t)) return "drive_read";
