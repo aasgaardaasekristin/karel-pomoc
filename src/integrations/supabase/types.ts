@@ -1839,6 +1839,7 @@ export type Database = {
           proposed_session_part_id: string | null
           proposed_session_score: number | null
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           briefing_date: string
@@ -1854,6 +1855,7 @@ export type Database = {
           proposed_session_part_id?: string | null
           proposed_session_score?: number | null
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           briefing_date?: string
@@ -1869,6 +1871,7 @@ export type Database = {
           proposed_session_part_id?: string | null
           proposed_session_score?: number | null
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -5442,6 +5445,7 @@ export type Database = {
           severity: string
           status: string | null
           thread_id: string | null
+          user_id: string | null
         }
         Insert: {
           acknowledged_at?: string | null
@@ -5462,6 +5466,7 @@ export type Database = {
           severity?: string
           status?: string | null
           thread_id?: string | null
+          user_id?: string | null
         }
         Update: {
           acknowledged_at?: string | null
@@ -5482,6 +5487,7 @@ export type Database = {
           severity?: string
           status?: string | null
           thread_id?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
