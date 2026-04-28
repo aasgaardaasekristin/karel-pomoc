@@ -12,7 +12,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import RichMarkdown from "@/components/ui/RichMarkdown";
-import { Loader2, CheckCircle2, Send, ArrowRight, Users, Brain, AlertTriangle, Sparkles } from "lucide-react";
+import {
+  Loader2,
+  CheckCircle2,
+  Send,
+  ArrowRight,
+  Users,
+  Brain,
+  AlertTriangle,
+  Sparkles,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useTeamDeliberations } from "@/hooks/useTeamDeliberations";
 import DidLiveSessionPanel from "./DidLiveSessionPanel";
@@ -50,15 +59,56 @@ interface LiveSessionPlanRow {
   urgency_breakdown?: Record<string, unknown> | null;
 }
 
-const PROGRAM_START_BLOCKED_STATUSES = new Set(["draft", "in_revision", "awaiting_signatures", "awaiting_signature", "pending_review"]);
+const PROGRAM_START_BLOCKED_STATUSES = new Set([
+  "draft",
+  "in_revision",
+  "awaiting_signatures",
+  "awaiting_signature",
+  "pending_review",
+]);
 
-function unsignedStartBlockReason(d: TeamDeliberation | null | undefined, plan?: LiveSessionPlanRow | null) {
-  const contract = (plan?.urgency_breakdown && typeof plan.urgency_breakdown === "object") ? plan.urgency_breakdown as Record<string, any> : {};
-  const programStatus = String(plan?.program_status || contract.review_state || contract.approval?.review_state || "").toLowerCase();
-  const humanReviewRequired = contract.human_review_required === true || contract.approval?.required === true || contract.playroom_plan?.approval?.required === true || contract.playroom_plan?.therapist_review?.required === true;
-  const childFacingPlayroom = contract.session_actor === "karel_direct" || contract.ui_surface === "did_kids_playroom" || !!contract.playroom_plan;
-  const approvedForChild = contract.approved_for_child_session === true || contract.approval?.approved_for_child_session === true || contract.playroom_plan?.approval?.approved_for_child_session === true || contract.playroom_plan?.therapist_review?.approved_for_child_session === true;
-  if (!d || d.hanka_signed_at === null || d.kata_signed_at === null || d.status !== "approved" || humanReviewRequired || PROGRAM_START_BLOCKED_STATUSES.has(programStatus) || (childFacingPlayroom && !approvedForChild)) {
+function unsignedStartBlockReason(
+  d: TeamDeliberation | null | undefined,
+  plan?: LiveSessionPlanRow | null,
+) {
+  const contract =
+    plan?.urgency_breakdown && typeof plan.urgency_breakdown === "object"
+      ? (plan.urgency_breakdown as Record<string, any>)
+      : {};
+  const programStatus = String(
+    plan?.program_status ||
+      contract.review_state ||
+      contract.approval?.review_state ||
+      "",
+  ).toLowerCase();
+  const humanReviewRequired =
+    contract.human_review_required === true ||
+    contract.approval?.required === true ||
+    contract.playroom_plan?.approval?.required === true ||
+    contract.playroom_plan?.therapist_review?.required === true;
+  const reviewFulfilled =
+    ["approved", "ready_to_start", "in_progress", "completed"].includes(
+      programStatus,
+    ) || !!contract.approved_at;
+  const childFacingPlayroom =
+    contract.session_actor === "karel_direct" ||
+    contract.ui_surface === "did_kids_playroom" ||
+    !!contract.playroom_plan;
+  const approvedForChild =
+    contract.approved_for_child_session === true ||
+    contract.approval?.approved_for_child_session === true ||
+    contract.playroom_plan?.approval?.approved_for_child_session === true ||
+    contract.playroom_plan?.therapist_review?.approved_for_child_session ===
+      true;
+  if (
+    !d ||
+    d.hanka_signed_at === null ||
+    d.kata_signed_at === null ||
+    d.status !== "approved" ||
+    (humanReviewRequired && !reviewFulfilled) ||
+    PROGRAM_START_BLOCKED_STATUSES.has(programStatus) ||
+    (childFacingPlayroom && !approvedForChild)
+  ) {
     return "Program byl upraven podle odpovědi terapeutky a čeká na podpis Haničky a Káti.";
   }
   return null;
@@ -97,16 +147,23 @@ function textValue(value: unknown) {
 }
 
 function listValue(value: unknown) {
-  if (Array.isArray(value)) return value.map((item) => String(item ?? "").trim()).filter(Boolean);
+  if (Array.isArray(value))
+    return value.map((item) => String(item ?? "").trim()).filter(Boolean);
   const single = textValue(value);
   return single ? [single] : [];
 }
 
 function hasStructuredProgramFields(block: LiveProgramBlock) {
-  return [...PROGRAM_TEXT_FIELDS, ...PROGRAM_LIST_FIELDS].some(([key]) => {
-    const value = block[key];
-    return Array.isArray(value) ? listValue(value).length > 0 : textValue(value).length > 0;
-  }) || typeof block.requires_physical_therapist === "boolean" || typeof block.karel_can_do_alone === "boolean";
+  return (
+    [...PROGRAM_TEXT_FIELDS, ...PROGRAM_LIST_FIELDS].some(([key]) => {
+      const value = block[key];
+      return Array.isArray(value)
+        ? listValue(value).length > 0
+        : textValue(value).length > 0;
+    }) ||
+    typeof block.requires_physical_therapist === "boolean" ||
+    typeof block.karel_can_do_alone === "boolean"
+  );
 }
 
 function yesNo(value: boolean) {
@@ -121,7 +178,9 @@ type LiveDeliberationSource = Pick<
   session_params?: Record<string, unknown> | null;
 };
 
-function buildApprovedLivePlanMarkdown(source: LiveDeliberationSource | null | undefined) {
+function buildApprovedLivePlanMarkdown(
+  source: LiveDeliberationSource | null | undefined,
+) {
   if (!source) return "";
 
   const sessionParams =
@@ -129,11 +188,20 @@ function buildApprovedLivePlanMarkdown(source: LiveDeliberationSource | null | u
       ? (source.session_params as Record<string, unknown>)
       : {};
 
-  const ledBy = typeof sessionParams.led_by === "string" ? sessionParams.led_by.trim() : "";
-  const duration = typeof sessionParams.duration_min === "number" ? sessionParams.duration_min : null;
-  const whyToday = typeof sessionParams.why_today === "string" ? sessionParams.why_today.trim() : "";
+  const ledBy =
+    typeof sessionParams.led_by === "string" ? sessionParams.led_by.trim() : "";
+  const duration =
+    typeof sessionParams.duration_min === "number"
+      ? sessionParams.duration_min
+      : null;
+  const whyToday =
+    typeof sessionParams.why_today === "string"
+      ? sessionParams.why_today.trim()
+      : "";
   const kataInvolvement =
-    typeof sessionParams.kata_involvement === "string" ? sessionParams.kata_involvement.trim() : "";
+    typeof sessionParams.kata_involvement === "string"
+      ? sessionParams.kata_involvement.trim()
+      : "";
 
   const programBlocks: LiveProgramBlock[] =
     Array.isArray(source.program_draft) && source.program_draft.length > 0
@@ -142,12 +210,16 @@ function buildApprovedLivePlanMarkdown(source: LiveDeliberationSource | null | u
         ? source.agenda_outline
         : [];
 
-  const normalizedReason = [whyToday, kataInvolvement ? `(Káťa: ${kataInvolvement})` : ""]
+  const normalizedReason = [
+    whyToday,
+    kataInvolvement ? `(Káťa: ${kataInvolvement})` : "",
+  ]
     .filter(Boolean)
     .join(" — ")
     .trim();
 
-  const fallbackReason = typeof source.reason === "string" ? source.reason.trim() : "";
+  const fallbackReason =
+    typeof source.reason === "string" ? source.reason.trim() : "";
   const finalReason = normalizedReason || fallbackReason;
 
   const lines: string[] = [
@@ -164,10 +236,17 @@ function buildApprovedLivePlanMarkdown(source: LiveDeliberationSource | null | u
     programBlocks.forEach((block, index) => {
       const title = String(block?.block ?? "").trim();
       if (!title) return;
-      const minutes = typeof block?.minutes === "number" && block.minutes > 0 ? ` (${block.minutes} min)` : "";
+      const minutes =
+        typeof block?.minutes === "number" && block.minutes > 0
+          ? ` (${block.minutes} min)`
+          : "";
       lines.push(`${index + 1}. **${title}**${minutes}`);
       const hasStructured = hasStructuredProgramFields(block);
-      if (!hasStructured && typeof block?.detail === "string" && block.detail.trim()) {
+      if (
+        !hasStructured &&
+        typeof block?.detail === "string" &&
+        block.detail.trim()
+      ) {
         lines.push(`   ${block.detail.trim()}`);
       }
       PROGRAM_TEXT_FIELDS.forEach(([key, label]) => {
@@ -176,13 +255,18 @@ function buildApprovedLivePlanMarkdown(source: LiveDeliberationSource | null | u
       });
       PROGRAM_LIST_FIELDS.forEach(([key, label]) => {
         const values = listValue(block[key]);
-        if (values.length > 0) lines.push(`   - **${label}:** ${values.join("; ")}`);
+        if (values.length > 0)
+          lines.push(`   - **${label}:** ${values.join("; ")}`);
       });
       if (typeof block.requires_physical_therapist === "boolean") {
-        lines.push(`   - **Vyžaduje fyzickou terapeutku:** ${yesNo(block.requires_physical_therapist)}`);
+        lines.push(
+          `   - **Vyžaduje fyzickou terapeutku:** ${yesNo(block.requires_physical_therapist)}`,
+        );
       }
       if (typeof block.karel_can_do_alone === "boolean") {
-        lines.push(`   - **Karel může sám:** ${yesNo(block.karel_can_do_alone)}`);
+        lines.push(
+          `   - **Karel může sám:** ${yesNo(block.karel_can_do_alone)}`,
+        );
       }
       lines.push("");
     });
@@ -195,12 +279,19 @@ function buildApprovedLivePlanMarkdown(source: LiveDeliberationSource | null | u
   return lines.filter(Boolean).join("\n");
 }
 
-function isPlayroomDeliberation(source: LiveDeliberationSource | null | undefined) {
-  const sp = source?.session_params && typeof source.session_params === "object" ? source.session_params : {};
-  return sp.session_actor === "karel_direct" ||
+function isPlayroomDeliberation(
+  source: LiveDeliberationSource | null | undefined,
+) {
+  const sp =
+    source?.session_params && typeof source.session_params === "object"
+      ? source.session_params
+      : {};
+  return (
+    sp.session_actor === "karel_direct" ||
     sp.ui_surface === "did_kids_playroom" ||
     sp.session_format === "playroom" ||
-    !!sp.playroom_plan;
+    !!sp.playroom_plan
+  );
 }
 
 function areAllQuestionsAnswered(questions: DeliberationQuestion[] = []) {
@@ -232,8 +323,13 @@ function QuestionList({
   return (
     <div className="space-y-3">
       {questions.map((q, i) => (
-        <div key={i} className="rounded-md border border-border/60 bg-card/40 p-2.5 space-y-1.5">
-          <p className="text-[12px] font-medium text-foreground">{q.question}</p>
+        <div
+          key={i}
+          className="rounded-md border border-border/60 bg-card/40 p-2.5 space-y-1.5"
+        >
+          <p className="text-[12px] font-medium text-foreground">
+            {q.question}
+          </p>
           {q.answer ? (
             <div className="rounded bg-muted/40 p-2 text-[11px] text-foreground/90">
               <span className="text-[9px] text-muted-foreground block mb-1">
@@ -242,12 +338,16 @@ function QuestionList({
               {q.answer}
             </div>
           ) : readOnly ? (
-            <p className="text-[10px] text-muted-foreground italic">Bez odpovědi.</p>
+            <p className="text-[10px] text-muted-foreground italic">
+              Bez odpovědi.
+            </p>
           ) : (
             <div className="space-y-1.5">
               <Textarea
                 value={drafts[i] ?? ""}
-                onChange={(e) => setDrafts((d) => ({ ...d, [i]: e.target.value }))}
+                onChange={(e) =>
+                  setDrafts((d) => ({ ...d, [i]: e.target.value }))
+                }
                 placeholder={`Odpověď ${who === "hanka" ? "Haničky" : "Káti"}...`}
                 className="min-h-[56px] text-[11px]"
               />
@@ -265,7 +365,11 @@ function QuestionList({
                   }
                 }}
               >
-                {busy === i ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                {busy === i ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Send className="w-3 h-3" />
+                )}
                 <span className="ml-1">Odeslat</span>
               </Button>
             </div>
@@ -331,13 +435,20 @@ function LiveProgramDraftPanel({
           const block = b as LiveProgramBlock;
           const hasStructured = hasStructuredProgramFields(block);
           return (
-            <li key={i} className="text-[11px] rounded-md border border-primary/15 bg-card/45 p-2.5 space-y-1.5">
+            <li
+              key={i}
+              className="text-[11px] rounded-md border border-primary/15 bg-card/45 p-2.5 space-y-1.5"
+            >
               <div className="flex gap-2">
                 <span className="font-semibold text-primary shrink-0">
                   {i + 1}.
-                  {typeof block.minutes === "number" && block.minutes > 0 ? ` ${block.minutes}′` : ""}
+                  {typeof block.minutes === "number" && block.minutes > 0
+                    ? ` ${block.minutes}′`
+                    : ""}
                 </span>
-                <span className="font-medium text-foreground">{block.block}</span>
+                <span className="font-medium text-foreground">
+                  {block.block}
+                </span>
               </div>
               {!hasStructured && block.detail && (
                 <p className="text-foreground/75">{block.detail}</p>
@@ -348,7 +459,10 @@ function LiveProgramDraftPanel({
                   if (!value) return null;
                   return (
                     <p key={String(key)} className="text-foreground/85">
-                      <span className="font-semibold text-foreground">{label}: </span>{value}
+                      <span className="font-semibold text-foreground">
+                        {label}:{" "}
+                      </span>
+                      {value}
                     </p>
                   );
                 })}
@@ -357,16 +471,21 @@ function LiveProgramDraftPanel({
                   if (values.length === 0) return null;
                   return (
                     <p key={String(key)} className="text-foreground/85">
-                      <span className="font-semibold text-foreground">{label}: </span>{values.join("; ")}
+                      <span className="font-semibold text-foreground">
+                        {label}:{" "}
+                      </span>
+                      {values.join("; ")}
                     </p>
                   );
                 })}
               </div>
-              {(typeof block.requires_physical_therapist === "boolean" || typeof block.karel_can_do_alone === "boolean") && (
+              {(typeof block.requires_physical_therapist === "boolean" ||
+                typeof block.karel_can_do_alone === "boolean") && (
                 <div className="flex flex-wrap gap-1.5 pt-0.5">
                   {typeof block.requires_physical_therapist === "boolean" && (
                     <Badge variant="outline" className="text-[10px] h-5">
-                      Vyžaduje fyzickou terapeutku: {yesNo(block.requires_physical_therapist)}
+                      Vyžaduje fyzickou terapeutku:{" "}
+                      {yesNo(block.requires_physical_therapist)}
                     </Badge>
                   )}
                   {typeof block.karel_can_do_alone === "boolean" && (
@@ -382,7 +501,9 @@ function LiveProgramDraftPanel({
       </ol>
       {lastIterateComment && (
         <div className="rounded-md border border-primary/20 bg-card/60 p-2 text-[10.5px] text-foreground/85 italic">
-          <span className="text-primary not-italic font-semibold mr-1">Karel:</span>
+          <span className="text-primary not-italic font-semibold mr-1">
+            Karel:
+          </span>
           {lastIterateComment}
         </div>
       )}
@@ -391,28 +512,39 @@ function LiveProgramDraftPanel({
 }
 
 function ClinicalContractPanel({ d }: { d: TeamDeliberation }) {
-  const sp = d.session_params && typeof d.session_params === "object" ? d.session_params : {};
+  const sp =
+    d.session_params && typeof d.session_params === "object"
+      ? d.session_params
+      : {};
   const planChangeLabel: Record<string, string> = {
     unchanged: "beze změny",
     revised: "upraveno",
     deferred: "odloženo",
     needs_followup_question: "potřebuje doplňující otázku",
   };
-  const lastPlanChange = typeof sp.last_plan_change_state === "string"
-    ? (planChangeLabel[sp.last_plan_change_state] ?? sp.last_plan_change_state)
-    : sp.last_plan_change_state;
+  const lastPlanChange =
+    typeof sp.last_plan_change_state === "string"
+      ? (planChangeLabel[sp.last_plan_change_state] ??
+        sp.last_plan_change_state)
+      : sp.last_plan_change_state;
   const entries = [
     ["Fáze", sp.treatment_phase],
     ["Readiness", sp.readiness_today],
     ["Režim", sp.session_mode],
     ["První otázka", sp.first_question],
     ["Změna plánu", lastPlanChange],
-  ].filter(([, value]) => typeof value === "string" && value.trim().length > 0) as Array<[string, string]>;
-  const stopRules = Array.isArray(sp.stop_rules) ? sp.stop_rules.map(String).filter(Boolean).slice(0, 4) : [];
+  ].filter(
+    ([, value]) => typeof value === "string" && value.trim().length > 0,
+  ) as Array<[string, string]>;
+  const stopRules = Array.isArray(sp.stop_rules)
+    ? sp.stop_rules.map(String).filter(Boolean).slice(0, 4)
+    : [];
   if (entries.length === 0 && stopRules.length === 0) return null;
   return (
     <section className="rounded-lg border border-border/60 bg-card/40 p-3 space-y-2">
-      <h4 className="text-[11px] font-semibold text-foreground">Klinický kontrakt</h4>
+      <h4 className="text-[11px] font-semibold text-foreground">
+        Klinický kontrakt
+      </h4>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
         {entries.map(([label, value]) => (
           <div key={label} className="text-[10.5px]">
@@ -423,7 +555,9 @@ function ClinicalContractPanel({ d }: { d: TeamDeliberation }) {
       </div>
       {stopRules.length > 0 && (
         <ul className="list-disc pl-4 text-[10.5px] text-foreground/85 space-y-0.5">
-          {stopRules.map((rule, idx) => <li key={idx}>{rule}</li>)}
+          {stopRules.map((rule, idx) => (
+            <li key={idx}>{rule}</li>
+          ))}
         </ul>
       )}
     </section>
@@ -463,9 +597,13 @@ function KarelSynthesisBlock({
     if (!isCrisis && !hasInput) return null;
     if (readOnly) return null;
     return (
-      <section className={`rounded-lg border p-3 space-y-2 ${
-        isCrisis ? "border-amber-500/40 bg-amber-500/5" : "border-border/60 bg-card/40"
-      }`}>
+      <section
+        className={`rounded-lg border p-3 space-y-2 ${
+          isCrisis
+            ? "border-amber-500/40 bg-amber-500/5"
+            : "border-border/60 bg-card/40"
+        }`}
+      >
         <div className="flex items-start gap-2">
           {isCrisis ? (
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -474,7 +612,9 @@ function KarelSynthesisBlock({
           )}
           <div className="flex-1">
             <h4 className="text-[11px] font-semibold text-foreground">
-              {isCrisis ? "Karlova syntéza je povinná před podpisem" : "Karlova syntéza"}
+              {isCrisis
+                ? "Karlova syntéza je povinná před podpisem"
+                : "Karlova syntéza"}
             </h4>
             <p className="text-[10px] text-muted-foreground mt-0.5">
               {isCrisis
@@ -505,10 +645,22 @@ function KarelSynthesisBlock({
   }
 
   const verdictLabel: Record<string, { label: string; tone: string }> = {
-    crisis_persists: { label: "🔴 Krize trvá", tone: "border-destructive/40 bg-destructive/5 text-destructive" },
-    crisis_easing: { label: "🟡 Krize polevuje", tone: "border-amber-500/40 bg-amber-500/5 text-amber-700" },
-    crisis_resolvable: { label: "🟢 Krizi lze uzavřít", tone: "border-emerald-500/40 bg-emerald-500/5 text-emerald-700" },
-    non_crisis: { label: "Bez krizového stavu", tone: "border-border/60 bg-card/40 text-foreground" },
+    crisis_persists: {
+      label: "🔴 Krize trvá",
+      tone: "border-destructive/40 bg-destructive/5 text-destructive",
+    },
+    crisis_easing: {
+      label: "🟡 Krize polevuje",
+      tone: "border-amber-500/40 bg-amber-500/5 text-amber-700",
+    },
+    crisis_resolvable: {
+      label: "🟢 Krizi lze uzavřít",
+      tone: "border-emerald-500/40 bg-emerald-500/5 text-emerald-700",
+    },
+    non_crisis: {
+      label: "Bez krizového stavu",
+      tone: "border-border/60 bg-card/40 text-foreground",
+    },
   };
   const v = verdictLabel[synth.verdict] ?? verdictLabel.crisis_persists;
 
@@ -527,14 +679,23 @@ function KarelSynthesisBlock({
             disabled={synthesizing}
             onClick={onSynthesize}
           >
-            {synthesizing ? <Loader2 className="w-3 h-3 animate-spin" /> : "Přesyntetizovat"}
+            {synthesizing ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              "Přesyntetizovat"
+            )}
           </Button>
         )}
       </div>
-      <p className="text-[11px] text-foreground/90"><strong>Další krok:</strong> {synth.next_step}</p>
+      <p className="text-[11px] text-foreground/90">
+        <strong>Další krok:</strong> {synth.next_step}
+      </p>
       {synth.needs_karel_interview && (
         <p className="text-[11px] text-foreground/90">
-          <strong>Karel si přizve {(d.subject_parts ?? [])[0] || "část"} k vlastnímu rozhovoru.</strong>
+          <strong>
+            Karel si přizve {(d.subject_parts ?? [])[0] || "část"} k vlastnímu
+            rozhovoru.
+          </strong>
         </p>
       )}
       {synth.recommended_session_focus && (
@@ -546,7 +707,9 @@ function KarelSynthesisBlock({
         <div className="text-[11px]">
           <strong className="block mb-0.5">Klíčové vhledy:</strong>
           <ul className="list-disc pl-4 space-y-0.5 text-foreground/85">
-            {synth.key_insights.map((k, i) => <li key={i}>{k}</li>)}
+            {synth.key_insights.map((k, i) => (
+              <li key={i}>{k}</li>
+            ))}
           </ul>
         </div>
       )}
@@ -554,7 +717,9 @@ function KarelSynthesisBlock({
         <div className="text-[11px]">
           <strong className="block mb-0.5">Rizikové signály:</strong>
           <ul className="list-disc pl-4 space-y-0.5 text-foreground/85">
-            {synth.risk_signals.map((k, i) => <li key={i}>{k}</li>)}
+            {synth.risk_signals.map((k, i) => (
+              <li key={i}>{k}</li>
+            ))}
           </ul>
         </div>
       )}
@@ -562,7 +727,9 @@ function KarelSynthesisBlock({
         <div className="text-[11px]">
           <strong className="block mb-0.5">Ochranné signály:</strong>
           <ul className="list-disc pl-4 space-y-0.5 text-foreground/85">
-            {synth.protective_signals.map((k, i) => <li key={i}>{k}</li>)}
+            {synth.protective_signals.map((k, i) => (
+              <li key={i}>{k}</li>
+            ))}
           </ul>
         </div>
       )}
@@ -576,7 +743,15 @@ function KarelSynthesisBlock({
 }
 
 const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
-  const { sign, synthesize, answerQuestion, postMessage, iterateProgram, reload, items } = useTeamDeliberations(0);
+  const {
+    sign,
+    synthesize,
+    answerQuestion,
+    postMessage,
+    iterateProgram,
+    reload,
+    items,
+  } = useTeamDeliberations(0);
   const [d, setD] = useState<TeamDeliberation | null>(null);
   const [loading, setLoading] = useState(true);
   const [signing, setSigning] = useState<string | null>(null);
@@ -586,7 +761,9 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
   const [bridgedPlanId, setBridgedPlanId] = useState<string | null>(null);
   // THERAPIST-LED TRUTH PASS — iterativní program
   const [iterating, setIterating] = useState(false);
-  const [lastIterateComment, setLastIterateComment] = useState<string | null>(null);
+  const [lastIterateComment, setLastIterateComment] = useState<string | null>(
+    null,
+  );
   const lastIterateInputRef = useRef<string>("");
   const [startingLive, setStartingLive] = useState(false);
   const [livePlan, setLivePlan] = useState<LiveSessionPlanRow | null>(null);
@@ -610,7 +787,9 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
       if (!error && data) setD(data as TeamDeliberation);
       setLoading(false);
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [deliberationId, items]);
 
   // realtime row refresh
@@ -620,11 +799,18 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
       .channel(`delib_${deliberationId}`)
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "did_team_deliberations", filter: `id=eq.${deliberationId}` },
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "did_team_deliberations",
+          filter: `id=eq.${deliberationId}`,
+        },
         (payload: any) => setD(payload.new as TeamDeliberation),
       )
       .subscribe();
-    return () => { (supabase as any).removeChannel(ch); };
+    return () => {
+      (supabase as any).removeChannel(ch);
+    };
   }, [deliberationId]);
 
   if (!deliberationId) return null;
@@ -634,9 +820,18 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
    * Spouští se po každé nové odpovědi nebo diskusní zprávě terapeutky
    * (pro typ `session_plan`). Krize zůstává ve starém synthesis flow.
    */
-  const triggerIterate = async (input: { author: "hanka" | "kata"; text: string; question?: string }) => {
+  const triggerIterate = async (input: {
+    author: "hanka" | "kata";
+    text: string;
+    question?: string;
+  }) => {
     if (!d || d.deliberation_type !== "session_plan") return;
-    if (d.status === "approved" || d.status === "closed" || d.status === "archived") return;
+    if (
+      d.status === "approved" ||
+      d.status === "closed" ||
+      d.status === "archived"
+    )
+      return;
     const dedupe = `${input.author}::${input.text.trim()}`;
     if (dedupe === lastIterateInputRef.current) return;
     lastIterateInputRef.current = dedupe;
@@ -649,7 +844,10 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
         setLastIterateComment(res.karel_inline_comment);
       }
     } catch (e: any) {
-      console.warn("[DeliberationRoom] iterateProgram failed:", e?.message ?? e);
+      console.warn(
+        "[DeliberationRoom] iterateProgram failed:",
+        e?.message ?? e,
+      );
       // Tichá chyba — uživatelská akce (odpověď) už proběhla, iterace je doplňková.
     } finally {
       setIterating(false);
@@ -665,13 +863,17 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
       onChanged?.();
       if (res?.bridged_plan_id) {
         setBridgedPlanId(res.bridged_plan_id);
-        toast.success(isPlayroomDeliberation(d as any)
-          ? "Porada schválena. Herna je připravená ke spuštění."
-          : "Porada schválena. Plán propsán do dnešního live sezení.");
+        toast.success(
+          isPlayroomDeliberation(d as any)
+            ? "Porada schválena. Herna je připravená ke spuštění."
+            : "Porada schválena. Plán propsán do dnešního live sezení.",
+        );
       } else if (res?.deliberation?.status === "approved") {
         toast.success("Porada schválena.");
       } else {
-        toast.success(`Stvrzeno podpisem: ${who === "hanka" ? "Hanička" : "Káťa"}.`);
+        toast.success(
+          `Stvrzeno podpisem: ${who === "hanka" ? "Hanička" : "Káťa"}.`,
+        );
       }
     } catch (e: any) {
       toast.error(e?.message ?? "Podpis selhal.");
@@ -691,18 +893,25 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
         toast.success("Karlova syntéza hotová. Můžeš podepsat.");
       }
     } catch (e: any) {
-      toast.error(e?.message ?? "Syntéza selhala. Mají Hanička a Káťa už odpověděno?");
+      toast.error(
+        e?.message ?? "Syntéza selhala. Mají Hanička a Káťa už odpověděno?",
+      );
     } finally {
       setSynthesizing(false);
     }
   };
 
-  const handleAnswer = async (who: "hanka" | "kata", idx: number, answer: string) => {
+  const handleAnswer = async (
+    who: "hanka" | "kata",
+    idx: number,
+    answer: string,
+  ) => {
     if (!d) return;
     try {
       await answerQuestion(d.id, who, idx, answer);
       // Iterativní přepis programu po odpovědi terapeutky.
-      const fieldName = who === "hanka" ? "questions_for_hanka" : "questions_for_kata";
+      const fieldName =
+        who === "hanka" ? "questions_for_hanka" : "questions_for_kata";
       const question = ((d as any)[fieldName] ?? [])[idx]?.question;
       void triggerIterate({ author: who, text: answer, question });
     } catch (e: any) {
@@ -749,29 +958,42 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
       const [{ error: statusErr }, deliberationRes] = await Promise.all([
         (supabase as any)
           .from("did_daily_session_plans")
-          .update({ status: "in_progress", lifecycle_status: "in_progress", started_at: nowIso, updated_at: nowIso })
+          .update({
+            status: "in_progress",
+            lifecycle_status: "in_progress",
+            started_at: nowIso,
+            updated_at: nowIso,
+          })
           .eq("id", planId)
           .select("id")
           .single(),
         deliberationId
           ? (supabase as any)
               .from("did_team_deliberations")
-              .select("title, reason, agenda_outline, final_summary, program_draft, session_params")
+              .select(
+                "title, reason, agenda_outline, final_summary, program_draft, session_params",
+              )
               .eq("id", deliberationId)
               .maybeSingle()
           : Promise.resolve({ data: null, error: null }),
       ]);
 
       if (statusErr) {
-        console.error("[DeliberationRoom] startLiveSession status update failed:", statusErr);
+        console.error(
+          "[DeliberationRoom] startLiveSession status update failed:",
+          statusErr,
+        );
         toast.error("Nepodařilo se zahájit sezení (DB update).");
         return;
       }
 
       const authoritativeMarkdown = buildApprovedLivePlanMarkdown(
-        (deliberationRes?.data as LiveDeliberationSource | null) ?? ((d as any) as LiveDeliberationSource | null),
+        (deliberationRes?.data as LiveDeliberationSource | null) ??
+          (d as any as LiveDeliberationSource | null),
       );
-      const liveSource = (deliberationRes?.data as LiveDeliberationSource | null) ?? ((d as any) as LiveDeliberationSource | null);
+      const liveSource =
+        (deliberationRes?.data as LiveDeliberationSource | null) ??
+        (d as any as LiveDeliberationSource | null);
       const isPlayroom = isPlayroomDeliberation(liveSource);
 
       if (authoritativeMarkdown) {
@@ -784,23 +1006,34 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
           .eq("id", planId);
 
         if (syncErr) {
-          console.warn("[DeliberationRoom] failed to resync live plan markdown:", syncErr);
+          console.warn(
+            "[DeliberationRoom] failed to resync live plan markdown:",
+            syncErr,
+          );
         }
       }
 
       const { data: planRow, error: fetchErr } = await (supabase as any)
         .from("did_daily_session_plans")
-        .select("id, selected_part, session_lead, therapist, plan_markdown, status, program_status, urgency_breakdown")
+        .select(
+          "id, selected_part, session_lead, therapist, plan_markdown, status, program_status, urgency_breakdown",
+        )
         .eq("id", planId)
         .single();
 
       if (fetchErr || !planRow) {
-        console.error("[DeliberationRoom] startLiveSession fetch failed:", fetchErr);
+        console.error(
+          "[DeliberationRoom] startLiveSession fetch failed:",
+          fetchErr,
+        );
         toast.error("Nepodařilo se načíst aktuální schválený plán.");
         return;
       }
 
-      const planBlockReason = unsignedStartBlockReason(d, planRow as LiveSessionPlanRow);
+      const planBlockReason = unsignedStartBlockReason(
+        d,
+        planRow as LiveSessionPlanRow,
+      );
       if (planBlockReason) {
         toast.info(planBlockReason);
         return;
@@ -808,17 +1041,28 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
 
       if (isPlayroom) {
         const headers = await getAuthHeaders();
-        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-part-session-prepare`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ part_name: planRow.selected_part, plan_id: planRow.id }),
-        });
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-part-session-prepare`,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              part_name: planRow.selected_part,
+              plan_id: planRow.id,
+            }),
+          },
+        );
         const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !payload.thread_id) throw new Error(payload.message || payload.error || "Herna nejde otevřít.");
+        if (!response.ok || !payload.thread_id)
+          throw new Error(
+            payload.message || payload.error || "Herna nejde otevřít.",
+          );
         try {
           sessionStorage.setItem("karel_playroom_plan_id", planRow.id);
           sessionStorage.setItem("karel_playroom_thread_id", payload.thread_id);
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         onClose();
         window.location.assign(`/chat?workspace_thread=${payload.thread_id}`);
         toast.success("Herna zahájena.");
@@ -837,11 +1081,30 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
 
   const sp = d ? signoffProgress(d) : { signed: 0, total: 2, missing: [] };
   const isReadOnly = d?.status === "approved";
-  const sessionParams = d?.session_params && typeof d.session_params === "object" ? d.session_params : {};
-  const hybridContract = (sessionParams as any).hybrid_contract && typeof (sessionParams as any).hybrid_contract === "object" ? (sessionParams as any).hybrid_contract : {};
-  const readinessRedBlocked = d?.deliberation_type === "session_plan"
-    && String((sessionParams as any).readiness_today ?? hybridContract.readiness_today ?? "").toLowerCase() === "red"
-    && !["stabilization_checkin", "deferred", "human_review_required"].includes(String((sessionParams as any).session_mode ?? hybridContract.session_mode ?? hybridContract.therapist_led_vs_karel_only ?? "standard").toLowerCase());
+  const sessionParams =
+    d?.session_params && typeof d.session_params === "object"
+      ? d.session_params
+      : {};
+  const hybridContract =
+    (sessionParams as any).hybrid_contract &&
+    typeof (sessionParams as any).hybrid_contract === "object"
+      ? (sessionParams as any).hybrid_contract
+      : {};
+  const readinessRedBlocked =
+    d?.deliberation_type === "session_plan" &&
+    String(
+      (sessionParams as any).readiness_today ??
+        hybridContract.readiness_today ??
+        "",
+    ).toLowerCase() === "red" &&
+    !["stabilization_checkin", "deferred", "human_review_required"].includes(
+      String(
+        (sessionParams as any).session_mode ??
+          hybridContract.session_mode ??
+          hybridContract.therapist_led_vs_karel_only ??
+          "standard",
+      ).toLowerCase(),
+    );
   // PER-THERAPIST LOCK — pokud Hanka podepsala, její sekce read-only,
   // ale Káťa může pořád odpovídat / přidávat podněty (a obráceně).
   const hankaLocked = !!d?.hanka_signed_at;
@@ -850,14 +1113,14 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
 
   return (
     <Dialog open={!!deliberationId} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent
-        className="max-w-3xl w-[calc(100vw-2rem)] h-[90vh] sm:h-auto sm:max-h-[90vh] p-0 gap-0 overflow-hidden !grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] sm:!flex sm:!flex-col"
-      >
+      <DialogContent className="max-w-3xl w-[calc(100vw-2rem)] h-[90vh] sm:h-auto sm:max-h-[90vh] p-0 gap-0 overflow-hidden !grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] sm:!flex sm:!flex-col">
         {livePlan ? (
           <div className="relative h-full min-h-0 overflow-hidden">
             <DidLiveSessionPanel
               partName={livePlan.selected_part}
-              therapistName={livePlan.session_lead === "kata" ? "Káťa" : "Hanka"}
+              therapistName={
+                livePlan.session_lead === "kata" ? "Káťa" : "Hanka"
+              }
               contextBrief={livePlan.plan_markdown}
               planId={livePlan.id}
               onBack={() => setLivePlan(null)}
@@ -871,39 +1134,44 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
         ) : (
           <>
             <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b border-border/40">
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <Users className="w-4 h-4 text-primary" />
-            {loading ? "Načítám…" : d?.title ?? "Porada"}
-          </DialogTitle>
-          {d && (
-            <DialogDescription className="text-[11px] flex flex-wrap items-center gap-1.5">
-              <Badge className="text-[9px] h-4 px-1.5 bg-muted text-muted-foreground border-border">
-                {TYPE_LABEL[d.deliberation_type] ?? d.deliberation_type}
-              </Badge>
-              {d.subject_parts?.map((p) => (
-                <Badge key={p} className="text-[9px] h-4 px-1.5 bg-primary/10 text-primary border-primary/20">
-                  {p}
-                </Badge>
-              ))}
-              <span className="text-muted-foreground ml-1">
-                podpisy {sp.signed}/{sp.total}
-              </span>
-              {/* THERAPIST-LED 2-PODPIS — dynamický badge "Schválily: …" */}
-              {(hankaLocked || kataLocked) && (
-                <span className="ml-2 inline-flex items-center gap-1 text-emerald-700">
-                  <CheckCircle2 className="w-3 h-3" />
-                  <span className="text-[10px] font-medium">
-                    Schválily:{" "}
-                    {[hankaLocked ? "Hanička" : null, kataLocked ? "Káťa" : null]
-                      .filter(Boolean)
-                      .join(", ")}
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <Users className="w-4 h-4 text-primary" />
+                {loading ? "Načítám…" : (d?.title ?? "Porada")}
+              </DialogTitle>
+              {d && (
+                <DialogDescription className="text-[11px] flex flex-wrap items-center gap-1.5">
+                  <Badge className="text-[9px] h-4 px-1.5 bg-muted text-muted-foreground border-border">
+                    {TYPE_LABEL[d.deliberation_type] ?? d.deliberation_type}
+                  </Badge>
+                  {d.subject_parts?.map((p) => (
+                    <Badge
+                      key={p}
+                      className="text-[9px] h-4 px-1.5 bg-primary/10 text-primary border-primary/20"
+                    >
+                      {p}
+                    </Badge>
+                  ))}
+                  <span className="text-muted-foreground ml-1">
+                    podpisy {sp.signed}/{sp.total}
                   </span>
-                </span>
+                  {/* THERAPIST-LED 2-PODPIS — dynamický badge "Schválily: …" */}
+                  {(hankaLocked || kataLocked) && (
+                    <span className="ml-2 inline-flex items-center gap-1 text-emerald-700">
+                      <CheckCircle2 className="w-3 h-3" />
+                      <span className="text-[10px] font-medium">
+                        Schválily:{" "}
+                        {[
+                          hankaLocked ? "Hanička" : null,
+                          kataLocked ? "Káťa" : null,
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </span>
+                    </span>
+                  )}
+                </DialogDescription>
               )}
-            </DialogDescription>
-          )}
-        </DialogHeader>
-
+            </DialogHeader>
 
             {loading || !d ? (
               <div className="flex justify-center py-8 px-6">
@@ -911,282 +1179,352 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
               </div>
             ) : (
               <div className="min-h-0 overflow-y-auto overscroll-contain px-6 py-4">
-            <div className="space-y-4">
-              {isReadOnly && (
-                <section className="rounded-lg border border-primary/30 bg-primary/5 p-3 flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <h4 className="text-[11px] font-semibold text-foreground">
-                      Porada je schválená — náhled jen pro čtení
+                <div className="space-y-4">
+                  {isReadOnly && (
+                    <section className="rounded-lg border border-primary/30 bg-primary/5 p-3 flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="text-[11px] font-semibold text-foreground">
+                          Porada je schválená — náhled jen pro čtení
+                        </h4>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {d.deliberation_type === "session_plan"
+                            ? "Odpovědi, podpisy a finální program jsou uzavřené. Nelze měnit, jen prohlížet."
+                            : "Odpovědi, podpisy i Karlova syntéza jsou uzavřené. Nelze měnit, jen prohlížet."}
+                          Pro nové rozhodnutí počkej na další briefing.
+                        </p>
+                      </div>
+                    </section>
+                  )}
+                  {/* Karlův úvod */}
+                  <section className="rounded-lg border border-border/60 bg-card/40 p-3">
+                    <h4 className="text-[11px] font-semibold text-muted-foreground mb-1.5">
+                      Karel svolal poradu
                     </h4>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                    <RichMarkdown compact>
+                      {d.initial_karel_brief ?? "(žádný brief)"}
+                    </RichMarkdown>
+                  </section>
+
+                  {/* Karlův návrh — pro session_plan je to first_draft z briefingu */}
+                  <section className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+                    <h4 className="text-[11px] font-semibold text-primary mb-1.5">
                       {d.deliberation_type === "session_plan"
-                        ? "Odpovědi, podpisy a finální program jsou uzavřené. Nelze měnit, jen prohlížet."
-                        : "Odpovědi, podpisy i Karlova syntéza jsou uzavřené. Nelze měnit, jen prohlížet."}
-                      Pro nové rozhodnutí počkej na další briefing.
-                    </p>
-                  </div>
-                </section>
-              )}
-              {/* Karlův úvod */}
-              <section className="rounded-lg border border-border/60 bg-card/40 p-3">
-                <h4 className="text-[11px] font-semibold text-muted-foreground mb-1.5">
-                  Karel svolal poradu
-                </h4>
-                <RichMarkdown compact>{d.initial_karel_brief ?? "(žádný brief)"}</RichMarkdown>
-              </section>
+                        ? "První pracovní návrh"
+                        : "Karlův pracovní návrh"}
+                    </h4>
+                    <RichMarkdown compact>
+                      {d.karel_proposed_plan ?? "(zatím bez návrhu)"}
+                    </RichMarkdown>
+                  </section>
 
-              {/* Karlův návrh — pro session_plan je to first_draft z briefingu */}
-              <section className="rounded-lg border border-primary/20 bg-primary/5 p-3">
-                <h4 className="text-[11px] font-semibold text-primary mb-1.5">
-                  {d.deliberation_type === "session_plan" ? "První pracovní návrh" : "Karlův pracovní návrh"}
-                </h4>
-                <RichMarkdown compact>{d.karel_proposed_plan ?? "(zatím bez návrhu)"}</RichMarkdown>
-              </section>
-
-              {/* THERAPIST-LED TRUTH PASS — Živý program (program_draft).
+                  {/* THERAPIST-LED TRUTH PASS — Živý program (program_draft).
                   Pro session_plan nahrazuje statickou agendu + Karlovu syntézu.
                   Karel sem dopisuje po každé odpovědi/podnětu terapeutek. */}
-              {d.deliberation_type === "session_plan" && (
-                <LiveProgramDraftPanel
-                  d={d}
-                  iterating={iterating}
-                  lastIterateComment={lastIterateComment}
-                />
-              )}
+                  {d.deliberation_type === "session_plan" && (
+                    <LiveProgramDraftPanel
+                      d={d}
+                      iterating={iterating}
+                      lastIterateComment={lastIterateComment}
+                    />
+                  )}
 
-              {d.deliberation_type === "session_plan" && <ClinicalContractPanel d={d} />}
+                  {d.deliberation_type === "session_plan" && (
+                    <ClinicalContractPanel d={d} />
+                  )}
 
-              {/* SLICE 3 — Statická Agenda / minutáž — POUZE pro non-session_plan
+                  {/* SLICE 3 — Statická Agenda / minutáž — POUZE pro non-session_plan
                   typy (krize, supervize, …), kde iterativní program_draft nemá smysl. */}
-              {d.deliberation_type !== "session_plan" &&
-                Array.isArray((d as any).agenda_outline) &&
-                (d as any).agenda_outline.length > 0 && (
-                  <section className="rounded-lg border border-border/60 bg-card/40 p-3">
-                    <h4 className="text-[11px] font-semibold text-foreground mb-2">
-                      Osnova / minutáž
-                    </h4>
-                    <ol className="space-y-1.5">
-                      {((d as any).agenda_outline as Array<{block:string;minutes?:number|null;detail?:string|null}>).map((b, i) => (
-                        <li key={i} className="text-[11px] flex gap-2">
-                          <span className="font-semibold text-primary shrink-0">
-                            {i + 1}.
-                            {typeof b.minutes === "number" && b.minutes > 0 ? ` ${b.minutes}′` : ""}
-                          </span>
-                          <span className="flex-1">
-                            <span className="font-medium text-foreground">{b.block}</span>
-                            {b.detail && (
-                              <span className="block text-foreground/75 mt-0.5">{b.detail}</span>
-                            )}
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                  </section>
-              )}
+                  {d.deliberation_type !== "session_plan" &&
+                    Array.isArray((d as any).agenda_outline) &&
+                    (d as any).agenda_outline.length > 0 && (
+                      <section className="rounded-lg border border-border/60 bg-card/40 p-3">
+                        <h4 className="text-[11px] font-semibold text-foreground mb-2">
+                          Osnova / minutáž
+                        </h4>
+                        <ol className="space-y-1.5">
+                          {(
+                            (d as any).agenda_outline as Array<{
+                              block: string;
+                              minutes?: number | null;
+                              detail?: string | null;
+                            }>
+                          ).map((b, i) => (
+                            <li key={i} className="text-[11px] flex gap-2">
+                              <span className="font-semibold text-primary shrink-0">
+                                {i + 1}.
+                                {typeof b.minutes === "number" && b.minutes > 0
+                                  ? ` ${b.minutes}′`
+                                  : ""}
+                              </span>
+                              <span className="flex-1">
+                                <span className="font-medium text-foreground">
+                                  {b.block}
+                                </span>
+                                {b.detail && (
+                                  <span className="block text-foreground/75 mt-0.5">
+                                    {b.detail}
+                                  </span>
+                                )}
+                              </span>
+                            </li>
+                          ))}
+                        </ol>
+                      </section>
+                    )}
 
-              {/* Otázky pro Haničku — read-only po jejím podpisu (Káťa stále edituje). */}
-              <section className={`rounded-lg border p-3 ${hankaLocked ? "border-emerald-500/30 bg-emerald-500/5" : "border-border/60"}`}>
-                <h4 className="text-[11px] font-semibold mb-2 text-foreground flex items-center gap-1.5">
-                  Pro Haničku
-                  {hankaLocked && (
-                    <span className="text-[9px] text-emerald-700 inline-flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> uzavřeno podpisem
-                    </span>
-                  )}
-                </h4>
-                <QuestionList
-                  questions={d.questions_for_hanka ?? []}
-                  who="hanka"
-                  onAnswer={(idx, ans) => handleAnswer("hanka", idx, ans)}
-                  readOnly={isReadOnly || hankaLocked}
-                />
-              </section>
-
-              {/* Otázky pro Káťu — read-only po jejím podpisu (Hanka stále edituje). */}
-              <section className={`rounded-lg border p-3 ${kataLocked ? "border-emerald-500/30 bg-emerald-500/5" : "border-border/60"}`}>
-                <h4 className="text-[11px] font-semibold mb-2 text-foreground flex items-center gap-1.5">
-                  Pro Káťu
-                  {kataLocked && (
-                    <span className="text-[9px] text-emerald-700 inline-flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> uzavřeno podpisem
-                    </span>
-                  )}
-                </h4>
-                <QuestionList
-                  questions={d.questions_for_kata ?? []}
-                  who="kata"
-                  onAnswer={(idx, ans) => handleAnswer("kata", idx, ans)}
-                  readOnly={isReadOnly || kataLocked}
-                />
-              </section>
-
-              {/* Volný diskusní log */}
-              {(d.discussion_log?.length ?? 0) > 0 && (
-                <section className="rounded-lg border border-border/60 p-3 space-y-1.5">
-                  <h4 className="text-[11px] font-semibold mb-1 text-foreground">
-                    Diskuse
-                  </h4>
-                  {d.discussion_log.map((m, i) => (
-                    <div key={i} className="text-[11px]">
-                      <span className="font-semibold mr-1">
-                        {m.author === "karel" ? "Karel" : m.author === "hanka" ? "Hanička" : "Káťa"}:
-                      </span>
-                      <span className="text-foreground/90 whitespace-pre-line">{m.content}</span>
-                    </div>
-                  ))}
-                </section>
-              )}
-
-              {/* KARLOVA SYNTÉZA — povinná POUZE pro `crisis` před uzavřením.
-                  Pro `session_plan` ji nahrazuje iterativní program_draft. */}
-              {d.deliberation_type !== "session_plan" && (
-                <KarelSynthesisBlock
-                  d={d}
-                  synthesizing={synthesizing}
-                  onSynthesize={handleSynthesize}
-                  readOnly={isReadOnly}
-                />
-              )}
-
-              {!isReadOnly && !(hankaLocked && kataLocked) && (
-                <section className="rounded-lg border border-dashed border-border/60 p-3 space-y-2">
-                  <div className="flex items-center gap-1.5">
-                    {(["hanka", "kata"] as const)
-                      .filter((who) => (who === "hanka" ? !hankaLocked : !kataLocked))
-                      .map((who) => (
-                        <Button
-                          key={who}
-                          size="sm"
-                          variant={chatAuthor === who ? "default" : "outline"}
-                          className="h-6 px-2 text-[10px]"
-                          onClick={() => setChatAuthor(who)}
-                        >
-                          {who === "hanka" ? "Hanička" : "Káťa"}
-                        </Button>
-                      ))}
-                  </div>
-                  <Textarea
-                    value={chatDraft}
-                    onChange={(e) => setChatDraft(e.target.value)}
-                    placeholder="Příspěvek do diskuse…"
-                    className="min-h-[50px] text-[11px]"
-                  />
-                  <Button
-                    size="sm"
-                    className="h-7 text-[11px]"
-                    disabled={!chatDraft.trim() || (chatAuthor === "hanka" ? hankaLocked : kataLocked)}
-                    onClick={handlePostMessage}
+                  {/* Otázky pro Haničku — read-only po jejím podpisu (Káťa stále edituje). */}
+                  <section
+                    className={`rounded-lg border p-3 ${hankaLocked ? "border-emerald-500/30 bg-emerald-500/5" : "border-border/60"}`}
                   >
-                    <Send className="w-3 h-3 mr-1" /> Odeslat
-                  </Button>
-                </section>
-              )}
-            </div>
-          </div>
-        )}
+                    <h4 className="text-[11px] font-semibold mb-2 text-foreground flex items-center gap-1.5">
+                      Pro Haničku
+                      {hankaLocked && (
+                        <span className="text-[9px] text-emerald-700 inline-flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> uzavřeno podpisem
+                        </span>
+                      )}
+                    </h4>
+                    <QuestionList
+                      questions={d.questions_for_hanka ?? []}
+                      who="hanka"
+                      onAnswer={(idx, ans) => handleAnswer("hanka", idx, ans)}
+                      readOnly={isReadOnly || hankaLocked}
+                    />
+                  </section>
+
+                  {/* Otázky pro Káťu — read-only po jejím podpisu (Hanka stále edituje). */}
+                  <section
+                    className={`rounded-lg border p-3 ${kataLocked ? "border-emerald-500/30 bg-emerald-500/5" : "border-border/60"}`}
+                  >
+                    <h4 className="text-[11px] font-semibold mb-2 text-foreground flex items-center gap-1.5">
+                      Pro Káťu
+                      {kataLocked && (
+                        <span className="text-[9px] text-emerald-700 inline-flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> uzavřeno podpisem
+                        </span>
+                      )}
+                    </h4>
+                    <QuestionList
+                      questions={d.questions_for_kata ?? []}
+                      who="kata"
+                      onAnswer={(idx, ans) => handleAnswer("kata", idx, ans)}
+                      readOnly={isReadOnly || kataLocked}
+                    />
+                  </section>
+
+                  {/* Volný diskusní log */}
+                  {(d.discussion_log?.length ?? 0) > 0 && (
+                    <section className="rounded-lg border border-border/60 p-3 space-y-1.5">
+                      <h4 className="text-[11px] font-semibold mb-1 text-foreground">
+                        Diskuse
+                      </h4>
+                      {d.discussion_log.map((m, i) => (
+                        <div key={i} className="text-[11px]">
+                          <span className="font-semibold mr-1">
+                            {m.author === "karel"
+                              ? "Karel"
+                              : m.author === "hanka"
+                                ? "Hanička"
+                                : "Káťa"}
+                            :
+                          </span>
+                          <span className="text-foreground/90 whitespace-pre-line">
+                            {m.content}
+                          </span>
+                        </div>
+                      ))}
+                    </section>
+                  )}
+
+                  {/* KARLOVA SYNTÉZA — povinná POUZE pro `crisis` před uzavřením.
+                  Pro `session_plan` ji nahrazuje iterativní program_draft. */}
+                  {d.deliberation_type !== "session_plan" && (
+                    <KarelSynthesisBlock
+                      d={d}
+                      synthesizing={synthesizing}
+                      onSynthesize={handleSynthesize}
+                      readOnly={isReadOnly}
+                    />
+                  )}
+
+                  {!isReadOnly && !(hankaLocked && kataLocked) && (
+                    <section className="rounded-lg border border-dashed border-border/60 p-3 space-y-2">
+                      <div className="flex items-center gap-1.5">
+                        {(["hanka", "kata"] as const)
+                          .filter((who) =>
+                            who === "hanka" ? !hankaLocked : !kataLocked,
+                          )
+                          .map((who) => (
+                            <Button
+                              key={who}
+                              size="sm"
+                              variant={
+                                chatAuthor === who ? "default" : "outline"
+                              }
+                              className="h-6 px-2 text-[10px]"
+                              onClick={() => setChatAuthor(who)}
+                            >
+                              {who === "hanka" ? "Hanička" : "Káťa"}
+                            </Button>
+                          ))}
+                      </div>
+                      <Textarea
+                        value={chatDraft}
+                        onChange={(e) => setChatDraft(e.target.value)}
+                        placeholder="Příspěvek do diskuse…"
+                        className="min-h-[50px] text-[11px]"
+                      />
+                      <Button
+                        size="sm"
+                        className="h-7 text-[11px]"
+                        disabled={
+                          !chatDraft.trim() ||
+                          (chatAuthor === "hanka" ? hankaLocked : kataLocked)
+                        }
+                        onClick={handlePostMessage}
+                      >
+                        <Send className="w-3 h-3 mr-1" /> Odeslat
+                      </Button>
+                    </section>
+                  )}
+                </div>
+              </div>
+            )}
 
             {d && (
               <div className="shrink-0 border-t border-border/60 px-6 py-3 bg-background space-y-2">
-            {/* THERAPIST-LED 2-PODPIS TRUTH PASS (2026-04-22):
+                {/* THERAPIST-LED 2-PODPIS TRUTH PASS (2026-04-22):
                 Karel není podepisující strana. Schválení = 2 podpisy
                 (Hanička + Káťa). Karlův timestamp je audit log v DB triggeru.
                 Po podpisu jedné terapeutky její tlačítko zůstane v read-only
                 stavu, druhá stále edituje, dokud nepodepíše také. */}
-            {(() => {
-              const visibleSigners: Array<"hanka" | "kata"> = ["hanka", "kata"];
-              return (
-                <div className="flex items-center gap-2">
-                  {visibleSigners.map((who) => {
-                    const signed =
-                      who === "hanka" ? d.hanka_signed_at : d.kata_signed_at;
-                    const crisisAnswersReady =
-                      areAllQuestionsAnswered(d.questions_for_hanka ?? []) &&
-                      areAllQuestionsAnswered(d.questions_for_kata ?? []);
-                    // Krizová porada vyžaduje fresh syntézu předtím, než
-                    // poslední podpis poradu uzavře.
-                    const otherSigned =
-                      who === "hanka" ? !!d.kata_signed_at : !!d.hanka_signed_at;
-                    const crisisGateBlocked =
-                      d.deliberation_type === "crisis" &&
-                      otherSigned &&
-                      (!crisisAnswersReady || !d.karel_synthesis);
-                    const disabled = !!signed || signing === who || crisisGateBlocked || readinessRedBlocked || isReadOnly;
-                    const label = who === "hanka" ? "Hanička" : "Káťa";
-                    return (
-                      <Button
-                        key={who}
-                        size="sm"
-                        variant={signed ? "secondary" : "default"}
-                        disabled={disabled}
-                        title={crisisGateBlocked
-                          ? 'Karel musí (znovu) syntetizovat odpovědi terapeutek — viz tlačítko „Spustit Karlovu syntézu".'
-                          : readinessRedBlocked
-                            ? "Readiness red blokuje standardní sezení; zvol stabilizační/deferred/human-review režim."
-                          : undefined}
-                        className="h-8 text-[11px] flex-1"
-                        onClick={() => handleSign(who)}
-                      >
-                        {signing === who ? (
-                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                        ) : signed ? (
-                          <CheckCircle2 className="w-3 h-3 mr-1 text-primary" />
-                        ) : null}
-                        {signed
-                          ? `${label} ✓`
-                          : `Stvrzuji podpisem souhlas (${label})`}
-                      </Button>
-                    );
-                  })}
-                </div>
-              );
-            })()}
+                {(() => {
+                  const visibleSigners: Array<"hanka" | "kata"> = [
+                    "hanka",
+                    "kata",
+                  ];
+                  return (
+                    <div className="flex items-center gap-2">
+                      {visibleSigners.map((who) => {
+                        const signed =
+                          who === "hanka"
+                            ? d.hanka_signed_at
+                            : d.kata_signed_at;
+                        const crisisAnswersReady =
+                          areAllQuestionsAnswered(
+                            d.questions_for_hanka ?? [],
+                          ) &&
+                          areAllQuestionsAnswered(d.questions_for_kata ?? []);
+                        // Krizová porada vyžaduje fresh syntézu předtím, než
+                        // poslední podpis poradu uzavře.
+                        const otherSigned =
+                          who === "hanka"
+                            ? !!d.kata_signed_at
+                            : !!d.hanka_signed_at;
+                        const crisisGateBlocked =
+                          d.deliberation_type === "crisis" &&
+                          otherSigned &&
+                          (!crisisAnswersReady || !d.karel_synthesis);
+                        const disabled =
+                          !!signed ||
+                          signing === who ||
+                          crisisGateBlocked ||
+                          readinessRedBlocked ||
+                          isReadOnly;
+                        const label = who === "hanka" ? "Hanička" : "Káťa";
+                        return (
+                          <Button
+                            key={who}
+                            size="sm"
+                            variant={signed ? "secondary" : "default"}
+                            disabled={disabled}
+                            title={
+                              crisisGateBlocked
+                                ? 'Karel musí (znovu) syntetizovat odpovědi terapeutek — viz tlačítko „Spustit Karlovu syntézu".'
+                                : readinessRedBlocked
+                                  ? "Readiness red blokuje standardní sezení; zvol stabilizační/deferred/human-review režim."
+                                  : undefined
+                            }
+                            className="h-8 text-[11px] flex-1"
+                            onClick={() => handleSign(who)}
+                          >
+                            {signing === who ? (
+                              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            ) : signed ? (
+                              <CheckCircle2 className="w-3 h-3 mr-1 text-primary" />
+                            ) : null}
+                            {signed
+                              ? `${label} ✓`
+                              : `Stvrzuji podpisem souhlas (${label})`}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
 
-            {/* READY-TO-START stav — viditelný hned po dvou terapeutických podpisech.
+                {/* READY-TO-START stav — viditelný hned po dvou terapeutických podpisech.
                 Bridge proběhne na serveru, trigger překlopí status na approved
                 a vznikne plán v did_daily_session_plans. */}
-            {d.deliberation_type === "session_plan" &&
-              !!d.hanka_signed_at &&
-              !!d.kata_signed_at && (
-                <section className="rounded-md border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="text-[11px] font-semibold text-emerald-700">
-                      Připraveno k zahájení
-                    </p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Hanička i Káťa stvrdily podpisem souhlas. {isPlayroomPlan
-                        ? "Herna je připravená jako dětská místnost v DID/Kluci/Herna."
-                        : "Plán je propsán do dnešního sezení."}
-                    </p>
-                  </div>
-                </section>
-              )}
-
-            {(d.status === "approved" || bridgedPlanId) && d.deliberation_type === "session_plan" && (() => {
-              const startBlockReason = unsignedStartBlockReason(d);
-              return (
-                <div className="space-y-2">
-                  {startBlockReason && (
-                    <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[10px] text-amber-800 dark:text-amber-300">
-                      {startBlockReason}
-                    </div>
+                {d.deliberation_type === "session_plan" &&
+                  !!d.hanka_signed_at &&
+                  !!d.kata_signed_at && (
+                    <section className="rounded-md border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-[11px] font-semibold text-emerald-700">
+                          Připraveno k zahájení
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          Hanička i Káťa stvrdily podpisem souhlas.{" "}
+                          {isPlayroomPlan
+                            ? "Herna je připravená jako dětská místnost v DID/Kluci/Herna."
+                            : "Plán je propsán do dnešního sezení."}
+                        </p>
+                      </div>
+                    </section>
                   )}
-                  <Button
-                    size="sm"
-                    className="w-full h-8 text-[11px]"
-                    onClick={goToLiveSession}
-                    disabled={!!startBlockReason || (!bridgedPlanId && !d.linked_live_session_id) || startingLive}
-                    title={startBlockReason || undefined}
-                  >
-                    {startingLive ? (
-                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                    ) : null}
-                    {startingLive ? "Otevírám…" : <>{isPlayroomPlan ? "Spustit hernu" : "Spustit sezení"} <ArrowRight className="w-3 h-3 ml-1" /></>}
-                  </Button>
-                </div>
-              );
-            })()}
+
+                {(d.status === "approved" || bridgedPlanId) &&
+                  d.deliberation_type === "session_plan" &&
+                  (() => {
+                    const startBlockReason = unsignedStartBlockReason(d);
+                    return (
+                      <div className="space-y-2">
+                        {startBlockReason && (
+                          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[10px] text-amber-800 dark:text-amber-300">
+                            {startBlockReason}
+                          </div>
+                        )}
+                        <Button
+                          size="sm"
+                          className="w-full h-8 text-[11px]"
+                          onClick={goToLiveSession}
+                          disabled={
+                            !!startBlockReason ||
+                            (!bridgedPlanId && !d.linked_live_session_id) ||
+                            startingLive
+                          }
+                          title={startBlockReason || undefined}
+                        >
+                          {startingLive ? (
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                          ) : null}
+                          {startingLive ? (
+                            "Otevírám…"
+                          ) : (
+                            <>
+                              {isPlayroomPlan
+                                ? "Spustit hernu"
+                                : "Spustit sezení"}{" "}
+                              <ArrowRight className="w-3 h-3 ml-1" />
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    );
+                  })()}
               </div>
             )}
           </>
