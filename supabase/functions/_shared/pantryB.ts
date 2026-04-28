@@ -77,6 +77,25 @@ export async function appendPantryB(
     return null;
   }
 
+  if (args.source_ref) {
+    const { data: existing, error: lookupError } = await sb
+      .from("karel_pantry_b_entries")
+      .select("id")
+      .eq("source_kind", args.source_kind)
+      .eq("source_ref", args.source_ref)
+      .eq("entry_kind", args.entry_kind)
+      .eq("related_part_name", args.related_part_name ?? null)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (lookupError) {
+      console.error("[pantryB] idempotency lookup failed", lookupError);
+    } else if (existing?.id) {
+      return { id: existing.id };
+    }
+  }
+
   const { data, error } = await sb
     .from("karel_pantry_b_entries")
     .insert({
