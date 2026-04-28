@@ -436,17 +436,25 @@ Deno.serve(async (req) => {
     const userId = await authenticatedUserId(req, supabaseUrl, anonKey);
     if (!userId) return json({ ok: false, error: "Nepřihlášený požadavek." }, 401);
     const body = await req.json().catch(() => ({}));
+    const sb = createClient(supabaseUrl, serviceKey);
+    if (body.health === true || body.dryRun === true) {
+      const { error: dbError } = await sb.from("did_session_reviews").select("id").limit(1);
+      if (dbError) throw dbError;
+      return json({ ok: true, health: "playroom-evaluate", auth: "ok", db: "ok" });
+    }
     const planId = String(body.planId || "").trim();
     const threadId = String(body.threadId || "").trim();
     if (!planId || !threadId) return json({ ok: false, error: "Chybí planId nebo threadId." }, 400);
-    const sb = createClient(supabaseUrl, serviceKey);
     if (body.async === true || body.enqueueOnly === true) {
       const reviewId = await ensurePendingReview(sb, userId, planId, threadId, body.partName);
-      EdgeRuntime.waitUntil(processEvaluation(sb, apiKey, userId, body).catch(async (e: any) => {
+      const jobId = await createEvaluationJob(sb, { userId, planId, threadId, partName: body.partName, reviewId, body });
+      const runner = runEvaluationJob(sb, apiKey, userId, jobId, body).catch(async (e: any) => {
         console.error("[playroom-evaluate] async failed", e);
-        await sb.from("did_session_reviews").update({ status: "failed_retry", last_sync_error: String(e?.message ?? e).slice(0, 1000), analysis_json: { schema: "did_playroom_review.v1", status: "failed_retry", error: String(e?.message ?? e).slice(0, 1000), thread_id: threadId, created_from: "karel-did-playroom-evaluate" } }).eq("id", reviewId);
-      }));
-      return json({ ok: true, queued: true, status: "pending_review", review_id: reviewId, mode: "playroom", review_kind: "karel_direct_playroom" });
+        const { data: current } = await sb.from("did_session_reviews").select("status,analysis_json").eq("id", reviewId).maybeSingle();
+        await sb.from("did_session_reviews").update({ status: hasCompletedReviewText(current) ? current.status : "failed_retry", last_sync_error: String(e?.message ?? e).slice(0, 1000), analysis_json: mergeAnalysisJson(current?.analysis_json, { processing_status: "failed_retry", error: String(e?.message ?? e).slice(0, 1000), thread_id: threadId, created_from: "karel-did-playroom-evaluate" }) }).eq("id", reviewId);
+      });
+      if (EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(runner);
+      return json({ ok: true, queued: true, status: "pending_review", job_id: jobId, review_id: reviewId, mode: "playroom", review_kind: "karel_direct_playroom" });
     }
     return json(await processEvaluation(sb, apiKey, userId, body));
   } catch (e: any) {
