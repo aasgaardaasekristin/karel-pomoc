@@ -860,6 +860,7 @@ async function gatherContext(supabase: any, proofReviewId?: string | null) {
   // poradách / sezeních vyplynulo, a briefing zní jako kdyby den začínal odznova.
   let pantryBEntries: any[] = [];
   let approvedDeliberations: any[] = [];
+  let eventIngestionSummary: any = null;
   try {
     const userIdForB: string | null = null;
     let userIdResolved: string | null = userIdForB;
@@ -873,6 +874,10 @@ async function gatherContext(supabase: any, proofReviewId?: string | null) {
       userIdResolved = anyCtxRow?.user_id ?? null;
     }
     if (userIdResolved) {
+      eventIngestionSummary = await runGlobalDidEventIngestion(supabase as any, userIdResolved, {
+        mode: "last_24h",
+        sinceISO: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      });
       pantryBEntries = await readUnprocessedPantryB(supabase, userIdResolved);
       const { data: approved } = await supabase
         .from("did_team_deliberations")
@@ -883,7 +888,7 @@ async function gatherContext(supabase: any, proofReviewId?: string | null) {
         .order("updated_at", { ascending: false })
         .limit(20);
       approvedDeliberations = approved ?? [];
-      console.log(`[briefing] Pantry B loaded: entries=${pantryBEntries.length}, approved_delibs=${approvedDeliberations.length}`);
+      console.log(`[briefing] Pantry B loaded: entries=${pantryBEntries.length}, approved_delibs=${approvedDeliberations.length}, ingestion_processed=${eventIngestionSummary?.processed_count ?? 0}`);
     }
   } catch (bErr) {
     console.warn("[briefing] Pantry B / approved deliberations load failed (non-fatal):", bErr);
