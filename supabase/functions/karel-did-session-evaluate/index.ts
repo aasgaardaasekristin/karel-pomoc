@@ -1847,6 +1847,31 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json().catch(() => ({}));
     requestBody = body;
+    if (body?.processPendingJobs === true) {
+      const limit = Math.max(1, Math.min(5, Number(body?.limit ?? 1)));
+      const { data: jobs, error: jobsError } = await sb
+        .from("karel_action_jobs")
+        .select("*")
+        .eq("job_type", "session_evaluation")
+        .in("status", ["pending", "failed_retry"])
+        .order("created_at", { ascending: true })
+        .limit(limit);
+      if (jobsError) throw jobsError;
+      const results: any[] = [];
+      for (const job of jobs ?? []) {
+        const payload = { ...((job.result_payload && typeof job.result_payload === "object") ? job.result_payload : {}), planId: job.plan_id, jobId: job.id, attempt_count: job.attempt_count ?? 0, jobStartedAt: job.started_at ?? null };
+        delete payload.enqueueOnly;
+        delete payload.processPendingJobs;
+        const res = await fetch(`${supabaseUrl}/functions/v1/karel-did-session-evaluate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY") ?? serviceKey}` },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+        results.push({ job_id: job.id, status: res.status, ...json });
+      }
+      return new Response(JSON.stringify({ ok: true, processed: results.length, results }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     const planId = body?.planId as string | undefined;
     let completedBlocks = typeof body?.completedBlocks === "number" ? body.completedBlocks : undefined;
     let totalBlocks = typeof body?.totalBlocks === "number" ? body.totalBlocks : undefined;
