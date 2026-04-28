@@ -1597,6 +1597,7 @@ Deno.serve(async (req) => {
     }
     injectPlayroomReviewIntoProposal(payload);
     injectSessionReviewIntoProposals(payload);
+    injectBriefingAskResolutionsIntoProposals(payload, context);
     payload = applyOpeningMonologue(payload, context, candidates);
 
     // 3b) ── ASK ITEM IDENTITY ──
