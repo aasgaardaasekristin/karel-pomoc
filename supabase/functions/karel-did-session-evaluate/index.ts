@@ -1303,12 +1303,14 @@ async function insertPackageOnce(sb: any, row: any, force = false): Promise<stri
 }
 
 async function insertDriveWriteOnce(sb: any, row: any, dedupe: { reviewId?: string; contentType: string; target: string }, force = false): Promise<string | null> {
-  const marker = dedupe.reviewId ? `review_id=${dedupe.reviewId}` : `content_type=${dedupe.contentType}`;
+  const reviewMarker = dedupe.reviewId ? `review_id=${dedupe.reviewId}` : "session_evaluate";
+  const typeMarker = `content_type=${dedupe.contentType}`;
   const { data: existing } = await sb
     .from("did_pending_drive_writes")
     .select("id,status")
     .eq("target_document", dedupe.target)
-    .ilike("content", `%${marker}%`)
+    .ilike("content", `%${reviewMarker}%`)
+    .ilike("content", `%${typeMarker}%`)
     .limit(1);
   if (existing?.length && !force) return existing[0].id;
   if (existing?.length && force) await sb.from("did_pending_drive_writes").delete().eq("id", existing[0].id);
