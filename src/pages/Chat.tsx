@@ -286,10 +286,12 @@ const Chat = () => {
   });
 
   useEffect(() => {
+    if (noSave) return;
     try { localStorage.setItem(ACTIVE_MODE_KEY, mode); } catch {}
-  }, [mode]);
+  }, [mode, noSave]);
 
   useEffect(() => {
+    if (noSave) return;
     try {
       if (didSubMode) localStorage.setItem("karel_did_submode", didSubMode);
       else localStorage.removeItem("karel_did_submode");
@@ -297,6 +299,7 @@ const Chat = () => {
   }, [didSubMode]);
 
   useEffect(() => {
+    if (noSave) return;
     try {
       if (didInitialContext) localStorage.setItem("karel_did_context", didInitialContext);
       else localStorage.removeItem("karel_did_context");
