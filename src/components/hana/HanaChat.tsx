@@ -24,6 +24,7 @@ import SaveTopicButton from "@/components/hana/SaveTopicButton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useAuthReady } from "@/hooks/useAuthReady";
+import { buildSafetyResponse, detectSafetyMention } from "@/lib/safetyDetection";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -74,7 +75,7 @@ const handleApiError = async (response: Response) => {
 
 // Intro animation removed – now lives in HanaPinScreen
 
-const HanaChatInner = () => {
+const HanaChatInner = ({ noSave = false }: { noSave?: boolean }) => {
   const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();
   const [messages, setMessages] = useState<Message[]>([]);
   const [viewState, setViewState] = useState<HanaViewState>("list");
@@ -119,6 +120,7 @@ const HanaChatInner = () => {
     nextMessages: Message[],
     options?: { isActive?: boolean }
   ) => {
+    if (noSave) return;
     if (!targetConversationId) return;
 
     const payload: Record<string, unknown> = {
@@ -141,7 +143,7 @@ const HanaChatInner = () => {
     }
 
     lastSavedRef.current = JSON.stringify(nextMessages);
-  }, []);
+  }, [noSave]);
 
   const createConversation = useCallback(async () => {
     await supabase
