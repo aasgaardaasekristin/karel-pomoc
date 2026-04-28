@@ -587,10 +587,9 @@ Deno.serve(async (req: Request) => {
           .eq("source_ref", `${deliberationId}:approved_outcome`)
           .limit(1);
 
-        if (existingOutcome.data && existingOutcome.data.length > 0) return;
-
-        const outcome = buildDeliberationOutcomeReport(updated as Record<string, any>, bridgedPlanId, crisisEffects);
-        const summary = `Schválená porada 2/2: ${updated.title} — ${outcome.therapyImplication}`.slice(0, 1800);
+        if (existingOutcome.data && existingOutcome.data.length === 0) {
+          const outcome = buildDeliberationOutcomeReport(updated as Record<string, any>, bridgedPlanId, crisisEffects);
+          const summary = `Schválená porada 2/2: ${updated.title} — ${outcome.therapyImplication}`.slice(0, 1800);
 
         const destinations: any[] = ["briefing_input"];
         if (updated.deliberation_type === "session_plan") {
@@ -600,7 +599,7 @@ Deno.serve(async (req: Request) => {
           destinations.push("crisis_event_update");
         }
 
-        await appendPantryB(admin as any, {
+          await appendPantryB(admin as any, {
           user_id: userId,
           entry_kind: updated.deliberation_type === "crisis" ? "state_change" : "conclusion",
           source_kind: "team_deliberation",
@@ -630,7 +629,8 @@ Deno.serve(async (req: Request) => {
           related_crisis_event_id: (crisisEffects as any).crisis_event_updated
             ?? updated.linked_crisis_event_id
             ?? undefined,
-        });
+          });
+        }
       }
     } catch (pErr) {
       console.warn("[delib-signoff] pantry-b append failed (non-fatal):", pErr);
