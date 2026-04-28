@@ -20,6 +20,9 @@
 export type ContentType =
   | "profile_claim"
   | "session_result"
+  | "playroom_detail_analysis"
+  | "playroom_practical_report"
+  | "playroom_log"
   | "post_session_analysis"
   | "closure_summary"
   | "closure_chronology"
@@ -78,6 +81,23 @@ const ROUTING_TABLE: Record<ContentType, (subjectId?: string) => RouteResult> = 
     driveTarget: `KARTA_${(partName || "UNKNOWN").toUpperCase()}`,
     writeType: "append",
     cardSection: "K",
+  }),
+  playroom_detail_analysis: (partName) => ({
+    layer: "KARTA_CASTI",
+    driveTarget: `KARTA_${(partName || "UNKNOWN").toUpperCase()}`,
+    writeType: "append",
+    cardSection: "K",
+  }),
+  playroom_practical_report: (partName) => ({
+    layer: "KARTA_CASTI",
+    driveTarget: `KARTA_${(partName || "UNKNOWN").toUpperCase()}`,
+    writeType: "append",
+    cardSection: "D",
+  }),
+  playroom_log: () => ({
+    layer: "05A",
+    driveTarget: "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG",
+    writeType: "append",
   }),
   post_session_analysis: (partName) => ({
     layer: "KARTA_CASTI",
