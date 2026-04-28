@@ -180,7 +180,6 @@ Deno.serve(async (req) => {
       .from("briefing_ask_resolutions")
       .select("*")
       .eq("user_id", userId)
-      .eq("briefing_id", briefing.id)
       .eq("ask_id", askId)
       .eq("thread_id", threadId)
       .eq("target_type", targetType)
