@@ -58,6 +58,16 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
+function mergeAnalysisJson(existing: any, patch: any) {
+  const base = existing && typeof existing === "object" ? existing : {};
+  return { ...base, ...patch };
+}
+
+function hasCompletedReviewText(review: any) {
+  const a = review?.analysis_json ?? {};
+  return String(a.detailed_analysis_text || "").trim().length > 0 || String(a.practical_report_text || "").trim().length > 0;
+}
+
 async function authenticatedUserId(req: Request, supabaseUrl: string, anonKey: string): Promise<string | null> {
   const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
