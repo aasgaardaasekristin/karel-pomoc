@@ -893,7 +893,9 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                       Porada je schválená — náhled jen pro čtení
                     </h4>
                     <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Odpovědi, podpisy i Karlova syntéza jsou uzavřené. Nelze měnit, jen prohlížet.
+                      {d.deliberation_type === "session_plan"
+                        ? "Odpovědi, podpisy a finální program jsou uzavřené. Nelze měnit, jen prohlížet."
+                        : "Odpovědi, podpisy i Karlova syntéza jsou uzavřené. Nelze měnit, jen prohlížet."}
                       Pro nové rozhodnutí počkej na další briefing.
                     </p>
                   </div>
