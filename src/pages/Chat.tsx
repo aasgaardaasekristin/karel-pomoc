@@ -545,6 +545,7 @@ const Chat = () => {
   // Auto-save research threads
   useEffect(() => {
     if (messages.length === 0 || !activeResearchThread) return;
+    if (noSave) return;
     const interval = setInterval(() => {
       researchThreads.updateMessages(activeResearchThread.id, messages);
     }, 5000);
@@ -554,6 +555,7 @@ const Chat = () => {
   // Auto-save threads to DB (DID)
   useEffect(() => {
     if (messages.length === 0 || !activeThread) return;
+    if (noSave) return;
     const interval = setInterval(() => {
       didThreads.updateThreadMessages(activeThread.id, messages);
     }, 5000);
@@ -563,6 +565,7 @@ const Chat = () => {
   // Periodical save for non-thread modes
   useEffect(() => {
     if (messages.length === 0 || activeThread || activeResearchThread) return;
+    if (noSave || hubSection === "karel") return;
     const interval = setInterval(() => {
       saveMessages(mode, messages);
       if (mode === "childcare" && didSubMode && didSubMode !== "cast" && messages.length >= 2) {
