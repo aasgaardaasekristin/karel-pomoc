@@ -379,21 +379,15 @@ Deno.serve(async (req) => {
     const threadId = String(body.threadId || "").trim();
     if (!planId || !threadId) return json({ ok: false, error: "Chybí planId nebo threadId." }, 400);
     const sb = createClient(supabaseUrl, serviceKey);
-    const ctx = await loadContext(sb, planId, threadId, userId);
-    if (ctx.status !== "valid") {
-      const reviewId = await persistInvalidAudit(sb, ctx, userId, planId, ctx.reason || "invalid");
-      return json({ ok: false, status: "missing_valid_playroom_plan", reason: ctx.reason, review_id: reviewId }, 200);
+    if (body.async === true || body.enqueueOnly === true) {
+      const reviewId = await ensurePendingReview(sb, userId, planId, threadId, body.partName);
+      EdgeRuntime.waitUntil(processEvaluation(sb, apiKey, userId, body).catch(async (e: any) => {
+        console.error("[playroom-evaluate] async failed", e);
+        await sb.from("did_session_reviews").update({ status: "failed_retry", last_sync_error: String(e?.message ?? e).slice(0, 1000), analysis_json: { schema: "did_playroom_review.v1", status: "failed_retry", error: String(e?.message ?? e).slice(0, 1000), thread_id: threadId, created_from: "karel-did-playroom-evaluate" } }).eq("id", reviewId);
+      }));
+      return json({ ok: true, queued: true, status: "pending_review", review_id: reviewId, mode: "playroom", review_kind: "karel_direct_playroom" });
     }
-    const transcript = buildTranscript(ctx.thread, body.turnsByBlock || ctx.liveProgress?.turns_by_block || {});
-    const prompt = buildPrompt(ctx, body, transcript);
-    const review = await callAi(prompt, apiKey);
-    const reviewId = await upsertReview(sb, ctx, body, review, transcript);
-    const { data: persistedReview } = await sb.from("did_session_reviews").select("status,analysis_json").eq("id", reviewId).maybeSingle();
-    review.analysis_json = persistedReview?.analysis_json ?? {};
-    const drive = await persistPantryAndDrive(sb, ctx, review, reviewId, persistedReview?.status ?? "analyzed");
-    await sb.from("did_live_session_progress").update({ finalized_at: new Date().toISOString(), finalized_reason: body.endedReason || "manual_end", updated_at: new Date().toISOString() }).eq("plan_id", planId);
-    await sb.from("did_daily_session_plans").update({ status: "done", lifecycle_status: "completed", completed_at: new Date().toISOString(), finalized_at: new Date().toISOString(), finalization_source: "karel-did-playroom-evaluate", finalization_reason: body.endedReason || "manual_end", updated_at: new Date().toISOString() }).eq("id", planId);
-    return json({ ok: true, status: persistedReview?.status ?? "analyzed", review_id: reviewId, mode: "playroom", review_kind: "karel_direct_playroom", drive_write_ids: drive.writeIds, model_used: MODEL });
+    return json(await processEvaluation(sb, apiKey, userId, body));
   } catch (e: any) {
     console.error("[playroom-evaluate] fatal", e);
     return json({ ok: false, error: e?.message ?? String(e) }, 500);
