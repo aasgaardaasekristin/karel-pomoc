@@ -3221,6 +3221,17 @@ Deno.serve(async (req: Request) => {
           ? " (vyhodnocování spustil noční safety-net, terapeutka sezení formálně neuzavřela)"
           : "")
       : "Počet bloků nebyl předán.";
+    const liveReplanPatch = liveProgress?.live_replan_patch && typeof liveProgress.live_replan_patch === "object" ? liveProgress.live_replan_patch : null;
+    const liveReplanEvidence = liveReplanPatch
+      ? `────────────  LIVE_REPLAN_PATCH / REALITY OVERRIDE  ────────────
+current_block_status: ${liveProgress?.current_block_status ?? "paused_by_reality_override"}
+active_live_replan_id: ${liveProgress?.active_live_replan_id ?? liveReplanPatch.id ?? "unknown"}
+verification_status: ${liveReplanPatch?.factual_frame?.verification_status ?? liveProgress?.reality_verification?.verification_status ?? "therapist_report_only"}
+source_url: ${liveReplanPatch?.factual_frame?.source_url ?? "none"}
+evidence discipline: therapist_factual_correction ≠ child clinical evidence; verified_external_fact ≠ child clinical evidence; child_response_to_event = possible clinical material only if vlastní slova/afekt/tělo/chování části jsou zaznamenané.
+LIVE_REPLAN_PATCH:
+${JSON.stringify(liveReplanPatch, null, 2).slice(0, 3500)}`
+      : "";
 
     const prompt = `KONTEXT VYHODNOCOVANÉHO SEZENÍ
 ══════════════════════════════════════════════
@@ -3241,6 +3252,7 @@ ${blockTranscript}
 
 ────────────  THREAD VLÁKNO ZE DNE SEZENÍ  ────────────
 ${threadTranscript}
+${liveReplanEvidence ? `\n${liveReplanEvidence}\n` : ""}
 ══════════════════════════════════════════════
 
 ÚKOL:
