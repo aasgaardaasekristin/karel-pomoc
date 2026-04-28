@@ -342,17 +342,22 @@ const HanaChatInner = ({ noSave = false }: { noSave?: boolean }) => {
 
     try {
       if (!activeConversationId) {
-        const created = await createConversation();
-        if (!created) {
-          setMessages(messages);
-          return;
+        if (noSave) {
+          activeConversationId = null;
+        } else {
+          const created = await createConversation();
+          if (!created) {
+            setMessages(messages);
+            return;
+          }
+          activeConversationId = created.id;
+          setConversationId(created.id);
         }
-        activeConversationId = created.id;
-        setConversationId(created.id);
         setViewState("thread-detail");
       }
 
       await persistConversation(activeConversationId, nextMessages);
+      const safety = detectSafetyMention(userMessage);
 
       const headers = await getAuthHeaders();
       const recentMessages = [...messages.slice(-30), { role: "user", content: userContent }];
@@ -366,6 +371,8 @@ const HanaChatInner = ({ noSave = false }: { noSave?: boolean }) => {
             messages: recentMessages,
             conversationId: activeConversationId,
             contextPrimeCache: contextPrimeCache || undefined,
+            mode_id: "hana_osobni",
+            no_save: noSave,
           }),
         }
       );
@@ -407,6 +414,15 @@ const HanaChatInner = ({ noSave = false }: { noSave?: boolean }) => {
             break;
           }
         }
+      }
+
+      if (safety.matched) {
+        assistantContent = [buildSafetyResponse(safety, noSave), assistantContent].filter(Boolean).join("\n\n---\n\n");
+        setMessages(prev => {
+          const n = [...prev];
+          if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content: assistantContent };
+          return n;
+        });
       }
 
       if (assistantContent && activeConversationId) {
