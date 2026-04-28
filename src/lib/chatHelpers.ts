@@ -80,6 +80,21 @@ export const clearNoHistoryChatStorage = () => {
   } catch {}
 };
 
+export const countMarkerInBrowserStorage = (marker: string) => {
+  const includesMarker = (value: string | null) => Boolean(value && marker && value.includes(marker));
+  let localStorageCount = 0;
+  let sessionStorageCount = 0;
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      if (includesMarker(localStorage.getItem(localStorage.key(i) || ""))) localStorageCount += 1;
+    }
+    for (let i = 0; i < sessionStorage.length; i += 1) {
+      if (includesMarker(sessionStorage.getItem(sessionStorage.key(i) || ""))) sessionStorageCount += 1;
+    }
+  } catch {}
+  return { localStorageCount, sessionStorageCount };
+};
+
 export const markExplicitLogout = () => {
   try { sessionStorage.setItem(EXPLICIT_LOGOUT_KEY, String(Date.now())); } catch {}
 };
