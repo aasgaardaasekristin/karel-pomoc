@@ -40,6 +40,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 import { appendPantryB } from "../_shared/pantryB.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
+import { requireAuth } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -2798,7 +2799,21 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json().catch(() => ({}));
     requestBody = body;
+    const authHeader = req.headers.get("Authorization") || "";
+    const isServiceCall = serviceKey && authHeader === `Bearer ${serviceKey}`;
+    let authenticatedUserId: string | null = null;
+    if (!isServiceCall) {
+      const authResult = await requireAuth(req);
+      if (authResult instanceof Response) return authResult;
+      authenticatedUserId = String((authResult as { user: any }).user?.id ?? "");
+    }
     if (body?.processPendingJobs === true) {
+      if (!isServiceCall) {
+        return new Response(JSON.stringify({ ok: false, error: "service_role_required" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       const limit = Math.max(1, Math.min(5, Number(body?.limit ?? 1)));
       const { data: jobs, error: jobsError } = await sb
         .from("karel_action_jobs")
@@ -2929,6 +2944,12 @@ Deno.serve(async (req: Request) => {
         attempt_count: body?.attempt_count ?? 0,
       });
     const ctx = await loadContext(sb, planId);
+    if (!isServiceCall && authenticatedUserId && ctx.plan.user_id !== authenticatedUserId) {
+      return new Response(JSON.stringify({ ok: false, error: "user_scope_mismatch" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     if (enqueueOnly) {
       assertPlanWasApprovedAndStarted(ctx.plan);
       const job = await enqueueSessionEvaluationJob(sb, ctx, body);
