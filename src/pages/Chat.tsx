@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { LogOut, Loader2, FileText, RotateCcw, FolderOpen, GraduationCap, RefreshCw } from "lucide-react";
+import { LogOut, Loader2, FileText, RotateCcw, FolderOpen, GraduationCap, RefreshCw, ShieldOff } from "lucide-react";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversalUpload";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
@@ -45,6 +45,8 @@ import DidContentRouter from "@/components/did/DidContentRouter";
 import TherapistAvatarBar from "@/components/did/TherapistAvatarBar";
 import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
 import { useAuthReady } from "@/hooks/useAuthReady";
+import { APP_MODE_POLICIES, getAppModeForHub, getModePolicy } from "@/lib/appModePolicy";
+import { buildSafetyResponse, detectSafetyMention } from "@/lib/safetyDetection";
 import {
   type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
   STORAGE_KEY_PREFIX, ACTIVE_MODE_KEY, DID_DOCS_LOADED_KEY, DID_SESSION_ID_KEY, HANA_PIN_KEY, HANA_PIN_ACCESS_TOKEN_KEY,
@@ -177,6 +179,27 @@ const Chat = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const explicitLogoutActive = isExplicitLogoutActive();
+  const [noSave, setNoSave] = useState(() => {
+    try { return sessionStorage.getItem("karel_no_save") === "1"; } catch { return false; }
+  });
+  const appModeId = getAppModeForHub(hubSection);
+  const persistencePolicy = getModePolicy(appModeId, noSave);
+  const persistenceRequest = {
+    mode_id: persistencePolicy.mode_id,
+    save_policy: persistencePolicy.save_policy,
+    did_relevance_policy: persistencePolicy.did_relevance_policy,
+    pantry_policy: persistencePolicy.pantry_policy,
+    drive_policy: persistencePolicy.drive_policy,
+    safety_policy: persistencePolicy.safety_policy,
+    no_save: noSave,
+  };
+
+  useEffect(() => {
+    try {
+      if (noSave) sessionStorage.setItem("karel_no_save", "1");
+      else sessionStorage.removeItem("karel_no_save");
+    } catch {}
+  }, [noSave]);
 
   const hasStoredDidWork = (() => {
     try {
