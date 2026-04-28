@@ -26,6 +26,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { buildLiveReplanPatch, containsBannedRealityOverridePhrase, correctiveRealityOverrideResponse, detectLiveRealityOverride, verifyExternalReality } from "../_shared/liveRealityOverride.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -78,6 +79,19 @@ Deno.serve(async (req: Request) => {
     const blockHint = programBlock
       ? `${programBlock.block}${programBlock.detail ? ` — ${programBlock.detail}` : ""}`
       : "(mimo strukturovaný bod)";
+    const realityDetection = detectLiveRealityOverride(observation);
+    if (realityDetection.reality_override_detected) {
+      const verification = await verifyExternalReality(realityDetection.urls, observation);
+      const liveReplanPatch = buildLiveReplanPatch({ therapistName, partName, therapistCorrection: observation, detection: realityDetection, verification, blockedIntervention: "original_planned_task", currentBlockIndex: typeof programBlock?.index === "number" ? programBlock.index : null, currentBlockText: blockHint });
+      return new Response(JSON.stringify({
+        karel_hint: correctiveRealityOverrideResponse({ ...liveReplanPatch, part_name: partName }, therapistName).slice(0, 900),
+        reality_override_detected: true,
+        verification_status: verification.factual_status,
+        live_replan_patch: liveReplanPatch,
+      }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const prompt = `Jsi Karel, terapeutický kolega. Sedíš jako tichý spolu-terapeut po ruce ${therapistName === "Káťa" ? "Káti" : "Hany"} při živém sezení s "${partName}".
 
@@ -128,7 +142,16 @@ ${observation}
       });
     }
     const aiData = await aiRes.json();
-    const hint = String(aiData?.choices?.[0]?.message?.content ?? "").trim().slice(0, 400);
+    let hint = String(aiData?.choices?.[0]?.message?.content ?? "").trim().slice(0, 400);
+    if (containsBannedRealityOverridePhrase(hint)) {
+      const detection = detectLiveRealityOverride(observation);
+      const verification = await verifyExternalReality(detection.urls, observation);
+      const liveReplanPatch = buildLiveReplanPatch({ therapistName, partName, therapistCorrection: observation, detection, verification, blockedIntervention: "post_generation_banned_phrase_guard", currentBlockText: blockHint });
+      hint = correctiveRealityOverrideResponse({ ...liveReplanPatch, part_name: partName }, therapistName).slice(0, 900);
+      return new Response(JSON.stringify({ karel_hint: hint, reality_override_detected: true, verification_status: verification.factual_status, live_replan_patch: liveReplanPatch, banned_phrase_guard: true }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     return new Response(JSON.stringify({ karel_hint: hint }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

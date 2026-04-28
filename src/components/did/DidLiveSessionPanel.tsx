@@ -21,6 +21,7 @@ import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { Progress } from "@/components/ui/progress";
 import { finalizeDidSessionWithJob } from "@/lib/karelFinalizeJobs";
+import { LIVE_REALITY_OVERRIDE_RE } from "@/lib/liveRealityOverrideGuards";
 
 import DidPostSessionInterrogation, { type InterrogationAnswer } from "./DidPostSessionInterrogation";
 import LiveProgramChecklist from "./LiveProgramChecklist";
@@ -39,10 +40,25 @@ type Message = {
   attachedBlockText?: string;  // krátký label bodu pro UI
 };
 
-type LiveAction = "internet_search" | "drive_read" | "image_stimulus" | null;
+type LiveAction = "reality_override" | "internet_search" | "drive_read" | "image_stimulus" | null;
+
+type LiveReplanPatch = {
+  id?: string;
+  current_block_status?: string;
+  current_block_index?: number | null;
+  current_block_text?: string | null;
+  factual_frame?: { verification_status?: string; source_url?: string | null; source_title?: string | null; event_summary?: string; details_to_avoid_telling_child?: string[] };
+  new_micro_steps?: string[];
+  what_to_avoid?: string[];
+  therapist_script?: string;
+  data_to_record?: string[];
+  return_to_original_plan_allowed?: boolean;
+  condition_for_return_to_plan?: string;
+};
 
 const detectLiveAction = (text: string): LiveAction => {
   const t = text.toLowerCase();
+  if (LIVE_REALITY_OVERRIDE_RE.test(text)) return "reality_override";
   if (/(pošli|posli|ukaž|ukaz|dej|vlož|vloz|zobraz).{0,40}(obrázek|obrazek|stimul|skvrn|věž|vez|dveř|dver|cest|les|dům|dum)/i.test(t)) return "image_stimulus";
   if (/(najdi|vyhledej|dohledej|ověř|over|prohledej|internet|googl|kdo je|co je).{0,80}(internet|web|online|zdroj|emma|tustin|článek|clanek|studie|google)|\bemma\s+tustin\b/i.test(t)) return "internet_search";
   if (/(načti|nacti|přečti|precti|podívej|podivej|najdi|otevři|otevri).{0,60}(drive|kartu|kartě|karte|kartot|dokument|soubor)/i.test(t)) return "drive_read";
@@ -193,6 +209,7 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
   // Drží se referenci na poslední aktivovaný bod, aby přímé výzvy v hlavním
   // chatu typu "napiš mi ty slova" mohly být přesměrovány na produce endpoint.
   const [activeBlock, setActiveBlock] = useState<{ index: number; text: string; detail?: string } | null>(null);
+  const [activeLiveReplan, setActiveLiveReplan] = useState<LiveReplanPatch | null>(null);
 
   // ── BLOCK WORKSPACE MODE (2026-04-23 hard reset) ──
   // Když je nastaven, celá obrazovka se přepne do dedikovaného pracovního
@@ -359,6 +376,12 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
 Terapeutka: ${therapistName}
 Čas: ${new Date().toISOString()}
 ${switchHistory}
+${activeLiveReplan ? `AKTIVNÍ LIVE_REPLAN_PATCH:
+current_block_status: ${activeLiveReplan.current_block_status ?? "paused_by_reality_override"}
+verification_status: ${activeLiveReplan.factual_frame?.verification_status ?? "therapist_report_only"}
+Pravidlo: původní plán je pozastaven; nepokračuj podle původního bloku, dokud terapeutka výslovně nepotvrdí návrat.
+Evidence discipline: therapist_factual_correction / verified_external_fact nejsou důkaz o části; klinicky použitelná je jen child_response_to_event.
+` : ""}
 ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
 ═══ INSTRUKCE ═══
 - Jsi Karel, kognitivní agent PŘÍTOMNÝ na živém sezení s DID částí "${activePart}".
@@ -373,8 +396,9 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
 - Buď direktivní a konkrétní. Žádné filozofování.
 - Respektuj věk a vývojovou úroveň části.
 - Při známkách distresu nebo switchingu OKAMŽITĚ upozorni.
+- Pokud terapeutka opraví realitu nebo pošle URL ke skutečné události, zastav původní plán a přepni na realita → emoce → potřeba → bezpečí; neinterpretuj událost jako projekci bez dat.
 - Pokud detekuješ SWITCH (změnu identity/části), označ to tagem [SWITCH:JMÉNO_NOVÉ_ČÁSTI] na konci odpovědi.`;
-  }, [partName, activePart, therapistName, contextBrief, switchLog]);
+  }, [partName, activePart, therapistName, contextBrief, switchLog, activeLiveReplan]);
 
   // Detekce přímé výzvy „napiš mi slova / otázky / nápady" — přesměrujeme na produce
   const CONTENT_REQUEST_RE = /(napiš|dej|navrhni|vygeneruj|řekni|vyrob)\s+(mi\s+)?(ty\s+)?(slova|asociace|otázky|otazky|nápady|napady|barvy|instrukci|seznam)/i;
@@ -401,6 +425,73 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
       console.warn("[live] appendToBlockTurns failed:", e);
     }
   }, [planId]);
+
+  const persistLiveReplan = useCallback(async (patch: LiveReplanPatch, therapistCorrection: string) => {
+    setActiveLiveReplan(patch);
+    if (typeof patch.current_block_index === "number") {
+      try {
+        const key = `live_program_${planId ?? "ad-hoc"}`;
+        const raw = window.localStorage.getItem(key);
+        if (raw) {
+          const arr = JSON.parse(raw) as Array<Record<string, unknown>>;
+          if (Array.isArray(arr) && arr[patch.current_block_index]) {
+            arr[patch.current_block_index] = {
+              ...arr[patch.current_block_index],
+              status: patch.current_block_status ?? "paused_by_reality_override",
+              paused_by_reality_override: true,
+              active_live_replan_id: patch.id,
+            };
+            window.localStorage.setItem(key, JSON.stringify(arr));
+            setPlanRefreshTick((v) => v + 1);
+          }
+        }
+      } catch (e) {
+        console.warn("[live-replan] local block pause failed:", e);
+      }
+    }
+
+    if (!planId) return;
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData?.user?.id;
+      if (!userId) return;
+      await (supabase as any).from("did_live_session_progress").upsert({
+        user_id: userId,
+        plan_id: planId,
+        part_name: partName,
+        therapist: therapistName,
+        current_block_status: patch.current_block_status ?? "paused_by_reality_override",
+        active_live_replan_id: patch.id ?? null,
+        live_replan_patch: patch,
+        reality_verification: patch.factual_frame ?? {},
+        last_activity_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "plan_id" });
+      await (supabase as any).from("karel_pantry_b_entries").insert({
+        user_id: userId,
+        entry_kind: "plan_change",
+        source_kind: "live_session_reality_override",
+        source_ref: `live-session:${planId}:reality-override:${patch.id ?? Date.now()}`,
+        summary: "Terapeutka opravila realitní rámec; Karel pozastavil původní plán a přešel na real-event protocol.",
+        detail: {
+          therapist_correction: therapistCorrection,
+          url: patch.factual_frame?.source_url ?? null,
+          verification_status: patch.factual_frame?.verification_status ?? "therapist_report_only",
+          original_intervention_blocked: true,
+          new_micro_plan: patch.new_micro_steps ?? [],
+          what_to_record: patch.data_to_record ?? [],
+          evidence_limits: "Therapist factual correction and verified external fact are not child clinical evidence; only child_response_to_event can become clinical material.",
+          child_facing_safety_notes: "Dítěti jen krátké bezpečné minimum; nepřidávat dramatické detaily z externího zdroje.",
+          live_replan_patch: patch,
+        },
+        intended_destinations: ["briefing_input", "did_implications", "did_therapist_tasks"],
+        related_part_name: partName,
+        related_therapist: therapistName === "Káťa" ? "kata" : "hanka",
+      });
+    } catch (e) {
+      console.warn("[live-replan] persistence failed:", e);
+    }
+  }, [partName, planId, therapistName]);
 
   // ── Jádro odeslání: streamuje karel-chat odpověď. Vrací true při úspěchu. ──
   // Klíčové oproti původní verzi: NIKDY nemažeme uživatelskou zprávu z chatu.
@@ -596,6 +687,34 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
       const headers = await getAuthHeaders();
       const acceptedAt = new Date().toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" });
 
+      if (action === "reality_override") {
+        const res = await (supabase as any).functions.invoke("karel-live-session-produce", {
+          body: {
+            part_name: activePart,
+            therapist_name: therapistName,
+            program_block: attached
+              ? { index: attached.index, text: attached.text }
+              : activeBlock
+                ? { index: activeBlock.index, text: activeBlock.text, detail: activeBlock.detail }
+                : { index: -1, text: "mimo strukturovaný bod" },
+            plan_context: contextBrief?.slice(0, 2000),
+            observation_so_far: messages.slice(-6).map(m => `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${m.content}`).join("\n").slice(0, 800),
+            user_request: userMessage,
+          },
+        });
+        if (res.error) throw res.error;
+        const content = String(res.data?.karel_content ?? "").trim();
+        const patch = res.data?.live_replan_patch as LiveReplanPatch | undefined;
+        if (patch) await persistLiveReplan(patch, userMessage);
+        setMessages(prev => [
+          ...prev.map(m => (m.role === "user" && m.ts === ts ? { ...m, acceptedAt, failed: false, errorMsg: undefined } : m)),
+          { role: "assistant", content: content || "Hani, zastavuju původní bod a přepínám na realita → emoce → potřeba → bezpečí.", ts: new Date().toISOString() },
+        ]);
+        if (attached && content) appendToBlockTurns(attached.index, "", content);
+        toast.warning("Program upraven kvůli faktické korekci reality.");
+        return true;
+      }
+
       if (action === "image_stimulus") {
         const stimulus = buildTowerStimulusMarkdown();
         setMessages(prev => [
@@ -664,7 +783,7 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
       setIsLoading(false);
       textareaRef.current?.focus();
     }
-  }, [activePart, appendToBlockTurns, messages, readSseText, streamKarelReply]);
+  }, [activePart, activeBlock, appendToBlockTurns, contextBrief, messages, persistLiveReplan, readSseText, streamKarelReply, therapistName]);
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
@@ -1681,6 +1800,46 @@ ${report}${interrogationBlock}${reflectionText}`;
                 />
               </div>
             )}
+          </div>
+        )}
+
+        {activeLiveReplan && (
+          <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-3 space-y-2">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-xs font-semibold text-foreground">Program upraven kvůli faktické korekci reality.</p>
+                  <Badge variant="outline" className="text-[9px] h-4 border-destructive/30 text-destructive">
+                    {activeLiveReplan.current_block_status ?? "paused_by_reality_override"}
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Původní bod byl pozastaven. Nový postup: realita → emoce → potřeba → bezpečí.
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3 text-[11px]">
+              <div className="rounded-md border border-border/60 bg-background/50 p-2">
+                <p className="font-semibold text-foreground mb-1">Co má Hanička říct</p>
+                <p className="text-muted-foreground whitespace-pre-wrap">{activeLiveReplan.therapist_script ?? "Zůstaň u toho, co ví, co cítí a co teď potřebuje."}</p>
+              </div>
+              <div className="rounded-md border border-border/60 bg-background/50 p-2">
+                <p className="font-semibold text-foreground mb-1">Co zaznamenat</p>
+                <ul className="space-y-0.5 text-muted-foreground">
+                  {(activeLiveReplan.data_to_record ?? ["vlastní slova části", "afekt", "tělesná reakce", "potřeba"]).slice(0, 5).map((item) => <li key={item}>• {item}</li>)}
+                </ul>
+              </div>
+              <div className="rounded-md border border-border/60 bg-background/50 p-2">
+                <p className="font-semibold text-foreground mb-1">Co nedělat</p>
+                <ul className="space-y-0.5 text-muted-foreground">
+                  {(activeLiveReplan.what_to_avoid ?? ["neinterpretovat projekčně", "nepřidávat děsivé detaily"]).slice(0, 5).map((item) => <li key={item}>• {item}</li>)}
+                </ul>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Ověření: {activeLiveReplan.factual_frame?.verification_status ?? "therapist_report_only"}. Návrat k původnímu plánu: {activeLiveReplan.return_to_original_plan_allowed ? "jen opatrně" : "ne"} — {activeLiveReplan.condition_for_return_to_plan ?? "jen po výslovném potvrzení terapeutky"}.
+            </p>
           </div>
         )}
 

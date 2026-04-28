@@ -239,6 +239,11 @@ ANTI-FABRIKACE:
   napiš, že chybí záznam o průběhu / formálním ukončení; nesmíš tvrdit, že sezení
   bylo sotva začaté, přerušeno nebo neuskutečněno.
 - Pokud většina bodů programu proběhla, completion_status nesmí být abandoned.
+- Pokud liveProgress obsahuje LIVE_REPLAN_PATCH / reality override, rozliš tři vrstvy evidence:
+  1. therapist_factual_correction = faktický rámec od terapeutky, NENÍ klinický důkaz o části.
+  2. verified_external_fact = ověřená externí informace, NENÍ klinický důkaz o části.
+  3. child_response_to_event = vlastní slova, afekt, tělesná reakce nebo chování části; pouze to může být klinický materiál.
+- Nesmíš udělat závěr typu „externí událost uvízla → část se cítí uvězněná“. Smíš říct: „Událost byla faktickým rámcem; klinický význam lze posuzovat až podle reakce části.“
 
 TÓN:
 - Kultivovaná čeština. Konkrétně, klinicky, bez patosu.
@@ -679,7 +684,7 @@ async function loadLiveProgress(sb: any, planId: string) {
   const { data } = await sb
     .from("did_live_session_progress")
     .select(
-      "items, turns_by_block, artifacts_by_block, completed_blocks, total_blocks, finalized_reason, post_session_result, last_activity_at",
+      "items, turns_by_block, artifacts_by_block, completed_blocks, total_blocks, finalized_reason, post_session_result, last_activity_at, current_block_status, active_live_replan_id, live_replan_patch, reality_verification",
     )
     .eq("plan_id", planId)
     .maybeSingle();
@@ -2515,7 +2520,15 @@ async function persistEvaluation(
       key_findings: evaluation.key_insights ?? [],
       implications_for_part: outputs.implications_for_part,
       implications_for_system: outputs.implications_for_system,
-      evidence_limitations: outputs.evidence_limitations,
+        evidence_limitations: outputs.evidence_limitations,
+        reality_override_evidence_discipline: liveProgress?.live_replan_patch && typeof liveProgress.live_replan_patch === "object"
+          ? {
+              therapist_factual_correction: "factual frame from therapist, not child clinical evidence",
+              verified_external_fact: "external fact, not child clinical evidence",
+              child_response_to_event: "possible clinical material only when based on child's own words, affect, body reaction or behavior",
+              live_replan_id: liveProgress.active_live_replan_id ?? (liveProgress.live_replan_patch as any)?.id ?? null,
+            }
+          : undefined,
     },
     intended_destinations: [
       "briefing_input",
@@ -3216,6 +3229,17 @@ Deno.serve(async (req: Request) => {
           ? " (vyhodnocování spustil noční safety-net, terapeutka sezení formálně neuzavřela)"
           : "")
       : "Počet bloků nebyl předán.";
+    const liveReplanPatch = liveProgress?.live_replan_patch && typeof liveProgress.live_replan_patch === "object" ? liveProgress.live_replan_patch : null;
+    const liveReplanEvidence = liveReplanPatch
+      ? `────────────  LIVE_REPLAN_PATCH / REALITY OVERRIDE  ────────────
+current_block_status: ${liveProgress?.current_block_status ?? "paused_by_reality_override"}
+active_live_replan_id: ${liveProgress?.active_live_replan_id ?? liveReplanPatch.id ?? "unknown"}
+verification_status: ${liveReplanPatch?.factual_frame?.verification_status ?? liveProgress?.reality_verification?.verification_status ?? "therapist_report_only"}
+source_url: ${liveReplanPatch?.factual_frame?.source_url ?? "none"}
+evidence discipline: therapist_factual_correction ≠ child clinical evidence; verified_external_fact ≠ child clinical evidence; child_response_to_event = possible clinical material only if vlastní slova/afekt/tělo/chování části jsou zaznamenané.
+LIVE_REPLAN_PATCH:
+${JSON.stringify(liveReplanPatch, null, 2).slice(0, 3500)}`
+      : "";
 
     const prompt = `KONTEXT VYHODNOCOVANÉHO SEZENÍ
 ══════════════════════════════════════════════
@@ -3236,6 +3260,7 @@ ${blockTranscript}
 
 ────────────  THREAD VLÁKNO ZE DNE SEZENÍ  ────────────
 ${threadTranscript}
+${liveReplanEvidence ? `\n${liveReplanEvidence}\n` : ""}
 ══════════════════════════════════════════════
 
 ÚKOL:

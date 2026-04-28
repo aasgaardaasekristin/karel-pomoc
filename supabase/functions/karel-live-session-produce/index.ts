@@ -34,6 +34,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { buildLiveReplanPatch, containsBannedRealityOverridePhrase, correctiveRealityOverrideResponse, detectLiveRealityOverride, verifyExternalReality } from "../_shared/liveRealityOverride.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -120,6 +121,34 @@ Deno.serve(async (req: Request) => {
     const blockDetail = programBlock.detail ? String(programBlock.detail).slice(0, 600) : "";
 
     const therapistAddr = therapistName === "Káťa" ? "Káťo" : "Hani";
+    const realityText = `${userRequest}\n${observationSoFar}`;
+    const realityDetection = detectLiveRealityOverride(realityText);
+    if (realityDetection.reality_override_detected) {
+      const verification = await verifyExternalReality(realityDetection.urls, realityText);
+      const liveReplanPatch = buildLiveReplanPatch({
+        therapistName,
+        partName,
+        therapistCorrection: realityText,
+        detection: realityDetection,
+        verification,
+        blockedIntervention: kind === "instruction" ? "projective_drawing / draw_a_person / original_planned_task" : "original_planned_task",
+        currentBlockIndex: typeof programBlock.index === "number" ? programBlock.index : null,
+        currentBlockText: blockText,
+      });
+      const safeContent = correctiveRealityOverrideResponse({ ...liveReplanPatch, part_name: partName }, therapistName);
+      return new Response(JSON.stringify({
+        karel_content: safeContent,
+        kind: "free",
+        items: undefined,
+        reality_override_detected: true,
+        external_event_detected: realityDetection.external_event_detected,
+        verification_status: verification.factual_status,
+        live_replan_patch: liveReplanPatch,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const kindInstructions: Record<typeof kind, string> = {
       words_list: `Vyrob KONKRÉTNÍ ASOCIAČNÍ SLOVA, která má ${therapistAddr} tiše říkat ${partName}. Pokud bod říká "8 slov", dej PŘESNĚ 8 slov. Formát:
@@ -206,7 +235,17 @@ PRAVIDLA:
     }
 
     const aiData = await aiRes.json();
-    const content = String(aiData?.choices?.[0]?.message?.content ?? "").trim();
+    let content = String(aiData?.choices?.[0]?.message?.content ?? "").trim();
+    if (containsBannedRealityOverridePhrase(content)) {
+      const detection = detectLiveRealityOverride(`${userRequest}\n${observationSoFar}\n${blockText}`);
+      const verification = await verifyExternalReality(detection.urls, `${userRequest}\n${observationSoFar}`);
+      const liveReplanPatch = buildLiveReplanPatch({ therapistName, partName, therapistCorrection: realityText, detection, verification, blockedIntervention: "post_generation_banned_phrase_guard", currentBlockIndex: typeof programBlock.index === "number" ? programBlock.index : null, currentBlockText: blockText });
+      content = correctiveRealityOverrideResponse({ ...liveReplanPatch, part_name: partName }, therapistName);
+      return new Response(JSON.stringify({ karel_content: content, kind: "free", items: undefined, reality_override_detected: true, verification_status: verification.factual_status, live_replan_patch: liveReplanPatch, banned_phrase_guard: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const items = (kind === "words_list" || kind === "questions") ? parseList(content) : undefined;
 
     return new Response(
