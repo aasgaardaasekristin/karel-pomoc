@@ -1939,6 +1939,7 @@ Deno.serve(async (req: Request) => {
 
     if (jobId) await markJobRunning(sb, { id: jobId, started_at: body?.jobStartedAt ?? null, attempt_count: body?.attempt_count ?? 0 });
     const ctx = await loadContext(sb, planId);
+    assertPlanWasApprovedAndStarted(ctx.plan);
     if (enqueueOnly) {
       const job = await enqueueSessionEvaluationJob(sb, ctx, body);
       await sb.from("did_daily_session_plans").update({ status: "pending_review", updated_at: new Date().toISOString() }).eq("id", planId);
