@@ -1429,7 +1429,7 @@ POVINNÉ: proposed_playroom musí tento vstup použít jako evidence source a ru
 
   const userPrompt = `KONTEXT PRO BRIEFING (${context.today}):
 
-${context.pantry_a_summary ? `═══ SPIŽÍRNA A — RANNÍ PRACOVNÍ ZÁSOBA ═══\n${context.pantry_a_summary}\n\n` : ""}${pantryBSection}${approvedDelibsSection}${yesterdayPlayroomSection}AKTIVNÍ KRIZE (${context.crises.length}):
+${context.pantry_a_summary ? `═══ SPIŽÍRNA A — RANNÍ PRACOVNÍ ZÁSOBA ═══\n${context.pantry_a_summary}\n\n` : ""}${eventIngestionSection}${pantryBSection}${approvedDelibsSection}${yesterdayPlayroomSection}AKTIVNÍ KRIZE (${context.crises.length}):
 ${context.crises.map((c: any) => `- ${c.part_name} | severity: ${c.severity} | fáze: ${c.phase} | dní aktivní: ${c.days_active || "?"} | trigger: ${c.trigger_description?.slice(0, 120) || "—"}`).join("\n") || "(žádné)"}
 
 POZOROVÁNÍ ZA POSLEDNÍ 3 DNY (${context.recent_observations.length}):
