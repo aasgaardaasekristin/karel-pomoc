@@ -2249,7 +2249,15 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
               <Button
                 variant={noSave ? "default" : "ghost"}
                 size="sm"
-                onClick={() => setNoSave((value) => !value)}
+                onClick={() => setNoSave((value) => {
+                  const next = !value;
+                  if (next) {
+                    clearNoHistoryChatStorage();
+                    setMessages([]);
+                    setInput("");
+                  }
+                  return next;
+                })}
                 className="h-8 px-2 gap-1 text-xs"
                 title={APP_MODE_POLICIES.no_save.description}
               >
