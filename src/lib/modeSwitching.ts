@@ -16,11 +16,11 @@ export const assessModeSwitch = (from: AppModeId, to: AppModeId, noHistory: bool
   }
 
   if (from === "karel_chat" && to === "did_kluci") {
-    return { transferAllowed: false, requiresExplicitConsent: true, warning: "Běžný Karel chat se nepřenáší jako DID evidence bez výslovného přenosu." };
+    return { transferAllowed: false, requiresExplicitConsent: true, warning: "Běžný Karel chat se nepřenese jako DID evidence. Pokud chceš něco přenést, vytvoř z toho terapeutickou poznámku." };
   }
 
   if (from === "hana_osobni" && to === "did_kluci") {
-    return { transferAllowed: false, requiresExplicitConsent: true, warning: "Raw osobní obsah se nepřenáší; lze vytvořit jen zpracovanou terapeutickou poznámku." };
+    return { transferAllowed: false, requiresExplicitConsent: true, warning: "Raw osobní obsah se nepřenáší. Můžeš vytvořit jen zpracovanou terapeutickou poznámku." };
   }
 
   if (from === "did_kluci" && to === "karel_chat") {
