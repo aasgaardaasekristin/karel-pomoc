@@ -115,6 +115,15 @@ const Hub = () => {
   };
 
   const handleSectionClick = (key: string) => {
+    try {
+      const privateModeActive = sessionStorage.getItem("karel_no_save") === "1";
+      const previousSection = sessionStorage.getItem("karel_hub_section");
+      if (privateModeActive && previousSection && previousSection !== key) {
+        const ok = window.confirm("Tento obsah je v privátním režimu bez historie. Nepřenese se do nového režimu.");
+        if (!ok) return;
+        sessionStorage.removeItem("karel_no_save");
+      }
+    } catch {}
     if (key === "hana") {
       try {
         sessionStorage.removeItem(HANA_PIN_KEY);
