@@ -390,11 +390,12 @@ function buildDeterministicBriefingPayload(context: any, candidates: SessionCand
   const sessionReview = buildYesterdaySessionReview(context);
   const selectedPart = String(playroomReview?.part_name || candidates?.[0]?.part_name || context?.crises?.[0]?.part_name || context?.recent_threads?.[0]?.part_name || "část vybraná ranním přehledem").trim();
   const payload: any = {
-    greeting: "Dnes držím přehled v bezpečném režimu: těžká syntéza se nespouští nebo selhala, ale včerejší Herna nesmí zmizet z návazného plánování.",
+    greeting: "Dobré ráno, Haničko a Káťo. Dnes držím hlavně návaznost, klidné tempo a práci jen s tím, co máme doložené z včerejších stop.",
     last_3_days: playroomReview?.exists
       ? `Autoritativní vstup pro dnešek je včerejší Herna části ${playroomReview.part_name || selectedPart}; její praktický report je vložen přímo z DB review, nikoli z dlouhé AI syntézy.`
       : "Pro dnešek používám deterministický backendový přehled bez závěrů z Herny, protože včerejší playroom review není k dispozici.",
-    lingering: "Tento přehled je technicky bezpečný fallback; jeho úkolem je zachovat řetězec review → briefing → další Herna.",
+    lingering: "Důležité je dnes nepřetížit včerejší materiál a převést ho do jednoho malého, ověřitelného kroku.",
+    technical_note: "Briefing byl sestaven z DB review a dostupných reportů bez dlouhé syntézy.",
     yesterday_session_review: null,
     yesterday_playroom_review: playroomReview,
     decisions: [],
@@ -414,6 +415,127 @@ function buildDeterministicBriefingPayload(context: any, candidates: SessionCand
   injectPlayroomReviewIntoProposal(payload);
   injectSessionReviewIntoProposals(payload);
   return payload;
+}
+
+const firstMeaningful = (...values: unknown[]): string => {
+  for (const value of values) {
+    const text = cleanBlockText(value);
+    if (text) return text;
+  }
+  return "";
+};
+
+const trimSentence = (value: unknown, max = 360): string => {
+  const text = cleanBlockText(value).replace(/\s+/g, " ");
+  if (!text) return "";
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf("."), cut.lastIndexOf(";"), cut.lastIndexOf(","), 180)).trim()}…`;
+};
+
+const sanitizeKarelClinicalText = (value: unknown): string =>
+  cleanBlockText(value)
+    .replace(/DID\s+syst[eé]m/gi, "kluci")
+    .replace(/\bsyst[eé]mu\b/gi, "kluků")
+    .replace(/\bsyst[eé]m\b/gi, "kluci")
+    .replace(/\bklient(?:a|em|ovi|ů|i)?\b/gi, "kluci")
+    .trim();
+
+const isTechnicalStatusText = (value: unknown): boolean =>
+  /(t[eě][žz]k[áa]\s+synt[eé]za|fallback|bezpe[čc]n[ýy]\s+re[žz]im|technick|funk[čc]nost|v[šs]e\s+b[eě][žz][íi]|db review|payload|backend)/i.test(cleanBlockText(value));
+
+function buildOpeningMonologue(payload: any, context: any, candidates: SessionCandidate[]) {
+  const play = payload?.yesterday_playroom_review?.exists ? payload.yesterday_playroom_review : null;
+  const sess = payload?.yesterday_session_review?.held ? payload.yesterday_session_review : null;
+  const proposedSession = payload?.proposed_session && typeof payload.proposed_session === "object" ? payload.proposed_session : null;
+  const proposedPlayroom = payload?.proposed_playroom && typeof payload.proposed_playroom === "object" ? payload.proposed_playroom : null;
+  const activePart = String(play?.part_name || sess?.part_name || proposedSession?.part_name || proposedPlayroom?.part_name || candidates?.[0]?.part_name || "část, která se dnes nejvíc ukáže v datech").trim();
+  const hasReview = Boolean(play || sess);
+  const playReport = sanitizeKarelClinicalText(firstMeaningful(play?.practical_report_text, play?.implications_for_part, play?.recommendations_for_therapists));
+  const sessionReport = sanitizeKarelClinicalText(firstMeaningful(sess?.practical_report_text, sess?.karel_summary, sess?.key_finding_about_part));
+  const newInfo = sanitizeKarelClinicalText(firstMeaningful(play?.implications_for_part, sess?.key_finding_about_part, playReport, sessionReport));
+  const planImplication = sanitizeKarelClinicalText(firstMeaningful(sess?.implications_for_plan, play?.recommendations_for_next_session, play?.recommendations_for_next_playroom, proposedSession?.why_today, proposedPlayroom?.why_this_part_today));
+  const teamWorkCandidate = sanitizeKarelClinicalText(firstMeaningful(sess?.team_closing_text, sess?.team_acknowledgement, play?.recommendations_for_therapists));
+  const teamWork = isTechnicalStatusText(teamWorkCandidate) ? "" : teamWorkCandidate;
+  const evidenceKnown: string[] = [];
+  if (play) evidenceKnown.push(`${activePart} má doloženou včerejší Hernu${play.status ? ` se stavem ${play.status}` : ""}.`);
+  if (sess) evidenceKnown.push(`${sess.part_name || activePart} má doložené včerejší Sezení${sess.status ? ` se stavem ${sess.status}` : ""}.`);
+  if (!evidenceKnown.length) evidenceKnown.push("V dostupném payloadu zatím nevidím plné review včerejší Herny ani Sezení.");
+
+  const greeting = "Dobré ráno, Haničko a Káťo.";
+  const frame = hasReview
+    ? `Dnes bych chtěl, abychom drželi hlavně stabilitu, návaznost a jemné tempo. Včerejší data ukazují jako hlavní stopu ${activePart}; neberu to jako důvod k tlaku, ale jako pozvání pokračovat přes malé, předvídatelné kroky.`
+    : "Dnes bych chtěl, abychom drželi hlavně stabilitu, návaznost a opatrnost v závěrech. Tam, kde data chybí, nebudu domýšlet příběh; raději navrhnu bezpečný ověřovací krok.";
+  const team_recognition = teamWork
+    ? `Včera bylo pro tým důležité toto: ${trimSentence(teamWork, 420)}`
+    : "Včera bylo důležité držet klidný rytmus a nepřetlačit materiál do rychlých odpovědí. Právě taková práce u kluků buduje bezpečí: ne přes výkon, ale přes opakovanou zkušenost, že dospělý zůstává a nespěchá.";
+  const executive_summary = [
+    `Nejdůležitější pro dnešek jsou tři věci. Zaprvé, ${activePart} je aktuálně nejvýraznější doložená stopa v ranním přehledu.`,
+    `Zadruhé, ${newInfo ? trimSentence(newInfo, 300) : "nemám dost podkladů pro silný závěr o nové dynamice."}`,
+    `Zatřetí, dnešní práce má spíš stabilizovat a ověřovat než otevírat nové těžké téma.`,
+  ].join(" ");
+  const parts_at_helm = play || sess
+    ? `Z hlediska toho, kdo byl nejblíže u kormidla, máme nejjasnější evidenci u části ${activePart}. Neznamená to, že byla u kormidla celý den. Znamená to, že terapeuticky je dnes nejvýraznější částí, ke které se potřebujeme vztahovat. O ostatních částech zatím nemám dost nových dat na silné závěry.`
+    : "Z hlediska toho, kdo byl u kormidla, nemám dost dat na jisté pojmenování. Budu tedy rozlišovat jen přítomné stopy a nebudu doplňovat části, které se samy v evidenci neukázaly.";
+  const yesterday_new_information = newInfo
+    ? `Nové nebo nejpodstatnější z včerejška je toto: ${trimSentence(newInfo, 520)}`
+    : "Nové informace z včerejška jsou zatím omezené. To samo o sobě je klinicky důležité: dnešní krok má být ověřovací, ne interpretačně těžký.";
+  const clinical_formulation = planImplication
+    ? `Moje pracovní formulace pro dnešek je tato: ${trimSentence(planImplication, 560)}`
+    : `Moje pracovní formulace pro dnešek je opatrná: ${activePart} pravděpodobně potřebuje nejdřív předvídatelný kontakt a bezpečné tempo. Hloubku práce má určovat tolerance části, ne potřeba rychle získat odpověď.`;
+  const recommendations_for_hana = `Haničko, u tebe dnes doporučuji držet klidný a nezahlcující rytmus. Pokud se ${activePart} objeví přímo nebo nepřímo, není potřeba hned vést část do tématu; stačí ji registrovat, nabídnout malou volbu a potvrdit, že nemusí nic dokazovat.`;
+  const recommendations_for_katka = `Káťo, u tebe dnes dává smysl držet odstupovou kontrolu rizik a několik krátkých, předvídatelných signálů, pokud to bude vhodné. Ne dlouhé zprávy ani otázky nutící k výkonu; spíš jasné sdělení, že kontakt zůstává dostupný.`;
+  const what_not_to_do_today = "Dnes bych se vyhnul třem věcem: netlačit do vysvětlování, neotevírat nové trauma téma bez stabilizačního rámce a nepředávat části příliš velkou odpovědnost otázkou typu „co chceš dělat?“. Bezpečnější je nabídnout dvě nebo tři malé možnosti.";
+  const priority_of_the_day = `Dnešní priorita je stabilizovat dostupný kontakt a připravit návaznou Hernu nebo Sezení jako další malý bezpečný krok, ne jako výkon.`;
+  const evidence_limits = [
+    `Jistě víme: ${evidenceKnown.join(" ")}`,
+    `Pracovní hypotéza: dnešní plán má navázat na téma ${activePart} bez rozšiřování jistoty za hranici dostupných dat.`,
+    "Nevíme / čeká na ověření: zda jde výhradně o téma této části, nebo zda se stejná potřeba dotýká i dalších kluků.",
+  ].join("\n");
+  const team_closing_line = "Včerejší práce nám dává materiál. Dnes ho nemusíme zvětšovat; potřebujeme ho správně podržet a převést do jednoho bezpečného kroku.";
+  const opening_monologue_text = [
+    greeting,
+    frame,
+    team_recognition,
+    executive_summary,
+    parts_at_helm,
+    yesterday_new_information,
+    clinical_formulation,
+    recommendations_for_hana,
+    recommendations_for_katka,
+    what_not_to_do_today,
+    priority_of_the_day,
+    evidence_limits,
+    team_closing_line,
+  ].join("\n\n");
+
+  return {
+    greeting,
+    team_recognition,
+    executive_summary,
+    parts_at_helm,
+    yesterday_new_information,
+    clinical_formulation,
+    recommendations_for_hana,
+    recommendations_for_katka,
+    what_not_to_do_today,
+    priority_of_the_day,
+    team_closing_line,
+    evidence_limits,
+    opening_monologue_text,
+    technical_note: payload?.technical_note || "Briefing byl sestaven z DB review a dostupných reportů; technický stav není hlavním obsahem přehledu.",
+  };
+}
+
+function applyOpeningMonologue(payload: any, context: any, candidates: SessionCandidate[]) {
+  const opening = buildOpeningMonologue(payload, context, candidates);
+  return {
+    ...payload,
+    greeting: opening.greeting,
+    opening_monologue: opening,
+    opening_monologue_text: opening.opening_monologue_text,
+    technical_note: opening.technical_note,
+  };
 }
 
 // ───────────────────────────────────────────────────────────
@@ -1329,7 +1451,7 @@ Deno.serve(async (req) => {
       durationMs = 0;
       rawPayload.generation_warning = String(e?.message ?? e).slice(0, 500);
     }
-    const payload = enrichYesterdaySessionReview(rawPayload, context);
+    let payload = enrichYesterdaySessionReview(rawPayload, context);
     payload.yesterday_playroom_review = buildYesterdayPlayroomReview(context);
     if (!payload.proposed_playroom || typeof payload.proposed_playroom !== "object" || !String(payload.proposed_playroom?.part_name ?? "").trim()) {
       console.warn("[briefing] AI payload missing proposed_playroom — applying mandatory backend fallback.");
@@ -1337,6 +1459,7 @@ Deno.serve(async (req) => {
     }
     injectPlayroomReviewIntoProposal(payload);
     injectSessionReviewIntoProposals(payload);
+    payload = applyOpeningMonologue(payload, context, candidates);
 
     // 3b) ── ASK ITEM IDENTITY ──
     // AI vrací ask_hanka/ask_kata jako string[]. Server přidá stabilní `id` na

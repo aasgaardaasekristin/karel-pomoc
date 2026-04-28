@@ -152,8 +152,28 @@ interface YesterdayPlayroomReviewPayload {
   drive_sync_status?: string;
 }
 
+interface OpeningMonologuePayload {
+  greeting?: string;
+  team_recognition?: string;
+  executive_summary?: string;
+  parts_at_helm?: string;
+  yesterday_new_information?: string;
+  clinical_formulation?: string;
+  recommendations_for_hana?: string;
+  recommendations_for_katka?: string;
+  what_not_to_do_today?: string;
+  priority_of_the_day?: string;
+  team_closing_line?: string;
+  evidence_limits?: string;
+  opening_monologue_text?: string;
+  technical_note?: string;
+}
+
 interface BriefingPayload {
   greeting: string;
+  opening_monologue?: OpeningMonologuePayload | null;
+  opening_monologue_text?: string;
+  technical_note?: string;
   last_3_days: string;
   lingering?: string;
   yesterday_session_review?: YesterdaySessionReview | null;
@@ -965,6 +985,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const decisions = (p.decisions ?? []).slice(0, 3);
   const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
   const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
+  const legacyTechnicalGreeting = /těžk[áa]\s+syntéza|fallback|bezpečn[ýy]\s+režim/i.test(p.greeting || "");
+  const openingMonologueText = (p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnešní přehled potřebuje držet hlavně klinickou návaznost, opatrnost v závěrech a jasný další bezpečný krok pro kluky. Technický stav generování proto přesouvám jen do poznámky; hlavní prostor patří tomu, co víme, co nevíme a jak dnes postupovat." : p.greeting) || "").trim();
+  const technicalNote = (p.technical_note || p.opening_monologue?.technical_note || "").trim();
 
   return (
     <div className="space-y-1">
@@ -995,10 +1018,17 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </Button>
       </div>
 
-      {/* 1. Greeting + dnešní hlavní priorita */}
-      <p className="text-[14px] leading-relaxed text-foreground/90 whitespace-pre-line">
-        {p.greeting}
-      </p>
+      {/* 1. Karlův ranní terapeutický monolog */}
+      <div className="rounded-xl border border-primary/15 bg-card/35 p-3.5 space-y-2">
+        <p className="text-[14px] leading-relaxed text-foreground/90 whitespace-pre-line">
+          {openingMonologueText}
+        </p>
+        {technicalNote && (
+          <p className="pt-2 border-t border-border/40 text-[11px] leading-relaxed text-muted-foreground italic">
+            Technická poznámka: {technicalNote}
+          </p>
+        )}
+      </div>
 
       {/* 2. Co se změnilo za poslední 3 dny */}
       {p.last_3_days && (
