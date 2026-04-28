@@ -14,6 +14,7 @@ import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import ModeSelector from "@/components/ModeSelector";
 import StarterQuestions from "@/components/StarterQuestions";
+import ModeAuditPanel from "@/components/ModeAuditPanel";
 import MainModeToggle from "@/components/MainModeToggle";
 import ChatMessage from "@/components/ChatMessage";
 import ReportForm from "@/components/ReportForm";
@@ -52,8 +53,9 @@ import {
   type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
   STORAGE_KEY_PREFIX, ACTIVE_MODE_KEY, DID_DOCS_LOADED_KEY, DID_SESSION_ID_KEY, HANA_PIN_KEY, HANA_PIN_ACCESS_TOKEN_KEY,
   getRandomCastGreeting, saveMessages, loadMessages, clearMessages, handleApiError,
-  parseSSEStream, WELCOME_MESSAGES, clearActiveWorkStorageForLogout, isExplicitLogoutActive, markExplicitLogout,
+  parseSSEStream, WELCOME_MESSAGES, clearActiveWorkStorageForLogout, clearNoHistoryChatStorage, isExplicitLogoutActive, markExplicitLogout,
 } from "@/lib/chatHelpers";
+import { assessModeSwitch } from "@/lib/modeSwitching";
 
 const LoadingSkeleton = () => (
   <div className="flex justify-start">
