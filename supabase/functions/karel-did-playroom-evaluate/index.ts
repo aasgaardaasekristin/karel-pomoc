@@ -313,6 +313,58 @@ async function persistInvalidAudit(sb: any, ctx: any, userId: string, planId: st
   return inserted?.id ?? null;
 }
 
+async function ensurePendingReview(sb: any, userId: string, planId: string, threadId: string, partName?: string) {
+  const { data: existing } = await sb.from("did_session_reviews").select("id,status").eq("plan_id", planId).eq("is_current", true).maybeSingle();
+  if (existing?.id) return existing.id as string;
+  const { data: plan } = await sb.from("did_daily_session_plans").select("id,user_id,plan_date,selected_part").eq("id", planId).maybeSingle();
+  const payload = {
+    user_id: userId,
+    plan_id: planId,
+    part_name: plan?.selected_part ?? partName ?? null,
+    session_date: plan?.plan_date ?? pragueDayISO(),
+    mode: "playroom",
+    review_kind: "karel_direct_playroom",
+    status: "pending_review",
+    analysis_version: "did-playroom-review-v1",
+    source_data_summary: `playroom_pending:thread=${threadId}`,
+    evidence_items: [{ kind: "bound_thread", available: true, source_table: "did_threads", source_id: threadId }],
+    completed_checklist_items: [],
+    missing_checklist_items: [],
+    transcript_available: false,
+    live_progress_available: false,
+    clinical_summary: "Herna byla ukončena a čeká na backendové vyhodnocení.",
+    evidence_limitations: "Vyhodnocení je ve frontě; závěry zatím nejsou hotové.",
+    analysis_json: { schema: "did_playroom_review.v1", status: "pending_review", thread_id: threadId, created_from: "karel-did-playroom-evaluate" },
+    drive_sync_status: "not_queued",
+    source_of_truth_status: "pending_drive_sync",
+    projection_status: "queued",
+  };
+  const { data: inserted, error } = await sb.from("did_session_reviews").insert(payload).select("id").single();
+  if (error) throw error;
+  return inserted.id as string;
+}
+
+async function processEvaluation(sb: any, apiKey: string, userId: string, body: any) {
+  const planId = String(body.planId || "").trim();
+  const threadId = String(body.threadId || "").trim();
+  await sb.from("did_session_reviews").update({ status: "analysis_running", analysis_json: { schema: "did_playroom_review.v1", status: "analysis_running", thread_id: threadId, started_at: new Date().toISOString(), created_from: "karel-did-playroom-evaluate" } }).eq("plan_id", planId).eq("is_current", true);
+  const ctx = await loadContext(sb, planId, threadId, userId);
+  if (ctx.status !== "valid") {
+    const reviewId = await persistInvalidAudit(sb, ctx, userId, planId, ctx.reason || "invalid");
+    return { ok: false, status: "missing_valid_playroom_plan", reason: ctx.reason, review_id: reviewId };
+  }
+  const transcript = buildTranscript(ctx.thread, body.turnsByBlock || ctx.liveProgress?.turns_by_block || {});
+  const prompt = buildPrompt(ctx, body, transcript);
+  const review = await callAi(prompt, apiKey);
+  const reviewId = await upsertReview(sb, ctx, body, review, transcript);
+  const { data: persistedReview } = await sb.from("did_session_reviews").select("status,analysis_json").eq("id", reviewId).maybeSingle();
+  review.analysis_json = persistedReview?.analysis_json ?? {};
+  const drive = await persistPantryAndDrive(sb, ctx, review, reviewId, persistedReview?.status ?? "analyzed");
+  await sb.from("did_live_session_progress").update({ finalized_at: new Date().toISOString(), finalized_reason: body.endedReason || "manual_end", updated_at: new Date().toISOString() }).eq("plan_id", planId);
+  await sb.from("did_daily_session_plans").update({ status: "done", lifecycle_status: "completed", completed_at: new Date().toISOString(), finalized_at: new Date().toISOString(), finalization_source: "karel-did-playroom-evaluate", finalization_reason: body.endedReason || "manual_end", updated_at: new Date().toISOString() }).eq("id", planId);
+  return { ok: true, status: persistedReview?.status ?? "analyzed", review_id: reviewId, mode: "playroom", review_kind: "karel_direct_playroom", drive_write_ids: drive.writeIds, model_used: MODEL };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
