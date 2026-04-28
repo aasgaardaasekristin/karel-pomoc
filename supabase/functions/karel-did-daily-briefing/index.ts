@@ -1353,6 +1353,27 @@ ${approvedDelibs.map((d: any) => {
     : "";
 
   const toolboxSection = candidates[0]?.score >= 3 ? `\n\n${summarizeToolboxForPrompt()}\n` : "";
+  const ingestion = context.event_ingestion_summary ?? {};
+  const eventIngestionSection = `═══ GLOBÁLNÍ SBĚR DID UDÁLOSTÍ — POVINNÝ KONTEXT ═══
+event_ingestion_summary: ${JSON.stringify({
+    processed_count: ingestion.processed_count ?? 0,
+    routed_to_pantry_count: ingestion.routed_to_pantry_count ?? 0,
+    skipped_count: ingestion.skipped_count ?? 0,
+    failed_count: ingestion.failed_count ?? 0,
+    duplicate_count: ingestion.duplicate_count ?? 0,
+    important_sources: ingestion.important_sources ?? [],
+    missing_sources: ingestion.missing_sources ?? [],
+    blocked_sources: ingestion.blocked_sources ?? [],
+  })}
+task_note_implications: ${JSON.stringify((context.task_note_implications ?? []).slice(0, 8))}
+hana_personal_did_relevant_implications: ${JSON.stringify((context.hana_personal_did_relevant_implications ?? []).slice(0, 8))}
+live_replan_patches: ${JSON.stringify((context.live_replan_patches ?? []).slice(0, 8))}
+reality_override_events: ${JSON.stringify((context.reality_override_events ?? []).slice(0, 8))}
+blocked_or_failed_ingestion: ${JSON.stringify(context.blocked_or_failed_ingestion ?? [])}
+
+Pravidlo: DB/Pantry B je operační zdroj. Drive je audit/archive. Drive→Pantry refresh není v tomto průchodu implementovaný.
+
+`;
 
   // ── VČEREJŠÍ SEZENÍ — vstup pro yesterday_session_review ──
   const ySessions = (context.yesterday_sessions ?? []) as any[];
