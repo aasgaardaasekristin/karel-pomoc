@@ -39,6 +39,7 @@ function DeliberationRow({
 }: { d: TeamDeliberation; onOpen: () => void }) {
   const sp = signoffProgress(d);
   const isApproved = d.status === "approved" || d.status === "closed";
+  const missingNames = sp.missing.map((m) => (m === "hanka" ? "Hanička" : "Káťa"));
   return (
     <button
       onClick={onOpen}
@@ -81,12 +82,12 @@ function DeliberationRow({
         <span>
           podpisy {sp.signed}/{sp.total}
           {sp.missing.length > 0 && (
-            <> · chybí {sp.missing.map((m) => (m === "hanka" ? "Hanička" : m === "kata" ? "Káťa" : "Karel")).join(", ")}</>
+            <> · chybí {missingNames.join(", ")}</>
           )}
         </span>
         {isApproved && (
           <Badge className="text-[8px] h-3.5 px-1 bg-emerald-500/10 text-emerald-700 border-emerald-500/20 ml-auto font-normal">
-            <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" /> uzavřeno
+            <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" /> porada schválena
           </Badge>
         )}
         {!isApproved && d.status === "awaiting_signoff" && (
@@ -198,7 +199,7 @@ const TeamDeliberationsPanel = ({ refreshTrigger, onOpenRoom }: Props) => {
             onClick={() => setShowOverflow((v) => !v)}
           >
             {showOverflow ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            Další otevřené porady ({overflow.length})
+            Další porady ({overflow.length})
           </button>
           {showOverflow && (
             <div className="space-y-2 mt-2 pl-2 border-l border-border/50">
