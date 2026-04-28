@@ -268,9 +268,19 @@ async function upsertReview(sb: any, ctx: any, input: any, review: any, transcri
     projection_status: "queued",
     updated_at: now,
   };
-  const { data: existing } = await sb.from("did_session_reviews").select("id").eq("plan_id", ctx.plan.id).eq("is_current", true).maybeSingle();
+  const { data: existing } = await sb.from("did_session_reviews").select("id,analysis_json,drive_sync_status,source_of_truth_status,synced_to_drive,detail_analysis_drive_url,practical_report_drive_url").eq("plan_id", ctx.plan.id).eq("is_current", true).maybeSingle();
   if (existing?.id) {
-    await sb.from("did_session_reviews").update(payload).eq("id", existing.id);
+    const existingJson = existing.analysis_json && typeof existing.analysis_json === "object" ? existing.analysis_json : {};
+    const nextPayload = {
+      ...payload,
+      analysis_json: mergeAnalysisJson(existingJson, analysisJson),
+      drive_sync_status: existing.drive_sync_status && existing.drive_sync_status !== "not_queued" ? existing.drive_sync_status : payload.drive_sync_status,
+      source_of_truth_status: existing.source_of_truth_status && existing.source_of_truth_status !== "pending_drive_sync" ? existing.source_of_truth_status : payload.source_of_truth_status,
+      synced_to_drive: existing.synced_to_drive === true ? true : payload.synced_to_drive,
+      detail_analysis_drive_url: existing.detail_analysis_drive_url ?? null,
+      practical_report_drive_url: existing.practical_report_drive_url ?? null,
+    };
+    await sb.from("did_session_reviews").update(nextPayload).eq("id", existing.id);
     return existing.id;
   }
   const { data: inserted, error } = await sb.from("did_session_reviews").insert(payload).select("id").single();
