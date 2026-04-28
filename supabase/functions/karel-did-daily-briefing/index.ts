@@ -607,7 +607,7 @@ async function gatherContext(supabase: any) {
   if (yesterdayPlanIds.length > 0) {
     const { data: reviews } = await supabase
       .from("did_session_reviews")
-      .select("id, plan_id, mode, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, completed_checklist_items, missing_checklist_items, source_data_summary, analysis_json, created_at")
+      .select("id, plan_id, mode, review_kind, status, part_name, session_date, lead_person, assistant_persons, clinical_summary, therapeutic_implications, team_implications, next_session_recommendation, evidence_limitations, evidence_items, completed_checklist_items, missing_checklist_items, source_data_summary, analysis_json, implications_for_part, implications_for_whole_system, recommendations_for_therapists, recommendations_for_next_playroom, recommendations_for_next_session, team_closing, drive_sync_status, source_of_truth_status, detail_analysis_drive_url, practical_report_drive_url, created_at")
       .in("plan_id", yesterdayPlanIds)
       .eq("is_current", true)
       .order("created_at", { ascending: false })
@@ -625,7 +625,7 @@ async function gatherContext(supabase: any) {
   if (yesterdaySessionReviews.length === 0) {
     const { data: reviewsByDate } = await supabase
       .from("did_session_reviews")
-      .select("id, plan_id, mode, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, completed_checklist_items, missing_checklist_items, source_data_summary, analysis_json, created_at")
+      .select("id, plan_id, mode, review_kind, status, part_name, session_date, lead_person, assistant_persons, clinical_summary, therapeutic_implications, team_implications, next_session_recommendation, evidence_limitations, evidence_items, completed_checklist_items, missing_checklist_items, source_data_summary, analysis_json, implications_for_part, implications_for_whole_system, recommendations_for_therapists, recommendations_for_next_playroom, recommendations_for_next_session, team_closing, drive_sync_status, source_of_truth_status, detail_analysis_drive_url, practical_report_drive_url, created_at")
       .eq("session_date", yesterdayISO)
       .eq("is_current", true)
       .neq("mode", "playroom")
@@ -1301,6 +1301,7 @@ Deno.serve(async (req) => {
       payload.proposed_playroom = buildMandatoryPlayroomProposal(payload, context, candidates);
     }
     injectPlayroomReviewIntoProposal(payload);
+    injectSessionReviewIntoProposals(payload);
 
     // 3b) ── ASK ITEM IDENTITY ──
     // AI vrací ask_hanka/ask_kata jako string[]. Server přidá stabilní `id` na
