@@ -307,15 +307,17 @@ const Chat = () => {
   }, [didInitialContext]);
 
   useEffect(() => {
+    if (noSave) return;
     try { localStorage.setItem(DID_DOCS_LOADED_KEY, didDocsLoaded ? "1" : "0"); } catch {}
-  }, [didDocsLoaded]);
+  }, [didDocsLoaded, noSave]);
 
   useEffect(() => {
+    if (noSave) return;
     try {
       if (didSessionId) localStorage.setItem(DID_SESSION_ID_KEY, didSessionId);
       else localStorage.removeItem(DID_SESSION_ID_KEY);
     } catch {}
-  }, [didSessionId]);
+  }, [didSessionId, noSave]);
 
   useEffect(() => {
     try { localStorage.setItem("karel_notebook_project", notebookProject); } catch {}
@@ -544,8 +546,8 @@ const Chat = () => {
   const prevModeRef = useRef(mode);
 
   useEffect(() => {
-    if (messages.length > 0 && prevModeRef.current === mode) saveMessages(mode, messages);
-  }, [messages, mode]);
+    if (!noSave && hubSection !== "karel" && messages.length > 0 && prevModeRef.current === mode) saveMessages(mode, messages);
+  }, [messages, mode, noSave, hubSection]);
 
   // Auto-save research threads
   useEffect(() => {
