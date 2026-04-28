@@ -1053,10 +1053,26 @@ ${yPlans.length > 0 ? `Plány ze včerejška:\n${yPlans.map((p: any) => `- ${p.s
 
 `;
 
+  const yPlayroom = buildYesterdayPlayroomReview(context);
+  const yesterdayPlayroomSection = yPlayroom?.exists
+    ? `═══ VČEREJŠÍ HERNA (${context.yesterday}) — AUTORITATIVNÍ VSTUP PRO proposed_playroom ═══
+Stav: ${yPlayroom.status || "?"} | Část: ${yPlayroom.part_name || "?"} | review_id: ${yPlayroom.review_id || "zatím není"}
+
+VČEREJŠÍ HERNA — PRAKTICKÝ REPORT:
+${cleanBlockText(yPlayroom.practical_report_text || yPlayroom.fallback_reason || "Herna existuje, ale review zatím čeká.").slice(0, 1800)}
+
+VČEREJŠÍ HERNA — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ:
+${cleanBlockText(yPlayroom.recommendations_for_next_playroom || yPlayroom.recommendations_for_therapists || yPlayroom.recommendations_for_next_session || "Navrhni bezpečně navazující nízkoprahovou Hernu a označ omezení evidence.").slice(0, 1800)}
+
+POVINNÉ: proposed_playroom musí tento vstup použít jako evidence source a runtime seed.
+
+`
+    : "";
+
 
   const userPrompt = `KONTEXT PRO BRIEFING (${context.today}):
 
-${context.pantry_a_summary ? `═══ SPIŽÍRNA A — RANNÍ PRACOVNÍ ZÁSOBA ═══\n${context.pantry_a_summary}\n\n` : ""}${pantryBSection}${approvedDelibsSection}AKTIVNÍ KRIZE (${context.crises.length}):
+${context.pantry_a_summary ? `═══ SPIŽÍRNA A — RANNÍ PRACOVNÍ ZÁSOBA ═══\n${context.pantry_a_summary}\n\n` : ""}${pantryBSection}${approvedDelibsSection}${yesterdayPlayroomSection}AKTIVNÍ KRIZE (${context.crises.length}):
 ${context.crises.map((c: any) => `- ${c.part_name} | severity: ${c.severity} | fáze: ${c.phase} | dní aktivní: ${c.days_active || "?"} | trigger: ${c.trigger_description?.slice(0, 120) || "—"}`).join("\n") || "(žádné)"}
 
 POZOROVÁNÍ ZA POSLEDNÍ 3 DNY (${context.recent_observations.length}):
