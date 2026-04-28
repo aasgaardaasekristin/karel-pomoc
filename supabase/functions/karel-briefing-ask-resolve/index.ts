@@ -117,7 +117,17 @@ Deno.serve(async (req) => {
     const targetItemId = ask?.target_item_id ? String(ask.target_item_id) : null;
     const resolutionMode = String(body.resolution_mode ?? ((ask?.expected_resolution === "update_program" || ask?.requires_immediate_program_update) ? "apply_to_program" : "store_observation"));
 
-    const { data: existing } = await admin.from("briefing_ask_resolutions").select("*").eq("user_id", userId).eq("briefing_id", briefing.id).eq("ask_id", askId).eq("thread_id", threadId).eq("target_type", targetType).eq("target_item_id", targetItemId ?? "").eq("response_hash", responseHash).maybeSingle();
+    let existingQuery = admin
+      .from("briefing_ask_resolutions")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("briefing_id", briefing.id)
+      .eq("ask_id", askId)
+      .eq("thread_id", threadId)
+      .eq("target_type", targetType)
+      .eq("response_hash", responseHash);
+    existingQuery = targetItemId ? existingQuery.eq("target_item_id", targetItemId) : existingQuery.is("target_item_id", null);
+    const { data: existing } = await existingQuery.maybeSingle();
     if (existing?.processed_at) return json({ resolution: existing, reused: true });
 
     const baseResolution = {
@@ -135,7 +145,8 @@ Deno.serve(async (req) => {
       resolution_mode: resolutionMode,
       resolution_status: "pending",
     };
-    const { data: inserted } = await admin.from("briefing_ask_resolutions").insert(baseResolution).select("*").maybeSingle();
+    const { data: inserted, error: insertErr } = await admin.from("briefing_ask_resolutions").insert(baseResolution).select("*").maybeSingle();
+    if (insertErr && !existing) throw insertErr;
     let resolutionId = inserted?.id ?? existing?.id;
 
     if (resolutionMode === "apply_to_program" && (targetType === "proposed_playroom" || targetType === "proposed_session")) {
