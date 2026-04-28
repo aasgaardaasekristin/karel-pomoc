@@ -374,6 +374,28 @@ function injectPlayroomReviewIntoProposal(payload: any) {
   return payload;
 }
 
+function buildDeterministicBriefingPayload(context: any, candidates: SessionCandidate[]) {
+  const playroomReview = buildYesterdayPlayroomReview(context);
+  const selectedPart = String(playroomReview?.part_name || candidates?.[0]?.part_name || context?.crises?.[0]?.part_name || context?.recent_threads?.[0]?.part_name || "část vybraná ranním přehledem").trim();
+  const payload: any = {
+    greeting: "Dnes držím přehled v bezpečném režimu: těžká syntéza se nespouští nebo selhala, ale včerejší Herna nesmí zmizet z návazného plánování.",
+    last_3_days: playroomReview?.exists
+      ? `Autoritativní vstup pro dnešek je včerejší Herna části ${playroomReview.part_name || selectedPart}; její praktický report je vložen přímo z DB review, nikoli z dlouhé AI syntézy.`
+      : "Pro dnešek používám deterministický backendový přehled bez závěrů z Herny, protože včerejší playroom review není k dispozici.",
+    lingering: "Tento přehled je technicky bezpečný fallback; jeho úkolem je zachovat řetězec review → briefing → další Herna.",
+    yesterday_session_review: null,
+    yesterday_playroom_review: playroomReview,
+    decisions: [],
+    proposed_session: null,
+    proposed_playroom: buildMandatoryPlayroomProposal({ proposed_session: { part_name: selectedPart, why_today: playroomReview?.recommendations_for_next_playroom || playroomReview?.practical_report_text || "Herna musí navázat jen na doloženou evidenci." }, last_3_days: "" }, context, candidates),
+    ask_hanka: ["Prosím ověř, zda dnešní Herna má navázat na doložený praktický report, nebo má zůstat jen stabilizační."],
+    ask_kata: ["Prosím zkontroluj rizika a stop signály pro dnešní Hernu podle včerejšího review."],
+    closing: "Beru to jako bezpečně omezený přehled: závěry z Herny jsou převzaté z DB review a návrh další Herny je na ně výslovně navázaný.",
+  };
+  injectPlayroomReviewIntoProposal(payload);
+  return payload;
+}
+
 // ───────────────────────────────────────────────────────────
 // HEURISTIKA: skórování kandidátů na dnešní sezení
 // ───────────────────────────────────────────────────────────
