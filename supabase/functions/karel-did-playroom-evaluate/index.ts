@@ -470,6 +470,9 @@ Deno.serve(async (req) => {
       if (dbError) throw dbError;
       return json({ ok: true, health: "playroom-evaluate", auth: "ok", db: "ok" });
     }
+    if (body.worker === true || body.processPendingJobs === true) {
+      return json(await processPendingJobs(sb, apiKey, Number(body.limit ?? 2)));
+    }
     const planId = String(body.planId || "").trim();
     const threadId = String(body.threadId || "").trim();
     if (!planId || !threadId) return json({ ok: false, error: "Chybí planId nebo threadId." }, 400);
