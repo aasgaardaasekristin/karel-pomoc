@@ -408,16 +408,16 @@ export async function createDrivePackageIfNeeded(sb: SupabaseClient, event: Norm
   if (!target) return {};
   const marker = `did_event_ingestion:${event.source_ref}:${event.source_hash}`;
   const content = `<!-- ${marker} -->\n\n### Zpracovaná událost: ${event.source_kind}\n\n**Evidence:** ${classification.evidence_level}\n**Zdroj:** ${event.source_ref}\n\n${buildSummary(event, classification)}\n\n**Doporučený krok:** ${classification.recommended_action}\n\n**Co neuzavírat:** ${classification.what_not_to_conclude}`;
-  const { data: existingPkg } = await sb.from("did_pantry_packages").select("id").eq("source_table", "did_event_ingestion_log").eq("source_id", marker).limit(1).maybeSingle();
+  const { data: existingPkg } = await sb.from("did_pantry_packages").select("id").eq("source_table", "did_event_ingestion_log").eq("metadata->>source_marker", marker).limit(1).maybeSingle();
   if (existingPkg?.id) return { packageId: existingPkg.id };
   const { data: pkg, error: pkgErr } = await sb.from("did_pantry_packages").insert({
     user_id: event.user_id,
     package_type: "event_ingestion_audit",
-    source_id: marker,
+    source_id: null,
     source_table: "did_event_ingestion_log",
     content_md: content,
     drive_target_path: target,
-    metadata: { source_ref: event.source_ref, source_hash: event.source_hash, source_kind: event.source_kind, evidence_level: classification.evidence_level },
+    metadata: { source_marker: marker, source_ref: event.source_ref, source_hash: event.source_hash, source_kind: event.source_kind, evidence_level: classification.evidence_level },
     status: "pending_drive",
   }).select("id").single();
   if (pkgErr) throw pkgErr;
