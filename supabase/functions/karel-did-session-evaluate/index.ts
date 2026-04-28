@@ -1988,7 +1988,9 @@ Deno.serve(async (req: Request) => {
       const diagnosticValidity = buildDiagnosticValidityReport(ctx.plan.plan_markdown, turnsByBlock, observationsByBlock, liveProgress);
       const markdown = renderEvaluationMarkdown(evaluation, ctx.plan, endedReason, completedBlocks, totalBlocks, diagnosticValidity);
       const targets = await persistEvaluation(sb, ctx, evaluation, markdown, endedReason, completedBlocks, totalBlocks, force, liveProgress, turnsByBlock, observationsByBlock, diagnosticValidity);
-      return new Response(JSON.stringify({ ok: true, deterministic_backfill: true, plan_id: planId, part_name: ctx.plan.selected_part, completion_status: evaluation.completion_status, review_id: targets.reviewId, review_status: targets.reviewStatus, drive_targets: targets }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const result = { ok: true, deterministic_backfill: true, job_id: jobId, plan_id: planId, part_name: ctx.plan.selected_part, completion_status: evaluation.completion_status, review_id: targets.reviewId, review_status: targets.reviewStatus, drive_targets: targets };
+      await markJobCompleted(sb, jobId, result);
+      return new Response(JSON.stringify(result), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const partInfo = ctx.partCard
@@ -2071,9 +2073,9 @@ POVINNÉ ROZDĚLENÍ VÝSTUPU:
       diagnosticValidity,
     );
 
-    return new Response(
-      JSON.stringify({
+    const result = {
         ok: true,
+        job_id: jobId,
         plan_id: planId,
         part_name: ctx.plan.selected_part,
         completion_status: evaluation.completion_status,
@@ -2082,11 +2084,16 @@ POVINNÉ ROZDĚLENÍ VÝSTUPU:
         markdown,
         evaluation,
         drive_targets: targets,
-      }),
+      };
+    await markJobCompleted(sb, jobId, result);
+    return new Response(
+      JSON.stringify(result),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e: any) {
     console.error("[karel-did-session-evaluate] fatal:", e);
+    const failedJobId = (() => { try { return (typeof body?.jobId === "string" ? body.jobId : null); } catch { return null; } })();
+    if (failedJobId) await markJobFailedRetry(createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!), failedJobId, e);
     return new Response(
       JSON.stringify({ ok: false, error: e?.message ?? String(e) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
