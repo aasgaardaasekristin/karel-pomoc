@@ -496,6 +496,87 @@ async function loadLiveProgress(sb: any, planId: string) {
   return data ?? null;
 }
 
+async function enqueueSessionEvaluationJob(sb: any, ctx: any, payload: Record<string, any>) {
+  const now = new Date().toISOString();
+  const dedupeKey = `session_evaluation:${ctx.plan.id}`;
+  const { data: existing } = await sb
+    .from("karel_action_jobs")
+    .select("*")
+    .eq("job_type", "session_evaluation")
+    .eq("dedupe_key", dedupeKey)
+    .in("status", ["pending", "running", "failed_retry", "completed"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existing && !payload.force) return existing;
+
+  const cleanPayload = { ...payload };
+  delete cleanPayload.enqueueOnly;
+  delete cleanPayload.processJob;
+  delete cleanPayload.processPendingJobs;
+  const { data, error } = await sb.from("karel_action_jobs").insert({
+    user_id: ctx.plan.user_id,
+    job_type: "session_evaluation",
+    status: "pending",
+    dedupe_key: dedupeKey,
+    source_function: "karel-did-session-evaluate",
+    target_type: "did_daily_session_plans",
+    target_id: ctx.plan.id,
+    plan_id: ctx.plan.id,
+    thread_id: (ctx.threads ?? [])[0]?.id ?? null,
+    part_name: ctx.plan.selected_part,
+    result_payload: cleanPayload,
+    result_summary: "Session evaluation queued; waiting for worker.",
+    attempt_count: 0,
+    created_at: now,
+    updated_at: now,
+  }).select("*").single();
+  if (error) throw error;
+  return data;
+}
+
+async function markJobRunning(sb: any, job: any) {
+  const now = new Date().toISOString();
+  await sb.from("karel_action_jobs").update({
+    status: "running",
+    started_at: job.started_at ?? now,
+    finished_at: null,
+    completed_at: null,
+    last_error: null,
+    error_message: null,
+    attempt_count: Number(job.attempt_count ?? 0) + 1,
+    updated_at: now,
+  }).eq("id", job.id);
+}
+
+async function markJobCompleted(sb: any, jobId: string | null, result: Record<string, any>) {
+  if (!jobId) return;
+  const now = new Date().toISOString();
+  await sb.from("karel_action_jobs").update({
+    status: "completed",
+    review_id: result.review_id ?? null,
+    result_payload: result,
+    result_summary: `Session evaluation completed: review_id=${result.review_id ?? "n/a"}, status=${result.review_status ?? "n/a"}`,
+    finished_at: now,
+    completed_at: now,
+    updated_at: now,
+  }).eq("id", jobId);
+}
+
+async function markJobFailedRetry(sb: any, jobId: string | null, error: any) {
+  if (!jobId) return;
+  const now = new Date().toISOString();
+  const message = String(error?.message ?? error).slice(0, 1000);
+  await sb.from("karel_action_jobs").update({
+    status: "failed_retry",
+    last_error: message,
+    error_message: message,
+    finished_at: now,
+    result_summary: "Session evaluation failed safely and is available for retry.",
+    updated_at: now,
+  }).eq("id", jobId);
+}
+
 function hasEvidence(turnsByBlock: Record<string, any[]>, observationsByBlock: Record<string, string>, completedBlocks?: number): boolean {
   return (completedBlocks ?? 0) > 0 ||
     Object.values(turnsByBlock || {}).some(v => Array.isArray(v) && v.length > 0) ||
@@ -1755,6 +1836,7 @@ ${outputs.practical_report_text}`,
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  let requestBody: any = {};
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1764,6 +1846,32 @@ Deno.serve(async (req: Request) => {
     const sb = createClient(supabaseUrl, serviceKey);
 
     const body = await req.json().catch(() => ({}));
+    requestBody = body;
+    if (body?.processPendingJobs === true) {
+      const limit = Math.max(1, Math.min(5, Number(body?.limit ?? 1)));
+      const { data: jobs, error: jobsError } = await sb
+        .from("karel_action_jobs")
+        .select("*")
+        .eq("job_type", "session_evaluation")
+        .in("status", ["pending", "failed_retry"])
+        .order("created_at", { ascending: true })
+        .limit(limit);
+      if (jobsError) throw jobsError;
+      const results: any[] = [];
+      for (const job of jobs ?? []) {
+        const payload = { ...((job.result_payload && typeof job.result_payload === "object") ? job.result_payload : {}), planId: job.plan_id, jobId: job.id, attempt_count: job.attempt_count ?? 0, jobStartedAt: job.started_at ?? null };
+        delete payload.enqueueOnly;
+        delete payload.processPendingJobs;
+        const res = await fetch(`${supabaseUrl}/functions/v1/karel-did-session-evaluate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY") ?? serviceKey}` },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+        results.push({ job_id: job.id, status: res.status, ...json });
+      }
+      return new Response(JSON.stringify({ ok: true, processed: results.length, results }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     const planId = body?.planId as string | undefined;
     let completedBlocks = typeof body?.completedBlocks === "number" ? body.completedBlocks : undefined;
     let totalBlocks = typeof body?.totalBlocks === "number" ? body.totalBlocks : undefined;
@@ -1772,6 +1880,8 @@ Deno.serve(async (req: Request) => {
     let observationsByBlock = (body?.observationsByBlock ?? {}) as Record<string, string>;
     const force = body?.force === true;
     const deterministicBackfill = body?.deterministic_backfill === true;
+    const enqueueOnly = body?.enqueueOnly === true;
+    const jobId = typeof body?.jobId === "string" ? body.jobId : null;
 
     if (body?.projection_only === true) {
       const reviewId = body?.reviewId as string | undefined;
@@ -1807,7 +1917,13 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    if (jobId) await markJobRunning(sb, { id: jobId, started_at: body?.jobStartedAt ?? null, attempt_count: body?.attempt_count ?? 0 });
     const ctx = await loadContext(sb, planId);
+    if (enqueueOnly) {
+      const job = await enqueueSessionEvaluationJob(sb, ctx, body);
+      await sb.from("did_daily_session_plans").update({ status: "pending_review", updated_at: new Date().toISOString() }).eq("id", planId);
+      return new Response(JSON.stringify({ ok: true, queued: true, job_id: job.id, job_type: job.job_type, status: job.status, plan_id: planId, thread_id: job.thread_id, part_name: job.part_name }), { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     const liveProgress = await loadLiveProgress(sb, planId);
     if (liveProgress) {
       completedBlocks = completedBlocks ?? liveProgress.completed_blocks ?? undefined;
@@ -1899,7 +2015,9 @@ Deno.serve(async (req: Request) => {
       const diagnosticValidity = buildDiagnosticValidityReport(ctx.plan.plan_markdown, turnsByBlock, observationsByBlock, liveProgress);
       const markdown = renderEvaluationMarkdown(evaluation, ctx.plan, endedReason, completedBlocks, totalBlocks, diagnosticValidity);
       const targets = await persistEvaluation(sb, ctx, evaluation, markdown, endedReason, completedBlocks, totalBlocks, force, liveProgress, turnsByBlock, observationsByBlock, diagnosticValidity);
-      return new Response(JSON.stringify({ ok: true, deterministic_backfill: true, plan_id: planId, part_name: ctx.plan.selected_part, completion_status: evaluation.completion_status, review_id: targets.reviewId, review_status: targets.reviewStatus, drive_targets: targets }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const result = { ok: true, deterministic_backfill: true, job_id: jobId, plan_id: planId, part_name: ctx.plan.selected_part, completion_status: evaluation.completion_status, review_id: targets.reviewId, review_status: targets.reviewStatus, drive_targets: targets };
+      await markJobCompleted(sb, jobId, result);
+      return new Response(JSON.stringify(result), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const partInfo = ctx.partCard
@@ -1982,9 +2100,9 @@ POVINNÉ ROZDĚLENÍ VÝSTUPU:
       diagnosticValidity,
     );
 
-    return new Response(
-      JSON.stringify({
+    const result = {
         ok: true,
+        job_id: jobId,
         plan_id: planId,
         part_name: ctx.plan.selected_part,
         completion_status: evaluation.completion_status,
@@ -1993,11 +2111,16 @@ POVINNÉ ROZDĚLENÍ VÝSTUPU:
         markdown,
         evaluation,
         drive_targets: targets,
-      }),
+      };
+    await markJobCompleted(sb, jobId, result);
+    return new Response(
+      JSON.stringify(result),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e: any) {
     console.error("[karel-did-session-evaluate] fatal:", e);
+    const failedJobId = typeof requestBody?.jobId === "string" ? requestBody.jobId : null;
+    if (failedJobId) await markJobFailedRetry(createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!), failedJobId, e);
     return new Response(
       JSON.stringify({ ok: false, error: e?.message ?? String(e) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
