@@ -122,11 +122,33 @@ interface YesterdaySessionReview {
   team_acknowledgement: string;
 }
 
+interface YesterdayPlayroomReviewPayload {
+  exists: boolean;
+  status?: string;
+  fallback_reason?: string;
+  part_name?: string | null;
+  plan_id?: string | null;
+  thread_id?: string | null;
+  review_id?: string | null;
+  message_count?: number;
+  practical_report_text?: string;
+  detailed_analysis_text?: string;
+  implications_for_part?: string;
+  implications_for_system?: string;
+  recommendations_for_therapists?: string;
+  recommendations_for_next_playroom?: string;
+  recommendations_for_next_session?: string;
+  detail_analysis_drive_url?: string | null;
+  practical_report_drive_url?: string | null;
+  drive_sync_status?: string;
+}
+
 interface BriefingPayload {
   greeting: string;
   last_3_days: string;
   lingering?: string;
   yesterday_session_review?: YesterdaySessionReview | null;
+  yesterday_playroom_review?: YesterdayPlayroomReviewPayload | null;
   decisions: BriefingDecision[];
   proposed_session?: ProposedSession | null;
   proposed_playroom?: ProposedPlayroom | null;
@@ -896,7 +918,26 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const yesterdayReview = (p.yesterday_session_review && p.yesterday_session_review.held)
     ? p.yesterday_session_review
     : yesterdaySessionFallback;
-  const yesterdayPlayroomReview = yesterdayPlayroomFallback;
+  const backendPlayroom = p.yesterday_playroom_review?.exists ? p.yesterday_playroom_review : null;
+  const yesterdayPlayroomReview = backendPlayroom ? {
+    held: true,
+    mode: "playroom" as const,
+    part_name: backendPlayroom.part_name || undefined,
+    completion: backendPlayroom.status === "analyzed" ? "completed" as const : backendPlayroom.status === "partially_analyzed" ? "partial" as const : "abandoned" as const,
+    karel_summary: backendPlayroom.practical_report_text || backendPlayroom.fallback_reason || "Herna je evidovaná, ale praktický report zatím není hotový.",
+    key_finding_about_part: backendPlayroom.implications_for_part || "Význam pro část zatím čeká na playroom review.",
+    implications_for_plan: backendPlayroom.recommendations_for_next_playroom || "Další Herna má navázat až po dokončení review.",
+    team_acknowledgement: backendPlayroom.recommendations_for_therapists || "Karel drží Hernu odděleně od terapeutického sezení.",
+    practical_report: backendPlayroom.practical_report_text || null,
+    detailed_analysis: backendPlayroom.detailed_analysis_text || null,
+    sync_status: backendPlayroom.drive_sync_status || backendPlayroom.status || null,
+    status_label: backendPlayroom.status,
+    implications_for_system: backendPlayroom.implications_for_system,
+    recommendations_for_therapists: backendPlayroom.recommendations_for_therapists,
+    recommendations_for_next_session: backendPlayroom.recommendations_for_next_session,
+    detail_analysis_drive_url: backendPlayroom.detail_analysis_drive_url,
+    practical_report_drive_url: backendPlayroom.practical_report_drive_url,
+  } as YesterdayFallbackReview & Record<string, any> : yesterdayPlayroomFallback;
   const yesterdaySessionVisible = true;
   const hasProposed = !!p.proposed_session?.part_name;
   const proposedPartName = (p.proposed_session?.part_name ?? "").trim();
@@ -983,7 +1024,11 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{yesterdayPlayroomReview.practical_report || yesterdayPlayroomReview.karel_summary}</p>
             </div>
             {yesterdayPlayroomReview.key_finding_about_part && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Význam pro část</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{yesterdayPlayroomReview.key_finding_about_part}</p></div>}
+            {(yesterdayPlayroomReview as any).implications_for_system && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Význam pro kluky jako celek</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).implications_for_system}</p></div>}
+            {(yesterdayPlayroomReview as any).recommendations_for_therapists && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro terapeutky</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).recommendations_for_therapists}</p></div>}
             {yesterdayPlayroomReview.implications_for_plan && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro další hernu</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{yesterdayPlayroomReview.implications_for_plan}</p></div>}
+            {(yesterdayPlayroomReview as any).recommendations_for_next_session && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro další sezení</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).recommendations_for_next_session}</p></div>}
+            {((yesterdayPlayroomReview as any).detail_analysis_drive_url || (yesterdayPlayroomReview as any).practical_report_drive_url) && <p className="text-[11px] text-muted-foreground">Drive: {(yesterdayPlayroomReview as any).detail_analysis_drive_url ? "detailní analýza uložena" : "detail čeká"} · {(yesterdayPlayroomReview as any).practical_report_drive_url ? "praktický report uložen" : "report čeká"}</p>}
             {yesterdayPlayroomReview.detailed_analysis && (
               <details className="rounded-md border border-border/50 bg-background/35 p-2">
                 <summary className="cursor-pointer text-[12px] font-medium text-primary">Přečíst si detailní analýzu ze včerejší herny</summary>

@@ -297,6 +297,75 @@ function enrichYesterdaySessionReview(payload: any, context: any) {
   return payload;
 }
 
+function buildYesterdayPlayroomReview(context: any) {
+  const reviews = Array.isArray(context?.yesterday_playroom_reviews) ? context.yesterday_playroom_reviews : [];
+  const review = reviews[0] ?? null;
+  if (review) {
+    const analysis = review.analysis_json && typeof review.analysis_json === "object" ? review.analysis_json : {};
+    return {
+      exists: true,
+      status: review.status,
+      part_name: review.part_name,
+      plan_id: review.plan_id,
+      thread_id: analysis.thread_id ?? analysis.program_evidence?.thread_id ?? review.evidence_items?.find?.((e: any) => e?.kind === "bound_thread")?.source_id ?? null,
+      review_id: review.id,
+      practical_report_text: analysis.practical_report_text ?? review.clinical_summary ?? "",
+      detailed_analysis_text: analysis.detailed_analysis_text ?? "",
+      implications_for_part: review.implications_for_part ?? review.therapeutic_implications ?? analysis.implications_for_part ?? "",
+      implications_for_system: review.implications_for_whole_system ?? analysis.implications_for_system ?? "",
+      recommendations_for_therapists: review.recommendations_for_therapists ?? review.team_implications ?? "",
+      recommendations_for_next_playroom: review.recommendations_for_next_playroom ?? "",
+      recommendations_for_next_session: review.recommendations_for_next_session ?? review.next_session_recommendation ?? "",
+      detail_analysis_drive_url: review.detail_analysis_drive_url ?? null,
+      practical_report_drive_url: review.practical_report_drive_url ?? null,
+      drive_sync_status: review.drive_sync_status ?? "not_queued",
+    };
+  }
+  const thread = context?.yesterday_playroom_thread;
+  if (!thread) return { exists: false, status: "none" };
+  const messages = Array.isArray(thread.messages) ? thread.messages : [];
+  return {
+    exists: true,
+    status: "pending_review",
+    fallback_reason: "thread_exists_without_review",
+    part_name: thread.part_name ?? null,
+    plan_id: thread.workspace_id ?? null,
+    thread_id: thread.id,
+    message_count: messages.length,
+  };
+}
+
+function injectPlayroomReviewIntoProposal(payload: any) {
+  const y = payload?.yesterday_playroom_review;
+  if (!y?.exists || !payload?.proposed_playroom || typeof payload.proposed_playroom !== "object") return payload;
+  const pp = payload.proposed_playroom;
+  const report = cleanBlockText(y.practical_report_text);
+  const next = cleanBlockText(y.recommendations_for_next_playroom || y.recommendations_for_therapists || y.recommendations_for_next_session);
+  pp.evidence_sources = Array.from(new Set([...(Array.isArray(pp.evidence_sources) ? pp.evidence_sources : []), "VČEREJŠÍ HERNA — PRAKTICKÝ REPORT", "VČEREJŠÍ HERNA — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ"]));
+  pp.backend_context_inputs = {
+    ...(pp.backend_context_inputs ?? {}),
+    yesterday_playroom_review_id: y.review_id ?? null,
+    used_yesterday_playroom_review: true,
+    practical_report_excerpt: report.slice(0, 1200),
+    next_playroom_recommendation_excerpt: next.slice(0, 1200),
+  };
+  const seed = pp.playroom_plan?.runtime_packet_seed && typeof pp.playroom_plan.runtime_packet_seed === "object" ? pp.playroom_plan.runtime_packet_seed : {};
+  pp.playroom_plan = {
+    ...(pp.playroom_plan ?? {}),
+    runtime_packet_seed: {
+      ...seed,
+      yesterday_playroom_review: {
+        review_id: y.review_id ?? null,
+        status: y.status,
+        practical_report_text: report.slice(0, 1600),
+        recommendations_for_next_playroom: next.slice(0, 1600),
+      },
+    },
+  };
+  payload.proposed_playroom = pp;
+  return payload;
+}
+
 // ───────────────────────────────────────────────────────────
 // HEURISTIKA: skórování kandidátů na dnešní sezení
 // ───────────────────────────────────────────────────────────
@@ -539,6 +608,24 @@ async function gatherContext(supabase: any) {
       .limit(5);
     yesterdaySessionReviews = reviewsByDate ?? [];
   }
+  const { data: yesterdayPlayroomReviews } = await supabase
+    .from("did_session_reviews")
+    .select("id, plan_id, mode, review_kind, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, analysis_json, implications_for_part, implications_for_whole_system, recommendations_for_therapists, recommendations_for_next_playroom, recommendations_for_next_session, next_session_recommendation, drive_sync_status, detail_analysis_drive_url, practical_report_drive_url, created_at")
+    .eq("session_date", yesterdayISO)
+    .eq("mode", "playroom")
+    .eq("review_kind", "karel_direct_playroom")
+    .eq("is_current", true)
+    .order("created_at", { ascending: false })
+    .limit(3);
+  const { data: yesterdayPlayroomThread } = await supabase
+    .from("did_threads")
+    .select("id,part_name,workspace_id,workspace_type,sub_mode,thread_label,messages,last_activity_at")
+    .in("sub_mode", ["karel_part_session", "playroom"])
+    .gte("last_activity_at", `${yesterdayISO}T00:00:00Z`)
+    .lte("last_activity_at", `${yesterdayISO}T23:59:59.999Z`)
+    .order("last_activity_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
   const clinicalReviewParts = new Set(yesterdaySessionReviews.filter((r: any) => ["completed", "started_partial", "unknown"].includes(reviewEvidenceBasis(r))).map((r: any) => String(r.part_name ?? "").toLowerCase()));
   const safeYesterdaySessions = clinicalReviewParts.size > 0
     ? yesterdaySessions.filter((s: any) => clinicalReviewParts.has(String(s.part_name ?? "").toLowerCase()))
@@ -574,6 +661,8 @@ async function gatherContext(supabase: any) {
     yesterday_sessions: safeYesterdaySessions,
     yesterday_plans: yesterdayPlans,
     yesterday_session_reviews: yesterdaySessionReviews,
+    yesterday_playroom_reviews: yesterdayPlayroomReviews ?? [],
+    yesterday_playroom_thread: yesterdayPlayroomThread ?? null,
     pantry_a: pantryA,
     pantry_a_summary: pantryASummary,
     pantry_b_entries: pantryBEntries,
@@ -964,10 +1053,26 @@ ${yPlans.length > 0 ? `Plány ze včerejška:\n${yPlans.map((p: any) => `- ${p.s
 
 `;
 
+  const yPlayroom = buildYesterdayPlayroomReview(context);
+  const yesterdayPlayroomSection = yPlayroom?.exists
+    ? `═══ VČEREJŠÍ HERNA (${context.yesterday}) — AUTORITATIVNÍ VSTUP PRO proposed_playroom ═══
+Stav: ${yPlayroom.status || "?"} | Část: ${yPlayroom.part_name || "?"} | review_id: ${yPlayroom.review_id || "zatím není"}
+
+VČEREJŠÍ HERNA — PRAKTICKÝ REPORT:
+${cleanBlockText(yPlayroom.practical_report_text || yPlayroom.fallback_reason || "Herna existuje, ale review zatím čeká.").slice(0, 1800)}
+
+VČEREJŠÍ HERNA — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ:
+${cleanBlockText(yPlayroom.recommendations_for_next_playroom || yPlayroom.recommendations_for_therapists || yPlayroom.recommendations_for_next_session || "Navrhni bezpečně navazující nízkoprahovou Hernu a označ omezení evidence.").slice(0, 1800)}
+
+POVINNÉ: proposed_playroom musí tento vstup použít jako evidence source a runtime seed.
+
+`
+    : "";
+
 
   const userPrompt = `KONTEXT PRO BRIEFING (${context.today}):
 
-${context.pantry_a_summary ? `═══ SPIŽÍRNA A — RANNÍ PRACOVNÍ ZÁSOBA ═══\n${context.pantry_a_summary}\n\n` : ""}${pantryBSection}${approvedDelibsSection}AKTIVNÍ KRIZE (${context.crises.length}):
+${context.pantry_a_summary ? `═══ SPIŽÍRNA A — RANNÍ PRACOVNÍ ZÁSOBA ═══\n${context.pantry_a_summary}\n\n` : ""}${pantryBSection}${approvedDelibsSection}${yesterdayPlayroomSection}AKTIVNÍ KRIZE (${context.crises.length}):
 ${context.crises.map((c: any) => `- ${c.part_name} | severity: ${c.severity} | fáze: ${c.phase} | dní aktivní: ${c.days_active || "?"} | trigger: ${c.trigger_description?.slice(0, 120) || "—"}`).join("\n") || "(žádné)"}
 
 POZOROVÁNÍ ZA POSLEDNÍ 3 DNY (${context.recent_observations.length}):
@@ -1150,10 +1255,12 @@ Deno.serve(async (req) => {
     // 3) AI generování
     const { payload: rawPayload, durationMs } = await generateBriefing(context, candidates, apiKey);
     const payload = enrichYesterdaySessionReview(rawPayload, context);
+    payload.yesterday_playroom_review = buildYesterdayPlayroomReview(context);
     if (!payload.proposed_playroom || typeof payload.proposed_playroom !== "object" || !String(payload.proposed_playroom?.part_name ?? "").trim()) {
       console.warn("[briefing] AI payload missing proposed_playroom — applying mandatory backend fallback.");
       payload.proposed_playroom = buildMandatoryPlayroomProposal(payload, context, candidates);
     }
+    injectPlayroomReviewIntoProposal(payload);
 
     // 3b) ── ASK ITEM IDENTITY ──
     // AI vrací ask_hanka/ask_kata jako string[]. Server přidá stabilní `id` na

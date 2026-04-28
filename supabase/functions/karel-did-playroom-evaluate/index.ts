@@ -2,6 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 import { appendPantryB } from "../_shared/pantryB.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 
+declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void };
+
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-2.5-pro";
@@ -67,6 +69,7 @@ async function authenticatedUserId(req: Request, supabaseUrl: string, anonKey: s
 async function callAi(prompt: string, apiKey: string) {
   const res = await fetch(AI_URL, {
     method: "POST",
+    signal: AbortSignal.timeout(95_000),
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: MODEL,
@@ -294,7 +297,7 @@ async function persistPantryAndDrive(sb: any, ctx: any, review: any, reviewId: s
   const writeIds: string[] = [];
   for (const pkg of packages) {
     const metadata = { review_id: reviewId, plan_id: ctx.plan.id, thread_id: ctx.thread.id, part_name: ctx.plan.selected_part, mode: "playroom", report_kind: pkg.report_kind };
-    const packageId = await insertOnce(sb, "did_pantry_packages", { package_type: pkg.package_type, source_id: ctx.plan.id }, { user_id: ctx.plan.user_id, package_type: pkg.package_type, source_id: ctx.plan.id, source_table: "did_daily_session_plans", content_md: pkg.content_md, drive_target_path: pkg.drive_target_path, metadata, status: "flushed", flushed_at: new Date().toISOString() });
+    const packageId = await insertOnce(sb, "did_pantry_packages", { package_type: pkg.package_type, source_id: ctx.plan.id }, { user_id: ctx.plan.user_id, package_type: pkg.package_type, source_id: ctx.plan.id, source_table: "did_daily_session_plans", content_md: pkg.content_md, drive_target_path: pkg.drive_target_path, metadata, status: "pending_drive", flushed_at: null });
     const content = encodeGovernedWrite(pkg.content_md, { source_type: "did_session_review", source_id: reviewId, content_type: pkg.content_type as any, subject_type: pkg.package_type === "playroom_log" ? "system" : "part", subject_id: ctx.plan.selected_part, payload_fingerprint: `playroom:${reviewId}:${pkg.package_type}` });
     const writeId = await insertOnce(sb, "did_pending_drive_writes", { target_document: pkg.drive_target_path, content }, { user_id: ctx.plan.user_id, target_document: pkg.drive_target_path, content, write_type: "append", priority: "normal", status: "pending" });
     writeIds.push(writeId);
@@ -312,6 +315,58 @@ async function persistInvalidAudit(sb: any, ctx: any, userId: string, planId: st
   return inserted?.id ?? null;
 }
 
+async function ensurePendingReview(sb: any, userId: string, planId: string, threadId: string, partName?: string) {
+  const { data: existing } = await sb.from("did_session_reviews").select("id,status").eq("plan_id", planId).eq("is_current", true).maybeSingle();
+  if (existing?.id) return existing.id as string;
+  const { data: plan } = await sb.from("did_daily_session_plans").select("id,user_id,plan_date,selected_part").eq("id", planId).maybeSingle();
+  const payload = {
+    user_id: userId,
+    plan_id: planId,
+    part_name: plan?.selected_part ?? partName ?? null,
+    session_date: plan?.plan_date ?? pragueDayISO(),
+    mode: "playroom",
+    review_kind: "karel_direct_playroom",
+    status: "pending_review",
+    analysis_version: "did-playroom-review-v1",
+    source_data_summary: `playroom_pending:thread=${threadId}`,
+    evidence_items: [{ kind: "bound_thread", available: true, source_table: "did_threads", source_id: threadId }],
+    completed_checklist_items: [],
+    missing_checklist_items: [],
+    transcript_available: false,
+    live_progress_available: false,
+    clinical_summary: "Herna byla ukončena a čeká na backendové vyhodnocení.",
+    evidence_limitations: "Vyhodnocení je ve frontě; závěry zatím nejsou hotové.",
+    analysis_json: { schema: "did_playroom_review.v1", status: "pending_review", thread_id: threadId, created_from: "karel-did-playroom-evaluate" },
+    drive_sync_status: "not_queued",
+    source_of_truth_status: "pending_drive_sync",
+    projection_status: "queued",
+  };
+  const { data: inserted, error } = await sb.from("did_session_reviews").insert(payload).select("id").single();
+  if (error) throw error;
+  return inserted.id as string;
+}
+
+async function processEvaluation(sb: any, apiKey: string, userId: string, body: any) {
+  const planId = String(body.planId || "").trim();
+  const threadId = String(body.threadId || "").trim();
+  await sb.from("did_session_reviews").update({ status: "analysis_running", analysis_json: { schema: "did_playroom_review.v1", status: "analysis_running", thread_id: threadId, started_at: new Date().toISOString(), created_from: "karel-did-playroom-evaluate" } }).eq("plan_id", planId).eq("is_current", true);
+  const ctx = await loadContext(sb, planId, threadId, userId);
+  if (ctx.status !== "valid") {
+    const reviewId = await persistInvalidAudit(sb, ctx, userId, planId, ctx.reason || "invalid");
+    return { ok: false, status: "missing_valid_playroom_plan", reason: ctx.reason, review_id: reviewId };
+  }
+  const transcript = buildTranscript(ctx.thread, body.turnsByBlock || ctx.liveProgress?.turns_by_block || {});
+  const prompt = buildPrompt(ctx, body, transcript);
+  const review = await callAi(prompt, apiKey);
+  const reviewId = await upsertReview(sb, ctx, body, review, transcript);
+  const { data: persistedReview } = await sb.from("did_session_reviews").select("status,analysis_json").eq("id", reviewId).maybeSingle();
+  review.analysis_json = persistedReview?.analysis_json ?? {};
+  const drive = await persistPantryAndDrive(sb, ctx, review, reviewId, persistedReview?.status ?? "analyzed");
+  await sb.from("did_live_session_progress").update({ finalized_at: new Date().toISOString(), finalized_reason: body.endedReason || "manual_end", updated_at: new Date().toISOString() }).eq("plan_id", planId);
+  await sb.from("did_daily_session_plans").update({ status: "done", lifecycle_status: "completed", completed_at: new Date().toISOString(), finalized_at: new Date().toISOString(), finalization_source: "karel-did-playroom-evaluate", finalization_reason: body.endedReason || "manual_end", updated_at: new Date().toISOString() }).eq("id", planId);
+  return { ok: true, status: persistedReview?.status ?? "analyzed", review_id: reviewId, mode: "playroom", review_kind: "karel_direct_playroom", drive_write_ids: drive.writeIds, model_used: MODEL };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
@@ -326,21 +381,15 @@ Deno.serve(async (req) => {
     const threadId = String(body.threadId || "").trim();
     if (!planId || !threadId) return json({ ok: false, error: "Chybí planId nebo threadId." }, 400);
     const sb = createClient(supabaseUrl, serviceKey);
-    const ctx = await loadContext(sb, planId, threadId, userId);
-    if (ctx.status !== "valid") {
-      const reviewId = await persistInvalidAudit(sb, ctx, userId, planId, ctx.reason || "invalid");
-      return json({ ok: false, status: "missing_valid_playroom_plan", reason: ctx.reason, review_id: reviewId }, 200);
+    if (body.async === true || body.enqueueOnly === true) {
+      const reviewId = await ensurePendingReview(sb, userId, planId, threadId, body.partName);
+      EdgeRuntime.waitUntil(processEvaluation(sb, apiKey, userId, body).catch(async (e: any) => {
+        console.error("[playroom-evaluate] async failed", e);
+        await sb.from("did_session_reviews").update({ status: "failed_retry", last_sync_error: String(e?.message ?? e).slice(0, 1000), analysis_json: { schema: "did_playroom_review.v1", status: "failed_retry", error: String(e?.message ?? e).slice(0, 1000), thread_id: threadId, created_from: "karel-did-playroom-evaluate" } }).eq("id", reviewId);
+      }));
+      return json({ ok: true, queued: true, status: "pending_review", review_id: reviewId, mode: "playroom", review_kind: "karel_direct_playroom" });
     }
-    const transcript = buildTranscript(ctx.thread, body.turnsByBlock || ctx.liveProgress?.turns_by_block || {});
-    const prompt = buildPrompt(ctx, body, transcript);
-    const review = await callAi(prompt, apiKey);
-    const reviewId = await upsertReview(sb, ctx, body, review, transcript);
-    const { data: persistedReview } = await sb.from("did_session_reviews").select("status,analysis_json").eq("id", reviewId).maybeSingle();
-    review.analysis_json = persistedReview?.analysis_json ?? {};
-    const drive = await persistPantryAndDrive(sb, ctx, review, reviewId, persistedReview?.status ?? "analyzed");
-    await sb.from("did_live_session_progress").update({ finalized_at: new Date().toISOString(), finalized_reason: body.endedReason || "manual_end", updated_at: new Date().toISOString() }).eq("plan_id", planId);
-    await sb.from("did_daily_session_plans").update({ status: "done", lifecycle_status: "completed", completed_at: new Date().toISOString(), finalized_at: new Date().toISOString(), finalization_source: "karel-did-playroom-evaluate", finalization_reason: body.endedReason || "manual_end", updated_at: new Date().toISOString() }).eq("id", planId);
-    return json({ ok: true, status: persistedReview?.status ?? "analyzed", review_id: reviewId, mode: "playroom", review_kind: "karel_direct_playroom", drive_write_ids: drive.writeIds, model_used: MODEL });
+    return json(await processEvaluation(sb, apiKey, userId, body));
   } catch (e: any) {
     console.error("[playroom-evaluate] fatal", e);
     return json({ ok: false, error: e?.message ?? String(e) }, 500);

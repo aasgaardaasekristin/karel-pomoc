@@ -546,6 +546,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
           partName: targetPart,
           ui_surface: "did_kids_playroom",
           session_actor: "karel_direct",
+          async: true,
           completedBlocks,
           totalBlocks,
           endedReason: completedBlocks >= totalBlocks ? "completed" : "partial",
@@ -561,7 +562,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       });
       if (error) throw error;
       if ((data as any)?.ok === false) throw new Error((data as any)?.error || "Vyhodnocení Herny selhalo.");
-      toast.success("Herna je ukončená. Karel ji zahrne do zítřejšího přehledu.");
+      toast.success((data as any)?.queued ? "Herna je ukončená. Karel ji teď analyzuje na pozadí." : "Herna je ukončená. Karel ji zahrne do zítřejšího přehledu.");
       onBack();
     } catch (error: any) {
       console.error("[DidKidsPlayroom] end failed", error);
