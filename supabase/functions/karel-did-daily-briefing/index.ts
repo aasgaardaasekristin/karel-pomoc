@@ -293,7 +293,24 @@ function injectSessionReviewIntoProposals(payload: any) {
 
 function buildYesterdayPlayroomReview(context: any) {
   const reviews = Array.isArray(context?.yesterday_playroom_reviews) ? context.yesterday_playroom_reviews : [];
-  const review = reviews[0] ?? null;
+  const rankPlayroomReview = (r: any) => {
+    const basis = reviewEvidenceBasis(r);
+    const status = String(r?.status ?? "").toLowerCase();
+    const source = String(r?.source_data_summary ?? "");
+    const clinicalTurns = Number(source.match(/clinical_turns=(\d+)/)?.[1] ?? 0);
+    if (status === "analyzed" && basis === "completed") return 0;
+    if (status === "analyzed") return 1;
+    if (basis === "started_partial") return 2;
+    if (status === "evidence_limited" && clinicalTurns > 1) return 3;
+    if (status === "evidence_limited") return 4;
+    if (status === "pending_review" || status === "analysis_running") return 5;
+    return 6;
+  };
+  const review = [...reviews].sort((a: any, b: any) => {
+    const rankDiff = rankPlayroomReview(a) - rankPlayroomReview(b);
+    if (rankDiff !== 0) return rankDiff;
+    return new Date(b?.created_at ?? 0).getTime() - new Date(a?.created_at ?? 0).getTime();
+  })[0] ?? null;
   if (review) {
     const analysis = review.analysis_json && typeof review.analysis_json === "object" ? review.analysis_json : {};
     return {
@@ -653,7 +670,7 @@ async function gatherContext(supabase: any, proofReviewId?: string | null) {
   }
   const { data: yesterdayPlayroomReviews } = await supabase
     .from("did_session_reviews")
-    .select("id, plan_id, mode, review_kind, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, analysis_json, implications_for_part, implications_for_whole_system, recommendations_for_therapists, recommendations_for_next_playroom, recommendations_for_next_session, next_session_recommendation, drive_sync_status, detail_analysis_drive_url, practical_report_drive_url, created_at")
+    .select("id, plan_id, mode, review_kind, status, part_name, session_date, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, source_data_summary, analysis_json, implications_for_part, implications_for_whole_system, recommendations_for_therapists, recommendations_for_next_playroom, recommendations_for_next_session, next_session_recommendation, drive_sync_status, detail_analysis_drive_url, practical_report_drive_url, created_at")
     .eq("session_date", yesterdayISO)
     .eq("mode", "playroom")
     .eq("review_kind", "karel_direct_playroom")
