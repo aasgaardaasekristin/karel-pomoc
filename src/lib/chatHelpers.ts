@@ -8,7 +8,7 @@ export const EXPLICIT_LOGOUT_KEY = "karel_explicit_logout";
 const LAST_CAST_GREETING_INDEX_KEY = "karel_last_cast_greeting_index";
 
 export type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
-export type HubSection = "did" | "hana" | "research" | null;
+export type HubSection = "karel" | "did" | "hana" | "research" | null;
 export type DidFlowState = "entry" | "terapeut" | "pin-entry" | "therapist-threads" | "dashboard" | "submode-select" | "thread-list" | "playroom" | "part-identify" | "chat" | "loading" | "meeting" | "live-session" | "did-kartoteka";
 export type ResearchFlowState = "thread-list" | "new-topic" | "chat";
 
@@ -88,7 +88,7 @@ export const isExplicitLogoutActive = () => {
 export const clearActiveWorkStorageForLogout = () => {
   try {
     [ACTIVE_MODE_KEY, "karel_did_submode", DID_SESSION_ID_KEY, "karel_did_context", DID_DOCS_LOADED_KEY].forEach((key) => localStorage.removeItem(key));
-    ["karel_hub_section", "karel_open_deliberation_id", "karel_meeting_seed", HANA_PIN_KEY, HANA_PIN_ACCESS_TOKEN_KEY].forEach((key) => sessionStorage.removeItem(key));
+    ["karel_hub_section", "karel_open_deliberation_id", "karel_meeting_seed", "karel_no_save", HANA_PIN_KEY, HANA_PIN_ACCESS_TOKEN_KEY].forEach((key) => sessionStorage.removeItem(key));
     for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {
       const key = sessionStorage.key(i);
       if (key?.startsWith("chat_draft:")) sessionStorage.removeItem(key);
