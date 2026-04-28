@@ -1294,7 +1294,7 @@ Deno.serve(async (req) => {
     const candidates = await scoreSessionCandidates(supabase);
 
     // 2) Sběr kontextu
-    const context = await gatherContext(supabase);
+    const context = await gatherContext(supabase, body?.proofReviewId ?? body?.sessionReviewId ?? null);
 
     // 3) AI generování; playroom review payload musí vzniknout deterministicky i při selhání těžké syntézy.
     let durationMs = 0;
