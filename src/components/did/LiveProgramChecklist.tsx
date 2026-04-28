@@ -366,6 +366,7 @@ const LiveProgramChecklist = ({
   // viz DidLiveSessionPanel, který předává `sessionId={planId}`.
   const [finalizing, setFinalizing] = useState(false);
   const [finalized, setFinalized] = useState(false);
+  const [jobStatus, setJobStatus] = useState<"idle" | "pending" | "running" | "failed_retry" | "completed">("idle");
 
   const handleEndAndEvaluate = useCallback(async () => {
     if (finalizing || finalized) return;
@@ -411,18 +412,30 @@ const LiveProgramChecklist = ({
           endedReason: incomplete ? "partial" : "completed",
           turnsByBlock,
           observationsByBlock,
+          enqueueOnly: true,
         },
       });
       if (error) throw error;
       if ((data as any)?.ok === false) throw new Error((data as any)?.error || "Vyhodnocení selhalo.");
-      setFinalized(true);
-      toast.success(
-        incomplete
-          ? "Sezení částečně ukončeno a vyhodnoceno. Karel zahrne shrnutí do zítřejšího přehledu."
-          : "Sezení ukončeno a vyhodnoceno. Karel zahrne shrnutí do zítřejšího přehledu.",
-      );
+      setJobStatus("pending");
+      toast.success("Sezení je bezpečně uložené a zařazené ke zpracování. Karel ho označí hotové až po analýze.");
+
+      const { data: workerData, error: workerError } = await supabase.functions.invoke("karel-did-session-evaluate", {
+        body: { processPendingJobs: true, limit: 1 },
+      });
+      if (workerError) throw workerError;
+      const result = (workerData as any)?.results?.[0];
+      if (result?.ok === true && ["analyzed", "evidence_limited"].includes(String(result?.review_status))) {
+        setJobStatus("completed");
+        setFinalized(true);
+        toast.success(incomplete ? "Sezení částečně vyhodnoceno." : "Sezení vyhodnoceno.");
+      } else {
+        setJobStatus("failed_retry");
+        toast.warning("Vyhodnocení je ve frontě pro opakování; data nejsou ztracená.");
+      }
     } catch (e: any) {
       console.error("[LiveProgramChecklist] evaluate failed", e);
+      setJobStatus("failed_retry");
       toast.error(e?.message || "Vyhodnocení selhalo, zkus to znovu.");
     } finally {
       setFinalizing(false);
@@ -452,7 +465,7 @@ const LiveProgramChecklist = ({
           ) : (
             <FlagOff className="w-3 h-3" />
           )}
-          {finalized ? "Vyhodnoceno" : "Ukončit a vyhodnotit"}
+          {finalized ? "Vyhodnoceno" : jobStatus === "pending" || jobStatus === "running" ? "Zpracovávám" : jobStatus === "failed_retry" ? "Čeká na opakování" : "Ukončit a vyhodnotit"}
         </Button>
       </div>
 
