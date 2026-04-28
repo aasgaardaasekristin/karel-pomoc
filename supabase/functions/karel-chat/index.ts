@@ -39,6 +39,7 @@ import {
   findLastTherapistMentionEvidence,
   type DidThreadLite,
 } from "../_shared/runtimeEvidence.ts";
+import { detectSafetyMention, redactedSafetyExcerpt, resolvePersistencePolicy } from "../_shared/appModePolicy.ts";
 
 // DID_MASTER_PROMPT removed — identity is now sourced from _shared/karelIdentity.ts
 // Domain-specific DID workflow instructions remain in systemPrompts.ts
@@ -355,7 +356,10 @@ serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
-    const { messages, mode, didInitialContext, didSubMode, notebookProject, didPartName, didThreadLabel, didEnteredName, didContextPrimeCache } = await req.json();
+    const { messages, mode, didInitialContext, didSubMode, notebookProject, didPartName, didThreadLabel, didEnteredName, didContextPrimeCache, mode_id, no_save } = await req.json();
+    const persistencePolicy = resolvePersistencePolicy({ mode_id, no_save, didSubMode, mode });
+    const lastRequestUserText = normalizeMessageContentForPrompt([...(messages || [])].reverse().find((m: any) => m.role === "user")?.content);
+    const requestSafety = detectSafetyMention(lastRequestUserText);
     const isPlayroomMode = didSubMode === "playroom";
     const isTherapistLiveSession = mode === "live-session" || didSubMode === "therapist_session" || didSubMode === "session";
     const runtimePacketId = crypto.randomUUID();
