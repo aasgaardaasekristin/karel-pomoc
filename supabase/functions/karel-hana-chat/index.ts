@@ -555,7 +555,12 @@ async function runHanaPostChatWriteback(args: {
   conversationId: string | null;
   apiKey: string;
   roleScope: RoleScopeResult;
+  allowDriveWriteback?: boolean;
 }): Promise<void> {
+  if (!args.allowDriveWriteback) {
+    console.log("[hana-writeback] skipped by persistence policy (no raw Drive / no-history)");
+    return;
+  }
   const { userText, karelResponse, conversationId, apiKey, roleScope } = args;
   const sb = getServiceClient();
 
