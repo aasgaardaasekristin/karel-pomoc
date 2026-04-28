@@ -784,12 +784,12 @@ async function gatherContext(supabase: any, proofReviewId?: string | null) {
       .not("phase", "in", '("closed","CLOSED")')
       .order("severity", { ascending: false }),
     supabase.from("did_observations")
-      .select("subject_type, subject_id, fact, evidence_level, confidence, created_at")
+      .select("id, subject_type, subject_id, source_type, source_ref, fact, evidence_level, confidence, created_at")
       .gte("created_at", `${threeDaysAgo}T00:00:00Z`)
       .order("created_at", { ascending: false })
       .limit(80),
     supabase.from("did_observations")
-      .select("subject_type, subject_id, fact, evidence_level, confidence, created_at")
+      .select("id, subject_type, subject_id, source_type, source_ref, fact, evidence_level, confidence, created_at")
       .gte("created_at", `${sevenDaysAgo}T00:00:00Z`)
       .lt("created_at", `${threeDaysAgo}T00:00:00Z`)
       .in("evidence_level", ["D1", "D2", "D3", "I1"])
