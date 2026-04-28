@@ -150,6 +150,26 @@ const SESSION_EVAL_TOOL = {
             "Návrh dalšího sezení / pauzy / krizové intervence (1-2 věty). " +
             "Konkrétní část, kdy, proč, jakou metodou.",
         },
+        detailed_analysis_text: {
+          type: "string",
+          description: "Detailní profesionální analýza Sezení: role terapeutky, role Karla jako live asistenta, program, proběhlé bloky, pozorování vs hypotézy, limity evidence, rizika, stabilizační/destabilizační faktory a doporučení.",
+        },
+        practical_report_text: {
+          type: "string",
+          description: "Kratší praktický report pro Karlův přehled: co se stalo, co víme o části, co z toho plyne pro kluky, co mají terapeutky udělat, čemu se vyvarovat a doporučení pro další Sezení/Hernu.",
+        },
+        team_closing_text: {
+          type: "string",
+          description: "Konkrétní týmové uzavření navázané na průběh Sezení; poděkování terapeutce/terapeutkám a posílení týmové soudržnosti bez obecné fráze.",
+        },
+        implications_for_part: { type: "string" },
+        implications_for_system: { type: "string" },
+        recommendations_for_therapists: { type: "string" },
+        recommendations_for_next_session: { type: "string" },
+        recommendations_for_next_playroom: { type: "string" },
+        risks: { type: "array", items: { type: "string" } },
+        evidence_limitations: { type: "string" },
+        what_not_to_do: { type: "array", items: { type: "string" } },
       },
       required: [
         "completion_status",
@@ -162,6 +182,15 @@ const SESSION_EVAL_TOOL = {
         "implications_for_tomorrow",
         "tasks",
         "recommended_next_step",
+        "detailed_analysis_text",
+        "practical_report_text",
+        "team_closing_text",
+        "implications_for_part",
+        "implications_for_system",
+        "recommendations_for_therapists",
+        "recommendations_for_next_session",
+        "recommendations_for_next_playroom",
+        "evidence_limitations",
       ],
       additionalProperties: false,
     },
@@ -176,7 +205,8 @@ ABSOLUTNÍ PRAVIDLA:
 - ŽÁDNÉ "systém"/"DID systém". Vždy "kluci" nebo konkrétní jméno části.
 - ŽÁDNÝ "klient". Kluci jsou kluci.
 - HLAVNÍ DŮRAZ = PROŽITEK ČÁSTI (dítěte). Jak na tom bylo, co prožívalo, co fungovalo / nefungovalo z jeho pohledu.
-- Práce terapeutky (Hanička / Káťa) je SEKUNDÁRNÍ vrstva — pojmenuj v 1-2 větách, ale neorientuj na to celý report.
+- Sezení je THERAPIST-LED: fyzicky ho vede terapeutka; Karel je live real-time asistent terapeutky, ne přímý vedoucí dítěte.
+- Práce terapeutky (Hanička / Káťa) je důležitá týmová vrstva, ale klinické závěry odděluj od podpory terapeutky.
 - Pokud sezení nebylo dokončené, NEPŘEDSTÍREJ, že bylo. Explicitně to napiš v completion_status + incomplete_note,
   a vyhodnoť POUZE to, co reálně proběhlo. Nevymýšlej si bloky, které nikdo neudělal.
 
@@ -192,7 +222,13 @@ TÓN:
 - Kultivovaná čeština. Konkrétně, klinicky, bez patosu.
 - Žádné "celkově to byl posun" / "skvělá práce" — místo toho konkrétní moment z dat.
 
-Vrať VÝHRADNĚ tool call emit_session_evaluation.`;
+Vrať VÝHRADNĚ tool call emit_session_evaluation.
+
+POVINNÉ ROZDĚLENÍ VÝSTUPU:
+- detailed_analysis_text = odborná detailní analýza, delší a strukturovaná.
+- practical_report_text = kratší report pro Karlův přehled a další plánování.
+- team_closing_text = konkrétní týmové uzavření navázané na průběh Sezení.
+- Pokud evidence nestačí, nevyplňuj falešnou plnou analýzu; jasně popiš limity a bezpečný další krok.`;
 
 interface SessionPlan {
   id: string;
@@ -209,7 +245,7 @@ interface SessionPlan {
   crisis_event_id: string | null;
 }
 
-type ReviewStatus = "analyzed" | "partially_analyzed" | "evidence_limited" | "failed_analysis" | "cancelled";
+type ReviewStatus = "analyzed" | "partially_analyzed" | "evidence_limited" | "pending_review" | "analysis_running" | "failed_retry" | "failed_analysis" | "cancelled";
 type KarelDirectOutcome = "completed" | "partial" | "unavailable" | "deferred" | "actual_part_differs";
 
 interface PartSessionRow {
@@ -1627,7 +1663,13 @@ Vyhodnoť toto sezení. Drž se pravidel ze system promptu.
 - Pokud proběhla alespoň polovina bodů, completion_status nesmí být 'abandoned'.
 - HLAVNÍ VRSTVA = child_perspective (4-7 vět, konkrétně, pro Tundrupka / příslušnou část).
 - Therapist_motivation drž stručné (1-2 věty).
-- Vrať VÝHRADNĚ tool call emit_session_evaluation.`;
+- Vrať VÝHRADNĚ tool call emit_session_evaluation.
+
+POVINNÉ ROZDĚLENÍ VÝSTUPU:
+- detailed_analysis_text = odborná detailní analýza, delší a strukturovaná.
+- practical_report_text = kratší report pro Karlův přehled a další plánování.
+- team_closing_text = konkrétní týmové uzavření navázané na průběh Sezení.
+- Pokud evidence nestačí, nevyplňuj falešnou plnou analýzu; jasně popiš limity a bezpečný další krok.`;
 
     const evaluation = sanitizeEvaluation(await callAi(prompt, apiKey), endedReason, completedBlocks, totalBlocks);
     const diagnosticValidity = buildDiagnosticValidityReport(ctx.plan.plan_markdown, turnsByBlock, observationsByBlock, liveProgress);
