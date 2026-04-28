@@ -2245,6 +2245,11 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
 
       {hubSection === "karel" ? (
         <div className="flex-1 flex flex-col min-h-0">
+          {noSave && (
+            <div className="border-b border-[hsl(var(--border-subtle))] bg-[hsl(var(--surface-secondary))]/70 px-4 py-2 text-center text-xs text-[hsl(var(--text-secondary))]">
+              Tento chat se neukládá. Po zavření zmizí. Bezpečnostní výjimka: při akutním riziku může vzniknout jen minimální redigovaný safety audit.
+            </div>
+          )}
           <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
             <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
               {messages.map((message, index) => (
@@ -2253,6 +2258,12 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
               {isLoading && messages[messages.length - 1]?.role === "user" && <LoadingSkeleton />}
             </div>
           </ScrollArea>
+          <StarterQuestions
+            modeId="karel_chat"
+            questions={APP_MODE_POLICIES.karel_chat.starter_questions}
+            disabled={isLoading}
+            onSelect={handleStarterQuestion}
+          />
           <ChatInputArea
             input={input} setInput={setInput}
             onSend={sendMessage} onKeyDown={handleKeyDown}
@@ -2314,6 +2325,12 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             </div>
           )}
           <CrisisBriefPanel />
+          <StarterQuestions
+            modeId="did_kluci"
+            questions={APP_MODE_POLICIES.did_kluci.starter_questions}
+            disabled={isLoading}
+            onSelect={handleStarterQuestion}
+          />
           <DidContentRouter
             didFlowState={didFlowState}
             setDidFlowState={setDidFlowState}
@@ -2502,7 +2519,13 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           {mainMode === "chat" ? (
             <>
               <CrisisBriefPanel />
-              <HanaChat noSave={noSave} />
+              <StarterQuestions
+                modeId="hana_osobni"
+                questions={APP_MODE_POLICIES.hana_osobni.starter_questions}
+                disabled={isLoading}
+                onSelect={handleStarterQuestion}
+              />
+              <HanaChat noSave={noSave} starterPrompt={input} onStarterPromptConsumed={() => setInput("")} />
             </>
           ) : (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
