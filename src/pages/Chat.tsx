@@ -1932,6 +1932,12 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     }
   };
 
+  const handleStarterQuestion = useCallback((question: StarterQuestion) => {
+    if (question.default_no_save) setNoSave(true);
+    setInput(question.prompt);
+    toast.info(question.default_no_save ? "Otázka je připravená v režimu bez ukládání." : "Otázka je připravená v aktivním režimu.");
+  }, []);
+
   const sendMessage = async () => {
     if ((!input.trim() && attachments.length === 0) || isLoading) return;
     const userMessage = input.trim();
