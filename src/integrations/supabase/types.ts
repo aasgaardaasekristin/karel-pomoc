@@ -1665,6 +1665,45 @@ export type Database = {
         }
         Relationships: []
       }
+      did_cycle_run_log: {
+        Row: {
+          created_at: string
+          cycle_kind: string
+          finished_at: string | null
+          id: string
+          local_cycle_date: string
+          notes: Json
+          started_at: string
+          status: string
+          timezone: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          cycle_kind: string
+          finished_at?: string | null
+          id?: string
+          local_cycle_date: string
+          notes?: Json
+          started_at?: string
+          status?: string
+          timezone?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          cycle_kind?: string
+          finished_at?: string | null
+          id?: string
+          local_cycle_date?: string
+          notes?: Json
+          started_at?: string
+          status?: string
+          timezone?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       did_daily_briefings: {
         Row: {
           briefing_date: string
