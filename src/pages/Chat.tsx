@@ -252,6 +252,10 @@ const Chat = () => {
   useEffect(() => {
     if (isExplicitLogoutActive()) return;
     try {
+      if (noSave) {
+        sessionStorage.removeItem(draftKey);
+        return;
+      }
       if (lastDraftKeyRef.current !== draftKey && input.trim()) {
         sessionStorage.setItem(lastDraftKeyRef.current, input);
       }
@@ -259,15 +263,19 @@ const Chat = () => {
       setInput(savedDraft);
       lastDraftKeyRef.current = draftKey;
     } catch {}
-  }, [draftKey]);
+  }, [draftKey, noSave]);
 
   useEffect(() => {
     if (isExplicitLogoutActive()) return;
     try {
+      if (noSave) {
+        sessionStorage.removeItem(draftKey);
+        return;
+      }
       if (input.trim()) sessionStorage.setItem(draftKey, input);
       else sessionStorage.removeItem(draftKey);
     } catch {}
-  }, [draftKey, input]);
+  }, [draftKey, input, noSave]);
 
   // Manual update hook
   const manualUpdate = useManualUpdate({
