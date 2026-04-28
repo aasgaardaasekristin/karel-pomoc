@@ -28,6 +28,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { selectPantryA, summarizePantryAForPrompt, type PantryASnapshot } from "../_shared/pantryA.ts";
 import { readUnprocessedPantryB, markPantryBProcessed } from "../_shared/pantryB.ts";
 import { summarizeToolboxForPrompt } from "../_shared/therapeuticToolbox.ts";
+import { runGlobalDidEventIngestion } from "../_shared/didEventIngestion.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
