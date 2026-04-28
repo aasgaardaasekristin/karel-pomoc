@@ -73,6 +73,7 @@ interface ProposedSession {
   duration_min?: number;
   first_draft: string;
   kata_involvement?: string;
+  carry_over_reason?: string;
   /** SLICE 3 — minutáž sezení (3-6 bloků). */
   agenda_outline?: AgendaBlock[];
   /** SLICE 3 — předem připravené otázky pro Haničku k tomuto sezení. */
@@ -111,6 +112,7 @@ interface YesterdaySessionReview {
   exists?: boolean;
   held: boolean;
   status?: string;
+  fallback_reason?: string;
   review_id?: string | null;
   plan_id?: string | null;
   part_name?: string;
@@ -176,6 +178,7 @@ interface BriefingPayload {
   technical_note?: string;
   last_3_days: string;
   lingering?: string;
+  daily_therapeutic_priority?: string;
   yesterday_session_review?: YesterdaySessionReview | null;
   yesterday_playroom_review?: YesterdayPlayroomReviewPayload | null;
   decisions: BriefingDecision[];
@@ -944,7 +947,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   }
 
   const p = briefing.payload;
-  const yesterdayReview = (p.yesterday_session_review && p.yesterday_session_review.held)
+  const yesterdayReview = (p.yesterday_session_review && p.yesterday_session_review.exists)
     ? {
         ...p.yesterday_session_review,
         karel_summary: p.yesterday_session_review.practical_report_text || p.yesterday_session_review.karel_summary,
@@ -952,6 +955,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         practical_report: p.yesterday_session_review.practical_report_text || p.yesterday_session_review.karel_summary,
         detailed_analysis: p.yesterday_session_review.detailed_analysis_text,
         team_closing: p.yesterday_session_review.team_closing_text,
+        status_label: p.yesterday_session_review.status,
       } as YesterdayFallbackReview
     : yesterdaySessionFallback;
   const backendPlayroom = p.yesterday_playroom_review?.exists ? p.yesterday_playroom_review : null;
@@ -986,7 +990,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
   const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
   const legacyTechnicalGreeting = /těžk[áa]\s+syntéza|fallback|bezpečn[ýy]\s+režim/i.test(p.greeting || "");
-  const openingMonologueText = (p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnešní přehled potřebuje držet hlavně klinickou návaznost, opatrnost v závěrech a jasný další bezpečný krok pro kluky. Technický stav generování proto přesouvám jen do poznámky; hlavní prostor patří tomu, co víme, co nevíme a jak dnes postupovat." : p.greeting) || "").trim();
+  const openingMonologueText = (p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnes držme hlavně klinickou návaznost, opatrnost v závěrech a jeden bezpečný další krok pro kluky. Budu rozlišovat, co víme jistě, co je pracovní hypotéza a co ještě čeká na ověření." : p.greeting) || "").trim();
   const technicalNote = (p.technical_note || p.opening_monologue?.technical_note || "").trim();
 
   return (
@@ -1052,6 +1056,16 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
+      {p.daily_therapeutic_priority && (
+        <>
+          <NarrativeDivider />
+          <SectionHead>Dnešní terapeutická priorita</SectionHead>
+          <p className="text-[13px] leading-relaxed text-foreground/85 mt-2 whitespace-pre-line">
+            {p.daily_therapeutic_priority}
+          </p>
+        </>
+      )}
+
       {/* 3.5 Včerejší herna — samostatná vyhrazená sekce, nikdy nesmí splývat se sezením */}
       {yesterdayPlayroomReview && yesterdayPlayroomReview.held && (
         <>
@@ -1074,6 +1088,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             {(yesterdayPlayroomReview as any).recommendations_for_therapists && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro terapeutky</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).recommendations_for_therapists}</p></div>}
             {yesterdayPlayroomReview.implications_for_plan && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro další hernu</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{yesterdayPlayroomReview.implications_for_plan}</p></div>}
             {(yesterdayPlayroomReview as any).recommendations_for_next_session && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro další sezení</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).recommendations_for_next_session}</p></div>}
+            {(yesterdayPlayroomReview as any).spiritual_symbolics_safety_frame && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Bezpečné rámování duchovní symboliky</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).spiritual_symbolics_safety_frame}</p></div>}
             {((yesterdayPlayroomReview as any).detail_analysis_drive_url || (yesterdayPlayroomReview as any).practical_report_drive_url) && <p className="text-[11px] text-muted-foreground">Drive: {(yesterdayPlayroomReview as any).detail_analysis_drive_url ? "detailní analýza uložena" : "detail čeká"} · {(yesterdayPlayroomReview as any).practical_report_drive_url ? "praktický report uložen" : "report čeká"}</p>}
             {yesterdayPlayroomReview.detailed_analysis && (
               <details className="rounded-md border border-border/50 bg-background/35 p-2">
@@ -1090,10 +1105,10 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         <>
           <NarrativeDivider />
           <SectionHead icon={<Users className="w-3.5 h-3.5 text-primary/70" />}>
-            Včerejší sezení
+            {yesterdayReview?.held === false ? "Plánované Sezení, které klinicky neproběhlo" : "Včerejší sezení"}
           </SectionHead>
           <div className="mt-2 p-3 rounded-lg border border-border/60 bg-card/40 space-y-2">
-            {yesterdayReview && yesterdayReview.held ? (
+            {yesterdayReview && yesterdayReview.exists ? (
               <>
                 <div className="flex items-center gap-2 flex-wrap">
                   {yesterdayReview.part_name && (
@@ -1109,14 +1124,18 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                   {yesterdayReview.completion && (
                     <Badge
                       className={`text-[10px] h-5 px-2 border ${
-                        yesterdayReview.completion === "completed"
+                        yesterdayReview.held === false
+                          ? "bg-muted text-muted-foreground border-border"
+                          : yesterdayReview.completion === "completed"
                           ? "bg-emerald-500/15 text-emerald-700 border-emerald-500/30"
                           : yesterdayReview.completion === "partial"
                           ? "bg-amber-500/15 text-amber-700 border-amber-500/30"
                           : "bg-destructive/15 text-destructive border-destructive/30"
                       }`}
                     >
-                      {yesterdayReview.completion === "completed"
+                      {yesterdayReview.held === false
+                        ? (yesterdayReview.status === "technical_test" ? "Technický test" : "Neuskutečněno")
+                        : yesterdayReview.completion === "completed"
                         ? "Dokončeno"
                         : yesterdayReview.completion === "partial"
                         ? "Částečně"
@@ -1200,7 +1219,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         <>
           <NarrativeDivider />
           <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary" />}>
-            Návrh sezení k poradě
+            {p.proposed_session.carry_over_reason === "unheld_yesterday_session" ? "Carry-over z neuskutečněného Sezení" : "Návrh sezení k poradě"}
           </SectionHead>
           <button
             type="button"
@@ -1217,6 +1236,11 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               {p.proposed_session.duration_min && (
                 <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">
                   ~{p.proposed_session.duration_min} min
+                </Badge>
+              )}
+              {p.proposed_session.carry_over_reason === "unheld_yesterday_session" && (
+                <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">
+                  carry-over
                 </Badge>
               )}
               <ArrowRight className="w-3.5 h-3.5 text-primary/60 ml-auto" />

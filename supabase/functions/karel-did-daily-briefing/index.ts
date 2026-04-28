@@ -207,11 +207,13 @@ function buildYesterdaySessionReview(context: any) {
   if (review) {
     const analysis = review.analysis_json && typeof review.analysis_json === "object" ? review.analysis_json : {};
     const evidenceBasis = reviewEvidenceBasis(review);
+    const technicalTest = isTechnicalTestSessionReview(review) || evidenceBasis === "planned_only";
     return {
       exists: true,
-      held: !["pending_review", "analysis_running"].includes(String(review.status)),
-      status: review.status,
+      held: !technicalTest && !["pending_review", "analysis_running"].includes(String(review.status)),
+      status: technicalTest ? "technical_test" : review.status,
       review_status: review.status,
+      fallback_reason: technicalTest ? "planned_session_not_clinically_held" : undefined,
       part_name: review.part_name,
       plan_id: review.plan_id,
       thread_id: analysis.thread_id ?? analysis.confirmed_facts?.thread_id ?? review.evidence_items?.find?.((e: any) => e?.kind === "thread_transcript")?.source_id ?? null,
@@ -219,18 +221,24 @@ function buildYesterdaySessionReview(context: any) {
       lead_person: review.lead_person ?? review.lead ?? null,
       lead: normalizeTherapistLabel(review.lead_person ?? review.lead) ?? undefined,
       assistant_persons: review.assistant_persons ?? [],
-      completion: evidenceBasis === "completed" ? "completed" : review.status === "evidence_limited" || review.status === "partially_analyzed" ? "partial" : "abandoned",
-      practical_report_text: cleanBlockText(analysis.practical_report_text ?? review.clinical_summary ?? ""),
+      completion: technicalTest ? "abandoned" : evidenceBasis === "completed" ? "completed" : review.status === "evidence_limited" || review.status === "partially_analyzed" ? "partial" : "abandoned",
+      practical_report_text: technicalTest
+        ? `Plánované Sezení s ${review.part_name || "částí"} se klinicky neuskutečnilo. Záznam odpovídá technickému testu nebo plánované aktivitě bez klinického průběhu, proto z něj nevyvozujeme nové klinické poznatky. Původní potřeba Sezení — zejména práce s tělesnými potížemi a neverbálním zpracováním — zůstává otevřená.`
+        : cleanBlockText(analysis.practical_report_text ?? review.clinical_summary ?? ""),
       detailed_analysis_text: cleanBlockText(analysis.detailed_analysis_text ?? ""),
       team_closing_text: cleanBlockText(analysis.team_closing_text ?? review.team_closing ?? ""),
-      karel_summary: cleanBlockText(analysis.practical_report_text ?? review.clinical_summary ?? review.evidence_limitations ?? ""),
+      karel_summary: technicalTest
+        ? `Plánované Sezení s ${review.part_name || "částí"} se klinicky neuskutečnilo. Z tohoto záznamu nevyvozujeme nové klinické poznatky; původní potřeba Sezení zůstává otevřená.`
+        : cleanBlockText(analysis.practical_report_text ?? review.clinical_summary ?? review.evidence_limitations ?? ""),
       key_finding_about_part: cleanBlockText(review.implications_for_part ?? review.therapeutic_implications ?? analysis.implications_for_part ?? ""),
       implications_for_plan: cleanBlockText(review.recommendations_for_next_session ?? review.next_session_recommendation ?? analysis.recommendations_for_next_session ?? ""),
       team_acknowledgement: cleanBlockText(analysis.team_closing_text ?? review.team_closing ?? review.team_implications ?? ""),
       implications_for_part: cleanBlockText(review.implications_for_part ?? analysis.implications_for_part ?? ""),
       implications_for_system: cleanBlockText(review.implications_for_whole_system ?? analysis.implications_for_system ?? ""),
       recommendations_for_therapists: cleanBlockText(review.recommendations_for_therapists ?? analysis.recommendations_for_therapists ?? ""),
-      recommendations_for_next_session: cleanBlockText(review.recommendations_for_next_session ?? review.next_session_recommendation ?? analysis.recommendations_for_next_session ?? ""),
+      recommendations_for_next_session: technicalTest
+        ? "Carry-over z neuskutečněného Sezení: nejprve ověřit aktuální tělesný a emoční stav a teprve poté rozhodnout, zda dnes provést terapeutkou vedené Sezení, nízkoprahovou Hernu, nebo jen stabilizační kontakt."
+        : cleanBlockText(review.recommendations_for_next_session ?? review.next_session_recommendation ?? analysis.recommendations_for_next_session ?? ""),
       recommendations_for_next_playroom: cleanBlockText(review.recommendations_for_next_playroom ?? analysis.recommendations_for_next_playroom ?? ""),
       detail_analysis_drive_url: review.detail_analysis_drive_url ?? null,
       practical_report_drive_url: review.practical_report_drive_url ?? null,
@@ -271,6 +279,11 @@ function injectSessionReviewIntoProposals(payload: any) {
   const nextSession = cleanBlockText(y.recommendations_for_next_session || y.recommendations_for_therapists || y.implications_for_plan);
   if (payload?.proposed_session && typeof payload.proposed_session === "object") {
     const ps = payload.proposed_session;
+    if (y.held === false || y.status === "technical_test") {
+      ps.carry_over_reason = "unheld_yesterday_session";
+      ps.why_today = `Carry-over z neuskutečněného Sezení. Tento návrh nenavazuje na nové klinické poznatky ze včerejšího Sezení, protože to klinicky neproběhlo; navazuje na původní potřebu řešit tělesné potíže a neverbální zpracování tělesného stavu. ${cleanBlockText(ps.why_today)}`.trim();
+      ps.first_draft = `Začít krátkým ověřením tělesného a emočního stavu, bez tlaku na vysvětlování. Pokud je část dostupná a stabilní, pokračovat krátkým terapeutkou vedeným Sezením; pokud je unavená nebo zahlcená, zůstat jen u stabilizačního kontaktu. ${cleanBlockText(ps.first_draft)}`.trim();
+    }
     ps.evidence_sources = Array.from(new Set([...(Array.isArray(ps.evidence_sources) ? ps.evidence_sources : []), "VČEREJŠÍ SEZENÍ — PRAKTICKÝ REPORT", "VČEREJŠÍ SEZENÍ — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ"]));
     ps.backend_context_inputs = {
       ...(ps.backend_context_inputs ?? {}),
@@ -361,23 +374,50 @@ function injectPlayroomReviewIntoProposal(payload: any) {
   const report = cleanBlockText(y.practical_report_text);
   const next = cleanBlockText(y.recommendations_for_next_playroom || y.recommendations_for_therapists || y.recommendations_for_next_session);
   pp.evidence_sources = Array.from(new Set([...(Array.isArray(pp.evidence_sources) ? pp.evidence_sources : []), "VČEREJŠÍ HERNA — PRAKTICKÝ REPORT", "VČEREJŠÍ HERNA — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ"]));
+  pp.why_this_part_today = sanitizeKarelClinicalText(`Nízkoprahová stabilizační návaznost na včerejší Hernu. Symboly z včerejška používat primárně s ${y.part_name || pp.part_name || "touto částí"} a jen tehdy, pokud je část sama přinese nebo na ně klidně reaguje; u ostatních částí je nepřenášet automaticky. ${cleanBlockText(pp.why_this_part_today)}`);
+  pp.main_theme = `Jemný check-in bezpečného místa a dnešního vnitřního počasí, ne automatické pokračování hluboké symbolické práce`;
+  pp.goals = Array.from(new Set([
+    "ověřit dnešní tělesnou a emoční dostupnost bez tlaku",
+    "připomenout včerejší zdroje jen pokud jsou dnes bezpečné",
+    "držet krátký rámec a měkké zakončení",
+    ...(Array.isArray(pp.goals) ? pp.goals : []),
+  ])).slice(0, 4);
   pp.backend_context_inputs = {
     ...(pp.backend_context_inputs ?? {}),
     yesterday_playroom_review_id: y.review_id ?? null,
     used_yesterday_playroom_review: true,
-    practical_report_excerpt: report.slice(0, 1200),
-    next_playroom_recommendation_excerpt: next.slice(0, 1200),
+    practical_report_excerpt: sanitizeKarelClinicalText(report).slice(0, 1200),
+    next_playroom_recommendation_excerpt: sanitizeKarelClinicalText(next).slice(0, 1200),
   };
   const seed = pp.playroom_plan?.runtime_packet_seed && typeof pp.playroom_plan.runtime_packet_seed === "object" ? pp.playroom_plan.runtime_packet_seed : {};
   pp.playroom_plan = {
     ...(pp.playroom_plan ?? {}),
+    child_safe_version: "Chceš dnes jen zkontrolovat, jestli je to bezpečné místo pořád někde poblíž, nebo chceš raději začít dnešním vnitřním počasím? Nemusíme pokračovat v ničem hlubokém.",
+    therapeutic_program: [
+      { block: "Jemný práh", minutes: 3, detail: "Karel nezačíná otázkou na ochranné bytosti. Nabídne volbu: bezpečné místo poblíž, dnešní vnitřní počasí, nebo jen ticho a jedno slovo." },
+      { block: "Tělo a den", minutes: 5, detail: "Krátce ověřit, jestli je v těle něco nepříjemného, únavného nebo bezpečného. Bez rozebírání, jen mapa aktuální dostupnosti." },
+      { block: "Zdroj jen se souhlasem", minutes: 7, detail: "Symboly světla, domova nebo ochrany použít pouze tehdy, pokud je část sama přinese nebo na ně klidně reaguje. Nevkládat je jako povinnost." },
+      { block: "Malý přenos do přítomnosti", minutes: 5, detail: "Pokud se objeví bezpečný symbol, pomoci ho spojit s přítomným tělem, dnešním dnem a bezpečnými dospělými, ne s odchodem mimo realitu." },
+      { block: "Měkké zavření", minutes: 4, detail: "Oznámit blížící se konec, nabídnout poslední stabilizační krok, ujistit, že bezpečné místo nezmizí, a neotevírat nové těžké téma." },
+    ],
+    forbidden_directions: Array.from(new Set([
+      "nezačínat přímým dotazem na ochranné bytosti",
+      "nepřenášet Tundrupkovy symboly automaticky na ostatní části",
+      "neposilovat představu, že bezpečí existuje jen mimo současný život",
+      ...(Array.isArray(pp.playroom_plan?.forbidden_directions) ? pp.playroom_plan.forbidden_directions : []),
+    ])).slice(0, 8),
+    risks_and_stop_signals: Array.from(new Set([
+      "duchovní symbolika se stáčí k odpojení od reality nebo k touze nebýt",
+      "část se cítí tlačená pokračovat v symbolu, který dnes sama nepřinesla",
+      ...(Array.isArray(pp.playroom_plan?.risks_and_stop_signals) ? pp.playroom_plan.risks_and_stop_signals : []),
+    ])).slice(0, 8),
     runtime_packet_seed: {
       ...seed,
       yesterday_playroom_review: {
         review_id: y.review_id ?? null,
         status: y.status,
-        practical_report_text: report.slice(0, 1600),
-        recommendations_for_next_playroom: next.slice(0, 1600),
+        practical_report_text: sanitizeKarelClinicalText(report).slice(0, 1600),
+        recommendations_for_next_playroom: sanitizeKarelClinicalText(next).slice(0, 1600),
       },
     },
   };
@@ -433,20 +473,79 @@ const trimSentence = (value: unknown, max = 360): string => {
   return `${cut.slice(0, Math.max(cut.lastIndexOf("."), cut.lastIndexOf(";"), cut.lastIndexOf(","), 180)).trim()}…`;
 };
 
+const partGenitive = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupka" : name;
+const partDative = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupkovi" : name;
+
 const sanitizeKarelClinicalText = (value: unknown): string =>
   cleanBlockText(value)
     .replace(/DID\s+syst[eé]m/gi, "kluci")
     .replace(/\bsyst[eé]mu\b/gi, "kluků")
     .replace(/\bsyst[eé]m\b/gi, "kluci")
     .replace(/\bklient(?:a|em|ovi|ů|i)?\b/gi, "kluci")
+    .replace(/Tundrupek\s+je\s+aktivní,?\s*duchovn[eě]\s+zalo[žz]en[áa]\s+[čc][áa]st\.?/gi, "Tundrupek v této Herně spontánně použil duchovní a ochrannou symboliku jako jazyk bezpečí.")
+    .replace(/duchovn[íi]\s+symbolika\s+je\s+pro\s+n[eě]j\s+kl[íi][čc]ov[ýy]m\s+jazykem\s+l[eé][čc]en[íi]/gi, "v této evidenci se duchovní symbolika jeví jako důležitý zdroj bezpečí; je potřeba ji dál ověřovat jemně a bez vnucování")
+    .replace(/T[eé]ma\s+Boha,\s+n[áa]vratu\s+"dom[ůu]"[^.\n]*je\s+pro\s+Tundrupka\s+centr[áa]ln[íi][^.\n]*/gi, "Duchovní motivy se v této Herně objevily jako výrazný jazyk bezpečí, který je potřeba respektovat a zároveň dál opatrně ověřovat")
+    .replace(/neukon[čc]ovat\s+Hernu,?\s*dokud\s+Tundrupek\s+nedos[áa]hne\s+pocitu\s+bezpe[čc][íi]/gi, "ukončovat Hernu pomalu, předvídatelně a s delším měkkým závěrem; neukončovat náhle, ale zároveň držet bezpečný časový rámec")
+    .replace(/pou[žz][íi]vat\s+symboly\s+['„"]?sv[eě]tla[^.\n]*u\s+ostatn[íi]ch\s+kluk[ůu][^.\n]*/gi, "symboly používat primárně s Tundrupkem a jen tehdy, pokud je sám přinese nebo na ně klidně reaguje; u ostatních částí je nepřenášet automaticky")
+    .replace(/Terapeutky\s+by\s+m[eě]ly[^.\n]*ostatn[íi]mi\s+kluky[^.\n]*/gi, "Terapeutky mají symboly používat primárně s Tundrupkem a nepřenášet je automaticky na ostatní části")
+    .replace(/P[řr][íi][šs]t[íi]\s+Herna\s+s\s+Tundrupkem\s+by\s+mohla\s+za[čc][íi]t\s+p[řr][íi]m[ýy]m\s+dotazem\s+na\s+['"][^\n]*?\./gi, "Příští Herna s Tundrupkem má začít jemným check-inem bezpečného místa nebo dnešního vnitřního počasí, ne přímým dotazem na ochranné bytosti.")
+    .replace(/Je\s+to\s+siln[ýy]\s+zdroj,\s+kter[ýy]\s+mohou\s+ostatn[íi]\s+kluci\s+vyu[žz][íi]vat\.?/gi, "Je to silný zdroj pro tuto část; u ostatních kluků ho nelze používat bez ověření.")
     .trim();
 
 const isTechnicalStatusText = (value: unknown): boolean =>
   /(t[eě][žz]k[áa]\s+synt[eé]za|fallback|bezpe[čc]n[ýy]\s+re[žz]im|technick|funk[čc]nost|v[šs]e\s+b[eě][žz][íi]|db review|payload|backend)/i.test(cleanBlockText(value));
 
+const isTechnicalTestSessionReview = (review: any): boolean => {
+  const analysis = review?.analysis_json && typeof review.analysis_json === "object" ? review.analysis_json : {};
+  const haystack = cleanBlockText([
+    review?.status,
+    review?.review_kind,
+    review?.source_data_summary,
+    review?.clinical_summary,
+    review?.evidence_limitations,
+    analysis?.outcome,
+    analysis?.practical_report_text,
+    analysis?.detailed_analysis_text,
+    analysis?.post_session_result?.status,
+  ].join("\n")).toLowerCase();
+  return /(technick[ýy]\s+test|technical[_\s-]*test|klinicky\s+neprob[eě]hlo|sezen[íi]\s+se\s+neuskute[čc]nilo|planned_not_started|neprob[eě]hlo)/i.test(haystack);
+};
+
+function buildClinicalLast3Days(payload: any, context: any, candidates: SessionCandidate[]): string {
+  const play = payload?.yesterday_playroom_review?.exists ? payload.yesterday_playroom_review : null;
+  const sess = payload?.yesterday_session_review?.exists ? payload.yesterday_session_review : null;
+  const activePart = String(play?.part_name || sess?.part_name || candidates?.[0]?.part_name || "část, která se ukáže v evidenci").trim();
+  const recentThreads = Array.isArray(context?.recent_threads) ? context.recent_threads : [];
+  const recentNames = Array.from(new Set(recentThreads.map((t: any) => String(t?.part_name ?? "").trim()).filter(Boolean))).slice(0, 4);
+  const communicated = recentNames.length ? recentNames.join(", ") : activePart;
+  const sessionNotHeld = sess?.exists && sess?.held === false;
+  if (!play && !sess && recentNames.length === 0) return "Na toto nemám dost dat.";
+  return [
+    `Za posledních 24–72 hodin máme nejvýraznější doloženou aktivitu u ${partGenitive(activePart)}. V komunikaci se objevuje zejména ${communicated}; u kormidla to ale neznamená celodenní jistotu, jen nejsilnější dostupnou stopu.`,
+    play ? `Včerejší Herna ukázala práci přes symboly bezpečí, domova, světla nebo ochrany; beru je jako aktuální jazyk této části, ne jako hotovou charakteristiku všech kluků.` : "Z Herny za včerejšek nemám dostatečný uzavřený materiál pro klinický závěr.",
+    sessionNotHeld ? "Plánované terapeutické Sezení klinicky neproběhlo, případně odpovídá technickému testu; z něj proto nevyvozuji nové klinické poznatky." : sess?.held ? "Včerejší Sezení má doložený klinický vstup a může sloužit jako samostatný zdroj pro dnešní plán." : "O samostatném včerejším Sezení nemám dost dat.",
+    "Bezpečný závěr pro dnešek: držet se doloženého materiálu, oddělit jisté poznatky od hypotéz a nejprve ověřit aktuální tělesnou i emoční dostupnost části.",
+  ].join("\n\n");
+}
+
+function buildClinicalLingering(payload: any, candidates: SessionCandidate[]): string {
+  const part = String(payload?.yesterday_playroom_review?.part_name || payload?.yesterday_session_review?.part_name || candidates?.[0]?.part_name || "Tundrupka").trim();
+  return `Z dřívějška zůstává podstatné, že u ${partGenitive(part)} je potřeba pracovat pomalu, nepřetlačovat ho do vysvětlování a umožnit mu vyjadřování přes symbol, obraz nebo tělesný pocit. Bezpečí tady nevzniká přes rychlé odpovědi, ale přes opakovanou zkušenost, že dospělý zůstává dostupný, nespěchá a zároveň drží jasný rámec.`;
+}
+
+function buildDailyTherapeuticPriority(payload: any): string {
+  const play = payload?.yesterday_playroom_review?.exists ? payload.yesterday_playroom_review : null;
+  const sess = payload?.yesterday_session_review?.exists ? payload.yesterday_session_review : null;
+  const part = String(play?.part_name || sess?.part_name || payload?.proposed_session?.part_name || payload?.proposed_playroom?.part_name || "části").trim();
+  if (sess?.exists && sess?.held === false) {
+    return `Protože plánované Sezení kvůli tělesným nebo neverbálním potížím klinicky neproběhlo, první krok dne má být krátké ověření aktuálního tělesného a emočního stavu ${partGenitive(part)}. Teprve podle toho má tým rozhodnout, zda dnes udělat terapeutkou vedené Sezení, nízkoprahovou stabilizační Hernu, nebo jen bezpečný kontakt bez otevírání nového těžkého materiálu.`;
+  }
+  return `Dnešní priorita je nejdřív ověřit dostupnost a míru zahlcení ${partGenitive(part)}. Pokud je část stabilní, může následovat malý návazný krok; pokud je unavená nebo stažená, přednost má stabilizace a žádné prohlubování tématu.`;
+}
+
 function buildOpeningMonologue(payload: any, context: any, candidates: SessionCandidate[]) {
   const play = payload?.yesterday_playroom_review?.exists ? payload.yesterday_playroom_review : null;
-  const sess = payload?.yesterday_session_review?.held ? payload.yesterday_session_review : null;
+  const sess = payload?.yesterday_session_review?.exists ? payload.yesterday_session_review : null;
   const proposedSession = payload?.proposed_session && typeof payload.proposed_session === "object" ? payload.proposed_session : null;
   const proposedPlayroom = payload?.proposed_playroom && typeof payload.proposed_playroom === "object" ? payload.proposed_playroom : null;
   const activePart = String(play?.part_name || sess?.part_name || proposedSession?.part_name || proposedPlayroom?.part_name || candidates?.[0]?.part_name || "část, která se dnes nejvíc ukáže v datech").trim();
@@ -458,39 +557,38 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   const teamWorkCandidate = sanitizeKarelClinicalText(firstMeaningful(sess?.team_closing_text, sess?.team_acknowledgement, play?.recommendations_for_therapists));
   const teamWork = isTechnicalStatusText(teamWorkCandidate) ? "" : teamWorkCandidate;
   const evidenceKnown: string[] = [];
-  if (play) evidenceKnown.push(`${activePart} má doloženou včerejší Hernu${play.status ? ` se stavem ${play.status}` : ""}.`);
-  if (sess) evidenceKnown.push(`${sess.part_name || activePart} má doložené včerejší Sezení${sess.status ? ` se stavem ${sess.status}` : ""}.`);
+  if (play) evidenceKnown.push(`${activePart} byl včera aktivní v Herně a pracoval se symboly bezpečí, světla, domova nebo ochrany.`);
+  if (sess?.held) evidenceKnown.push(`${sess.part_name || activePart} má doložené včerejší Sezení${sess.status ? ` se stavem ${sess.status}` : ""}.`);
+  if (sess?.exists && !sess?.held) evidenceKnown.push(`Plánované Sezení s ${sess.part_name || activePart} klinicky neproběhlo; z tohoto záznamu nevyvozujeme nové klinické poznatky.`);
   if (!evidenceKnown.length) evidenceKnown.push("V dostupném payloadu zatím nevidím plné review včerejší Herny ani Sezení.");
 
   const greeting = "Dobré ráno, Haničko a Káťo.";
   const frame = hasReview
-    ? `Dnes bych chtěl, abychom drželi hlavně stabilitu, návaznost a jemné tempo. Včerejší data ukazují jako hlavní stopu ${activePart}; neberu to jako důvod k tlaku, ale jako pozvání pokračovat přes malé, předvídatelné kroky.`
+    ? `Dnes bych chtěl, abychom u kluků drželi hlavně návaznost, klidné tempo a přesnost v tom, co víme a co si zatím jen pracovně myslíme. Včerejší den přinesl výrazný materiál od ${partGenitive(activePart)}, ale zároveň nás vede k opatrnosti: silný zdrojový prožitek z Herny nesmíme zaměnit za hotový závěr ani za proběhlé terapeutické Sezení.`
     : "Dnes bych chtěl, abychom drželi hlavně stabilitu, návaznost a opatrnost v závěrech. Tam, kde data chybí, nebudu domýšlet příběh; raději navrhnu bezpečný ověřovací krok.";
   const team_recognition = teamWork
     ? `Včera bylo pro tým důležité toto: ${trimSentence(teamWork, 420)}`
     : "Včera bylo důležité držet klidný rytmus a nepřetlačit materiál do rychlých odpovědí. Právě taková práce u kluků buduje bezpečí: ne přes výkon, ale přes opakovanou zkušenost, že dospělý zůstává a nespěchá.";
   const executive_summary = [
-    `Nejdůležitější pro dnešek jsou tři věci. Zaprvé, ${activePart} je aktuálně nejvýraznější doložená stopa v ranním přehledu.`,
-    `Zadruhé, ${newInfo ? trimSentence(newInfo, 300) : "nemám dost podkladů pro silný závěr o nové dynamice."}`,
-    `Zatřetí, dnešní práce má spíš stabilizovat a ověřovat než otevírat nové těžké téma.`,
+    `Nejdůležitější pro dnešek jsou tři věci. Zaprvé, ${activePart} je aktuálně nejvýraznější doložená stopa.`,
+    `Zadruhé, duchovní a ochranná symbolika se v této evidenci jeví jako zdroj bezpečí, ale je potřeba ji dál ověřovat jemně a bez vnucování.`,
+    `Zatřetí, dnešní práce má nejdřív ověřit tělesný a emoční stav; pokračování do Herny nebo Sezení má přijít až podle dostupnosti části.`,
   ].join(" ");
   const parts_at_helm = play || sess
     ? `Z hlediska toho, kdo byl nejblíže u kormidla, máme nejjasnější evidenci u části ${activePart}. Neznamená to, že byla u kormidla celý den. Znamená to, že terapeuticky je dnes nejvýraznější částí, ke které se potřebujeme vztahovat. O ostatních částech zatím nemám dost nových dat na silné závěry.`
     : "Z hlediska toho, kdo byl u kormidla, nemám dost dat na jisté pojmenování. Budu tedy rozlišovat jen přítomné stopy a nebudu doplňovat části, které se samy v evidenci neukázaly.";
   const yesterday_new_information = newInfo
-    ? `Nové nebo nejpodstatnější z včerejška je toto: ${trimSentence(newInfo, 520)}`
+    ? `Nové nebo nejpodstatnější z včerejška je toto: ${trimSentence(newInfo, 520).replace(/m[ůu][žz]e\s+pos[íi]lit\s+jeho\s+pocit\s+kontroly\s+a\s+d[ůu]v[eě]ry/i, "může být pracovně významné pro jeho pocit kontroly a důvěry, pokud se to dnes potvrdí")}`
     : "Nové informace z včerejška jsou zatím omezené. To samo o sobě je klinicky důležité: dnešní krok má být ověřovací, ne interpretačně těžký.";
-  const clinical_formulation = planImplication
-    ? `Moje pracovní formulace pro dnešek je tato: ${trimSentence(planImplication, 560)}`
-    : `Moje pracovní formulace pro dnešek je opatrná: ${activePart} pravděpodobně potřebuje nejdřív předvídatelný kontakt a bezpečné tempo. Hloubku práce má určovat tolerance části, ne potřeba rychle získat odpověď.`;
-  const recommendations_for_hana = `Haničko, u tebe dnes doporučuji držet klidný a nezahlcující rytmus. Pokud se ${activePart} objeví přímo nebo nepřímo, není potřeba hned vést část do tématu; stačí ji registrovat, nabídnout malou volbu a potvrdit, že nemusí nic dokazovat.`;
-  const recommendations_for_katka = `Káťo, u tebe dnes dává smysl držet odstupovou kontrolu rizik a několik krátkých, předvídatelných signálů, pokud to bude vhodné. Ne dlouhé zprávy ani otázky nutící k výkonu; spíš jasné sdělení, že kontakt zůstává dostupný.`;
+  const clinical_formulation = `Moje pracovní formulace pro dnešek je opatrná: ${activePart} včera použil vlastní symbolický jazyk bezpečí. Zatím je bezpečnější chápat ho jako aktuální zdroj této části, ne jako definitivní charakteristiku ani společný jazyk všech kluků. Praktický cíl je pomoci pocit ochrany přenést zpět do přítomného těla, dne a vztahu s bezpečnými dospělými.`;
+  const recommendations_for_hana = `Haničko, u tebe dnes vidím jako hlavní úkol jemně ověřit tělesný stav a dostupnost ${partGenitive(activePart)}, bez tlaku na vysvětlování. Pokud je stabilní, může následovat krátké Sezení nebo nízkoprahová Herna; pokud je zahlcený, stačí kontakt a připomenutí zdrojů.`;
+  const recommendations_for_katka = `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: nepřenášet včerejší symboly automaticky na ostatní části a nepoužít je dřív, než se ukáže, že jsou dnes pro ${partGenitive(activePart)} stále bezpečné.`;
   const what_not_to_do_today = "Dnes bych se vyhnul třem věcem: netlačit do vysvětlování, neotevírat nové trauma téma bez stabilizačního rámce a nepředávat části příliš velkou odpovědnost otázkou typu „co chceš dělat?“. Bezpečnější je nabídnout dvě nebo tři malé možnosti.";
-  const priority_of_the_day = `Dnešní priorita je stabilizovat dostupný kontakt a připravit návaznou Hernu nebo Sezení jako další malý bezpečný krok, ne jako výkon.`;
+  const priority_of_the_day = buildDailyTherapeuticPriority(payload);
   const evidence_limits = [
     `Jistě víme: ${evidenceKnown.join(" ")}`,
-    `Pracovní hypotéza: dnešní plán má navázat na téma ${activePart} bez rozšiřování jistoty za hranici dostupných dat.`,
-    "Nevíme / čeká na ověření: zda jde výhradně o téma této části, nebo zda se stejná potřeba dotýká i dalších kluků.",
+    `Pracovní hypotéza: tyto symboly mohou části ${activePart} pomáhat vytvořit vnitřní prostor ochrany a klidu, pokud s nimi dnes bude sama souhlasit.`,
+    "Nevíme / čeká na ověření: zda jde o stabilní zdroj dostupný i dnes, zda je bezpečné tento jazyk rozšiřovat k ostatním částem, a jaký je aktuální tělesný stav.",
   ].join("\n");
   const team_closing_line = "Včerejší práce nám dává materiál. Dnes ho nemusíme zvětšovat; potřebujeme ho správně podržet a převést do jednoho bezpečného kroku.";
   const opening_monologue_text = [
@@ -528,6 +626,15 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
 }
 
 function applyOpeningMonologue(payload: any, context: any, candidates: SessionCandidate[]) {
+  payload.last_3_days = buildClinicalLast3Days(payload, context, candidates);
+  payload.lingering = buildClinicalLingering(payload, candidates);
+  payload.daily_therapeutic_priority = buildDailyTherapeuticPriority(payload);
+  if (payload?.yesterday_playroom_review && typeof payload.yesterday_playroom_review === "object") {
+    for (const key of ["practical_report_text", "detailed_analysis_text", "implications_for_part", "implications_for_system", "recommendations_for_therapists", "recommendations_for_next_playroom", "recommendations_for_next_session"]) {
+      payload.yesterday_playroom_review[key] = sanitizeKarelClinicalText(payload.yesterday_playroom_review[key]);
+    }
+    payload.yesterday_playroom_review.spiritual_symbolics_safety_frame = "Duchovní symbolika se v této Herně objevila jako zdroj bezpečí a úlevy. Je důležité ji respektovat, nepřerámovat ji příliš racionálně a nebrat ji části. Zároveň ji nesmíme nekriticky posilovat směrem k odpojení od reality nebo k představě, že bezpečí existuje jen mimo současný život. Praktický cíl je pomoci Tundrupkovi přenést pocit ochrany zpět do přítomného těla, dne a vztahu s bezpečnými dospělými.";
+  }
   const opening = buildOpeningMonologue(payload, context, candidates);
   return {
     ...payload,
