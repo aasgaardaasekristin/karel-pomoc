@@ -111,6 +111,7 @@ interface YesterdaySessionReview {
   exists?: boolean;
   held: boolean;
   status?: string;
+  fallback_reason?: string;
   review_id?: string | null;
   plan_id?: string | null;
   part_name?: string;
@@ -176,6 +177,7 @@ interface BriefingPayload {
   technical_note?: string;
   last_3_days: string;
   lingering?: string;
+  daily_therapeutic_priority?: string;
   yesterday_session_review?: YesterdaySessionReview | null;
   yesterday_playroom_review?: YesterdayPlayroomReviewPayload | null;
   decisions: BriefingDecision[];
@@ -944,7 +946,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   }
 
   const p = briefing.payload;
-  const yesterdayReview = (p.yesterday_session_review && p.yesterday_session_review.held)
+  const yesterdayReview = (p.yesterday_session_review && p.yesterday_session_review.exists)
     ? {
         ...p.yesterday_session_review,
         karel_summary: p.yesterday_session_review.practical_report_text || p.yesterday_session_review.karel_summary,
@@ -952,6 +954,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         practical_report: p.yesterday_session_review.practical_report_text || p.yesterday_session_review.karel_summary,
         detailed_analysis: p.yesterday_session_review.detailed_analysis_text,
         team_closing: p.yesterday_session_review.team_closing_text,
+        status_label: p.yesterday_session_review.status,
       } as YesterdayFallbackReview
     : yesterdaySessionFallback;
   const backendPlayroom = p.yesterday_playroom_review?.exists ? p.yesterday_playroom_review : null;
@@ -986,7 +989,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
   const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
   const legacyTechnicalGreeting = /těžk[áa]\s+syntéza|fallback|bezpečn[ýy]\s+režim/i.test(p.greeting || "");
-  const openingMonologueText = (p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnešní přehled potřebuje držet hlavně klinickou návaznost, opatrnost v závěrech a jasný další bezpečný krok pro kluky. Technický stav generování proto přesouvám jen do poznámky; hlavní prostor patří tomu, co víme, co nevíme a jak dnes postupovat." : p.greeting) || "").trim();
+  const openingMonologueText = (p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnes držme hlavně klinickou návaznost, opatrnost v závěrech a jeden bezpečný další krok pro kluky. Budu rozlišovat, co víme jistě, co je pracovní hypotéza a co ještě čeká na ověření." : p.greeting) || "").trim();
   const technicalNote = (p.technical_note || p.opening_monologue?.technical_note || "").trim();
 
   return (
