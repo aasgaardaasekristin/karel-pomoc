@@ -10,6 +10,7 @@ import {
   markPantryBProcessed,
   purgeExpiredPantryB,
 } from "../_shared/pantryB.ts";
+import { runGlobalDidEventIngestion } from "../_shared/didEventIngestion.ts";
 import {
   buildTherapistTaskInsert,
   buildPendingQuestionInsert,
