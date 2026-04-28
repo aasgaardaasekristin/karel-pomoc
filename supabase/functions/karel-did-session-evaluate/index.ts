@@ -638,17 +638,11 @@ function reviewStatusFor(evaluation: any, evidencePresent: boolean, completedBlo
 
 
 function cleanText(value: unknown, max = 20000): string {
-  return String(value ?? "").replace(/
-/g, "").replace(/
-{4,}/g, "
-
-
-").trim().slice(0, max);
+  return String(value ?? "").replace(/\r/g, "").replace(/\n{4,}/g, "\n\n\n").trim().slice(0, max);
 }
 
 function listLines(items: unknown): string {
-  return Array.isArray(items) && items.length > 0 ? items.map((x) => `- ${String(x).trim()}`).join("
-") : "- nebylo zaznamenáno";
+  return Array.isArray(items) && items.length > 0 ? items.map((x) => `- ${String(x).trim()}`).join("\n") : "- nebylo zaznamenáno";
 }
 
 function deriveSessionOutputs(args: { evaluation: any; plan: SessionPlan; markdown: string; diagnosticValidity: string; reviewStatus: ReviewStatus; completedBlocks?: number; totalBlocks?: number; endedReason: EndedReason }) {
