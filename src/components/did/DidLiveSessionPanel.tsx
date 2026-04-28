@@ -1797,6 +1797,46 @@ ${report}${interrogationBlock}${reflectionText}`;
           </div>
         )}
 
+        {activeLiveReplan && (
+          <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-3 space-y-2">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-xs font-semibold text-foreground">Program upraven kvůli faktické korekci reality.</p>
+                  <Badge variant="outline" className="text-[9px] h-4 border-destructive/30 text-destructive">
+                    {activeLiveReplan.current_block_status ?? "paused_by_reality_override"}
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Původní bod byl pozastaven. Nový postup: realita → emoce → potřeba → bezpečí.
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3 text-[11px]">
+              <div className="rounded-md border border-border/60 bg-background/50 p-2">
+                <p className="font-semibold text-foreground mb-1">Co má Hanička říct</p>
+                <p className="text-muted-foreground whitespace-pre-wrap">{activeLiveReplan.therapist_script ?? "Zůstaň u toho, co ví, co cítí a co teď potřebuje."}</p>
+              </div>
+              <div className="rounded-md border border-border/60 bg-background/50 p-2">
+                <p className="font-semibold text-foreground mb-1">Co zaznamenat</p>
+                <ul className="space-y-0.5 text-muted-foreground">
+                  {(activeLiveReplan.data_to_record ?? ["vlastní slova části", "afekt", "tělesná reakce", "potřeba"]).slice(0, 5).map((item) => <li key={item}>• {item}</li>)}
+                </ul>
+              </div>
+              <div className="rounded-md border border-border/60 bg-background/50 p-2">
+                <p className="font-semibold text-foreground mb-1">Co nedělat</p>
+                <ul className="space-y-0.5 text-muted-foreground">
+                  {(activeLiveReplan.what_to_avoid ?? ["neinterpretovat projekčně", "nepřidávat děsivé detaily"]).slice(0, 5).map((item) => <li key={item}>• {item}</li>)}
+                </ul>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Ověření: {activeLiveReplan.factual_frame?.verification_status ?? "therapist_report_only"}. Návrat k původnímu plánu: {activeLiveReplan.return_to_original_plan_allowed ? "jen opatrně" : "ne"} — {activeLiveReplan.condition_for_return_to_plan ?? "jen po výslovném potvrzení terapeutky"}.
+            </p>
+          </div>
+        )}
+
         {/* Audio & Image & Note tools strip */}
         <div className="mt-3 flex items-center gap-2 flex-wrap">
           {/* Note button */}
