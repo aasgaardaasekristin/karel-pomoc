@@ -23,6 +23,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAuth } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -221,6 +222,14 @@ serve(async (req) => {
 
   const srvKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const authHeader = req.headers.get("Authorization") || "";
+  const isServiceCall = srvKey && authHeader === `Bearer ${srvKey}`;
+  let authenticatedUserId: string | null = null;
+  if (!isServiceCall) {
+    const authResult = await requireAuth(req);
+    if (authResult instanceof Response) return authResult;
+    authenticatedUserId = String((authResult as { user: any }).user?.id ?? "");
+  }
   const sb = createClient(supabaseUrl, srvKey);
 
   try {
@@ -234,10 +243,13 @@ serve(async (req) => {
     if (planId) {
       const { data: plan, error: planErr } = await sb
         .from("did_daily_session_plans")
-        .select("urgency_breakdown,program_status")
+        .select("urgency_breakdown,program_status,user_id")
         .eq("id", planId)
         .maybeSingle();
       if (planErr) return jsonRes({ ok: false, error: planErr.message }, 500);
+      if (!isServiceCall && plan?.user_id && authenticatedUserId && plan.user_id !== authenticatedUserId) {
+        return jsonRes({ ok: false, error: "user_scope_mismatch" }, 403);
+      }
       planContract = plan?.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown : {};
       planProgramStatus = String((plan as any)?.program_status ?? "");
       if (!hasApprovedPlayroomContract(planContract) || !["approved", "ready_to_start", "in_progress"].includes(planProgramStatus)) {
@@ -295,16 +307,18 @@ serve(async (req) => {
       return jsonRes({ thread_id: activeSameDay.id, created: false, reused_active_playroom: true });
     }
 
-    // 2) Resolve user_id (single-tenant fallback)
-    const { data: anyThread } = await sb
-      .from("did_threads")
-      .select("user_id")
-      .not("user_id", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const userId = anyThread?.user_id ?? null;
+    // 2) Resolve user_id from authenticated caller; service cron may fall back to plan/thread context.
+    let userId = authenticatedUserId;
+    if (!userId) {
+      const { data: anyThread } = await sb
+        .from("did_threads")
+        .select("user_id")
+        .not("user_id", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      userId = anyThread?.user_id ?? null;
+    }
 
     if (sessionActor === "karel_direct" && sessionMode === "deferred") {
       if (planId) {
