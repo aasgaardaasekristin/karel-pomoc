@@ -488,16 +488,21 @@ export async function routeEvent(sb: SupabaseClient, eventInput: NormalizedDidEv
   }
 }
 
-export async function runGlobalDidEventIngestion(sb: SupabaseClient, userId: string, sinceISO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()): Promise<IngestionSummary> {
-  const events: Array<Omit<NormalizedDidEvent, "source_hash"> & { source_hash?: string }> = [];
-  await collectTherapistTaskNotes(sb, userId, sinceISO, events);
-  await collectTherapistNotes(sb, userId, sinceISO, events);
-  await collectHanaPersonal(sb, userId, sinceISO, events);
-  await collectDidThreads(sb, userId, sinceISO, events);
-  await collectLiveProgress(sb, userId, sinceISO, events);
-  await collectBriefingAskResolutions(sb, userId, sinceISO, events);
-  await collectDeliberations(sb, userId, sinceISO, events);
-  await collectCrisisSafety(sb, userId, sinceISO, events);
+export async function runGlobalDidEventIngestion(sb: SupabaseClient, userId: string, sinceISOOrOptions: string | RunGlobalDidEventIngestionOptions = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()): Promise<IngestionSummary> {
+  const options: RunGlobalDidEventIngestionOptions = typeof sinceISOOrOptions === "string" ? { sinceISO: sinceISOOrOptions } : sinceISOOrOptions;
+  const sourceFilter = new Set<PantryBSourceKind>(options.source_filter ?? []);
+  const wants = (source: PantryBSourceKind) => sourceFilter.size === 0 || sourceFilter.has(source);
+  const sinceISO = options.sinceISO || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const events: NormalizedDidEventInput[] = [];
+  const blockedSources: string[] = [];
+  if (wants("therapist_task_note")) await collectTherapistTaskNotes(sb, userId, sinceISO, events);
+  if (wants("therapist_note")) blockedSources.push("therapist_notes:not_supported_yet_missing_user_scope");
+  if (wants("hana_personal_ingestion")) await collectHanaPersonal(sb, userId, sinceISO, events);
+  if (wants("did_thread_ingestion") || wants("playroom_progress")) await collectDidThreads(sb, userId, sinceISO, events);
+  if (wants("live_session_progress") || wants("live_session_reality_override")) await collectLiveProgress(sb, userId, sinceISO, events);
+  if (wants("briefing_ask_resolution")) await collectBriefingAskResolutions(sb, userId, sinceISO, events);
+  if (wants("deliberation_event")) await collectDeliberations(sb, userId, sinceISO, events);
+  if (wants("crisis_safety_event")) blockedSources.push("crisis_safety_tables:not_supported_yet_missing_user_scope");
 
   const summary: IngestionSummary = { processed_count: 0, routed_to_pantry_count: 0, observation_count: 0, implication_count: 0, task_count: 0, drive_package_count: 0, skipped_count: 0, failed_count: 0, duplicate_count: 0, blocked_count: 0, important_sources: [], blocked_sources: [], missing_sources: [], results: [] };
   for (const event of events) {
@@ -516,7 +521,7 @@ export async function runGlobalDidEventIngestion(sb: SupabaseClient, userId: str
   const seen = new Set(events.map((e) => e.source_kind));
   summary.important_sources = Array.from(seen);
   summary.missing_sources = SUPPORTED_SOURCES.filter((s) => !seen.has(s as PantryBSourceKind));
-  summary.blocked_sources = summary.results.filter((r) => r.status === "failed").map((r) => r.source_ref).slice(0, 20);
+  summary.blocked_sources = [...blockedSources, ...summary.results.filter((r) => r.status === "failed").map((r) => r.source_ref)].slice(0, 20);
   summary.blocked_count = summary.blocked_sources.length;
   await upsertCursor(sb, userId, "global_did_event_ingestion", sinceISO, summary.results.at(-1)?.source_ref ?? null);
   return summary;
