@@ -1583,8 +1583,50 @@ Deno.serve(async (req) => {
     const normalizeForMatch = (s: string): string =>
       s.toLowerCase().trim().replace(/\s+/g, " ").slice(0, 200);
 
-    type AskItem = { id: string; text: string };
+    type AskItem = {
+      id: string;
+      text: string;
+      assignee: "hanka" | "kata";
+      question_text: string;
+      intent: "session_plan" | "playroom_plan" | "team_coordination" | "task" | "observation" | "current_handling" | "none";
+      target_type: "proposed_session" | "proposed_playroom" | "team_deliberation" | "current_handling" | "task" | "none";
+      target_item_id: string | null;
+      target_part_name: string | null;
+      requires_immediate_program_update: boolean;
+      expected_resolution: "update_program" | "add_observation" | "create_task" | "store_memory" | "no_program_change";
+      source: "daily_briefing";
+      briefing_id: string | null;
+      generated_at: string;
+    };
     type AskRole = "ask_hanka" | "ask_kata";
+
+    const classifyAsk = (role: AskRole, text: string, id: string): AskItem => {
+      const lower = normalizeForMatch(text);
+      const isPlayroom = lower.includes("herna") || lower.includes("hry") || lower.includes("hravy") || lower.includes("prakticky report");
+      const isSession = !isPlayroom && (lower.includes("sezeni") || lower.includes("session") || lower.includes("terapeutick"));
+      const isTask = lower.includes("ukol") || lower.includes("domluv") || lower.includes("zarid") || lower.includes("pripomen");
+      const isObservation = lower.includes("sleduj") || lower.includes("pozoruj") || lower.includes("over") || lower.includes("zkontroluj") || lower.includes("rizik") || lower.includes("stop signal");
+      const targetPlayroom = payload?.proposed_playroom && typeof payload.proposed_playroom === "object" ? payload.proposed_playroom : null;
+      const targetSession = payload?.proposed_session && typeof payload.proposed_session === "object" ? payload.proposed_session : null;
+      const intent = isPlayroom ? "playroom_plan" : isSession ? "session_plan" : isTask ? "task" : isObservation ? "observation" : "team_coordination";
+      const targetType = isPlayroom ? "proposed_playroom" : isSession ? "proposed_session" : isTask ? "task" : isObservation ? "current_handling" : "none";
+      const target = isPlayroom ? targetPlayroom : isSession ? targetSession : null;
+      return {
+        id,
+        text,
+        assignee: role === "ask_hanka" ? "hanka" : "kata",
+        question_text: text,
+        intent,
+        target_type: targetType,
+        target_item_id: target?.id ? String(target.id) : null,
+        target_part_name: target?.part_name ? String(target.part_name) : null,
+        requires_immediate_program_update: targetType === "proposed_playroom" || targetType === "proposed_session",
+        expected_resolution: targetType === "proposed_playroom" || targetType === "proposed_session" ? "update_program" : isTask ? "create_task" : isObservation ? "add_observation" : "store_memory",
+        source: "daily_briefing",
+        briefing_id: null,
+        generated_at: new Date().toISOString(),
+      };
+    };
 
     const carryOverAsks = async (
       role: AskRole,
@@ -1607,7 +1649,7 @@ Deno.serve(async (req) => {
         for (const item of old) {
           // Akceptuj jen už-migrované {id,text} položky (legacy string[] přeskoč)
           if (item && typeof item === "object" && item.id && typeof item.text === "string") {
-            carryPool.push({ id: String(item.id), text: String(item.text) });
+            carryPool.push(classifyAsk(role, String(item.text), String(item.id)));
           }
         }
       }
@@ -1629,9 +1671,9 @@ Deno.serve(async (req) => {
 
         if (match) {
           usedIds.add(match.id);
-          result.push({ id: match.id, text: t });
+          result.push(classifyAsk(role, t, match.id));
         } else {
-          result.push({ id: crypto.randomUUID(), text: t });
+          result.push(classifyAsk(role, t, crypto.randomUUID()));
         }
       }
       return result;
