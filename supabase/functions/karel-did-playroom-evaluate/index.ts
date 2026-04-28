@@ -67,6 +67,7 @@ async function authenticatedUserId(req: Request, supabaseUrl: string, anonKey: s
 async function callAi(prompt: string, apiKey: string) {
   const res = await fetch(AI_URL, {
     method: "POST",
+    signal: AbortSignal.timeout(95_000),
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: MODEL,
@@ -294,7 +295,7 @@ async function persistPantryAndDrive(sb: any, ctx: any, review: any, reviewId: s
   const writeIds: string[] = [];
   for (const pkg of packages) {
     const metadata = { review_id: reviewId, plan_id: ctx.plan.id, thread_id: ctx.thread.id, part_name: ctx.plan.selected_part, mode: "playroom", report_kind: pkg.report_kind };
-    const packageId = await insertOnce(sb, "did_pantry_packages", { package_type: pkg.package_type, source_id: ctx.plan.id }, { user_id: ctx.plan.user_id, package_type: pkg.package_type, source_id: ctx.plan.id, source_table: "did_daily_session_plans", content_md: pkg.content_md, drive_target_path: pkg.drive_target_path, metadata, status: "flushed", flushed_at: new Date().toISOString() });
+    const packageId = await insertOnce(sb, "did_pantry_packages", { package_type: pkg.package_type, source_id: ctx.plan.id }, { user_id: ctx.plan.user_id, package_type: pkg.package_type, source_id: ctx.plan.id, source_table: "did_daily_session_plans", content_md: pkg.content_md, drive_target_path: pkg.drive_target_path, metadata, status: "pending_drive", flushed_at: null });
     const content = encodeGovernedWrite(pkg.content_md, { source_type: "did_session_review", source_id: reviewId, content_type: pkg.content_type as any, subject_type: pkg.package_type === "playroom_log" ? "system" : "part", subject_id: ctx.plan.selected_part, payload_fingerprint: `playroom:${reviewId}:${pkg.package_type}` });
     const writeId = await insertOnce(sb, "did_pending_drive_writes", { target_document: pkg.drive_target_path, content }, { user_id: ctx.plan.user_id, target_document: pkg.drive_target_path, content, write_type: "append", priority: "normal", status: "pending" });
     writeIds.push(writeId);
