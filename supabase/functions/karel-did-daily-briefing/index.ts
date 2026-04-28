@@ -481,8 +481,12 @@ const sanitizeKarelClinicalText = (value: unknown): string =>
     .replace(/\bklient(?:a|em|ovi|ů|i)?\b/gi, "kluci")
     .replace(/Tundrupek\s+je\s+aktivní,?\s*duchovn[eě]\s+zalo[žz]en[áa]\s+[čc][áa]st\.?/gi, "Tundrupek v této Herně spontánně použil duchovní a ochrannou symboliku jako jazyk bezpečí.")
     .replace(/duchovn[íi]\s+symbolika\s+je\s+pro\s+n[eě]j\s+kl[íi][čc]ov[ýy]m\s+jazykem\s+l[eé][čc]en[íi]/gi, "v této evidenci se duchovní symbolika jeví jako důležitý zdroj bezpečí; je potřeba ji dál ověřovat jemně a bez vnucování")
+    .replace(/T[eé]ma\s+Boha,\s+n[áa]vratu\s+"dom[ůu]"[^.\n]*je\s+pro\s+Tundrupka\s+centr[áa]ln[íi][^.\n]*/gi, "Duchovní motivy se v této Herně objevily jako výrazný jazyk bezpečí, který je potřeba respektovat a zároveň dál opatrně ověřovat")
     .replace(/neukon[čc]ovat\s+Hernu,?\s*dokud\s+Tundrupek\s+nedos[áa]hne\s+pocitu\s+bezpe[čc][íi]/gi, "ukončovat Hernu pomalu, předvídatelně a s delším měkkým závěrem; neukončovat náhle, ale zároveň držet bezpečný časový rámec")
     .replace(/pou[žz][íi]vat\s+symboly\s+['„"]?sv[eě]tla[^.\n]*u\s+ostatn[íi]ch\s+kluk[ůu][^.\n]*/gi, "symboly používat primárně s Tundrupkem a jen tehdy, pokud je sám přinese nebo na ně klidně reaguje; u ostatních částí je nepřenášet automaticky")
+    .replace(/Terapeutky\s+by\s+m[eě]ly[^.\n]*ostatn[íi]mi\s+kluky[^.\n]*/gi, "Terapeutky mají symboly používat primárně s Tundrupkem a nepřenášet je automaticky na ostatní části")
+    .replace(/P[řr][íi][šs]t[íi]\s+Herna\s+s\s+Tundrupkem\s+by\s+mohla\s+za[čc][íi]t\s+p[řr][íi]m[ýy]m\s+dotazem\s+na\s+['"][^\n]*?\./gi, "Příští Herna s Tundrupkem má začít jemným check-inem bezpečného místa nebo dnešního vnitřního počasí, ne přímým dotazem na ochranné bytosti.")
+    .replace(/Je\s+to\s+siln[ýy]\s+zdroj,\s+kter[ýy]\s+mohou\s+ostatn[íi]\s+kluci\s+vyu[žz][íi]vat\.?/gi, "Je to silný zdroj pro tuto část; u ostatních kluků ho nelze používat bez ověření.")
     .trim();
 
 const isTechnicalStatusText = (value: unknown): boolean =>
