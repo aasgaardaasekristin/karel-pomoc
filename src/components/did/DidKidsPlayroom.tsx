@@ -537,13 +537,25 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       const totalBlocks = Math.max(getProgramSteps(plan).length, 1);
       const completedBlocks = Math.min(progress.completedBlockIndexes.length || userTurns, totalBlocks);
       await persistPlayroomProgress(progress, thread, completedBlocks >= totalBlocks ? "completed" : "partial");
-      const { data, error } = await supabase.functions.invoke("karel-did-session-evaluate", {
+      const { data, error } = await supabase.functions.invoke("karel-did-playroom-evaluate", {
         body: {
+          mode: "playroom",
+          didSubMode: "playroom",
           planId: plan.id,
+          threadId: thread.id,
+          partName: targetPart,
+          ui_surface: "did_kids_playroom",
+          session_actor: "karel_direct",
           completedBlocks,
           totalBlocks,
           endedReason: completedBlocks >= totalBlocks ? "completed" : "partial",
-          turnsByBlock: { 0: thread.messages.map((message) => ({ from: message.role === "assistant" ? "karel" : "hana", text: contentText(message.content) })) },
+          turnsByBlock: { 0: thread.messages.map((message) => ({
+            from: message.role === "assistant" ? "karel" : "child",
+            text: contentText(message.content),
+            is_technical_fallback: message.role === "assistant" && /zasekl hlas|Karel tě slyší|technicky zasekla odpověď/i.test(contentText(message.content)),
+            exclude_from_clinical_evidence: message.role === "assistant" && /zasekl hlas|Karel tě slyší|technicky zasekla odpověď/i.test(contentText(message.content)),
+            fallback_reason: message.role === "assistant" && /zasekl hlas|Karel tě slyší|technicky zasekla odpověď/i.test(contentText(message.content)) ? "playroom_technical_fallback" : undefined,
+          })) },
           observationsByBlock: { 0: "Herna ukončena tlačítkem v dětském režimu; vyhodnoť pouze skutečné zprávy a přílohy v transcriptu." },
         },
       });
