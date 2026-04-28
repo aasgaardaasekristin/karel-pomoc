@@ -161,7 +161,12 @@ Deno.serve(async (req) => {
     const therapistResponse = String(body.therapist_response ?? lastTherapistResponse(thread.messages ?? [])).trim();
     if (!therapistResponse && body.resolution_mode !== "close_no_change") return json({ error: "therapist_response_required" }, 400);
 
-    const { data: briefingRows } = await admin.from("did_daily_briefings").select("id, payload, briefing_date, generated_at").eq("user_id", userId).order("generated_at", { ascending: false }).limit(10);
+    let { data: briefingRows, error: briefingErr } = await admin
+      .from("did_daily_briefings")
+      .select("id, payload, briefing_date, generated_at")
+      .order("generated_at", { ascending: false })
+      .limit(25);
+    if (briefingErr) throw briefingErr;
     const briefing = (briefingRows ?? []).find((row: any) => findAsk(row.payload, askId));
     if (!briefing) return json({ error: "briefing_ask_not_found" }, 404);
     const ask = normalizeAskMetadata(briefing, findAsk((briefing as any).payload, askId), assignee);
