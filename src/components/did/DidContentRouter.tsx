@@ -763,7 +763,7 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
             </Button>
           </div>
           {activeThread && (
-            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg py-2 px-3">
+            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg py-2 px-3 flex-wrap">
               <span>
                 Vlákno: <strong>{activeThread.threadLabel || activeThread.partName}</strong>
                 {activeThread.threadLabel && activeThread.threadLabel !== activeThread.partName && (
@@ -784,6 +784,39 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
                   </button>
                 }
               />
+              {isBriefingAskThread && activeThread.isProcessed && (
+                <span className="inline-flex items-center gap-1 text-primary">
+                  <CheckCircle2 className="h-3 w-3" /> započítáno
+                </span>
+              )}
+            </div>
+          )}
+          {isBriefingAskThread && !activeThread?.isProcessed && (
+            <div className="rounded-md border border-primary/20 bg-primary/5 p-3 space-y-2">
+              <p className="text-[12px] text-foreground/80 leading-relaxed">
+                Tahle odpověď ovlivňuje dnešní zacházení. Po napsání ji započti, aby Karel upravil autoritativní poradu/program.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => resolveBriefingAsk("apply_to_program")}
+                  disabled={askResolveBusy !== null || !hasTherapistAnswer}
+                  className="h-8 text-[12px]"
+                >
+                  {askResolveBusy === "apply" ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                  Započítat do programu
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => resolveBriefingAsk("close_no_change")}
+                  disabled={askResolveBusy !== null}
+                  className="h-8 text-[12px]"
+                >
+                  {askResolveBusy === "close" ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                  Uzavřít bez změny
+                </Button>
+              </div>
             </div>
           )}
           {/* 2026-04-22 — Karel + část room banner. Vykresluje se uvnitř
