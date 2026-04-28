@@ -985,6 +985,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const decisions = (p.decisions ?? []).slice(0, 3);
   const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
   const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
+  const openingMonologueText = (p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || p.greeting || "").trim();
+  const technicalNote = (p.technical_note || p.opening_monologue?.technical_note || "").trim();
 
   return (
     <div className="space-y-1">
@@ -1015,10 +1017,17 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </Button>
       </div>
 
-      {/* 1. Greeting + dnešní hlavní priorita */}
-      <p className="text-[14px] leading-relaxed text-foreground/90 whitespace-pre-line">
-        {p.greeting}
-      </p>
+      {/* 1. Karlův ranní terapeutický monolog */}
+      <div className="rounded-xl border border-primary/15 bg-card/35 p-3.5 space-y-2">
+        <p className="text-[14px] leading-relaxed text-foreground/90 whitespace-pre-line">
+          {openingMonologueText}
+        </p>
+        {technicalNote && (
+          <p className="pt-2 border-t border-border/40 text-[11px] leading-relaxed text-muted-foreground italic">
+            Technická poznámka: {technicalNote}
+          </p>
+        )}
+      </div>
 
       {/* 2. Co se změnilo za poslední 3 dny */}
       {p.last_3_days && (
