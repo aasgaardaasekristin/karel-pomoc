@@ -1163,19 +1163,30 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                 </section>
               )}
 
-            {(d.status === "approved" || bridgedPlanId) && d.deliberation_type === "session_plan" && (
-              <Button
-                size="sm"
-                className="w-full h-8 text-[11px]"
-                onClick={goToLiveSession}
-                disabled={(!bridgedPlanId && !d.linked_live_session_id) || startingLive}
-              >
-                {startingLive ? (
-                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                ) : null}
-                {startingLive ? "Otevírám…" : <>{isPlayroomPlan ? "Spustit hernu" : "Spustit sezení"} <ArrowRight className="w-3 h-3 ml-1" /></>}
-              </Button>
-            )}
+            {(d.status === "approved" || bridgedPlanId) && d.deliberation_type === "session_plan" && (() => {
+              const startBlockReason = unsignedStartBlockReason(d);
+              return (
+                <div className="space-y-2">
+                  {startBlockReason && (
+                    <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[10px] text-amber-800 dark:text-amber-300">
+                      {startBlockReason}
+                    </div>
+                  )}
+                  <Button
+                    size="sm"
+                    className="w-full h-8 text-[11px]"
+                    onClick={goToLiveSession}
+                    disabled={!!startBlockReason || (!bridgedPlanId && !d.linked_live_session_id) || startingLive}
+                    title={startBlockReason || undefined}
+                  >
+                    {startingLive ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : null}
+                    {startingLive ? "Otevírám…" : <>{isPlayroomPlan ? "Spustit hernu" : "Spustit sezení"} <ArrowRight className="w-3 h-3 ml-1" /></>}
+                  </Button>
+                </div>
+              );
+            })()}
               </div>
             )}
           </>
