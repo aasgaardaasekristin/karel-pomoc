@@ -638,7 +638,8 @@ function reviewStatusFor(evaluation: any, evidencePresent: boolean, completedBlo
 
 
 function cleanText(value: unknown, max = 20000): string {
-  return String(value ?? "").replace(//g, "").replace(/
+  return String(value ?? "").replace(/
+/g, "").replace(/
 {4,}/g, "
 
 
@@ -1061,8 +1062,20 @@ function buildAnalysisJson(args: {
     review_status: args.reviewStatus,
   };
   return {
-    schema: "did_session_review.analysis.v1",
+    schema: "did_session_review.v2",
     status: "created",
+    detailed_analysis_text: cleanText(args.evaluation?.detailed_analysis_text),
+    practical_report_text: cleanText(args.evaluation?.practical_report_text),
+    team_closing_text: cleanText(args.evaluation?.team_closing_text),
+    key_findings: Array.isArray(args.evaluation?.key_insights) ? args.evaluation.key_insights : [],
+    implications_for_part: cleanText(args.evaluation?.implications_for_part || args.evaluation?.child_perspective),
+    implications_for_system: cleanText(args.evaluation?.implications_for_system || args.evaluation?.implications_for_tomorrow),
+    recommendations_for_therapists: cleanText(args.evaluation?.recommendations_for_therapists || args.evaluation?.therapist_motivation),
+    recommendations_for_next_session: cleanText(args.evaluation?.recommendations_for_next_session || args.evaluation?.recommended_next_step),
+    recommendations_for_next_playroom: cleanText(args.evaluation?.recommendations_for_next_playroom),
+    risks: Array.isArray(args.evaluation?.risks) ? args.evaluation.risks : [],
+    evidence_limitations: cleanText(args.evaluation?.evidence_limitations || args.diagnosticValidity),
+    what_not_to_do: Array.isArray(args.evaluation?.what_not_to_do) ? args.evaluation.what_not_to_do : [],
     confirmed_facts: confirmedFacts,
     narrative_summary: {
       session_arc: args.evaluation?.session_arc ?? null,
