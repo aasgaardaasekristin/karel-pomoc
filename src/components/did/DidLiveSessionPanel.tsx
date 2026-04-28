@@ -681,6 +681,34 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
       const headers = await getAuthHeaders();
       const acceptedAt = new Date().toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" });
 
+      if (action === "reality_override") {
+        const res = await (supabase as any).functions.invoke("karel-live-session-produce", {
+          body: {
+            part_name: activePart,
+            therapist_name: therapistName,
+            program_block: attached
+              ? { index: attached.index, text: attached.text }
+              : activeBlock
+                ? { index: activeBlock.index, text: activeBlock.text, detail: activeBlock.detail }
+                : { index: -1, text: "mimo strukturovaný bod" },
+            plan_context: contextBrief?.slice(0, 2000),
+            observation_so_far: messages.slice(-6).map(m => `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${m.content}`).join("\n").slice(0, 800),
+            user_request: userMessage,
+          },
+        });
+        if (res.error) throw res.error;
+        const content = String(res.data?.karel_content ?? "").trim();
+        const patch = res.data?.live_replan_patch as LiveReplanPatch | undefined;
+        if (patch) await persistLiveReplan(patch, userMessage);
+        setMessages(prev => [
+          ...prev.map(m => (m.role === "user" && m.ts === ts ? { ...m, acceptedAt, failed: false, errorMsg: undefined } : m)),
+          { role: "assistant", content: content || "Hani, zastavuju původní bod a přepínám na realita → emoce → potřeba → bezpečí.", ts: new Date().toISOString() },
+        ]);
+        if (attached && content) appendToBlockTurns(attached.index, "", content);
+        toast.warning("Program upraven kvůli faktické korekci reality.");
+        return true;
+      }
+
       if (action === "image_stimulus") {
         const stimulus = buildTowerStimulusMarkdown();
         setMessages(prev => [
@@ -749,7 +777,7 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
       setIsLoading(false);
       textareaRef.current?.focus();
     }
-  }, [activePart, appendToBlockTurns, messages, readSseText, streamKarelReply]);
+  }, [activePart, activeBlock, appendToBlockTurns, contextBrief, messages, persistLiveReplan, readSseText, streamKarelReply, therapistName]);
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
