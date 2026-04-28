@@ -24,7 +24,7 @@
  * konkrétní pracovní formulace v rozhodovacích bodech.
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { selectPantryA, summarizePantryAForPrompt, type PantryASnapshot } from "../_shared/pantryA.ts";
 import { readUnprocessedPantryB, markPantryBProcessed } from "../_shared/pantryB.ts";
 import { summarizeToolboxForPrompt } from "../_shared/therapeuticToolbox.ts";
@@ -332,6 +332,14 @@ function buildYesterdayPlayroomReview(context: any) {
     plan_id: thread.workspace_id ?? null,
     thread_id: thread.id,
     message_count: messages.length,
+    practical_report_text: "Herna proběhla, ale čeká na review. Karlův přehled ji proto uvádí jako nedokončený vstup, ne jako klinicky uzavřený závěr.",
+    detailed_analysis_text: "",
+    implications_for_part: "Zatím nelze poctivě uzavřít význam pro část bez playroom review.",
+    implications_for_system: "Pro kluky jako celek je teď závazné hlavně to, že Herna nesmí zmizet z návazného plánování.",
+    recommendations_for_therapists: "Zkontrolovat, zda má Herna review; pokud ne, spustit vyhodnocení nebo ji označit evidence_limited.",
+    recommendations_for_next_playroom: "Nenavazovat hlubší Hernou, dokud není jasné, co z této Herny vyplývá.",
+    recommendations_for_next_session: "V Sezení se neopírat o domnělé závěry z Herny; použít jen fakt, že review čeká.",
+    drive_sync_status: "not_queued",
   };
 }
 

@@ -148,6 +148,26 @@ async function resolveTarget(
   return null;
 }
 
+async function createCentrumDocIfMissing(token: string, kartotekaRoot: string, target: string): Promise<ResolvedFile | null> {
+  if (!target.startsWith("KARTOTEKA_DID/")) return null;
+  const segments = target.replace("KARTOTEKA_DID/", "").split("/");
+  let currentFolder = kartotekaRoot;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const nextFolder = await findFolder(token, segments[i], currentFolder);
+    if (!nextFolder) return null;
+    currentFolder = nextFolder;
+  }
+  const name = segments[segments.length - 1];
+  const res = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name, parents: [currentFolder], mimeType: GDOC_MIME }),
+  });
+  if (!res.ok) throw new Error(`Create missing Drive doc failed: ${res.status} ${await res.text()}`);
+  const doc = await res.json();
+  return { id: doc.id, mimeType: GDOC_MIME };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -331,7 +351,11 @@ Deno.serve(async (req) => {
         }
 
         // Resolve target
-        const resolved = await resolveTarget(token, kartotekaRoot, target);
+        let resolved = await resolveTarget(token, kartotekaRoot, target);
+        if (!resolved && target === "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG") {
+          resolved = await createCentrumDocIfMissing(token, kartotekaRoot, target);
+          if (resolved) addLog(`Created missing centrum doc for '${target}' (file ${resolved.id})`);
+        }
         if (!resolved) {
           // This is a transient-or-permanent failure — retry until MAX_RETRIES
           const result = await markFailedWithRetry(sb, writeId, currentRetry, "target could not be resolved on Drive");
@@ -373,6 +397,7 @@ Deno.serve(async (req) => {
 
         await audit(sb, { sourceType, sourceId, target, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: true, status: "ok" });
         await updatePlayroomReviewSync(sb, { sourceType, sourceId, contentType, fileId: resolved.id, status: "completed" });
+        await updatePantryPackageSync(sb, writeId, "flushed", null, true);
         writeResults.push({ write_id: writeId, status: "completed", target_document: target });
         addLog(`OK ${writeId}: ${writeType} → '${target}' (file ${resolved.id})`);
         completed++;
@@ -381,6 +406,7 @@ Deno.serve(async (req) => {
         const result = await markFailedWithRetry(sb, writeId, currentRetry, errMsg);
         await audit(sb, { sourceType, sourceId, target, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: result.status, err: errMsg });
         await updatePlayroomReviewSync(sb, { sourceType, sourceId, contentType, status: result.permanent ? "failed" : "retrying", error: errMsg });
+        await updatePantryPackageSync(sb, writeId, result.permanent ? "failed" : "pending_drive", errMsg, false);
         if (result.permanent) permanent++; else failed++;
         writeResults.push({ write_id: writeId, status: "failed", target_document: target, error: errMsg });
         addLog(`${result.permanent ? "PERMANENT" : "RETRY"} ${writeId}: ${errMsg}`);
@@ -511,6 +537,17 @@ async function updatePlayroomReviewSync(sb: any, p: { sourceType: string | null;
     await sb.from("did_session_reviews").update(patch).eq("id", p.sourceId);
   } catch (e) {
     console.warn("[drive-queue] playroom review sync patch failed", e);
+  }
+}
+
+async function updatePantryPackageSync(sb: any, writeId: string, status: "flushed" | "pending_drive" | "failed", error: string | null, completed: boolean) {
+  try {
+    await sb
+      .from("did_pantry_packages")
+      .update({ status, flushed_at: completed ? new Date().toISOString() : null, flush_error: error ? error.slice(0, 1000) : null, updated_at: new Date().toISOString() })
+      .eq("metadata->>pending_drive_write_id", writeId);
+  } catch (e) {
+    console.warn("[drive-queue] pantry package sync patch failed", e);
   }
 }
 

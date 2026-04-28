@@ -1,8 +1,8 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { appendPantryB } from "../_shared/pantryB.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 
-declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void };
+declare const EdgeRuntime: { waitUntil?: (promise: Promise<unknown>) => void };
 
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
@@ -56,6 +56,16 @@ const PLAYROOM_TOOL = {
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+}
+
+function mergeAnalysisJson(existing: any, patch: any) {
+  const base = existing && typeof existing === "object" ? existing : {};
+  return { ...base, ...patch };
+}
+
+function hasCompletedReviewText(review: any) {
+  const a = review?.analysis_json ?? {};
+  return String(a.detailed_analysis_text || "").trim().length > 0 || String(a.practical_report_text || "").trim().length > 0;
 }
 
 async function authenticatedUserId(req: Request, supabaseUrl: string, anonKey: string): Promise<string | null> {
@@ -258,9 +268,19 @@ async function upsertReview(sb: any, ctx: any, input: any, review: any, transcri
     projection_status: "queued",
     updated_at: now,
   };
-  const { data: existing } = await sb.from("did_session_reviews").select("id").eq("plan_id", ctx.plan.id).eq("is_current", true).maybeSingle();
+  const { data: existing } = await sb.from("did_session_reviews").select("id,analysis_json,drive_sync_status,source_of_truth_status,synced_to_drive,detail_analysis_drive_url,practical_report_drive_url").eq("plan_id", ctx.plan.id).eq("is_current", true).maybeSingle();
   if (existing?.id) {
-    await sb.from("did_session_reviews").update(payload).eq("id", existing.id);
+    const existingJson = existing.analysis_json && typeof existing.analysis_json === "object" ? existing.analysis_json : {};
+    const nextPayload = {
+      ...payload,
+      analysis_json: mergeAnalysisJson(existingJson, analysisJson),
+      drive_sync_status: existing.drive_sync_status && existing.drive_sync_status !== "not_queued" ? existing.drive_sync_status : payload.drive_sync_status,
+      source_of_truth_status: existing.source_of_truth_status && existing.source_of_truth_status !== "pending_drive_sync" ? existing.source_of_truth_status : payload.source_of_truth_status,
+      synced_to_drive: existing.synced_to_drive === true ? true : payload.synced_to_drive,
+      detail_analysis_drive_url: existing.detail_analysis_drive_url ?? null,
+      practical_report_drive_url: existing.practical_report_drive_url ?? null,
+    };
+    await sb.from("did_session_reviews").update(nextPayload).eq("id", existing.id);
     return existing.id;
   }
   const { data: inserted, error } = await sb.from("did_session_reviews").insert(payload).select("id").single();
@@ -303,7 +323,7 @@ async function persistPantryAndDrive(sb: any, ctx: any, review: any, reviewId: s
     writeIds.push(writeId);
     await sb.from("did_pantry_packages").update({ metadata: { ...metadata, pending_drive_write_id: writeId } }).eq("id", packageId);
   }
-  await sb.from("did_session_reviews").update({ analysis_json: { ...(review.analysis_json ?? {}), drive_write_ids: writeIds }, drive_sync_status: "queued", source_of_truth_status: "pending_drive_sync" }).eq("id", reviewId);
+  await sb.from("did_session_reviews").update({ analysis_json: mergeAnalysisJson(review.analysis_json, { drive_write_ids: writeIds, processing_status: "completed" }), drive_sync_status: "queued", source_of_truth_status: "pending_drive_sync" }).eq("id", reviewId);
   return { writeIds };
 }
 
@@ -316,8 +336,13 @@ async function persistInvalidAudit(sb: any, ctx: any, userId: string, planId: st
 }
 
 async function ensurePendingReview(sb: any, userId: string, planId: string, threadId: string, partName?: string) {
-  const { data: existing } = await sb.from("did_session_reviews").select("id,status").eq("plan_id", planId).eq("is_current", true).maybeSingle();
-  if (existing?.id) return existing.id as string;
+  const { data: existing } = await sb.from("did_session_reviews").select("id,status,analysis_json").eq("plan_id", planId).eq("is_current", true).maybeSingle();
+  if (existing?.id) {
+    if (!hasCompletedReviewText(existing)) {
+      await sb.from("did_session_reviews").update({ status: "pending_review", analysis_json: mergeAnalysisJson(existing.analysis_json, { processing_status: "pending_review", thread_id: threadId, queued_at: new Date().toISOString(), created_from: "karel-did-playroom-evaluate" }) }).eq("id", existing.id);
+    }
+    return existing.id as string;
+  }
   const { data: plan } = await sb.from("did_daily_session_plans").select("id,user_id,plan_date,selected_part").eq("id", planId).maybeSingle();
   const payload = {
     user_id: userId,
@@ -349,7 +374,8 @@ async function ensurePendingReview(sb: any, userId: string, planId: string, thre
 async function processEvaluation(sb: any, apiKey: string, userId: string, body: any) {
   const planId = String(body.planId || "").trim();
   const threadId = String(body.threadId || "").trim();
-  await sb.from("did_session_reviews").update({ status: "analysis_running", analysis_json: { schema: "did_playroom_review.v1", status: "analysis_running", thread_id: threadId, started_at: new Date().toISOString(), created_from: "karel-did-playroom-evaluate" } }).eq("plan_id", planId).eq("is_current", true);
+  const { data: existingReview } = await sb.from("did_session_reviews").select("id,status,analysis_json").eq("plan_id", planId).eq("is_current", true).maybeSingle();
+  await sb.from("did_session_reviews").update({ status: hasCompletedReviewText(existingReview) ? existingReview.status : "analysis_running", analysis_json: mergeAnalysisJson(existingReview?.analysis_json, { processing_status: "analysis_running", thread_id: threadId, started_at: new Date().toISOString(), created_from: "karel-did-playroom-evaluate" }) }).eq("plan_id", planId).eq("is_current", true);
   const ctx = await loadContext(sb, planId, threadId, userId);
   if (ctx.status !== "valid") {
     const reviewId = await persistInvalidAudit(sb, ctx, userId, planId, ctx.reason || "invalid");
@@ -367,6 +393,67 @@ async function processEvaluation(sb: any, apiKey: string, userId: string, body: 
   return { ok: true, status: persistedReview?.status ?? "analyzed", review_id: reviewId, mode: "playroom", review_kind: "karel_direct_playroom", drive_write_ids: drive.writeIds, model_used: MODEL };
 }
 
+async function markJob(sb: any, jobId: string | null, patch: Record<string, unknown>) {
+  if (!jobId) return;
+  await sb.from("karel_action_jobs").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", jobId);
+}
+
+async function createEvaluationJob(sb: any, args: { userId: string; planId: string; threadId: string; partName?: string; reviewId: string; body: any }) {
+  const payload = { request_body: args.body, plan_id: args.planId, thread_id: args.threadId, part_name: args.partName ?? null };
+  const row = { user_id: args.userId, job_type: "playroom_evaluation", dedupe_key: `playroom_evaluation:${args.planId}:${args.threadId}`, status: "pending", target_type: "did_daily_session_plans", target_id: args.planId, source_function: "karel-did-playroom-evaluate", result_payload: payload, plan_id: args.planId, thread_id: args.threadId, part_name: args.partName ?? null, review_id: args.reviewId };
+  const { data: existing } = await sb.from("karel_action_jobs").select("id,status,attempt_count").eq("dedupe_key", row.dedupe_key).maybeSingle();
+  if (existing?.id) {
+    await sb.from("karel_action_jobs").update({ status: ["completed", "running"].includes(existing.status) ? existing.status : "pending", result_payload: payload, review_id: args.reviewId, last_error: null, updated_at: new Date().toISOString() }).eq("id", existing.id);
+    return existing.id as string;
+  }
+  const { data, error } = await sb.from("karel_action_jobs").insert(row).select("id").single();
+  if (error) throw error;
+  return data.id as string;
+}
+
+async function runEvaluationJob(sb: any, apiKey: string, userId: string, jobId: string, body: any) {
+  const { data: existingJob } = await sb.from("karel_action_jobs").select("attempt_count").eq("id", jobId).maybeSingle();
+  const nextAttempt = Number(existingJob?.attempt_count ?? 0) + 1;
+  await markJob(sb, jobId, { status: "running", started_at: new Date().toISOString(), attempt_count: nextAttempt, last_error: null, error_message: null });
+  try {
+    const result = await processEvaluation(sb, apiKey, userId, body);
+    await markJob(sb, jobId, { status: "completed", completed_at: new Date().toISOString(), finished_at: new Date().toISOString(), result_summary: "playroom_evaluation_completed", result_payload: { ...(result ?? {}), request_body: body } });
+    return result;
+  } catch (e: any) {
+    const msg = String(e?.message ?? e).slice(0, 1000);
+    const { data: job } = await sb.from("karel_action_jobs").select("attempt_count").eq("id", jobId).maybeSingle();
+    const attempts = Number(job?.attempt_count ?? 1);
+    await markJob(sb, jobId, { status: attempts >= 3 ? "failed_permanent" : "failed_retry", error_message: msg, last_error: msg, finished_at: new Date().toISOString() });
+    throw e;
+  }
+}
+
+async function processPendingJobs(sb: any, apiKey: string, limit = 2) {
+  const { data: jobs, error } = await sb
+    .from("karel_action_jobs")
+    .select("id,user_id,result_payload,attempt_count")
+    .eq("job_type", "playroom_evaluation")
+    .in("status", ["pending", "failed_retry"])
+    .lt("attempt_count", 3)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+  const results = [];
+  for (const job of jobs ?? []) {
+    const body = job.result_payload?.request_body;
+    if (!body || !job.user_id) {
+      await markJob(sb, job.id, { status: "failed_permanent", last_error: "missing request_body or user_id", error_message: "missing request_body or user_id", finished_at: new Date().toISOString() });
+      continue;
+    }
+    try {
+      results.push(await runEvaluationJob(sb, apiKey, job.user_id, job.id, body));
+    } catch (e: any) {
+      results.push({ ok: false, job_id: job.id, error: String(e?.message ?? e).slice(0, 500) });
+    }
+  }
+  return { ok: true, processed_jobs: results.length, results };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
@@ -377,17 +464,28 @@ Deno.serve(async (req) => {
     const userId = await authenticatedUserId(req, supabaseUrl, anonKey);
     if (!userId) return json({ ok: false, error: "Nepřihlášený požadavek." }, 401);
     const body = await req.json().catch(() => ({}));
+    const sb = createClient(supabaseUrl, serviceKey);
+    if (body.health === true || body.dryRun === true) {
+      const { error: dbError } = await sb.from("did_session_reviews").select("id").limit(1);
+      if (dbError) throw dbError;
+      return json({ ok: true, health: "playroom-evaluate", auth: "ok", db: "ok" });
+    }
+    if (body.worker === true || body.processPendingJobs === true) {
+      return json(await processPendingJobs(sb, apiKey, Number(body.limit ?? 2)));
+    }
     const planId = String(body.planId || "").trim();
     const threadId = String(body.threadId || "").trim();
     if (!planId || !threadId) return json({ ok: false, error: "Chybí planId nebo threadId." }, 400);
-    const sb = createClient(supabaseUrl, serviceKey);
     if (body.async === true || body.enqueueOnly === true) {
       const reviewId = await ensurePendingReview(sb, userId, planId, threadId, body.partName);
-      EdgeRuntime.waitUntil(processEvaluation(sb, apiKey, userId, body).catch(async (e: any) => {
+      const jobId = await createEvaluationJob(sb, { userId, planId, threadId, partName: body.partName, reviewId, body });
+      const runner = runEvaluationJob(sb, apiKey, userId, jobId, body).catch(async (e: any) => {
         console.error("[playroom-evaluate] async failed", e);
-        await sb.from("did_session_reviews").update({ status: "failed_retry", last_sync_error: String(e?.message ?? e).slice(0, 1000), analysis_json: { schema: "did_playroom_review.v1", status: "failed_retry", error: String(e?.message ?? e).slice(0, 1000), thread_id: threadId, created_from: "karel-did-playroom-evaluate" } }).eq("id", reviewId);
-      }));
-      return json({ ok: true, queued: true, status: "pending_review", review_id: reviewId, mode: "playroom", review_kind: "karel_direct_playroom" });
+        const { data: current } = await sb.from("did_session_reviews").select("status,analysis_json").eq("id", reviewId).maybeSingle();
+        await sb.from("did_session_reviews").update({ status: hasCompletedReviewText(current) ? current.status : "failed_retry", last_sync_error: String(e?.message ?? e).slice(0, 1000), analysis_json: mergeAnalysisJson(current?.analysis_json, { processing_status: "failed_retry", error: String(e?.message ?? e).slice(0, 1000), thread_id: threadId, created_from: "karel-did-playroom-evaluate" }) }).eq("id", reviewId);
+      });
+      if (EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(runner);
+      return json({ ok: true, queued: true, status: "pending_review", job_id: jobId, review_id: reviewId, mode: "playroom", review_kind: "karel_direct_playroom" });
     }
     return json(await processEvaluation(sb, apiKey, userId, body));
   } catch (e: any) {

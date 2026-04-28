@@ -19,7 +19,7 @@
  * Zákaz: NEPSAT do Spižírny B raw observations. Ty patří do `did_observations`.
  */
 
-import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
 export type PantryBEntryKind =
   | "conclusion"
