@@ -66,6 +66,7 @@ interface SessionPlan {
   session_lead: string;
   session_format: string;
   program_status?: string;
+  approved_at?: string | null;
   overdue_days: number;
   created_at?: string;
 }
@@ -129,7 +130,7 @@ const programStartBlockedReason = (plan: SessionPlan) => {
   const reviewFulfilled =
     ["approved", "ready_to_start", "in_progress", "completed"].includes(
       programStatus,
-    ) || !!plan.urgency_breakdown?.approved_at;
+    ) || !!plan.approved_at || !!plan.urgency_breakdown?.approved_at;
   const childFacingPlayroom =
     isKarelDirectPlan(plan) || !!plan.urgency_breakdown?.playroom_plan;
   const approvedForChild =
@@ -149,6 +150,14 @@ const programStartBlockedReason = (plan: SessionPlan) => {
   }
   return null;
 };
+
+const isSignatureGuardError = (error: unknown) =>
+  String((error as any)?.message ?? error ?? "").includes(
+    "daily_session_plan_requires_signatures_before_start",
+  );
+
+const approvalDesyncMessage =
+  "Porada je podepsaná, ale denní plán nemá aktuální approval metadata. Karel právě synchronizuje schválení.";
 
 const isQuarantinedPlan = (plan: SessionPlan) =>
   LEGACY_PLAN_GENERATORS.has(plan.generated_by) ||
