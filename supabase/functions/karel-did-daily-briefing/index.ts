@@ -1255,10 +1255,12 @@ Deno.serve(async (req) => {
     // 3) AI generování
     const { payload: rawPayload, durationMs } = await generateBriefing(context, candidates, apiKey);
     const payload = enrichYesterdaySessionReview(rawPayload, context);
+    payload.yesterday_playroom_review = buildYesterdayPlayroomReview(context);
     if (!payload.proposed_playroom || typeof payload.proposed_playroom !== "object" || !String(payload.proposed_playroom?.part_name ?? "").trim()) {
       console.warn("[briefing] AI payload missing proposed_playroom — applying mandatory backend fallback.");
       payload.proposed_playroom = buildMandatoryPlayroomProposal(payload, context, candidates);
     }
+    injectPlayroomReviewIntoProposal(payload);
 
     // 3b) ── ASK ITEM IDENTITY ──
     // AI vrací ask_hanka/ask_kata jako string[]. Server přidá stabilní `id` na
