@@ -520,7 +520,8 @@ export async function runGlobalDidEventIngestion(sb: SupabaseClient, userId: str
   }
   const seen = new Set(events.map((e) => e.source_kind));
   summary.important_sources = Array.from(seen);
-  summary.missing_sources = SUPPORTED_SOURCES.filter((s) => !seen.has(s as PantryBSourceKind));
+  const expectedSources = sourceFilter.size ? Array.from(sourceFilter) : SUPPORTED_SOURCES;
+  summary.missing_sources = expectedSources.filter((s) => !seen.has(s as PantryBSourceKind));
   summary.blocked_sources = [...blockedSources, ...summary.results.filter((r) => r.status === "failed").map((r) => r.source_ref)].slice(0, 20);
   summary.blocked_count = summary.blocked_sources.length;
   await upsertCursor(sb, userId, "global_did_event_ingestion", sinceISO, summary.results.at(-1)?.source_ref ?? null);
@@ -532,7 +533,7 @@ async function collectTherapistTaskNotes(sb: SupabaseClient, userId: string, sin
   for (const row of data ?? []) {
     const text = compactText((row as any).completed_note, 1200);
     if (!text) continue;
-    out.push({ user_id: userId, source_table: "did_therapist_tasks", source_kind: "therapist_task_note", source_ref: `did_therapist_tasks:${(row as any).id}:completed_note`, source_id: (row as any).id, occurred_at: (row as any).updated_at || (row as any).created_at, author_role: (row as any).assigned_to, author_name: (row as any).assigned_to, source_surface: "task_board", raw_excerpt: text, context_type: "task_completed_note" });
+    out.push({ user_id: (row as any).user_id || userId, source_table: "did_therapist_tasks", source_kind: "therapist_task_note", source_ref: `did_therapist_tasks:${(row as any).id}:completed_note`, source_id: (row as any).id, occurred_at: (row as any).updated_at || (row as any).created_at, author_role: (row as any).assigned_to, author_name: (row as any).assigned_to, source_surface: "task_board", raw_excerpt: text, context_type: "task_completed_note" });
   }
 }
 
