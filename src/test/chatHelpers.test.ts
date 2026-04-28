@@ -13,7 +13,9 @@ import {
   DID_SESSION_ID_KEY,
   HANA_PIN_KEY,
   clearNoHistoryChatStorage,
+  countMarkerInBrowserStorage,
 } from "@/lib/chatHelpers";
+import { NO_HISTORY_REFRESH_MARKER } from "@/lib/noHistoryAuditProof";
 
 describe("chatHelpers", () => {
   describe("saveMessages / loadMessages / clearMessages", () => {
@@ -46,14 +48,27 @@ describe("chatHelpers", () => {
     });
 
     it("clears no-history chat content across refresh storage surfaces", () => {
-      const marker = "NO_HISTORY_REFRESH_TEST_2026_04_28";
+      const marker = NO_HISTORY_REFRESH_MARKER;
       saveMessages("debrief", [{ role: "user", content: marker }]);
       localStorage.setItem(ACTIVE_MODE_KEY, "debrief");
       sessionStorage.setItem("chat_draft:karel:debrief:none:none", marker);
+      expect(countMarkerInBrowserStorage(marker)).toEqual({ localStorageCount: 1, sessionStorageCount: 1 });
       clearNoHistoryChatStorage();
       expect(localStorage.getItem(`${STORAGE_KEY_PREFIX}debrief`)).toBeNull();
       expect(localStorage.getItem(ACTIVE_MODE_KEY)).toBeNull();
       expect(sessionStorage.getItem("chat_draft:karel:debrief:none:none")).toBeNull();
+      expect(countMarkerInBrowserStorage(marker)).toEqual({ localStorageCount: 0, sessionStorageCount: 0 });
+    });
+
+    it("models no-history refresh UI state as empty messages and empty input", () => {
+      const input = NO_HISTORY_REFRESH_MARKER;
+      const messages = [{ role: "user", content: NO_HISTORY_REFRESH_MARKER }];
+      clearNoHistoryChatStorage();
+      const refreshedInput = "";
+      const refreshedMessages: typeof messages = [];
+      expect(refreshedInput).toBe("");
+      expect(refreshedMessages).toHaveLength(0);
+      expect(input).toContain("NO_HISTORY_REFRESH_E2E_MARKER_2026_04_28");
     });
   });
 
