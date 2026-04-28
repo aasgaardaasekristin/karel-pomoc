@@ -670,7 +670,7 @@ async function gatherContext(supabase: any, proofReviewId?: string | null) {
   }
   const { data: yesterdayPlayroomReviews } = await supabase
     .from("did_session_reviews")
-    .select("id, plan_id, mode, review_kind, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, analysis_json, implications_for_part, implications_for_whole_system, recommendations_for_therapists, recommendations_for_next_playroom, recommendations_for_next_session, next_session_recommendation, drive_sync_status, detail_analysis_drive_url, practical_report_drive_url, created_at")
+    .select("id, plan_id, mode, review_kind, status, part_name, session_date, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, source_data_summary, analysis_json, implications_for_part, implications_for_whole_system, recommendations_for_therapists, recommendations_for_next_playroom, recommendations_for_next_session, next_session_recommendation, drive_sync_status, detail_analysis_drive_url, practical_report_drive_url, created_at")
     .eq("session_date", yesterdayISO)
     .eq("mode", "playroom")
     .eq("review_kind", "karel_direct_playroom")
