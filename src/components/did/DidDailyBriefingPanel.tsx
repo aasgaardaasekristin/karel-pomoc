@@ -122,11 +122,33 @@ interface YesterdaySessionReview {
   team_acknowledgement: string;
 }
 
+interface YesterdayPlayroomReviewPayload {
+  exists: boolean;
+  status?: string;
+  fallback_reason?: string;
+  part_name?: string | null;
+  plan_id?: string | null;
+  thread_id?: string | null;
+  review_id?: string | null;
+  message_count?: number;
+  practical_report_text?: string;
+  detailed_analysis_text?: string;
+  implications_for_part?: string;
+  implications_for_system?: string;
+  recommendations_for_therapists?: string;
+  recommendations_for_next_playroom?: string;
+  recommendations_for_next_session?: string;
+  detail_analysis_drive_url?: string | null;
+  practical_report_drive_url?: string | null;
+  drive_sync_status?: string;
+}
+
 interface BriefingPayload {
   greeting: string;
   last_3_days: string;
   lingering?: string;
   yesterday_session_review?: YesterdaySessionReview | null;
+  yesterday_playroom_review?: YesterdayPlayroomReviewPayload | null;
   decisions: BriefingDecision[];
   proposed_session?: ProposedSession | null;
   proposed_playroom?: ProposedPlayroom | null;
