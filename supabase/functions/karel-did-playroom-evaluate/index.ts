@@ -412,7 +412,9 @@ async function createEvaluationJob(sb: any, args: { userId: string; planId: stri
 }
 
 async function runEvaluationJob(sb: any, apiKey: string, userId: string, jobId: string, body: any) {
-  await markJob(sb, jobId, { status: "running", started_at: new Date().toISOString(), attempt_count: 1 });
+  const { data: existingJob } = await sb.from("karel_action_jobs").select("attempt_count").eq("id", jobId).maybeSingle();
+  const nextAttempt = Number(existingJob?.attempt_count ?? 0) + 1;
+  await markJob(sb, jobId, { status: "running", started_at: new Date().toISOString(), attempt_count: nextAttempt, last_error: null, error_message: null });
   try {
     const result = await processEvaluation(sb, apiKey, userId, body);
     await markJob(sb, jobId, { status: "completed", completed_at: new Date().toISOString(), finished_at: new Date().toISOString(), result_summary: "playroom_evaluation_completed", result_payload: { ...(result ?? {}), request_body: body } });
@@ -424,6 +426,32 @@ async function runEvaluationJob(sb: any, apiKey: string, userId: string, jobId: 
     await markJob(sb, jobId, { status: attempts >= 3 ? "failed_permanent" : "failed_retry", error_message: msg, last_error: msg, finished_at: new Date().toISOString() });
     throw e;
   }
+}
+
+async function processPendingJobs(sb: any, apiKey: string, limit = 2) {
+  const { data: jobs, error } = await sb
+    .from("karel_action_jobs")
+    .select("id,user_id,result_payload,attempt_count")
+    .eq("job_type", "playroom_evaluation")
+    .in("status", ["pending", "failed_retry"])
+    .lt("attempt_count", 3)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+  const results = [];
+  for (const job of jobs ?? []) {
+    const body = job.result_payload?.request_body;
+    if (!body || !job.user_id) {
+      await markJob(sb, job.id, { status: "failed_permanent", last_error: "missing request_body or user_id", error_message: "missing request_body or user_id", finished_at: new Date().toISOString() });
+      continue;
+    }
+    try {
+      results.push(await runEvaluationJob(sb, apiKey, job.user_id, job.id, body));
+    } catch (e: any) {
+      results.push({ ok: false, job_id: job.id, error: String(e?.message ?? e).slice(0, 500) });
+    }
+  }
+  return { ok: true, processed_jobs: results.length, results };
 }
 
 Deno.serve(async (req) => {
