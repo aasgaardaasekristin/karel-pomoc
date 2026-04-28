@@ -2144,7 +2144,7 @@ POVINNÉ ROZDĚLENÍ VÝSTUPU:
     if (failedJobId) await markJobFailedRetry(createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!), failedJobId, e);
     return new Response(
       JSON.stringify({ ok: false, error: e?.message ?? String(e) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      { status: e?.status ?? 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
