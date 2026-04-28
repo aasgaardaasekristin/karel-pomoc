@@ -370,6 +370,7 @@ function injectPlayroomReviewIntoProposal(payload: any) {
 
 function buildDeterministicBriefingPayload(context: any, candidates: SessionCandidate[]) {
   const playroomReview = buildYesterdayPlayroomReview(context);
+  const sessionReview = buildYesterdaySessionReview(context);
   const selectedPart = String(playroomReview?.part_name || candidates?.[0]?.part_name || context?.crises?.[0]?.part_name || context?.recent_threads?.[0]?.part_name || "část vybraná ranním přehledem").trim();
   const payload: any = {
     greeting: "Dnes držím přehled v bezpečném režimu: těžká syntéza se nespouští nebo selhala, ale včerejší Herna nesmí zmizet z návazného plánování.",
@@ -380,7 +381,14 @@ function buildDeterministicBriefingPayload(context: any, candidates: SessionCand
     yesterday_session_review: null,
     yesterday_playroom_review: playroomReview,
     decisions: [],
-    proposed_session: null,
+    proposed_session: sessionReview?.exists && sessionReview?.review_id ? {
+      part_name: sessionReview.part_name || candidates?.[0]?.part_name || selectedPart,
+      why_today: sessionReview.recommendations_for_next_session || sessionReview.practical_report_text || "Navázat na doložený praktický report ze Sezení.",
+      led_by: normalizeTherapistLabel(sessionReview.lead_person) ?? "Hanička",
+      duration_min: 20,
+      first_draft: sessionReview.recommendations_for_next_session || "Krátké terapeutkou vedené Sezení navázané na včerejší praktický report.",
+      kata_involvement: "Káťa ověří rizika a hranice návaznosti.",
+    } : null,
     proposed_playroom: buildMandatoryPlayroomProposal({ proposed_session: { part_name: selectedPart, why_today: playroomReview?.recommendations_for_next_playroom || playroomReview?.practical_report_text || "Herna musí navázat jen na doloženou evidenci." }, last_3_days: "" }, context, candidates),
     ask_hanka: ["Prosím ověř, zda dnešní Herna má navázat na doložený praktický report, nebo má zůstat jen stabilizační."],
     ask_kata: ["Prosím zkontroluj rizika a stop signály pro dnešní Hernu podle včerejšího review."],
@@ -483,7 +491,7 @@ async function scoreSessionCandidates(supabase: any): Promise<SessionCandidate[]
 // ───────────────────────────────────────────────────────────
 // KONTEXT: posledních 3 dní + lingering
 // ───────────────────────────────────────────────────────────
-async function gatherContext(supabase: any) {
+async function gatherContext(supabase: any, proofReviewId?: string | null) {
   const threeDaysAgo = daysAgoISO(3);
   const sevenDaysAgo = daysAgoISO(7);
   const yesterdayISO = daysAgoISO(1);
@@ -632,6 +640,16 @@ async function gatherContext(supabase: any) {
       .order("created_at", { ascending: false })
       .limit(5);
     yesterdaySessionReviews = reviewsByDate ?? [];
+  }
+  if (proofReviewId) {
+    const { data: proofReview } = await supabase
+      .from("did_session_reviews")
+      .select("id, plan_id, mode, review_kind, status, part_name, session_date, lead_person, assistant_persons, clinical_summary, therapeutic_implications, team_implications, next_session_recommendation, evidence_limitations, evidence_items, completed_checklist_items, missing_checklist_items, source_data_summary, analysis_json, implications_for_part, implications_for_whole_system, recommendations_for_therapists, recommendations_for_next_playroom, recommendations_for_next_session, team_closing, drive_sync_status, source_of_truth_status, detail_analysis_drive_url, practical_report_drive_url, created_at")
+      .eq("id", proofReviewId)
+      .eq("is_current", true)
+      .neq("mode", "playroom")
+      .maybeSingle();
+    if (proofReview) yesterdaySessionReviews = [proofReview, ...yesterdaySessionReviews.filter((r: any) => r.id !== proofReview.id)];
   }
   const { data: yesterdayPlayroomReviews } = await supabase
     .from("did_session_reviews")
@@ -1276,7 +1294,7 @@ Deno.serve(async (req) => {
     const candidates = await scoreSessionCandidates(supabase);
 
     // 2) Sběr kontextu
-    const context = await gatherContext(supabase);
+    const context = await gatherContext(supabase, body?.proofReviewId ?? body?.sessionReviewId ?? null);
 
     // 3) AI generování; playroom review payload musí vzniknout deterministicky i při selhání těžké syntézy.
     let durationMs = 0;

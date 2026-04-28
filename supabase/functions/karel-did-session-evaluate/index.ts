@@ -638,17 +638,11 @@ function reviewStatusFor(evaluation: any, evidencePresent: boolean, completedBlo
 
 
 function cleanText(value: unknown, max = 20000): string {
-  return String(value ?? "").replace(/
-/g, "").replace(/
-{4,}/g, "
-
-
-").trim().slice(0, max);
+  return String(value ?? "").replace(/\r/g, "").replace(/\n{4,}/g, "\n\n\n").trim().slice(0, max);
 }
 
 function listLines(items: unknown): string {
-  return Array.isArray(items) && items.length > 0 ? items.map((x) => `- ${String(x).trim()}`).join("
-") : "- nebylo zaznamenáno";
+  return Array.isArray(items) && items.length > 0 ? items.map((x) => `- ${String(x).trim()}`).join("\n") : "- nebylo zaznamenáno";
 }
 
 function deriveSessionOutputs(args: { evaluation: any; plan: SessionPlan; markdown: string; diagnosticValidity: string; reviewStatus: ReviewStatus; completedBlocks?: number; totalBlocks?: number; endedReason: EndedReason }) {
@@ -1309,12 +1303,14 @@ async function insertPackageOnce(sb: any, row: any, force = false): Promise<stri
 }
 
 async function insertDriveWriteOnce(sb: any, row: any, dedupe: { reviewId?: string; contentType: string; target: string }, force = false): Promise<string | null> {
-  const marker = dedupe.reviewId ? `review_id=${dedupe.reviewId}` : `content_type=${dedupe.contentType}`;
+  const reviewMarker = dedupe.reviewId ? `review_id=${dedupe.reviewId}` : "session_evaluate";
+  const typeMarker = `content_type=${dedupe.contentType}`;
   const { data: existing } = await sb
     .from("did_pending_drive_writes")
     .select("id,status")
     .eq("target_document", dedupe.target)
-    .ilike("content", `%${marker}%`)
+    .ilike("content", `%${reviewMarker}%`)
+    .ilike("content", `%${typeMarker}%`)
     .limit(1);
   if (existing?.length && !force) return existing[0].id;
   if (existing?.length && force) await sb.from("did_pending_drive_writes").delete().eq("id", existing[0].id);
@@ -1580,9 +1576,7 @@ async function persistEvaluation(
     outputs.recommendations_for_therapists,
     outputs.recommendations_for_next_session,
     outputs.recommendations_for_next_playroom,
-  ].filter(Boolean).join("
-
-") || evaluation.recommended_next_step || "Doplnit navazující kroky podle dostupnosti části.";
+  ].filter(Boolean).join("\n\n") || evaluation.recommended_next_step || "Doplnit navazující kroky podle dostupnosti části.";
   await appendPantryB(sb, {
     user_id: userId,
     entry_kind: "followup_need",
@@ -1777,6 +1771,7 @@ Deno.serve(async (req: Request) => {
     let turnsByBlock = (body?.turnsByBlock ?? {}) as Record<string, any[]>;
     let observationsByBlock = (body?.observationsByBlock ?? {}) as Record<string, string>;
     const force = body?.force === true;
+    const deterministicBackfill = body?.deterministic_backfill === true;
 
     if (body?.projection_only === true) {
       const reviewId = body?.reviewId as string | undefined;
@@ -1873,6 +1868,39 @@ Deno.serve(async (req: Request) => {
     }
     const blockTranscript = formatBlockTurnsForPrompt(turnsByBlock, observationsByBlock);
     const threadTranscript = formatThreadMessagesForPrompt(ctx.threads, ctx.plan);
+
+    if (deterministicBackfill && ctx.existingSession?.ai_analysis) {
+      const existing = String(ctx.existingSession.ai_analysis ?? "").trim();
+      const karelNotes = String(ctx.existingSession.karel_notes ?? "").trim();
+      const evaluation = sanitizeEvaluation({
+        completion_status: completedBlocks && totalBlocks && completedBlocks >= totalBlocks ? "completed" : "partial",
+        incomplete_note: completedBlocks && totalBlocks && completedBlocks >= totalBlocks ? "" : "Deterministický backfill vychází ze starší uložené analýzy; průběhová evidence může být omezená.",
+        session_arc: existing.slice(0, 1400),
+        child_perspective: karelNotes || existing.slice(0, 1200),
+        therapist_motivation: `Sezení vedla ${ctx.plan.session_lead || ctx.plan.therapist || "Hanička"}; Karel zůstává v roli live asistenta terapeutky.`,
+        methods_used: ctx.existingSession.methods_used ?? [],
+        methods_effectiveness: ctx.existingSession.methods_effectiveness ?? [],
+        key_insights: [existing.slice(0, 500)].filter(Boolean),
+        implications_for_tomorrow: ctx.existingSession.handoff_note || "Navázat podle závěrů starší analýzy a nepřekročit limity dostupné evidence.",
+        tasks: [],
+        recommended_next_step: ctx.existingSession.handoff_note || "Navázat bezpečným, terapeutkou vedeným Sezením podle dostupnosti části.",
+        detailed_analysis_text: `## SEZENÍ — DETAILNÍ PROFESIONÁLNÍ ANALÝZA\n\nDeterministický backfill ze starší uložené analýzy, bez mazání původního clinical_summary ani ai_analysis.\n\n${existing}`,
+        practical_report_text: `## SEZENÍ — PRAKTICKÝ REPORT PRO KARLŮV PŘEHLED\n\nSezení s ${ctx.plan.selected_part} bylo vyhodnoceno ze starší uložené analýzy a dostupného plánu. Karel tento výstup používá jako praktický vstup pro ranní přehled a další plánování.\n\n${(karelNotes || existing).slice(0, 2600)}`,
+        team_closing_text: `## SEZENÍ — TÝMOVÉ UZAVŘENÍ\n\nDěkuji Haničce a týmu za vedení Sezení s ${ctx.plan.selected_part}. Tento backfill odděluje detailní analýzu, praktický report a týmové uzavření, aniž by přepisoval původní data do prázdna.`,
+        implications_for_part: karelNotes || existing.slice(0, 900),
+        implications_for_system: ctx.existingSession.handoff_note || "Kluci potřebují návaznost opřenou o uloženou analýzu a bezpečné tempo.",
+        recommendations_for_therapists: "Použít report jako pracovní, zkontrolovat jej proti vlastní paměti Sezení a neeskalovat nad rámec evidence.",
+        recommendations_for_next_session: ctx.existingSession.handoff_note || "Navázat krátce a bezpečně podle dostupnosti části.",
+        recommendations_for_next_playroom: "Hernu použít jen tehdy, pokud bude pro část bezpečný nízkoprahový cíl.",
+        risks: [],
+        evidence_limitations: "Deterministický backfill: strukturovaný výstup vznikl z existující uložené analýzy, nikoli z nového dlouhého AI běhu.",
+        what_not_to_do: ["nemazat původní ai_analysis", "nepředstírat novou turn-by-turn evidenci"],
+      }, endedReason, completedBlocks, totalBlocks);
+      const diagnosticValidity = buildDiagnosticValidityReport(ctx.plan.plan_markdown, turnsByBlock, observationsByBlock, liveProgress);
+      const markdown = renderEvaluationMarkdown(evaluation, ctx.plan, endedReason, completedBlocks, totalBlocks, diagnosticValidity);
+      const targets = await persistEvaluation(sb, ctx, evaluation, markdown, endedReason, completedBlocks, totalBlocks, force, liveProgress, turnsByBlock, observationsByBlock, diagnosticValidity);
+      return new Response(JSON.stringify({ ok: true, deterministic_backfill: true, plan_id: planId, part_name: ctx.plan.selected_part, completion_status: evaluation.completion_status, review_id: targets.reviewId, review_status: targets.reviewStatus, drive_targets: targets }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     const partInfo = ctx.partCard
       ? `Karta/registry záznam části nalezen: zadané jméno=${ctx.plan.selected_part}, kanonické jméno=${ctx.partCard.part_name}, ` +

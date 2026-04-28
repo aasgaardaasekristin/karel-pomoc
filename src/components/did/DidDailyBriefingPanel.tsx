@@ -108,10 +108,19 @@ interface AskItemObj { id: string; text: string }
 type AskItemRaw = string | AskItemObj;
 
 interface YesterdaySessionReview {
+  exists?: boolean;
   held: boolean;
+  status?: string;
+  review_id?: string | null;
+  plan_id?: string | null;
   part_name?: string;
   lead?: "Hanička" | "Káťa" | "společně";
+  lead_person?: string | null;
+  assistant_persons?: unknown[];
   completion?: "completed" | "partial" | "abandoned";
+  practical_report_text?: string;
+  detailed_analysis_text?: string;
+  team_closing_text?: string;
   /** Karlovo přetlumočení sezení (4–7 vět, smysl ne provoz). */
   karel_summary: string;
   /** Klíčové zjištění o části (2–4 věty). */
@@ -916,7 +925,14 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
 
   const p = briefing.payload;
   const yesterdayReview = (p.yesterday_session_review && p.yesterday_session_review.held)
-    ? p.yesterday_session_review
+    ? {
+        ...p.yesterday_session_review,
+        karel_summary: p.yesterday_session_review.practical_report_text || p.yesterday_session_review.karel_summary,
+        team_acknowledgement: p.yesterday_session_review.team_closing_text || p.yesterday_session_review.team_acknowledgement,
+        practical_report: p.yesterday_session_review.practical_report_text || p.yesterday_session_review.karel_summary,
+        detailed_analysis: p.yesterday_session_review.detailed_analysis_text,
+        team_closing: p.yesterday_session_review.team_closing_text,
+      } as YesterdayFallbackReview
     : yesterdaySessionFallback;
   const backendPlayroom = p.yesterday_playroom_review?.exists ? p.yesterday_playroom_review : null;
   const yesterdayPlayroomReview = backendPlayroom ? {
