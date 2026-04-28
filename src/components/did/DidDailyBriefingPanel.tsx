@@ -1218,7 +1218,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         <>
           <NarrativeDivider />
           <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary" />}>
-            Návrh sezení k poradě
+            {p.proposed_session.carry_over_reason === "unheld_yesterday_session" ? "Carry-over z neuskutečněného Sezení" : "Návrh sezení k poradě"}
           </SectionHead>
           <button
             type="button"
@@ -1235,6 +1235,11 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               {p.proposed_session.duration_min && (
                 <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">
                   ~{p.proposed_session.duration_min} min
+                </Badge>
+              )}
+              {p.proposed_session.carry_over_reason === "unheld_yesterday_session" && (
+                <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">
+                  carry-over
                 </Badge>
               )}
               <ArrowRight className="w-3.5 h-3.5 text-primary/60 ml-auto" />
