@@ -91,6 +91,16 @@ export interface IngestionSummary {
   results: IngestionResult[];
 }
 
+export type NormalizedDidEventInput = Omit<NormalizedDidEvent, "source_hash"> & {
+  source_hash?: string;
+};
+
+export interface RunGlobalDidEventIngestionOptions {
+  mode?: "last_24h" | "since_cursor" | "source_test";
+  sinceISO?: string;
+  source_filter?: PantryBSourceKind[];
+}
+
 const SUPPORTED_SOURCES = [
   "therapist_task_note",
   "therapist_note",
@@ -123,7 +133,7 @@ function inferPartName(text: string, fallback?: string | null): string | null {
   return match?.[0] ?? null;
 }
 
-export function normalizeEvent(input: Omit<NormalizedDidEvent, "source_hash"> & { source_hash?: string }): NormalizedDidEvent {
+export function normalizeEvent(input: NormalizedDidEventInput): NormalizedDidEvent {
   const raw = compactText(input.raw_excerpt, 1600);
   const sourceHash = input.source_hash || stableHash(`${input.source_ref}|${raw}`);
   return {
@@ -206,7 +216,7 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
     requires_human_review: isRisk || evidence_level === "hypothesis",
     include_in_daily_briefing: isClinical || isRisk || isTask || isPlan || isTechnical || isFactualCorrection,
     include_in_next_session_plan: isClinical || isRisk || isPlan,
-    include_in_next_playroom_plan: isChild || sourceKind === "playroom_progress" || isFactualCorrection,
+    include_in_next_playroom_plan: isChild || isFactualCorrection,
     write_to_drive: isRisk || isPlan || sourceKind === "briefing_ask_resolution" || sourceKind === "deliberation_event",
     related_part_name: event.related_part_name,
     urgency: isRisk ? "crisis" : isTask || isPlan || isTechnical ? "high" : isClinical ? "normal" : "low",
@@ -398,16 +408,16 @@ export async function createDrivePackageIfNeeded(sb: SupabaseClient, event: Norm
   if (!target) return {};
   const marker = `did_event_ingestion:${event.source_ref}:${event.source_hash}`;
   const content = `<!-- ${marker} -->\n\n### Zpracovaná událost: ${event.source_kind}\n\n**Evidence:** ${classification.evidence_level}\n**Zdroj:** ${event.source_ref}\n\n${buildSummary(event, classification)}\n\n**Doporučený krok:** ${classification.recommended_action}\n\n**Co neuzavírat:** ${classification.what_not_to_conclude}`;
-  const { data: existingPkg } = await sb.from("did_pantry_packages").select("id").eq("source_table", "did_event_ingestion_log").eq("source_id", marker).limit(1).maybeSingle();
+  const { data: existingPkg } = await sb.from("did_pantry_packages").select("id").eq("source_table", "did_event_ingestion_log").eq("metadata->>source_marker", marker).limit(1).maybeSingle();
   if (existingPkg?.id) return { packageId: existingPkg.id };
   const { data: pkg, error: pkgErr } = await sb.from("did_pantry_packages").insert({
     user_id: event.user_id,
     package_type: "event_ingestion_audit",
-    source_id: marker,
+    source_id: null,
     source_table: "did_event_ingestion_log",
     content_md: content,
     drive_target_path: target,
-    metadata: { source_ref: event.source_ref, source_hash: event.source_hash, source_kind: event.source_kind, evidence_level: classification.evidence_level },
+    metadata: { source_marker: marker, source_ref: event.source_ref, source_hash: event.source_hash, source_kind: event.source_kind, evidence_level: classification.evidence_level },
     status: "pending_drive",
   }).select("id").single();
   if (pkgErr) throw pkgErr;
@@ -431,7 +441,7 @@ export async function createDrivePackageIfNeeded(sb: SupabaseClient, event: Norm
     status: "pending",
   }).select("id").single();
   if (writeErr) throw writeErr;
-  await sb.from("did_pantry_packages").update({ metadata: { source_ref: event.source_ref, source_hash: event.source_hash, pending_drive_write_id: write?.id ?? null } }).eq("id", pkg.id);
+  await sb.from("did_pantry_packages").update({ metadata: { source_marker: marker, source_ref: event.source_ref, source_hash: event.source_hash, source_kind: event.source_kind, evidence_level: classification.evidence_level, pending_drive_write_id: write?.id ?? null } }).eq("id", pkg.id);
   return { packageId: pkg?.id ?? null, writeId: write?.id ?? null };
 }
 
@@ -452,7 +462,7 @@ export async function markIngestionProcessed(sb: SupabaseClient, logId: string, 
   }).eq("id", logId);
 }
 
-export async function routeEvent(sb: SupabaseClient, eventInput: Omit<NormalizedDidEvent, "source_hash"> & { source_hash?: string }): Promise<IngestionResult> {
+export async function routeEvent(sb: SupabaseClient, eventInput: NormalizedDidEventInput): Promise<IngestionResult> {
   const event = normalizeEvent(eventInput);
   const dedupe = await dedupeBySourceRefAndHash(sb, event);
   if (dedupe.duplicate) return { source_ref: event.source_ref, status: "duplicate", log_id: dedupe.logId, reason: "source_ref_source_hash_seen" };
@@ -478,16 +488,21 @@ export async function routeEvent(sb: SupabaseClient, eventInput: Omit<Normalized
   }
 }
 
-export async function runGlobalDidEventIngestion(sb: SupabaseClient, userId: string, sinceISO = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()): Promise<IngestionSummary> {
-  const events: Array<Omit<NormalizedDidEvent, "source_hash"> & { source_hash?: string }> = [];
-  await collectTherapistTaskNotes(sb, userId, sinceISO, events);
-  await collectTherapistNotes(sb, userId, sinceISO, events);
-  await collectHanaPersonal(sb, userId, sinceISO, events);
-  await collectDidThreads(sb, userId, sinceISO, events);
-  await collectLiveProgress(sb, userId, sinceISO, events);
-  await collectBriefingAskResolutions(sb, userId, sinceISO, events);
-  await collectDeliberations(sb, userId, sinceISO, events);
-  await collectCrisisSafety(sb, userId, sinceISO, events);
+export async function runGlobalDidEventIngestion(sb: SupabaseClient, userId: string, sinceISOOrOptions: string | RunGlobalDidEventIngestionOptions = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()): Promise<IngestionSummary> {
+  const options: RunGlobalDidEventIngestionOptions = typeof sinceISOOrOptions === "string" ? { sinceISO: sinceISOOrOptions } : sinceISOOrOptions;
+  const sourceFilter = new Set<PantryBSourceKind>(options.source_filter ?? []);
+  const wants = (source: PantryBSourceKind) => sourceFilter.size === 0 || sourceFilter.has(source);
+  const sinceISO = options.sinceISO || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const events: NormalizedDidEventInput[] = [];
+  const blockedSources: string[] = [];
+  if (wants("therapist_task_note")) await collectTherapistTaskNotes(sb, userId, sinceISO, events);
+  if (wants("therapist_note")) blockedSources.push("therapist_notes:not_supported_yet_missing_user_scope");
+  if (wants("hana_personal_ingestion")) await collectHanaPersonal(sb, userId, sinceISO, events);
+  if (wants("did_thread_ingestion") || wants("playroom_progress")) await collectDidThreads(sb, userId, sinceISO, events);
+  if (wants("live_session_progress") || wants("live_session_reality_override")) await collectLiveProgress(sb, userId, sinceISO, events);
+  if (wants("briefing_ask_resolution")) await collectBriefingAskResolutions(sb, userId, sinceISO, events);
+  if (wants("deliberation_event")) await collectDeliberations(sb, userId, sinceISO, events);
+  if (wants("crisis_safety_event")) blockedSources.push("crisis_safety_tables:not_supported_yet_missing_user_scope");
 
   const summary: IngestionSummary = { processed_count: 0, routed_to_pantry_count: 0, observation_count: 0, implication_count: 0, task_count: 0, drive_package_count: 0, skipped_count: 0, failed_count: 0, duplicate_count: 0, blocked_count: 0, important_sources: [], blocked_sources: [], missing_sources: [], results: [] };
   for (const event of events) {
@@ -506,7 +521,7 @@ export async function runGlobalDidEventIngestion(sb: SupabaseClient, userId: str
   const seen = new Set(events.map((e) => e.source_kind));
   summary.important_sources = Array.from(seen);
   summary.missing_sources = SUPPORTED_SOURCES.filter((s) => !seen.has(s as PantryBSourceKind));
-  summary.blocked_sources = summary.results.filter((r) => r.status === "failed").map((r) => r.source_ref).slice(0, 20);
+  summary.blocked_sources = [...blockedSources, ...summary.results.filter((r) => r.status === "failed").map((r) => r.source_ref)].slice(0, 20);
   summary.blocked_count = summary.blocked_sources.length;
   await upsertCursor(sb, userId, "global_did_event_ingestion", sinceISO, summary.results.at(-1)?.source_ref ?? null);
   return summary;
@@ -522,7 +537,9 @@ async function collectTherapistTaskNotes(sb: SupabaseClient, userId: string, sin
 }
 
 async function collectTherapistNotes(sb: SupabaseClient, userId: string, sinceISO: string, out: any[]) {
-  const { data } = await sb.from("therapist_notes").select("id, author, note_text, note_type, part_name, priority, created_at").gte("created_at", sinceISO).limit(80);
+  console.warn("[did-event-ingestion] therapist_notes adapter blocked: table has no user_id/safe scope", { userId, sinceISO });
+  return;
+  const { data } = await sb.from("therapist_notes").select("id, author, note_text, note_type, part_name, priority, created_at").eq("user_id", userId).gte("created_at", sinceISO).limit(80);
   for (const row of data ?? []) {
     const text = compactText((row as any).note_text, 1200);
     if (!text) continue;
@@ -592,6 +609,8 @@ async function collectDeliberations(sb: SupabaseClient, userId: string, sinceISO
 }
 
 async function collectCrisisSafety(sb: SupabaseClient, userId: string, sinceISO: string, out: any[]) {
+  console.warn("[did-event-ingestion] crisis/safety adapter blocked: source tables have no user_id/safe scope", { userId, sinceISO });
+  return;
   const crisisSources = [
     { table: "crisis_events", textCols: ["part_name", "trigger_description", "clinical_summary", "phase"], dateCol: "updated_at" },
     { table: "crisis_alerts", textCols: ["part_name", "summary", "severity", "karel_assessment"], dateCol: "created_at" },
@@ -600,7 +619,7 @@ async function collectCrisisSafety(sb: SupabaseClient, userId: string, sinceISO:
   ];
   for (const src of crisisSources) {
     try {
-      const { data } = await sb.from(src.table).select("*").gte(src.dateCol, sinceISO).limit(20);
+      const { data } = await sb.from(src.table).select("id,user_id,part_name,trigger_description,clinical_summary,phase,summary,severity,karel_assessment,status,karel_decision,therapist_hana_observation,therapist_kata_observation,created_at,updated_at").eq("user_id", userId).gte(src.dateCol, sinceISO).limit(20);
       for (const row of data ?? []) {
         const text = compactText(src.textCols.map((c) => (row as any)[c]).filter(Boolean).join(" | "), 1200);
         if (!text) continue;

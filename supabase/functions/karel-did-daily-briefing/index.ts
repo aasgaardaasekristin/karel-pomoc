@@ -28,6 +28,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { selectPantryA, summarizePantryAForPrompt, type PantryASnapshot } from "../_shared/pantryA.ts";
 import { readUnprocessedPantryB, markPantryBProcessed } from "../_shared/pantryB.ts";
 import { summarizeToolboxForPrompt } from "../_shared/therapeuticToolbox.ts";
+import { runGlobalDidEventIngestion } from "../_shared/didEventIngestion.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -859,6 +860,7 @@ async function gatherContext(supabase: any, proofReviewId?: string | null) {
   // poradách / sezeních vyplynulo, a briefing zní jako kdyby den začínal odznova.
   let pantryBEntries: any[] = [];
   let approvedDeliberations: any[] = [];
+  let eventIngestionSummary: any = null;
   try {
     const userIdForB: string | null = null;
     let userIdResolved: string | null = userIdForB;
@@ -872,6 +874,10 @@ async function gatherContext(supabase: any, proofReviewId?: string | null) {
       userIdResolved = anyCtxRow?.user_id ?? null;
     }
     if (userIdResolved) {
+      eventIngestionSummary = await runGlobalDidEventIngestion(supabase as any, userIdResolved, {
+        mode: "last_24h",
+        sinceISO: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      });
       pantryBEntries = await readUnprocessedPantryB(supabase, userIdResolved);
       const { data: approved } = await supabase
         .from("did_team_deliberations")
@@ -882,7 +888,7 @@ async function gatherContext(supabase: any, proofReviewId?: string | null) {
         .order("updated_at", { ascending: false })
         .limit(20);
       approvedDeliberations = approved ?? [];
-      console.log(`[briefing] Pantry B loaded: entries=${pantryBEntries.length}, approved_delibs=${approvedDeliberations.length}`);
+      console.log(`[briefing] Pantry B loaded: entries=${pantryBEntries.length}, approved_delibs=${approvedDeliberations.length}, ingestion_processed=${eventIngestionSummary?.processed_count ?? 0}`);
     }
   } catch (bErr) {
     console.warn("[briefing] Pantry B / approved deliberations load failed (non-fatal):", bErr);
@@ -990,6 +996,12 @@ async function gatherContext(supabase: any, proofReviewId?: string | null) {
     pantry_a: pantryA,
     pantry_a_summary: pantryASummary,
     pantry_b_entries: pantryBEntries,
+    event_ingestion_summary: eventIngestionSummary,
+    task_note_implications: pantryBEntries.filter((e: any) => e.source_kind === "therapist_task_note"),
+    hana_personal_did_relevant_implications: pantryBEntries.filter((e: any) => e.source_kind === "hana_personal_ingestion"),
+    live_replan_patches: pantryBEntries.filter((e: any) => e.source_kind === "live_session_progress" || e.source_kind === "live_session_reality_override"),
+    reality_override_events: pantryBEntries.filter((e: any) => e.source_kind === "live_session_reality_override"),
+    blocked_or_failed_ingestion: eventIngestionSummary?.blocked_sources ?? [],
     approved_deliberations: approvedDeliberations,
   };
 }
@@ -1341,6 +1353,27 @@ ${approvedDelibs.map((d: any) => {
     : "";
 
   const toolboxSection = candidates[0]?.score >= 3 ? `\n\n${summarizeToolboxForPrompt()}\n` : "";
+  const ingestion = context.event_ingestion_summary ?? {};
+  const eventIngestionSection = `═══ GLOBÁLNÍ SBĚR DID UDÁLOSTÍ — POVINNÝ KONTEXT ═══
+event_ingestion_summary: ${JSON.stringify({
+    processed_count: ingestion.processed_count ?? 0,
+    routed_to_pantry_count: ingestion.routed_to_pantry_count ?? 0,
+    skipped_count: ingestion.skipped_count ?? 0,
+    failed_count: ingestion.failed_count ?? 0,
+    duplicate_count: ingestion.duplicate_count ?? 0,
+    important_sources: ingestion.important_sources ?? [],
+    missing_sources: ingestion.missing_sources ?? [],
+    blocked_sources: ingestion.blocked_sources ?? [],
+  })}
+task_note_implications: ${JSON.stringify((context.task_note_implications ?? []).slice(0, 8))}
+hana_personal_did_relevant_implications: ${JSON.stringify((context.hana_personal_did_relevant_implications ?? []).slice(0, 8))}
+live_replan_patches: ${JSON.stringify((context.live_replan_patches ?? []).slice(0, 8))}
+reality_override_events: ${JSON.stringify((context.reality_override_events ?? []).slice(0, 8))}
+blocked_or_failed_ingestion: ${JSON.stringify(context.blocked_or_failed_ingestion ?? [])}
+
+Pravidlo: DB/Pantry B je operační zdroj. Drive je audit/archive. Drive→Pantry refresh není v tomto průchodu implementovaný.
+
+`;
 
   // ── VČEREJŠÍ SEZENÍ — vstup pro yesterday_session_review ──
   const ySessions = (context.yesterday_sessions ?? []) as any[];
@@ -1396,7 +1429,7 @@ POVINNÉ: proposed_playroom musí tento vstup použít jako evidence source a ru
 
   const userPrompt = `KONTEXT PRO BRIEFING (${context.today}):
 
-${context.pantry_a_summary ? `═══ SPIŽÍRNA A — RANNÍ PRACOVNÍ ZÁSOBA ═══\n${context.pantry_a_summary}\n\n` : ""}${pantryBSection}${approvedDelibsSection}${yesterdayPlayroomSection}AKTIVNÍ KRIZE (${context.crises.length}):
+${context.pantry_a_summary ? `═══ SPIŽÍRNA A — RANNÍ PRACOVNÍ ZÁSOBA ═══\n${context.pantry_a_summary}\n\n` : ""}${eventIngestionSection}${pantryBSection}${approvedDelibsSection}${yesterdayPlayroomSection}AKTIVNÍ KRIZE (${context.crises.length}):
 ${context.crises.map((c: any) => `- ${c.part_name} | severity: ${c.severity} | fáze: ${c.phase} | dní aktivní: ${c.days_active || "?"} | trigger: ${c.trigger_description?.slice(0, 120) || "—"}`).join("\n") || "(žádné)"}
 
 POZOROVÁNÍ ZA POSLEDNÍ 3 DNY (${context.recent_observations.length}):
@@ -1594,6 +1627,21 @@ Deno.serve(async (req) => {
       rawPayload.generation_warning = String(e?.message ?? e).slice(0, 500);
     }
     let payload = enrichYesterdaySessionReview(rawPayload, context);
+    payload.event_ingestion_summary = {
+      processed_count: context.event_ingestion_summary?.processed_count ?? 0,
+      routed_to_pantry_count: context.event_ingestion_summary?.routed_to_pantry_count ?? 0,
+      skipped_count: context.event_ingestion_summary?.skipped_count ?? 0,
+      failed_count: context.event_ingestion_summary?.failed_count ?? 0,
+      duplicate_count: context.event_ingestion_summary?.duplicate_count ?? 0,
+      important_sources: context.event_ingestion_summary?.important_sources ?? [],
+      missing_sources: context.event_ingestion_summary?.missing_sources ?? [],
+      blocked_sources: context.event_ingestion_summary?.blocked_sources ?? [],
+    };
+    payload.task_note_implications = context.task_note_implications ?? [];
+    payload.hana_personal_did_relevant_implications = context.hana_personal_did_relevant_implications ?? [];
+    payload.live_replan_patches = context.live_replan_patches ?? [];
+    payload.reality_override_events = context.reality_override_events ?? [];
+    payload.blocked_or_failed_ingestion = context.blocked_or_failed_ingestion ?? [];
     payload.yesterday_playroom_review = buildYesterdayPlayroomReview(context);
     if (!payload.proposed_playroom || typeof payload.proposed_playroom !== "object" || !String(payload.proposed_playroom?.part_name ?? "").trim()) {
       console.warn("[briefing] AI payload missing proposed_playroom — applying mandatory backend fallback.");
