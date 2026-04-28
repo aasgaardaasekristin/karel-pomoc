@@ -279,6 +279,11 @@ function injectSessionReviewIntoProposals(payload: any) {
   const nextSession = cleanBlockText(y.recommendations_for_next_session || y.recommendations_for_therapists || y.implications_for_plan);
   if (payload?.proposed_session && typeof payload.proposed_session === "object") {
     const ps = payload.proposed_session;
+    if (y.held === false || y.status === "technical_test") {
+      ps.carry_over_reason = "unheld_yesterday_session";
+      ps.why_today = `Carry-over z neuskutečněného Sezení. Tento návrh nenavazuje na nové klinické poznatky ze včerejšího Sezení, protože to klinicky neproběhlo; navazuje na původní potřebu řešit tělesné potíže a neverbální zpracování tělesného stavu. ${cleanBlockText(ps.why_today)}`.trim();
+      ps.first_draft = `Začít krátkým ověřením tělesného a emočního stavu, bez tlaku na vysvětlování. Pokud je část dostupná a stabilní, pokračovat krátkým terapeutkou vedeným Sezením; pokud je unavená nebo zahlcená, zůstat jen u stabilizačního kontaktu. ${cleanBlockText(ps.first_draft)}`.trim();
+    }
     ps.evidence_sources = Array.from(new Set([...(Array.isArray(ps.evidence_sources) ? ps.evidence_sources : []), "VČEREJŠÍ SEZENÍ — PRAKTICKÝ REPORT", "VČEREJŠÍ SEZENÍ — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ"]));
     ps.backend_context_inputs = {
       ...(ps.backend_context_inputs ?? {}),
@@ -369,6 +374,14 @@ function injectPlayroomReviewIntoProposal(payload: any) {
   const report = cleanBlockText(y.practical_report_text);
   const next = cleanBlockText(y.recommendations_for_next_playroom || y.recommendations_for_therapists || y.recommendations_for_next_session);
   pp.evidence_sources = Array.from(new Set([...(Array.isArray(pp.evidence_sources) ? pp.evidence_sources : []), "VČEREJŠÍ HERNA — PRAKTICKÝ REPORT", "VČEREJŠÍ HERNA — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ"]));
+  pp.why_this_part_today = sanitizeKarelClinicalText(`Nízkoprahová stabilizační návaznost na včerejší Hernu. Symboly z včerejška používat primárně s ${y.part_name || pp.part_name || "touto částí"} a jen tehdy, pokud je část sama přinese nebo na ně klidně reaguje; u ostatních částí je nepřenášet automaticky. ${cleanBlockText(pp.why_this_part_today)}`);
+  pp.main_theme = `Jemný check-in bezpečného místa a dnešního vnitřního počasí, ne automatické pokračování hluboké symbolické práce`;
+  pp.goals = Array.from(new Set([
+    "ověřit dnešní tělesnou a emoční dostupnost bez tlaku",
+    "připomenout včerejší zdroje jen pokud jsou dnes bezpečné",
+    "držet krátký rámec a měkké zakončení",
+    ...(Array.isArray(pp.goals) ? pp.goals : []),
+  ])).slice(0, 4);
   pp.backend_context_inputs = {
     ...(pp.backend_context_inputs ?? {}),
     yesterday_playroom_review_id: y.review_id ?? null,
@@ -379,6 +392,25 @@ function injectPlayroomReviewIntoProposal(payload: any) {
   const seed = pp.playroom_plan?.runtime_packet_seed && typeof pp.playroom_plan.runtime_packet_seed === "object" ? pp.playroom_plan.runtime_packet_seed : {};
   pp.playroom_plan = {
     ...(pp.playroom_plan ?? {}),
+    child_safe_version: "Chceš dnes jen zkontrolovat, jestli je to bezpečné místo pořád někde poblíž, nebo chceš raději začít dnešním vnitřním počasím? Nemusíme pokračovat v ničem hlubokém.",
+    therapeutic_program: [
+      { block: "Jemný práh", minutes: 3, detail: "Karel nezačíná otázkou na ochranné bytosti. Nabídne volbu: bezpečné místo poblíž, dnešní vnitřní počasí, nebo jen ticho a jedno slovo." },
+      { block: "Tělo a den", minutes: 5, detail: "Krátce ověřit, jestli je v těle něco nepříjemného, únavného nebo bezpečného. Bez rozebírání, jen mapa aktuální dostupnosti." },
+      { block: "Zdroj jen se souhlasem", minutes: 7, detail: "Symboly světla, domova nebo ochrany použít pouze tehdy, pokud je část sama přinese nebo na ně klidně reaguje. Nevkládat je jako povinnost." },
+      { block: "Malý přenos do přítomnosti", minutes: 5, detail: "Pokud se objeví bezpečný symbol, pomoci ho spojit s přítomným tělem, dnešním dnem a bezpečnými dospělými, ne s odchodem mimo realitu." },
+      { block: "Měkké zavření", minutes: 4, detail: "Oznámit blížící se konec, nabídnout poslední stabilizační krok, ujistit, že bezpečné místo nezmizí, a neotevírat nové těžké téma." },
+    ],
+    forbidden_directions: Array.from(new Set([
+      "nezačínat přímým dotazem na ochranné bytosti",
+      "nepřenášet Tundrupkovy symboly automaticky na ostatní části",
+      "neposilovat představu, že bezpečí existuje jen mimo současný život",
+      ...(Array.isArray(pp.playroom_plan?.forbidden_directions) ? pp.playroom_plan.forbidden_directions : []),
+    ])).slice(0, 8),
+    risks_and_stop_signals: Array.from(new Set([
+      "duchovní symbolika se stáčí k odpojení od reality nebo k touze nebýt",
+      "část se cítí tlačená pokračovat v symbolu, který dnes sama nepřinesla",
+      ...(Array.isArray(pp.playroom_plan?.risks_and_stop_signals) ? pp.playroom_plan.risks_and_stop_signals : []),
+    ])).slice(0, 8),
     runtime_packet_seed: {
       ...seed,
       yesterday_playroom_review: {
