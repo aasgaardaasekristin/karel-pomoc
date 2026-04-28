@@ -377,6 +377,12 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
 Terapeutka: ${therapistName}
 Čas: ${new Date().toISOString()}
 ${switchHistory}
+${activeLiveReplan ? `AKTIVNÍ LIVE_REPLAN_PATCH:
+current_block_status: ${activeLiveReplan.current_block_status ?? "paused_by_reality_override"}
+verification_status: ${activeLiveReplan.factual_frame?.verification_status ?? "therapist_report_only"}
+Pravidlo: původní plán je pozastaven; nepokračuj podle původního bloku, dokud terapeutka výslovně nepotvrdí návrat.
+Evidence discipline: therapist_factual_correction / verified_external_fact nejsou důkaz o části; klinicky použitelná je jen child_response_to_event.
+` : ""}
 ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
 ═══ INSTRUKCE ═══
 - Jsi Karel, kognitivní agent PŘÍTOMNÝ na živém sezení s DID částí "${activePart}".
@@ -391,8 +397,9 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
 - Buď direktivní a konkrétní. Žádné filozofování.
 - Respektuj věk a vývojovou úroveň části.
 - Při známkách distresu nebo switchingu OKAMŽITĚ upozorni.
+- Pokud terapeutka opraví realitu nebo pošle URL ke skutečné události, zastav původní plán a přepni na realita → emoce → potřeba → bezpečí; neinterpretuj událost jako projekci bez dat.
 - Pokud detekuješ SWITCH (změnu identity/části), označ to tagem [SWITCH:JMÉNO_NOVÉ_ČÁSTI] na konci odpovědi.`;
-  }, [partName, activePart, therapistName, contextBrief, switchLog]);
+  }, [partName, activePart, therapistName, contextBrief, switchLog, activeLiveReplan]);
 
   // Detekce přímé výzvy „napiš mi slova / otázky / nápady" — přesměrujeme na produce
   const CONTENT_REQUEST_RE = /(napiš|dej|navrhni|vygeneruj|řekni|vyrob)\s+(mi\s+)?(ty\s+)?(slova|asociace|otázky|otazky|nápady|napady|barvy|instrukci|seznam)/i;
