@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTheme } from "@/contexts/ThemeContext";
-import { Sparkles, BookOpen, Heart, LogOut, Shield, Lock, ArrowRight, ChevronRight } from "lucide-react";
+import { MessageCircle, Sparkles, Heart, LogOut, Shield, Lock, ChevronRight } from "lucide-react";
 import karelAvatar from '@/assets/karel-avatar.png';
 import { KarelCard } from "@/components/ui/KarelCard";
 import { KarelButton } from "@/components/ui/KarelButton";
@@ -36,8 +36,18 @@ type HanaPinPhase = "video" | "fading" | "pin" | "done";
 
 const sections = [
   {
+    key: "karel",
+    title: "Karel chat",
+    description: "Běžný osobní/asistenční chat bez automatického DID zápisu",
+    icon: MessageCircle,
+    bg: "#E0D5C3",
+    bgHover: "#D5C9B5",
+    textColor: "#5D4E37",
+    locked: false,
+  },
+  {
     key: "did",
-    title: "DID",
+    title: "DID / Kluci",
     description: "Kartotéka, rozhovory s částmi, tandem-supervize, přehled systému",
     icon: Sparkles,
     bg: "#D4C4A8",
@@ -46,19 +56,9 @@ const sections = [
     locked: false,
   },
   {
-    key: "research",
-    title: "Profesní zdroje",
-    description: "Karel prohledá internet – odborné články, testy, metody, trendy",
-    icon: BookOpen,
-    bg: "#E0D5C3",
-    bgHover: "#D5C9B5",
-    textColor: "#5D4E37",
-    locked: false,
-  },
-  {
     key: "hana",
-    title: "Hana",
-    description: "Debrief, supervize, bezpečnost, klinický report",
+    title: "Hana osobní",
+    description: "Soukromý prostor Haničky s privacy-first pravidly",
     icon: Heart,
     bg: "#C8A96E",
     bgHover: "#BB9C61",

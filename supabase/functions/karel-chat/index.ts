@@ -39,6 +39,7 @@ import {
   findLastTherapistMentionEvidence,
   type DidThreadLite,
 } from "../_shared/runtimeEvidence.ts";
+import { detectSafetyMention, redactedSafetyExcerpt, resolvePersistencePolicy } from "../_shared/appModePolicy.ts";
 
 // DID_MASTER_PROMPT removed — identity is now sourced from _shared/karelIdentity.ts
 // Domain-specific DID workflow instructions remain in systemPrompts.ts
@@ -355,7 +356,10 @@ serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
-    const { messages, mode, didInitialContext, didSubMode, notebookProject, didPartName, didThreadLabel, didEnteredName, didContextPrimeCache } = await req.json();
+    const { messages, mode, didInitialContext, didSubMode, notebookProject, didPartName, didThreadLabel, didEnteredName, didContextPrimeCache, mode_id, no_save } = await req.json();
+    const persistencePolicy = resolvePersistencePolicy({ mode_id, no_save, didSubMode, mode });
+    const lastRequestUserText = normalizeMessageContentForPrompt([...(messages || [])].reverse().find((m: any) => m.role === "user")?.content);
+    const requestSafety = detectSafetyMention(lastRequestUserText);
     const isPlayroomMode = didSubMode === "playroom";
     const isTherapistLiveSession = mode === "live-session" || didSubMode === "therapist_session" || didSubMode === "session";
     const runtimePacketId = crypto.randomUUID();
@@ -367,6 +371,26 @@ serve(async (req) => {
     const requestUserId = await resolveUserIdFromRequest(req);
     const requestHasMultimodalInput = hasMultimodalInput(messages || []);
     const isDirectChildSubMode = didSubMode === "cast" || isPlayroomMode;
+    if (requestSafety.matched && requestUserId) {
+      writeRuntimeAudit({
+        user_id: requestUserId,
+        runtime_packet_id: runtimePacketId,
+        function_name: "karel-chat",
+        did_sub_mode: didSubMode ?? null,
+        request_mode: mode ?? null,
+        part_name: didPartName ?? null,
+        evaluation_status: "safety_mention_detected",
+        metadata: {
+          event_type: "safety_mention",
+          severity: requestSafety.severity,
+          mode_id: persistencePolicy.mode_id,
+          no_save_context: persistencePolicy.no_save,
+          content_excerpt: persistencePolicy.no_save ? null : redactedSafetyExcerpt(lastRequestUserText),
+          signals: requestSafety.signals,
+          action_taken: "safety_response_and_minimal_audit",
+        },
+      });
+    }
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
@@ -1789,7 +1813,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         const isCastMode = isDirectChildSubMode;
         const isMemoryMode = isHanaPersonal || didSubMode === "mamka" || didSubMode === "kata" || isCastMode;
 
-        if (isMemoryMode && fullResponse.length > 30) {
+        if (isMemoryMode && fullResponse.length > 30 && !persistencePolicy.no_save && persistencePolicy.mode_id !== "karel_chat") {
           const { createClient: createSbForMem } = await import("https://esm.sh/@supabase/supabase-js@2");
           const sbMem = createSbForMem(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -2049,7 +2073,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         }
 
         // ═══ SAFETY CHECK (fire-and-forget via separate edge function) ═══
-        if (isDirectChildSubMode && didPartName) {
+        if (isDirectChildSubMode && didPartName && !persistencePolicy.no_save) {
           const lastUserMsg = (messages as any[]).filter((m: any) => m.role === "user").pop();
           const userText = typeof lastUserMsg?.content === "string" ? lastUserMsg.content : "";
           if (userText.length > 5) {
@@ -2173,7 +2197,7 @@ Odpověz v JSON:
 
         // ═══ ASYNC CRISIS DETECTOR (non-blocking) ═══
         // Runs for every "cast" message — detects crisis signals in conversation
-        if (isDirectChildSubMode && fullResponse.length > 10) {
+        if (isDirectChildSubMode && fullResponse.length > 10 && !persistencePolicy.no_save) {
           try {
             // Build last 6-10 messages for analysis
             const recentMessages = (messages as any[]).slice(-10).map((m: any) => {

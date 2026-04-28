@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { LogOut, Loader2, FileText, RotateCcw, FolderOpen, GraduationCap, RefreshCw } from "lucide-react";
+import { LogOut, Loader2, FileText, RotateCcw, FolderOpen, GraduationCap, RefreshCw, ShieldOff } from "lucide-react";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversalUpload";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
@@ -45,6 +45,8 @@ import DidContentRouter from "@/components/did/DidContentRouter";
 import TherapistAvatarBar from "@/components/did/TherapistAvatarBar";
 import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
 import { useAuthReady } from "@/hooks/useAuthReady";
+import { APP_MODE_POLICIES, getAppModeForHub, getModePolicy } from "@/lib/appModePolicy";
+import { buildSafetyResponse, detectSafetyMention } from "@/lib/safetyDetection";
 import {
   type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
   STORAGE_KEY_PREFIX, ACTIVE_MODE_KEY, DID_DOCS_LOADED_KEY, DID_SESSION_ID_KEY, HANA_PIN_KEY, HANA_PIN_ACCESS_TOKEN_KEY,
@@ -177,6 +179,27 @@ const Chat = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const explicitLogoutActive = isExplicitLogoutActive();
+  const [noSave, setNoSave] = useState(() => {
+    try { return sessionStorage.getItem("karel_no_save") === "1"; } catch { return false; }
+  });
+  const appModeId = getAppModeForHub(hubSection);
+  const persistencePolicy = getModePolicy(appModeId, noSave);
+  const persistenceRequest = {
+    mode_id: persistencePolicy.mode_id,
+    save_policy: persistencePolicy.save_policy,
+    did_relevance_policy: persistencePolicy.did_relevance_policy,
+    pantry_policy: persistencePolicy.pantry_policy,
+    drive_policy: persistencePolicy.drive_policy,
+    safety_policy: persistencePolicy.safety_policy,
+    no_save: noSave,
+  };
+
+  useEffect(() => {
+    try {
+      if (noSave) sessionStorage.setItem("karel_no_save", "1");
+      else sessionStorage.removeItem("karel_no_save");
+    } catch {}
+  }, [noSave]);
 
   const hasStoredDidWork = (() => {
     try {
@@ -229,6 +252,10 @@ const Chat = () => {
   useEffect(() => {
     if (isExplicitLogoutActive()) return;
     try {
+      if (noSave) {
+        sessionStorage.removeItem(draftKey);
+        return;
+      }
       if (lastDraftKeyRef.current !== draftKey && input.trim()) {
         sessionStorage.setItem(lastDraftKeyRef.current, input);
       }
@@ -236,15 +263,19 @@ const Chat = () => {
       setInput(savedDraft);
       lastDraftKeyRef.current = draftKey;
     } catch {}
-  }, [draftKey]);
+  }, [draftKey, noSave]);
 
   useEffect(() => {
     if (isExplicitLogoutActive()) return;
     try {
+      if (noSave) {
+        sessionStorage.removeItem(draftKey);
+        return;
+      }
       if (input.trim()) sessionStorage.setItem(draftKey, input);
       else sessionStorage.removeItem(draftKey);
     } catch {}
-  }, [draftKey, input]);
+  }, [draftKey, input, noSave]);
 
   // Manual update hook
   const manualUpdate = useManualUpdate({
@@ -255,10 +286,12 @@ const Chat = () => {
   });
 
   useEffect(() => {
+    if (noSave) return;
     try { localStorage.setItem(ACTIVE_MODE_KEY, mode); } catch {}
-  }, [mode]);
+  }, [mode, noSave]);
 
   useEffect(() => {
+    if (noSave) return;
     try {
       if (didSubMode) localStorage.setItem("karel_did_submode", didSubMode);
       else localStorage.removeItem("karel_did_submode");
@@ -266,6 +299,7 @@ const Chat = () => {
   }, [didSubMode]);
 
   useEffect(() => {
+    if (noSave) return;
     try {
       if (didInitialContext) localStorage.setItem("karel_did_context", didInitialContext);
       else localStorage.removeItem("karel_did_context");
@@ -522,6 +556,7 @@ const Chat = () => {
   // Auto-save research threads
   useEffect(() => {
     if (messages.length === 0 || !activeResearchThread) return;
+    if (noSave) return;
     const interval = setInterval(() => {
       researchThreads.updateMessages(activeResearchThread.id, messages);
     }, 5000);
@@ -531,6 +566,7 @@ const Chat = () => {
   // Auto-save threads to DB (DID)
   useEffect(() => {
     if (messages.length === 0 || !activeThread) return;
+    if (noSave) return;
     const interval = setInterval(() => {
       didThreads.updateThreadMessages(activeThread.id, messages);
     }, 5000);
@@ -540,6 +576,7 @@ const Chat = () => {
   // Periodical save for non-thread modes
   useEffect(() => {
     if (messages.length === 0 || activeThread || activeResearchThread) return;
+    if (noSave || hubSection === "karel") return;
     const interval = setInterval(() => {
       saveMessages(mode, messages);
       if (mode === "childcare" && didSubMode && didSubMode !== "cast" && messages.length >= 2) {
@@ -552,12 +589,12 @@ const Chat = () => {
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === "hidden") {
-        if (messages.length > 0) {
+        if (!noSave && hubSection !== "karel" && messages.length > 0) {
           saveMessages(mode, messages);
           if (activeThread) didThreads.updateThreadMessages(activeThread.id, messages);
           if (activeResearchThread) researchThreads.updateMessages(activeResearchThread.id, messages);
         }
-        if (mode === "childcare" && didSubMode && didSubMode !== "cast" && messages.length >= 2) {
+        if (!noSave && mode === "childcare" && didSubMode && didSubMode !== "cast" && messages.length >= 2) {
           saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
         }
       }
@@ -571,7 +608,7 @@ const Chat = () => {
 
   useEffect(() => {
     const persistNow = () => {
-      if (messages.length > 0) {
+      if (!noSave && hubSection !== "karel" && messages.length > 0) {
         saveMessages(mode, messages);
         if (activeThread) didThreads.updateThreadMessages(activeThread.id, messages);
         if (activeResearchThread) researchThreads.updateMessages(activeResearchThread.id, messages);
@@ -597,7 +634,17 @@ const Chat = () => {
       return;
     }
 
-    if (mode !== "childcare") {
+      if (hubSection === "karel") {
+        setDidSubMode(null);
+        setDidInitialContext("");
+        setDidFlowState("entry");
+        setActiveThread(null);
+        setMessages([{ role: "assistant", content: "Ahoj, jsem tady. Tenhle chat je oddělený od DID a výchozí nastavení je bez automatického zápisu do dlouhodobé paměti." }]);
+        prevModeRef.current = mode;
+        return;
+      }
+
+      if (mode !== "childcare") {
       setDidSubMode(null);
       setDidInitialContext("");
       setDidFlowState("entry");
@@ -652,12 +699,12 @@ const Chat = () => {
     }
 
     if (!pendingHandoffToChat) {
-      const saved = loadMessages(mode);
+      const saved = noSave ? null : loadMessages(mode);
       if (saved && saved.length > 0) setMessages(saved);
       else setMessages([{ role: "assistant", content: welcomeMessages[mode] }]);
     }
     prevModeRef.current = mode;
-  }, [mode, setMessages, pendingHandoffToChat, setDidSubMode, setDidInitialContext, hasActiveWork]);
+  }, [mode, setMessages, pendingHandoffToChat, setDidSubMode, setDidInitialContext, hasActiveWork, hubSection, noSave]);
 
   useEffect(() => {
     if (pendingHandoffToChat && mainMode === "chat") {
@@ -684,9 +731,9 @@ const Chat = () => {
   };
 
   const handleNewConversation = useCallback(() => {
-    if (activeThread && messages.length >= 2) {
+    if (!noSave && activeThread && messages.length >= 2) {
       didThreads.updateThreadMessages(activeThread.id, messages);
-    } else if (didSubMode && messages.length >= 2) {
+    } else if (!noSave && didSubMode && messages.length >= 2) {
       saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
     clearMessages(mode);
@@ -698,13 +745,13 @@ const Chat = () => {
     setMessages([]);
     setDidFlowState("entry");
     refreshHistory();
-  }, [mode, messages, didSubMode, didInitialContext, didSessionId, activeThread]);
+  }, [mode, messages, didSubMode, didInitialContext, didSessionId, activeThread, noSave]);
 
   // ═══ Hierarchical back navigation for DID ═══
   const handleDidBackHierarchical = useCallback(() => {
-    if (activeThread && messages.length >= 2) {
+    if (!noSave && activeThread && messages.length >= 2) {
       didThreads.updateThreadMessages(activeThread.id, messages);
-    } else if (didSubMode && messages.length >= 2 && didFlowState === "chat") {
+    } else if (!noSave && didSubMode && messages.length >= 2 && didFlowState === "chat") {
       saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
 
@@ -1894,6 +1941,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     const currentDraftKey = draftKey;
     clearAttachments();
     const userContent = buildAttachmentContent(userMessage, currentAttachments);
+    const safety = detectSafetyMention(userMessage);
     setMessages((prev) => [...prev, { role: "user", content: userContent as any }]);
     if (mode === "childcare") didContextPrime.trackMessage();
     setIsLoading(true);
@@ -1918,6 +1966,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             ...(mode === "childcare" && didSubMode ? { didSubMode } : {}),
             ...(mode === "childcare" && trimmedPrimeCache ? { didContextPrimeCache: trimmedPrimeCache } : {}),
             ...(mode === "childcare" && activeThread ? { didPartName: activeThread.partName, didThreadLabel: activeThread.threadLabel, didEnteredName: activeThread.enteredName } : {}),
+            ...persistenceRequest,
           };
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 90000);
@@ -1935,6 +1984,16 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           return n;
         });
       });
+
+      if (safety.matched) {
+        const safetyText = buildSafetyResponse(safety, noSave);
+        assistantContent = [safetyText, assistantContent].filter(Boolean).join("\n\n---\n\n");
+        setMessages((prev) => {
+          const n = [...prev];
+          if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content: assistantContent };
+          return n;
+        });
+      }
 
       // ═══ SWITCH DETECTION (tag-based + DB-based) ═══
       if (activeThread && didSubMode === "cast" && assistantContent) {
@@ -2119,7 +2178,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             </Button>
             <div className="min-w-0">
               <h1 className="text-base sm:text-lg font-serif font-medium text-foreground tracking-wide truncate">
-                {hubSection === "did" ? "DID" : hubSection === "research" ? "Profesní zdroje" : "Hana"}
+                {hubSection === "did" ? "DID / Kluci" : hubSection === "research" ? "Profesní zdroje" : hubSection === "karel" ? "Karel chat" : "Hana osobní"}
               </h1>
             </div>
           </div>
@@ -2160,6 +2219,18 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                 </button>
               </div>
             )}
+            {(hubSection === "karel" || hubSection === "hana") && (
+              <Button
+                variant={noSave ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setNoSave((value) => !value)}
+                className="h-8 px-2 gap-1 text-xs"
+                title={APP_MODE_POLICIES.no_save.description}
+              >
+                <ShieldOff className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Bez ukládání</span>
+              </Button>
+            )}
             {hubSection !== "research" && hubSection !== "hana" && <ThemeQuickButton storageKey={chatStorageKey || undefined} />}
             <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2">
               <LogOut className="w-4 h-4" />
@@ -2168,7 +2239,34 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         </div>
       </header>
 
-      {hubSection === "did" ? (
+      {hubSection === "karel" ? (
+        <div className="flex-1 flex flex-col min-h-0">
+          <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
+            <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
+              {messages.map((message, index) => (
+                <ChatMessage key={index} message={message} />
+              ))}
+              {isLoading && messages[messages.length - 1]?.role === "user" && <LoadingSkeleton />}
+            </div>
+          </ScrollArea>
+          <ChatInputArea
+            input={input} setInput={setInput}
+            onSend={sendMessage} onKeyDown={handleKeyDown}
+            isLoading={isLoading} disabled={isSoapLoading}
+            isAnalyzing={isFileAnalyzing}
+            attachments={attachments}
+            onRemoveAttachment={removeAttachment}
+            onOpenFilePicker={openFilePicker}
+            onCaptureScreenshot={captureScreenshot}
+            onOpenDrivePicker={() => setDrivePickerOpen(true)}
+            onAutoAnalyze={handleAutoAnalyze}
+            fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+            onFileChange={handleFileChange}
+            textareaRef={textareaRef}
+            footerText={`${persistencePolicy.label}: ${persistencePolicy.description}`}
+          />
+        </div>
+      ) : hubSection === "did" ? (
         <>
           {/* Switching Alert Banner */}
           {switchAlert && (
@@ -2400,7 +2498,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           {mainMode === "chat" ? (
             <>
               <CrisisBriefPanel />
-              <HanaChat />
+              <HanaChat noSave={noSave} />
             </>
           ) : (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">

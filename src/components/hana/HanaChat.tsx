@@ -24,6 +24,7 @@ import SaveTopicButton from "@/components/hana/SaveTopicButton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useAuthReady } from "@/hooks/useAuthReady";
+import { buildSafetyResponse, detectSafetyMention } from "@/lib/safetyDetection";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -74,7 +75,7 @@ const handleApiError = async (response: Response) => {
 
 // Intro animation removed – now lives in HanaPinScreen
 
-const HanaChatInner = () => {
+const HanaChatInner = ({ noSave = false }: { noSave?: boolean }) => {
   const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();
   const [messages, setMessages] = useState<Message[]>([]);
   const [viewState, setViewState] = useState<HanaViewState>("list");
@@ -119,6 +120,7 @@ const HanaChatInner = () => {
     nextMessages: Message[],
     options?: { isActive?: boolean }
   ) => {
+    if (noSave) return;
     if (!targetConversationId) return;
 
     const payload: Record<string, unknown> = {
@@ -141,7 +143,7 @@ const HanaChatInner = () => {
     }
 
     lastSavedRef.current = JSON.stringify(nextMessages);
-  }, []);
+  }, [noSave]);
 
   const createConversation = useCallback(async () => {
     await supabase
@@ -340,17 +342,22 @@ const HanaChatInner = () => {
 
     try {
       if (!activeConversationId) {
-        const created = await createConversation();
-        if (!created) {
-          setMessages(messages);
-          return;
+        if (noSave) {
+          activeConversationId = null;
+        } else {
+          const created = await createConversation();
+          if (!created) {
+            setMessages(messages);
+            return;
+          }
+          activeConversationId = created.id;
+          setConversationId(created.id);
         }
-        activeConversationId = created.id;
-        setConversationId(created.id);
         setViewState("thread-detail");
       }
 
       await persistConversation(activeConversationId, nextMessages);
+      const safety = detectSafetyMention(userMessage);
 
       const headers = await getAuthHeaders();
       const recentMessages = [...messages.slice(-30), { role: "user", content: userContent }];
@@ -364,6 +371,8 @@ const HanaChatInner = () => {
             messages: recentMessages,
             conversationId: activeConversationId,
             contextPrimeCache: contextPrimeCache || undefined,
+            mode_id: "hana_osobni",
+            no_save: noSave,
           }),
         }
       );
@@ -407,6 +416,15 @@ const HanaChatInner = () => {
         }
       }
 
+      if (safety.matched) {
+        assistantContent = [buildSafetyResponse(safety, noSave), assistantContent].filter(Boolean).join("\n\n---\n\n");
+        setMessages(prev => {
+          const n = [...prev];
+          if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content: assistantContent };
+          return n;
+        });
+      }
+
       if (assistantContent && activeConversationId) {
         await persistConversation(activeConversationId, [...nextMessages, { role: "assistant", content: assistantContent }]);
       }
@@ -421,7 +439,7 @@ const HanaChatInner = () => {
       setIsLoading(false);
       textareaRef.current?.focus();
     }
-  }, [input, attachments, isLoading, messages, conversationId, clearAttachments, contextPrimeCache, createConversation, persistConversation]);
+  }, [input, attachments, isLoading, messages, conversationId, clearAttachments, contextPrimeCache, createConversation, persistConversation, noSave]);
 
   const handleNewConversation = useCallback(async () => {
     if (conversationId) {
@@ -1094,12 +1112,12 @@ const HanaChatInner = () => {
   );
 };
 
-const HanaChat = () => {
+const HanaChat = ({ noSave = false }: { noSave?: boolean }) => {
   // We need conversationId to compute the key, but it's internal state.
   // Use a simple wrapper that provides the base key; HanaChatInner will override via prop when conversationId changes.
   return (
     <ThemeStorageKeyProvider value="theme_hana">
-      <HanaChatInner />
+      <HanaChatInner noSave={noSave} />
     </ThemeStorageKeyProvider>
   );
 };
