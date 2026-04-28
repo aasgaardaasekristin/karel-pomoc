@@ -1574,9 +1574,7 @@ async function persistEvaluation(
     outputs.recommendations_for_therapists,
     outputs.recommendations_for_next_session,
     outputs.recommendations_for_next_playroom,
-  ].filter(Boolean).join("
-
-") || evaluation.recommended_next_step || "Doplnit navazující kroky podle dostupnosti části.";
+  ].filter(Boolean).join("\n\n") || evaluation.recommended_next_step || "Doplnit navazující kroky podle dostupnosti části.";
   await appendPantryB(sb, {
     user_id: userId,
     entry_kind: "followup_need",
