@@ -738,13 +738,18 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
   const goToLiveSession = async () => {
     const planId = bridgedPlanId ?? d?.linked_live_session_id;
     if (!planId || startingLive) return;
+    const preflightReason = unsignedStartBlockReason(d);
+    if (preflightReason) {
+      toast.info(preflightReason);
+      return;
+    }
     setStartingLive(true);
     try {
       const nowIso = new Date().toISOString();
       const [{ error: statusErr }, deliberationRes] = await Promise.all([
         (supabase as any)
           .from("did_daily_session_plans")
-          .update({ status: "in_progress", updated_at: nowIso })
+          .update({ status: "in_progress", lifecycle_status: "in_progress", started_at: nowIso, updated_at: nowIso })
           .eq("id", planId)
           .select("id")
           .single(),
@@ -785,13 +790,19 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
 
       const { data: planRow, error: fetchErr } = await (supabase as any)
         .from("did_daily_session_plans")
-        .select("id, selected_part, session_lead, therapist, plan_markdown, urgency_breakdown")
+        .select("id, selected_part, session_lead, therapist, plan_markdown, status, program_status, urgency_breakdown")
         .eq("id", planId)
         .single();
 
       if (fetchErr || !planRow) {
         console.error("[DeliberationRoom] startLiveSession fetch failed:", fetchErr);
         toast.error("Nepodařilo se načíst aktuální schválený plán.");
+        return;
+      }
+
+      const planBlockReason = unsignedStartBlockReason(d, planRow as LiveSessionPlanRow);
+      if (planBlockReason) {
+        toast.info(planBlockReason);
         return;
       }
 
