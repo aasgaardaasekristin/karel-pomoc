@@ -55,7 +55,6 @@ import {
   getRandomCastGreeting, saveMessages, loadMessages, clearMessages, handleApiError,
   parseSSEStream, WELCOME_MESSAGES, clearActiveWorkStorageForLogout, clearNoHistoryChatStorage, isExplicitLogoutActive, markExplicitLogout,
 } from "@/lib/chatHelpers";
-import { assessModeSwitch } from "@/lib/modeSwitching";
 
 const LoadingSkeleton = () => (
   <div className="flex justify-start">
