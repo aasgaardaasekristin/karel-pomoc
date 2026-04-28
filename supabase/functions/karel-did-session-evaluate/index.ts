@@ -1496,69 +1496,79 @@ async function persistEvaluation(
       .eq("plan_id", ctx.plan.id);
   }
 
-  // 3) karel_pantry_b_entries — anti-dup podle source_ref
+  // 3) karel_pantry_b_entries — idempotentně podle source_kind + source_ref + entry_kind + related_part_name
   const sourceRef = `session-evaluate:${ctx.plan.id}`;
-  const { data: existingPantryB } = await sb
-    .from("karel_pantry_b_entries")
-    .select("id")
-    .eq("source_ref", sourceRef);
-  if (existingPantryB && existingPantryB.length > 0 && !force) {
-    console.log(`[evaluate] Pantry B already has ${existingPantryB.length} entries for ${sourceRef}, skipping`);
-  } else {
-    if (force && existingPantryB && existingPantryB.length > 0) {
-      await sb.from("karel_pantry_b_entries").delete().eq("source_ref", sourceRef);
-    }
-    // Hlavní conclusion
+  await appendPantryB(sb, {
+    user_id: userId,
+    entry_kind: "conclusion",
+    source_kind: "therapy_session",
+    source_ref: sourceRef,
+    summary: `Sezení s ${partName} (${ctx.plan.plan_date}, vede ${therapistLabel}) — ${outputs.practical_report_text.slice(0, 420)}`,
+    detail: {
+      plan_id: ctx.plan.id,
+      review_id: reviewId,
+      part_name: partName,
+      practical_report_text: outputs.practical_report_text,
+      key_findings: evaluation.key_insights ?? [],
+      implications_for_part: outputs.implications_for_part,
+      implications_for_system: outputs.implications_for_system,
+      evidence_limitations: outputs.evidence_limitations,
+    },
+    intended_destinations: ["briefing_input", "did_implications", "did_therapist_tasks"],
+    related_part_name: partName,
+    related_therapist: therapistKey ?? undefined,
+  });
+
+  const followupSummary = [
+    outputs.recommendations_for_therapists,
+    outputs.recommendations_for_next_session,
+    outputs.recommendations_for_next_playroom,
+  ].filter(Boolean).join("
+
+") || evaluation.recommended_next_step || "Doplnit navazující kroky podle dostupnosti části.";
+  await appendPantryB(sb, {
+    user_id: userId,
+    entry_kind: "followup_need",
+    source_kind: "therapy_session",
+    source_ref: `${sourceRef}:followup`,
+    summary: followupSummary.slice(0, 1000),
+    detail: {
+      plan_id: ctx.plan.id,
+      review_id: reviewId,
+      recommendations_for_therapists: outputs.recommendations_for_therapists,
+      recommendations_for_next_session: outputs.recommendations_for_next_session,
+      recommendations_for_next_playroom: outputs.recommendations_for_next_playroom,
+      what_not_to_do: outputs.what_not_to_do,
+    },
+    intended_destinations: ["did_therapist_tasks", "briefing_input"],
+    related_part_name: partName,
+    related_therapist: therapistKey ?? undefined,
+  });
+
+  if (outputs.risks.length > 0) {
     await appendPantryB(sb, {
       user_id: userId,
-      entry_kind: "conclusion",
+      entry_kind: "risk",
       source_kind: "therapy_session",
-      source_ref: sourceRef,
-      summary: `Sezení s ${partName} (${ctx.plan.plan_date}, vede ${therapistLabel}) — ${evaluation.child_perspective.slice(0, 280)}`,
-      detail: {
-        plan_id: ctx.plan.id,
-        completion_status: evaluation.completion_status,
-        completed_blocks: completedBlocks,
-        total_blocks: totalBlocks,
-        ended_reason: endedReason,
-        child_perspective: evaluation.child_perspective,
-        therapist_motivation: evaluation.therapist_motivation,
-        recommended_next_step: evaluation.recommended_next_step,
-        incomplete_note: evaluation.incomplete_note,
-      },
-      intended_destinations: ["briefing_input", "did_implications", "did_therapist_tasks"],
+      source_ref: `${sourceRef}:risk`,
+      summary: outputs.risks.join("; ").slice(0, 1000),
+      detail: { plan_id: ctx.plan.id, review_id: reviewId, risks: outputs.risks, evidence_limitations: outputs.evidence_limitations },
+      intended_destinations: ["briefing_input", "did_implications"],
       related_part_name: partName,
-      related_therapist: therapistKey ?? undefined,
     });
+  }
 
-    // Followup_need pro každý task
-    for (const task of evaluation.tasks ?? []) {
-      await appendPantryB(sb, {
-        user_id: userId,
-        entry_kind: "followup_need",
-        source_kind: "therapy_session",
-        source_ref: sourceRef,
-        summary: `[${task.owner}/${task.urgency}] ${task.text}`,
-        detail: { plan_id: ctx.plan.id, task },
-        intended_destinations: ["did_therapist_tasks", "briefing_input"],
-        related_part_name: partName,
-        related_therapist: task.owner === "hanka" ? "hanka" : task.owner === "kata" ? "kata" : undefined,
-      });
-    }
-
-    // Hypothesis_change pro každý key_insight
-    for (const insight of evaluation.key_insights ?? []) {
-      await appendPantryB(sb, {
-        user_id: userId,
-        entry_kind: "hypothesis_change",
-        source_kind: "therapy_session",
-        source_ref: sourceRef,
-        summary: insight,
-        detail: { plan_id: ctx.plan.id },
-        intended_destinations: ["did_implications", "briefing_input"],
-        related_part_name: partName,
-      });
-    }
+  for (const insight of (evaluation.key_insights ?? []).slice(0, 3)) {
+    await appendPantryB(sb, {
+      user_id: userId,
+      entry_kind: "hypothesis_change",
+      source_kind: "therapy_session",
+      source_ref: `${sourceRef}:hypothesis:${String(insight).slice(0, 80)}`,
+      summary: String(insight).slice(0, 1000),
+      detail: { plan_id: ctx.plan.id, review_id: reviewId },
+      intended_destinations: ["did_implications", "briefing_input"],
+      related_part_name: partName,
+    });
   }
 
   if (reviewStatus !== "failed_analysis" && reviewId) {
