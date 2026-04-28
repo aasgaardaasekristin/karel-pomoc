@@ -608,6 +608,24 @@ async function gatherContext(supabase: any) {
       .limit(5);
     yesterdaySessionReviews = reviewsByDate ?? [];
   }
+  const { data: yesterdayPlayroomReviews } = await supabase
+    .from("did_session_reviews")
+    .select("id, plan_id, mode, review_kind, status, part_name, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, analysis_json, implications_for_part, implications_for_whole_system, recommendations_for_therapists, recommendations_for_next_playroom, recommendations_for_next_session, next_session_recommendation, drive_sync_status, detail_analysis_drive_url, practical_report_drive_url, created_at")
+    .eq("session_date", yesterdayISO)
+    .eq("mode", "playroom")
+    .eq("review_kind", "karel_direct_playroom")
+    .eq("is_current", true)
+    .order("created_at", { ascending: false })
+    .limit(3);
+  const { data: yesterdayPlayroomThread } = await supabase
+    .from("did_threads")
+    .select("id,part_name,workspace_id,workspace_type,sub_mode,thread_label,messages,last_activity_at")
+    .in("sub_mode", ["karel_part_session", "playroom"])
+    .gte("last_activity_at", `${yesterdayISO}T00:00:00Z`)
+    .lte("last_activity_at", `${yesterdayISO}T23:59:59.999Z`)
+    .order("last_activity_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
   const clinicalReviewParts = new Set(yesterdaySessionReviews.filter((r: any) => ["completed", "started_partial", "unknown"].includes(reviewEvidenceBasis(r))).map((r: any) => String(r.part_name ?? "").toLowerCase()));
   const safeYesterdaySessions = clinicalReviewParts.size > 0
     ? yesterdaySessions.filter((s: any) => clinicalReviewParts.has(String(s.part_name ?? "").toLowerCase()))
@@ -643,6 +661,8 @@ async function gatherContext(supabase: any) {
     yesterday_sessions: safeYesterdaySessions,
     yesterday_plans: yesterdayPlans,
     yesterday_session_reviews: yesterdaySessionReviews,
+    yesterday_playroom_reviews: yesterdayPlayroomReviews ?? [],
+    yesterday_playroom_thread: yesterdayPlayroomThread ?? null,
     pantry_a: pantryA,
     pantry_a_summary: pantryASummary,
     pantry_b_entries: pantryBEntries,
