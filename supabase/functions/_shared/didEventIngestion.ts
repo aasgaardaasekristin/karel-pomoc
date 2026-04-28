@@ -91,6 +91,16 @@ export interface IngestionSummary {
   results: IngestionResult[];
 }
 
+export type NormalizedDidEventInput = Omit<NormalizedDidEvent, "source_hash"> & {
+  source_hash?: string;
+};
+
+export interface RunGlobalDidEventIngestionOptions {
+  mode?: "last_24h" | "since_cursor" | "source_test";
+  sinceISO?: string;
+  source_filter?: PantryBSourceKind[];
+}
+
 const SUPPORTED_SOURCES = [
   "therapist_task_note",
   "therapist_note",
@@ -123,7 +133,7 @@ function inferPartName(text: string, fallback?: string | null): string | null {
   return match?.[0] ?? null;
 }
 
-export function normalizeEvent(input: Omit<NormalizedDidEvent, "source_hash"> & { source_hash?: string }): NormalizedDidEvent {
+export function normalizeEvent(input: NormalizedDidEventInput): NormalizedDidEvent {
   const raw = compactText(input.raw_excerpt, 1600);
   const sourceHash = input.source_hash || stableHash(`${input.source_ref}|${raw}`);
   return {
@@ -452,7 +462,7 @@ export async function markIngestionProcessed(sb: SupabaseClient, logId: string, 
   }).eq("id", logId);
 }
 
-export async function routeEvent(sb: SupabaseClient, eventInput: Omit<NormalizedDidEvent, "source_hash"> & { source_hash?: string }): Promise<IngestionResult> {
+export async function routeEvent(sb: SupabaseClient, eventInput: NormalizedDidEventInput): Promise<IngestionResult> {
   const event = normalizeEvent(eventInput);
   const dedupe = await dedupeBySourceRefAndHash(sb, event);
   if (dedupe.duplicate) return { source_ref: event.source_ref, status: "duplicate", log_id: dedupe.logId, reason: "source_ref_source_hash_seen" };
