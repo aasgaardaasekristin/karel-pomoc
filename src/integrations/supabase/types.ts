@@ -47,6 +47,87 @@ export type Database = {
         }
         Relationships: []
       }
+      briefing_ask_resolutions: {
+        Row: {
+          applied_to_deliberation_id: string | null
+          applied_to_plan_id: string | null
+          applied_to_program_version: string | null
+          applied_to_target_item_id: string | null
+          applied_to_target_type: string | null
+          ask_id: string
+          assignee: string
+          briefing_id: string
+          created_at: string
+          error_message: string | null
+          id: string
+          intent: string
+          processed_at: string | null
+          processed_by: string | null
+          resolution_mode: string
+          resolution_status: string
+          response_hash: string
+          target_item_id: string | null
+          target_part_name: string | null
+          target_type: string
+          therapist_response: string | null
+          thread_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          applied_to_deliberation_id?: string | null
+          applied_to_plan_id?: string | null
+          applied_to_program_version?: string | null
+          applied_to_target_item_id?: string | null
+          applied_to_target_type?: string | null
+          ask_id: string
+          assignee: string
+          briefing_id: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          intent?: string
+          processed_at?: string | null
+          processed_by?: string | null
+          resolution_mode: string
+          resolution_status?: string
+          response_hash: string
+          target_item_id?: string | null
+          target_part_name?: string | null
+          target_type?: string
+          therapist_response?: string | null
+          thread_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          applied_to_deliberation_id?: string | null
+          applied_to_plan_id?: string | null
+          applied_to_program_version?: string | null
+          applied_to_target_item_id?: string | null
+          applied_to_target_type?: string | null
+          ask_id?: string
+          assignee?: string
+          briefing_id?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          intent?: string
+          processed_at?: string | null
+          processed_by?: string | null
+          resolution_mode?: string
+          resolution_status?: string
+          response_hash?: string
+          target_item_id?: string | null
+          target_part_name?: string | null
+          target_type?: string
+          therapist_response?: string | null
+          thread_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       calm_access_tokens: {
         Row: {
           created_at: string
