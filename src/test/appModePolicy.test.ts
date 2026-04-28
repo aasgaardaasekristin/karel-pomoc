@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { APP_MODE_POLICIES } from "@/lib/appModePolicy";
-import { detectSafetyMention } from "@/lib/safetyDetection";
+import { buildSafetyResponse, detectSafetyMention } from "@/lib/safetyDetection";
 import { assessModeSwitch } from "@/lib/modeSwitching";
+import { BACKEND_BYPASS_NO_SAVE_PAYLOAD, NO_HISTORY_PERSISTENT_TABLES, NO_HISTORY_RUNTIME_AUDIT_TABLE } from "@/lib/noHistoryAuditProof";
 
 describe("Karel mode policies", () => {
   it("defines three visible Karel modes with starter questions", () => {
@@ -36,6 +37,43 @@ describe("Karel mode policies", () => {
     }
     expect(APP_MODE_POLICIES.karel_chat.starter_questions.every((question) => question.intended_write_policy !== "pantry_allowed")).toBe(true);
     expect(APP_MODE_POLICIES.hana_osobni.starter_questions.filter((question) => question.default_no_save).every((question) => question.intended_write_policy === "private_only")).toBe(true);
+  });
+
+  it("documents starter questions and activates no-save only for private defaults", () => {
+    const allQuestions = [APP_MODE_POLICIES.karel_chat, APP_MODE_POLICIES.did_kluci, APP_MODE_POLICIES.hana_osobni].flatMap((policy) => policy.starter_questions);
+    expect(allQuestions.map((question) => `${question.mode_id}:${question.label}`)).toMatchInlineSnapshot(`
+      [
+        "karel_chat:Dnešní priority",
+        "karel_chat:Zpráva nebo plán",
+        "karel_chat:Vysvětli jednoduše",
+        "karel_chat:Uspořádat úkoly",
+        "karel_chat:Bez historie",
+        "did_kluci:Co Karel ví",
+        "did_kluci:Karlův přehled",
+        "did_kluci:Návrh Sezení",
+        "did_kluci:Návrh Herny",
+        "did_kluci:Karta části",
+        "did_kluci:Posledních 24 hodin",
+        "did_kluci:Rizika",
+        "did_kluci:Terapeutické pozorování",
+        "hana_osobni:Osobně promyslet",
+        "hana_osobni:Zklidnit myšlenky",
+        "hana_osobni:Osobní vs terapeutické",
+        "hana_osobni:Bez historie",
+        "hana_osobni:Co přenést",
+      ]
+    `);
+    expect(allQuestions.filter((question) => question.default_no_save)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "karel-private", intended_write_policy: "private_only" }),
+      expect.objectContaining({ id: "hana-note-private", intended_write_policy: "private_only" }),
+    ]));
+  });
+
+  it("exposes DID writeback permission explicitly for audit view", () => {
+    expect(APP_MODE_POLICIES.did_kluci.allows_did_writeback).toBe(true);
+    expect(APP_MODE_POLICIES.karel_chat.allows_did_writeback).toBe(false);
+    expect(APP_MODE_POLICIES.hana_osobni.allows_did_writeback).toBe(false);
+    expect(APP_MODE_POLICIES.no_save.allows_did_writeback).toBe(false);
   });
 });
 
@@ -80,6 +118,13 @@ describe("structured safety filter", () => {
     expect(result.category).toBe("severe_dissociation_or_lost_time");
     expect(result.required_response_style).toBe("safety_response");
   });
+
+  it("keeps no-history safety response explicit while blocking normal persistence", () => {
+    const result = detectSafetyMention("Teď si chci ublížit.");
+    const response = buildSafetyResponse(result, true);
+    expect(response).toContain("Režim bez ukládání respektuji");
+    expect(result.persistence_exception_allowed).toBe(true);
+  });
 });
 
 describe("mode switching isolation", () => {
@@ -93,5 +138,30 @@ describe("mode switching isolation", () => {
     const decision = assessModeSwitch("karel_chat", "did_kluci", false);
     expect(decision.requiresExplicitConsent).toBe(true);
     expect(decision.transferAllowed).toBe(false);
+  });
+
+  it("requires consent before Hana personal raw content enters DID", () => {
+    const decision = assessModeSwitch("hana_osobni", "did_kluci", false);
+    expect(decision.requiresExplicitConsent).toBe(true);
+    expect(decision.warning).toMatch(/Raw osobní obsah/);
+  });
+});
+
+describe("backend bypass no-save contract", () => {
+  it("uses the required marker payload and persistent absence tables", () => {
+    expect(BACKEND_BYPASS_NO_SAVE_PAYLOAD).toEqual({
+      mode_id: "karel_chat",
+      no_save: true,
+      message: "NO_HISTORY_BACKEND_BYPASS_TEST_2026_04_28",
+    });
+    expect(NO_HISTORY_PERSISTENT_TABLES).toEqual(expect.arrayContaining([
+      "did_threads",
+      "karel_hana_conversations",
+      "karel_pantry_b_entries",
+      "did_event_ingestion_log",
+      "did_pantry_packages",
+      "did_pending_drive_writes",
+    ]));
+    expect(NO_HISTORY_RUNTIME_AUDIT_TABLE).toBe("karel_runtime_audit_logs");
   });
 });
