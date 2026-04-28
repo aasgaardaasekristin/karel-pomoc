@@ -241,8 +241,28 @@ interface SessionPlan {
   plan_markdown: string | null;
   urgency_breakdown?: Record<string, any> | null;
   status: string;
+  lifecycle_status?: string | null;
+  program_status?: string | null;
   completed_at: string | null;
   crisis_event_id: string | null;
+}
+
+const PROGRAM_START_BLOCKED_STATUSES = new Set(["draft", "in_revision", "awaiting_signatures", "awaiting_signature", "pending_review"]);
+
+function assertPlanWasApprovedAndStarted(plan: SessionPlan) {
+  const contract = plan.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown : {};
+  const programStatus = String(plan.program_status || contract.review_state || contract.approval?.review_state || "").toLowerCase();
+  const humanReviewRequired = contract.human_review_required === true || contract.approval?.required === true || contract.playroom_plan?.approval?.required === true || contract.playroom_plan?.therapist_review?.required === true;
+  const childFacingPlayroom = contract.session_actor === "karel_direct" || contract.ui_surface === "did_kids_playroom" || contract.mode === "playroom" || !!contract.playroom_plan;
+  const approvedForChild = contract.approved_for_child_session === true || contract.approval?.approved_for_child_session === true || contract.playroom_plan?.approval?.approved_for_child_session === true || contract.playroom_plan?.therapist_review?.approved_for_child_session === true;
+  const activeLifecycle = ["in_progress", "pending_review", "done", "completed"].includes(String(plan.status || "").toLowerCase())
+    || ["in_progress", "pending_review", "done", "completed"].includes(String(plan.lifecycle_status || "").toLowerCase());
+
+  if (!activeLifecycle || humanReviewRequired || PROGRAM_START_BLOCKED_STATUSES.has(programStatus) || (childFacingPlayroom && !approvedForChild)) {
+    const err = new Error("Program byl upraven podle odpovědi terapeutky a čeká na podpis Haničky a Káti.");
+    (err as any).status = 403;
+    throw err;
+  }
 }
 
 type ReviewStatus = "analyzed" | "partially_analyzed" | "evidence_limited" | "pending_review" | "analysis_running" | "failed_retry" | "failed_analysis" | "cancelled";
