@@ -1007,6 +1007,11 @@ const PlanCard = ({
 
   const onOpenPartRoom = useCallback(async () => {
     if (openingPartRoom) return;
+    const blockedReason = programStartBlockedReason(plan);
+    if (blockedReason) {
+      toast.info(blockedReason);
+      return;
+    }
     if (!hernaApproved) {
       toast.info("Čeká na lidské schválení před otevřením herny.");
       return;
@@ -1067,7 +1072,7 @@ const PlanCard = ({
     } finally {
       setOpeningPartRoom(false);
     }
-  }, [navigate, openingPartRoom, hernaApproved, plan.id, plan.selected_part, plan.session_lead, plan.urgency_breakdown, addendumKey, therapistAddendum]);
+  }, [navigate, openingPartRoom, hernaApproved, plan, addendumKey, therapistAddendum]);
 
   // Overdue calculation using Prague timezone
   const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
