@@ -38,6 +38,7 @@ export type PantryBSourceKind =
   | "crisis_session"
   | "playroom"
   | "therapy_session"
+  | "live_session_reality_override"
   | "did_meeting"
   | "crisis_contact"
   | "manual";
