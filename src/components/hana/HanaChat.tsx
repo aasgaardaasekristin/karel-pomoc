@@ -442,6 +442,14 @@ const HanaChatInner = ({ noSave = false }: { noSave?: boolean }) => {
   }, [input, attachments, isLoading, messages, conversationId, clearAttachments, contextPrimeCache, createConversation, persistConversation, noSave]);
 
   const handleNewConversation = useCallback(async () => {
+    if (noSave) {
+      setConversationId(null);
+      setMessages([{ role: "assistant", content: WELCOME_MESSAGE }]);
+      setViewState("thread-detail");
+      toast.success("Dočasný rozhovor zahájen bez ukládání");
+      return;
+    }
+
     if (conversationId) {
       await persistConversation(conversationId, messages, { isActive: false });
     }
@@ -454,9 +462,11 @@ const HanaChatInner = ({ noSave = false }: { noSave?: boolean }) => {
     setViewState("thread-detail");
     toast.success("Nová konverzace zahájena");
     setTimeout(() => runContextPrime(true), 500);
-  }, [conversationId, messages, createConversation, persistConversation, runContextPrime]);
+  }, [conversationId, messages, createConversation, persistConversation, runContextPrime, noSave]);
 
   const handleSwitchThread = useCallback(async (threadId: string, threadMessages: { role: string; content: string | MessageContentPart[] }[]) => {
+    if (noSave) return;
+
     if (conversationId && messages.length > 1) {
       await persistConversation(conversationId, messages, { isActive: false });
     }
@@ -477,7 +487,7 @@ const HanaChatInner = ({ noSave = false }: { noSave?: boolean }) => {
     lastSavedRef.current = JSON.stringify(threadMessages);
     toast.success("Vlákno načteno");
     setTimeout(() => runContextPrime(true), 500);
-  }, [conversationId, messages, persistConversation, runContextPrime]);
+  }, [conversationId, messages, persistConversation, runContextPrime, noSave]);
 
   const handleBackToList = useCallback(async () => {
     if (conversationId && messages.length > 1) {
@@ -503,6 +513,10 @@ const HanaChatInner = ({ noSave = false }: { noSave?: boolean }) => {
   }, [conversationId]);
 
   const handleSaveTopic = useCallback(async (title: string | null) => {
+    if (noSave) {
+      toast.info("V režimu bez ukládání nelze ukládat rozpracované téma.");
+      return;
+    }
     if (!conversationId) return;
     setIsSavingTopic(true);
     try {
@@ -521,9 +535,14 @@ const HanaChatInner = ({ noSave = false }: { noSave?: boolean }) => {
     } finally {
       setIsSavingTopic(false);
     }
-  }, [conversationId]);
+  }, [conversationId, noSave]);
 
   const handleContinueTopic = useCallback(async (topic: SavedTopicSummary) => {
+    if (noSave) {
+      toast.info("Pokračování uloženého tématu není v režimu bez ukládání dostupné.");
+      return;
+    }
+
     if (conversationId && messages.length > 1) {
       await persistConversation(conversationId, messages, { isActive: false });
     }

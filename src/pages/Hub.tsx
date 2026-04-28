@@ -15,23 +15,6 @@ import { clearActiveWorkStorageForLogout, isExplicitLogoutActive, markExplicitLo
 const CORRECT_PIN = "0126";
 const HANA_PIN_KEY = "karel_hana_pin_verified";
 const THEME_STORAGE_KEY = "theme_hub";
-const AUTH_REDIRECT_DELAY_MS = 1200;
-
-const hasActiveStoredWork = () => {
-  try {
-    return (
-      localStorage.getItem("karel_active_mode") === "childcare" ||
-      localStorage.getItem("karel_did_submode") !== null ||
-      localStorage.getItem("karel_did_session_id") !== null ||
-      sessionStorage.getItem("karel_hub_section") === "did" ||
-      sessionStorage.getItem("karel_open_deliberation_id") !== null ||
-      sessionStorage.getItem("karel_meeting_seed") !== null
-    );
-  } catch {
-    return false;
-  }
-};
-
 type HanaPinPhase = "video" | "fading" | "pin" | "done";
 
 const sections = [
@@ -89,39 +72,33 @@ const Hub = () => {
   }, []);
 
   useEffect(() => {
-    let redirectTimer: number | null = null;
-    const scheduleRedirect = () => {
-      if (redirectTimer !== null) window.clearTimeout(redirectTimer);
-      redirectTimer = window.setTimeout(async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session && (isExplicitLogoutActive() || !hasActiveStoredWork())) navigate("/", { replace: true });
-      }, AUTH_REDIRECT_DELAY_MS);
-    };
-
     const checkAuth = async () => {
       if (isExplicitLogoutActive()) {
         navigate("/", { replace: true });
         return;
       }
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) scheduleRedirect();
+      if (!session) {
+        clearActiveWorkStorageForLogout();
+        navigate("/", { replace: true });
+      }
       else setAuthChecked(true);
     };
     checkAuth();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (isExplicitLogoutActive()) {
-        if (redirectTimer !== null) window.clearTimeout(redirectTimer);
         navigate("/", { replace: true });
         return;
       }
-      if (!session) scheduleRedirect();
+      if (!session) {
+        clearActiveWorkStorageForLogout();
+        navigate("/", { replace: true });
+      }
       else {
-        if (redirectTimer !== null) window.clearTimeout(redirectTimer);
         setAuthChecked(true);
       }
     });
     return () => {
-      if (redirectTimer !== null) window.clearTimeout(redirectTimer);
       subscription.unsubscribe();
     };
   }, [navigate]);

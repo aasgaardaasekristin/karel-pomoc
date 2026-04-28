@@ -1472,7 +1472,7 @@ Odpověz v češtině. Buď stručný a praktický. Max 500 slov.`,
     }
 
     // ═══ SWITCHING DETECTION (F2) ═══
-    if (isDirectChildSubMode && didPartName && messages.length >= 2) {
+    if (!persistencePolicy.no_save && isDirectChildSubMode && didPartName && messages.length >= 2) {
       try {
         const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
         const lastUserText = normalizeMessageContentForPrompt(lastUserMsg?.content);
@@ -1692,7 +1692,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
           console.warn("[language-guard] violations in chat response:", audit.violations);
         }
 
-        if (fullResponse.length > 20 && (mode === "childcare" || effectiveMode === "kata")) {
+        if (fullResponse.length > 20 && !persistencePolicy.no_save && persistencePolicy.mode_id !== "karel_chat" && (mode === "childcare" || effectiveMode === "kata")) {
           const extractedTasks = extractTasksFromResponse(fullResponse, didSubMode || "general");
           if (extractedTasks.length > 0) {
             const { createClient: createSbForTasks } = await import("https://esm.sh/@supabase/supabase-js@2");
@@ -2090,7 +2090,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
 
         // ═══ ASYNC CRISIS CONVERSATION ANALYSIS (fire-and-forget) ═══
         // If the part has an active crisis, analyze each exchange for risk signals
-        if (isDirectChildSubMode && didPartName && fullResponse.length > 10) {
+        if (!persistencePolicy.no_save && isDirectChildSubMode && didPartName && fullResponse.length > 10) {
           try {
             const { createClient: createSbCrisisPost } = await import("https://esm.sh/@supabase/supabase-js@2");
             const sbCrisisPost = createSbCrisisPost(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);

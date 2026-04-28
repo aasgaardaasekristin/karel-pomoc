@@ -307,15 +307,17 @@ const Chat = () => {
   }, [didInitialContext]);
 
   useEffect(() => {
+    if (noSave) return;
     try { localStorage.setItem(DID_DOCS_LOADED_KEY, didDocsLoaded ? "1" : "0"); } catch {}
-  }, [didDocsLoaded]);
+  }, [didDocsLoaded, noSave]);
 
   useEffect(() => {
+    if (noSave) return;
     try {
       if (didSessionId) localStorage.setItem(DID_SESSION_ID_KEY, didSessionId);
       else localStorage.removeItem(DID_SESSION_ID_KEY);
     } catch {}
-  }, [didSessionId]);
+  }, [didSessionId, noSave]);
 
   useEffect(() => {
     try { localStorage.setItem("karel_notebook_project", notebookProject); } catch {}
@@ -395,10 +397,9 @@ const Chat = () => {
 
     const checkAuth = async () => {
       if (!session) {
-        if (hasActiveWork) {
-          setAuthChecked(true);
-          return;
-        }
+        clearActiveWorkStorageForLogout();
+        setMessages([]);
+        setInput("");
         navigate("/", { replace: true });
         return;
       }
@@ -425,18 +426,10 @@ const Chat = () => {
             const hasFreshAccessToken = hasValidHanaPinToken();
             console.warn(`[F15-debug] Hana gate: pinToken=${hasFreshAccessToken ? "exists" : "null"}, supabaseSession=${session ? "exists" : "null"}`);
             if (!hasVerifiedPin || !hasFreshAccessToken) {
-              if (hasActiveWork) {
-                setAuthChecked(true);
-                return;
-              }
               navigate("/hub", { replace: true });
               return;
             }
           } catch {
-            if (hasActiveWork) {
-              setAuthChecked(true);
-              return;
-            }
             navigate("/hub", { replace: true });
             return;
           }
@@ -538,7 +531,10 @@ const Chat = () => {
       navigate("/", { replace: true });
       return;
     }
-    if (authChecked && !session && !hasActiveWork) {
+    if (authChecked && !session) {
+      clearActiveWorkStorageForLogout();
+      setMessages([]);
+      setInput("");
       navigate("/", { replace: true });
     }
   }, [authChecked, session, navigate, hasActiveWork]);
@@ -550,8 +546,8 @@ const Chat = () => {
   const prevModeRef = useRef(mode);
 
   useEffect(() => {
-    if (messages.length > 0 && prevModeRef.current === mode) saveMessages(mode, messages);
-  }, [messages, mode]);
+    if (!noSave && hubSection !== "karel" && messages.length > 0 && prevModeRef.current === mode) saveMessages(mode, messages);
+  }, [messages, mode, noSave, hubSection]);
 
   // Auto-save research threads
   useEffect(() => {
@@ -1010,14 +1006,14 @@ const Chat = () => {
   const handleLeaveThread = useCallback(async () => {
     const threadToProcess = activeThread;
     const currentMessages = [...messages];
-    if (activeThread && messages.length >= 2) {
+    if (!noSave && activeThread && messages.length >= 2) {
       await didThreads.updateThreadMessages(activeThread.id, messages);
       triggerEpisodeGeneration(activeThread.id);
     }
 
     // ═══ SESSION MEMORY EXTRACTION ═══
     // Extract structured memory when leaving a thread with 3+ messages
-    if (threadToProcess && currentMessages.length >= 3 && threadToProcess.partName) {
+    if (!noSave && threadToProcess && currentMessages.length >= 3 && threadToProcess.partName) {
       supabase.functions.invoke("extract-session-memory", {
         body: {
           partName: threadToProcess.partName,
@@ -1041,7 +1037,7 @@ const Chat = () => {
       setDidFlowState("thread-list");
       didThreads.fetchActiveThreads("cast");
     }
-  }, [activeThread, messages, setMessages, didSubMode, triggerEpisodeGeneration, restoreGlobalTheme]);
+  }, [activeThread, messages, setMessages, didSubMode, triggerEpisodeGeneration, restoreGlobalTheme, noSave]);
 
   // Quick thread entry from dashboard
   const handleQuickThread = useCallback(async (threadId: string, partName: string) => {
@@ -1784,13 +1780,13 @@ const Chat = () => {
 
   const handleDidEndCall = useCallback(async () => {
     const threadToProcess = activeThread;
-    if (activeThread && messages.length >= 2) {
+    if (!noSave && activeThread && messages.length >= 2) {
       await didThreads.updateThreadMessages(activeThread.id, messages);
-    } else if (didSubMode && messages.length >= 2) {
+    } else if (!noSave && didSubMode && messages.length >= 2) {
       saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
 
-    if (threadToProcess && messages.length >= 2) {
+    if (!noSave && threadToProcess && messages.length >= 2) {
       triggerEpisodeGeneration(threadToProcess.id);
     }
 
@@ -1806,7 +1802,7 @@ const Chat = () => {
     setMessages([{ role: "assistant", content: `Haničko, právě skončil rozhovor${endedPartName ? ` s částí ${endedPartName}` : ""}.
 
 Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se zpracují při nejbližší automatické nebo manuální aktualizaci kartotéky.` }]);
-  }, [activeThread, messages, didSubMode, didInitialContext, didSessionId, mode, triggerEpisodeGeneration]);
+  }, [activeThread, messages, didSubMode, didInitialContext, didSessionId, mode, triggerEpisodeGeneration, noSave]);
 
   const handleDidResearch = useCallback(async () => {
     if (isDidResearchLoading) return;
@@ -1996,7 +1992,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       }
 
       // ═══ SWITCH DETECTION (tag-based + DB-based) ═══
-      if (activeThread && didSubMode === "cast" && assistantContent) {
+        if (!noSave && activeThread && didSubMode === "cast" && assistantContent) {
         // Tag-based detection from Karel's response
         const switchMatch = assistantContent.match(/\[SWITCH:([^\]]+)\]/);
         if (switchMatch) {
