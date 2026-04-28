@@ -11,11 +11,19 @@ import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { clearActiveWorkStorageForLogout, isExplicitLogoutActive, markExplicitLogout } from "@/lib/chatHelpers";
+import { assessModeSwitch } from "@/lib/modeSwitching";
+import type { AppModeId } from "@/lib/appModePolicy";
 
 const CORRECT_PIN = "0126";
 const HANA_PIN_KEY = "karel_hana_pin_verified";
 const THEME_STORAGE_KEY = "theme_hub";
 type HanaPinPhase = "video" | "fading" | "pin" | "done";
+
+const sectionToModeId = (section: string | null): AppModeId => {
+  if (section === "did") return "did_kluci";
+  if (section === "hana") return "hana_osobni";
+  return "karel_chat";
+};
 
 const sections = [
   {
@@ -118,8 +126,14 @@ const Hub = () => {
     try {
       const privateModeActive = sessionStorage.getItem("karel_no_save") === "1";
       const previousSection = sessionStorage.getItem("karel_hub_section");
+      if (previousSection && previousSection !== key) {
+        const decision = assessModeSwitch(sectionToModeId(previousSection), sectionToModeId(key), privateModeActive);
+        if (decision.warning) {
+          const ok = window.confirm(decision.warning);
+          if (!ok) return;
+        }
+      }
       if (privateModeActive && previousSection && previousSection !== key) {
-        const ok = window.confirm("Tento obsah je v privátním režimu bez historie. Nepřenese se do nového režimu.");
         if (!ok) return;
         sessionStorage.removeItem("karel_no_save");
       }
