@@ -1961,6 +1961,8 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     clearAttachments();
     const userContent = buildAttachmentContent(userMessage, currentAttachments);
     const safety = detectSafetyMention(userMessage);
+    setLastSafetyDetection(safety.matched ? safety : null);
+    setLastWritebackDecision(noSave ? "no-history: běžná perzistence vypnutá" : `${persistencePolicy.mode_id}: ${persistencePolicy.save_policy}`);
     setMessages((prev) => [...prev, { role: "user", content: userContent as any }]);
     if (mode === "childcare") didContextPrime.trackMessage();
     setIsLoading(true);
