@@ -374,6 +374,28 @@ function injectPlayroomReviewIntoProposal(payload: any) {
   return payload;
 }
 
+function buildDeterministicBriefingPayload(context: any, candidates: SessionCandidate[]) {
+  const playroomReview = buildYesterdayPlayroomReview(context);
+  const selectedPart = String(playroomReview?.part_name || candidates?.[0]?.part_name || context?.crises?.[0]?.part_name || context?.recent_threads?.[0]?.part_name || "část vybraná ranním přehledem").trim();
+  const payload: any = {
+    greeting: "Dnes držím přehled v bezpečném režimu: těžká syntéza se nespouští nebo selhala, ale včerejší Herna nesmí zmizet z návazného plánování.",
+    last_3_days: playroomReview?.exists
+      ? `Autoritativní vstup pro dnešek je včerejší Herna části ${playroomReview.part_name || selectedPart}; její praktický report je vložen přímo z DB review, nikoli z dlouhé AI syntézy.`
+      : "Pro dnešek používám deterministický backendový přehled bez závěrů z Herny, protože včerejší playroom review není k dispozici.",
+    lingering: "Tento přehled je technicky bezpečný fallback; jeho úkolem je zachovat řetězec review → briefing → další Herna.",
+    yesterday_session_review: null,
+    yesterday_playroom_review: playroomReview,
+    decisions: [],
+    proposed_session: null,
+    proposed_playroom: buildMandatoryPlayroomProposal({ proposed_session: { part_name: selectedPart, why_today: playroomReview?.recommendations_for_next_playroom || playroomReview?.practical_report_text || "Herna musí navázat jen na doloženou evidenci." }, last_3_days: "" }, context, candidates),
+    ask_hanka: ["Prosím ověř, zda dnešní Herna má navázat na doložený praktický report, nebo má zůstat jen stabilizační."],
+    ask_kata: ["Prosím zkontroluj rizika a stop signály pro dnešní Hernu podle včerejšího review."],
+    closing: "Beru to jako bezpečně omezený přehled: závěry z Herny jsou převzaté z DB review a návrh další Herny je na ně výslovně navázaný.",
+  };
+  injectPlayroomReviewIntoProposal(payload);
+  return payload;
+}
+
 // ───────────────────────────────────────────────────────────
 // HEURISTIKA: skórování kandidátů na dnešní sezení
 // ───────────────────────────────────────────────────────────
@@ -1107,6 +1129,7 @@ MUSÍŠ vždy navrhnout proposed_playroom. Pokud jsou signály slabé, zvol nejb
 
   const res = await fetch(AI_URL, {
     method: "POST",
+    signal: AbortSignal.timeout(45_000),
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
@@ -1260,8 +1283,22 @@ Deno.serve(async (req) => {
     // 2) Sběr kontextu
     const context = await gatherContext(supabase);
 
-    // 3) AI generování
-    const { payload: rawPayload, durationMs } = await generateBriefing(context, candidates, apiKey);
+    // 3) AI generování; playroom review payload musí vzniknout deterministicky i při selhání těžké syntézy.
+    let durationMs = 0;
+    let rawPayload: any;
+    try {
+      const playroomSafeDefault = body?.fullAi !== true && buildYesterdayPlayroomReview(context)?.exists === true;
+      const generated = body?.skipAi === true || body?.playroomSafeOnly === true || playroomSafeDefault
+        ? { payload: buildDeterministicBriefingPayload(context, candidates), durationMs: 0 }
+        : await generateBriefing(context, candidates, apiKey);
+      rawPayload = generated.payload;
+      durationMs = generated.durationMs;
+    } catch (e: any) {
+      console.error("[briefing] AI generation failed; using deterministic playroom-safe fallback", e);
+      rawPayload = buildDeterministicBriefingPayload(context, candidates);
+      durationMs = 0;
+      rawPayload.generation_warning = String(e?.message ?? e).slice(0, 500);
+    }
     const payload = enrichYesterdaySessionReview(rawPayload, context);
     payload.yesterday_playroom_review = buildYesterdayPlayroomReview(context);
     if (!payload.proposed_playroom || typeof payload.proposed_playroom !== "object" || !String(payload.proposed_playroom?.part_name ?? "").trim()) {
