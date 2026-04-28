@@ -28,6 +28,7 @@ import {
 interface Props {
   deliberationId: string | null;
   onClose: () => void;
+  onChanged?: () => void;
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -558,7 +559,7 @@ function KarelSynthesisBlock({
   );
 }
 
-const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
+const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
   const { sign, synthesize, answerQuestion, postMessage, iterateProgram, reload, items } = useTeamDeliberations(0);
   const [d, setD] = useState<TeamDeliberation | null>(null);
   const [loading, setLoading] = useState(true);
@@ -644,6 +645,8 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
     setSigning(who);
     try {
       const res = await sign(d.id, who);
+      setD((res as any)?.deliberation ?? d);
+      onChanged?.();
       if (res?.bridged_plan_id) {
         setBridgedPlanId(res.bridged_plan_id);
         toast.success(isPlayroomDeliberation(d as any)
@@ -666,6 +669,8 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
     setSynthesizing(true);
     try {
       const res = await synthesize(d.id);
+      setD((res as any)?.deliberation ?? d);
+      onChanged?.();
       if (res?.synthesis) {
         toast.success("Karlova syntéza hotová. Můžeš podepsat.");
       }
