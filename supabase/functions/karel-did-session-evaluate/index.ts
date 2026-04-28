@@ -1940,8 +1940,8 @@ Deno.serve(async (req: Request) => {
 
     if (jobId) await markJobRunning(sb, { id: jobId, started_at: body?.jobStartedAt ?? null, attempt_count: body?.attempt_count ?? 0 });
     const ctx = await loadContext(sb, planId);
-    assertPlanWasApprovedAndStarted(ctx.plan);
     if (enqueueOnly) {
+      assertPlanWasApprovedAndStarted(ctx.plan);
       const job = await enqueueSessionEvaluationJob(sb, ctx, body);
       await sb.from("did_daily_session_plans").update({ status: "pending_review", updated_at: new Date().toISOString() }).eq("id", planId);
       return new Response(JSON.stringify({ ok: true, queued: true, job_id: job.id, job_type: job.job_type, status: job.status, plan_id: planId, thread_id: job.thread_id, part_name: job.part_name }), { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -1988,6 +1988,9 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ ok: true, plan_id: planId, part_name: ctx.plan.selected_part, outcome: "planned_not_started", review_status: audit.reviewStatus, review_id: audit.reviewId, post_session_result: audit.postSessionResult }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
+    }
+    if (endedReason !== "auto_safety_net" || startEvidence.started) {
+      assertPlanWasApprovedAndStarted(ctx.plan);
     }
     if (sessionContract?.session_actor === "karel_direct") {
       const mode = String(sessionContract?.session_mode ?? "");
