@@ -623,7 +623,17 @@ const Chat = () => {
       return;
     }
 
-    if (mode !== "childcare") {
+      if (hubSection === "karel") {
+        setDidSubMode(null);
+        setDidInitialContext("");
+        setDidFlowState("entry");
+        setActiveThread(null);
+        setMessages([{ role: "assistant", content: "Ahoj, jsem tady. Tenhle chat je oddělený od DID a výchozí nastavení je bez automatického zápisu do dlouhodobé paměti." }]);
+        prevModeRef.current = mode;
+        return;
+      }
+
+      if (mode !== "childcare") {
       setDidSubMode(null);
       setDidInitialContext("");
       setDidFlowState("entry");
@@ -678,12 +688,12 @@ const Chat = () => {
     }
 
     if (!pendingHandoffToChat) {
-      const saved = loadMessages(mode);
+      const saved = noSave ? null : loadMessages(mode);
       if (saved && saved.length > 0) setMessages(saved);
       else setMessages([{ role: "assistant", content: welcomeMessages[mode] }]);
     }
     prevModeRef.current = mode;
-  }, [mode, setMessages, pendingHandoffToChat, setDidSubMode, setDidInitialContext, hasActiveWork]);
+  }, [mode, setMessages, pendingHandoffToChat, setDidSubMode, setDidInitialContext, hasActiveWork, hubSection, noSave]);
 
   useEffect(() => {
     if (pendingHandoffToChat && mainMode === "chat") {
