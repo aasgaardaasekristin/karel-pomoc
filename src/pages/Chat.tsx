@@ -2498,7 +2498,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           {mainMode === "chat" ? (
             <>
               <CrisisBriefPanel />
-              <HanaChat />
+              <HanaChat noSave={noSave} />
             </>
           ) : (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
