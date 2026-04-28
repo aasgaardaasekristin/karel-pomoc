@@ -1112,12 +1112,12 @@ const HanaChatInner = ({ noSave = false }: { noSave?: boolean }) => {
   );
 };
 
-const HanaChat = () => {
+const HanaChat = ({ noSave = false }: { noSave?: boolean }) => {
   // We need conversationId to compute the key, but it's internal state.
   // Use a simple wrapper that provides the base key; HanaChatInner will override via prop when conversationId changes.
   return (
     <ThemeStorageKeyProvider value="theme_hana">
-      <HanaChatInner />
+      <HanaChatInner noSave={noSave} />
     </ThemeStorageKeyProvider>
   );
 };
