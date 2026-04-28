@@ -1144,12 +1144,12 @@ const HanaChatInner = ({ noSave = false, starterPrompt = "", onStarterPromptCons
   );
 };
 
-const HanaChat = ({ noSave = false }: { noSave?: boolean }) => {
+const HanaChat = ({ noSave = false, starterPrompt = "", onStarterPromptConsumed }: HanaChatProps) => {
   // We need conversationId to compute the key, but it's internal state.
   // Use a simple wrapper that provides the base key; HanaChatInner will override via prop when conversationId changes.
   return (
     <ThemeStorageKeyProvider value="theme_hana">
-      <HanaChatInner noSave={noSave} />
+      <HanaChatInner noSave={noSave} starterPrompt={starterPrompt} onStarterPromptConsumed={onStarterPromptConsumed} />
     </ThemeStorageKeyProvider>
   );
 };
