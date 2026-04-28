@@ -22,6 +22,13 @@ type EvidenceLevel =
   | "admin_note"
   | "unknown";
 
+const CHILD_CLINICAL_BLOCKED_EVIDENCE = new Set<EvidenceLevel>([
+  "therapist_factual_correction",
+  "external_fact",
+  "technical_event",
+  "admin_note",
+]);
+
 export interface NormalizedDidEvent {
   user_id: string;
   source_table: string;
@@ -107,6 +114,7 @@ const SUPPORTED_SOURCES = [
   "hana_personal_ingestion",
   "did_thread_ingestion",
   "live_session_progress",
+  "live_session_reality_override",
   "playroom_progress",
   "briefing_ask_resolution",
   "deliberation_event",
@@ -148,8 +156,9 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
   const text = event.raw_excerpt.toLowerCase();
   const sourceKind = event.source_kind;
   const isChild = event.author_role === "child" || sourceKind === "playroom_progress";
-  const isTechnical = sourceKind === "live_session_progress" && hasAny(text, [/replan|override|paused|stop|zastav/i]);
-  const isFactualCorrection = hasAny(text, [/skutečn|reáln|faktick|odkaz|url|extern/i]);
+  const isRealityOverride = sourceKind === "live_session_reality_override";
+  const isTechnical = (sourceKind === "live_session_progress" || isRealityOverride) && hasAny(text, [/replan|override|paused|stop|zastav/i]);
+  const isFactualCorrection = isRealityOverride || hasAny(text, [/skutečn|reáln|faktick|odkaz|url|extern/i]);
   const isRisk = hasAny(text, [/rizik|kriz|sebepo|ubl[ií]žit|nebezpe|stop sign[aá]l|disoci/i]);
   const isTask = hasAny(text, [/úkol|ukol|domluv|zařiď|zarid|follow[- ]?up|ověř|over|připomeň|pripomen/i]);
   const isPlan = hasAny(text, [/pl[aá]n|program|zm[eě]na|příště|priste|sezen[ií]|herna|blok/i]);
@@ -190,7 +199,7 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
           ? "observation"
           : "conclusion";
 
-  const clinicalAllowed = evidence_level === "direct_child_evidence" || evidence_level === "therapist_observation_D2" || evidence_level === "hypothesis";
+  const clinicalAllowed = isClinicalBridgeEligible(classificationDraft(evidence_level, isClinical || isChild || isRisk));
   const clinical_implication = isFactualCorrection
     ? "Faktický rámec od terapeutky/externí informace upravuje práci v realitě, ale není klinickým důkazem o části."
     : clinicalAllowed
