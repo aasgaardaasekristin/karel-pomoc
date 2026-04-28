@@ -1853,6 +1853,8 @@ Deno.serve(async (req: Request) => {
     let observationsByBlock = (body?.observationsByBlock ?? {}) as Record<string, string>;
     const force = body?.force === true;
     const deterministicBackfill = body?.deterministic_backfill === true;
+    const enqueueOnly = body?.enqueueOnly === true;
+    const jobId = typeof body?.jobId === "string" ? body.jobId : null;
 
     if (body?.projection_only === true) {
       const reviewId = body?.reviewId as string | undefined;
@@ -1889,6 +1891,12 @@ Deno.serve(async (req: Request) => {
     }
 
     const ctx = await loadContext(sb, planId);
+    if (enqueueOnly) {
+      const job = await enqueueSessionEvaluationJob(sb, ctx, body);
+      await sb.from("did_daily_session_plans").update({ status: "pending_review", updated_at: new Date().toISOString() }).eq("id", planId);
+      return new Response(JSON.stringify({ ok: true, queued: true, job_id: job.id, job_type: job.job_type, status: job.status, plan_id: planId, thread_id: job.thread_id, part_name: job.part_name }), { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    if (jobId) await markJobRunning(sb, { id: jobId, started_at: body?.jobStartedAt ?? null, attempt_count: body?.attempt_count ?? 0 });
     const liveProgress = await loadLiveProgress(sb, planId);
     if (liveProgress) {
       completedBlocks = completedBlocks ?? liveProgress.completed_blocks ?? undefined;
