@@ -386,8 +386,8 @@ function injectPlayroomReviewIntoProposal(payload: any) {
     ...(pp.backend_context_inputs ?? {}),
     yesterday_playroom_review_id: y.review_id ?? null,
     used_yesterday_playroom_review: true,
-    practical_report_excerpt: report.slice(0, 1200),
-    next_playroom_recommendation_excerpt: next.slice(0, 1200),
+    practical_report_excerpt: sanitizeKarelClinicalText(report).slice(0, 1200),
+    next_playroom_recommendation_excerpt: sanitizeKarelClinicalText(next).slice(0, 1200),
   };
   const seed = pp.playroom_plan?.runtime_packet_seed && typeof pp.playroom_plan.runtime_packet_seed === "object" ? pp.playroom_plan.runtime_packet_seed : {};
   pp.playroom_plan = {
@@ -416,8 +416,8 @@ function injectPlayroomReviewIntoProposal(payload: any) {
       yesterday_playroom_review: {
         review_id: y.review_id ?? null,
         status: y.status,
-        practical_report_text: report.slice(0, 1600),
-        recommendations_for_next_playroom: next.slice(0, 1600),
+        practical_report_text: sanitizeKarelClinicalText(report).slice(0, 1600),
+        recommendations_for_next_playroom: sanitizeKarelClinicalText(next).slice(0, 1600),
       },
     },
   };
@@ -564,7 +564,7 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
 
   const greeting = "Dobré ráno, Haničko a Káťo.";
   const frame = hasReview
-    ? `Dnes bych chtěl, abychom u kluků drželi hlavně návaznost, klidné tempo a přesnost v tom, co víme a co si zatím jen pracovně myslíme. Včerejší den přinesl výrazný materiál od ${activePart}, ale zároveň nás vede k opatrnosti: silný zdrojový prožitek z Herny nesmíme zaměnit za hotový závěr ani za proběhlé terapeutické Sezení.`
+    ? `Dnes bych chtěl, abychom u kluků drželi hlavně návaznost, klidné tempo a přesnost v tom, co víme a co si zatím jen pracovně myslíme. Včerejší den přinesl výrazný materiál od ${partGenitive(activePart)}, ale zároveň nás vede k opatrnosti: silný zdrojový prožitek z Herny nesmíme zaměnit za hotový závěr ani za proběhlé terapeutické Sezení.`
     : "Dnes bych chtěl, abychom drželi hlavně stabilitu, návaznost a opatrnost v závěrech. Tam, kde data chybí, nebudu domýšlet příběh; raději navrhnu bezpečný ověřovací krok.";
   const team_recognition = teamWork
     ? `Včera bylo pro tým důležité toto: ${trimSentence(teamWork, 420)}`
