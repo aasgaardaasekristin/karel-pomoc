@@ -351,7 +351,11 @@ Deno.serve(async (req) => {
         }
 
         // Resolve target
-        const resolved = await resolveTarget(token, kartotekaRoot, target);
+        let resolved = await resolveTarget(token, kartotekaRoot, target);
+        if (!resolved && target === "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG") {
+          resolved = await createCentrumDocIfMissing(token, kartotekaRoot, target);
+          if (resolved) addLog(`Created missing centrum doc for '${target}' (file ${resolved.id})`);
+        }
         if (!resolved) {
           // This is a transient-or-permanent failure — retry until MAX_RETRIES
           const result = await markFailedWithRetry(sb, writeId, currentRetry, "target could not be resolved on Drive");
@@ -393,6 +397,7 @@ Deno.serve(async (req) => {
 
         await audit(sb, { sourceType, sourceId, target, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: true, status: "ok" });
         await updatePlayroomReviewSync(sb, { sourceType, sourceId, contentType, fileId: resolved.id, status: "completed" });
+        await updatePantryPackageSync(sb, writeId, "flushed", null, true);
         writeResults.push({ write_id: writeId, status: "completed", target_document: target });
         addLog(`OK ${writeId}: ${writeType} → '${target}' (file ${resolved.id})`);
         completed++;
@@ -401,6 +406,7 @@ Deno.serve(async (req) => {
         const result = await markFailedWithRetry(sb, writeId, currentRetry, errMsg);
         await audit(sb, { sourceType, sourceId, target, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: result.status, err: errMsg });
         await updatePlayroomReviewSync(sb, { sourceType, sourceId, contentType, status: result.permanent ? "failed" : "retrying", error: errMsg });
+        await updatePantryPackageSync(sb, writeId, result.permanent ? "failed" : "pending_drive", errMsg, false);
         if (result.permanent) permanent++; else failed++;
         writeResults.push({ write_id: writeId, status: "failed", target_document: target, error: errMsg });
         addLog(`${result.permanent ? "PERMANENT" : "RETRY"} ${writeId}: ${errMsg}`);
