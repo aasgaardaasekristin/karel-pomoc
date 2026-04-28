@@ -174,11 +174,13 @@ Pokud evidence nestačí, nastav completion_status=evidence_limited a jasně nap
 
 function practicalLogMarkdown(args: any) {
   const r = args.review;
-  return `## Herna — ${args.partName} (${args.date})
+  return `## HERNA — PRAKTICKÝ REPORT PRO KARLŮV PŘEHLED
 
 - plan_id: ${args.planId}
 - thread_id: ${args.threadId}
 - review_id: ${args.reviewId}
+- datum: ${args.date}
+- část: ${args.partName}
 - status: ${args.status}
 - téma: ${r.main_theme || "nezaznamenáno"}
 
@@ -194,6 +196,28 @@ ${r.practical_report_text}
 
 ### Bezpečnost
 ${(r.risks || []).map((x: string) => `- ${x}`).join("\n") || "- bez samostatného rizika v dostupné evidenci"}`.trim();
+}
+
+function detailAnalysisMarkdown(args: any) {
+  return `## HERNA — DETAILNÍ PROFESIONÁLNÍ ANALÝZA
+
+- plan_id: ${args.planId}
+- review_id: ${args.reviewId}
+- datum: ${args.date}
+- část: ${args.partName}
+
+${args.text}`.trim();
+}
+
+function practicalReportMarkdown(args: any) {
+  return `## HERNA — PRAKTICKÝ REPORT PRO KARLŮV PŘEHLED
+
+- plan_id: ${args.planId}
+- review_id: ${args.reviewId}
+- datum: ${args.date}
+- část: ${args.partName}
+
+${args.text}`.trim();
 }
 
 async function upsertReview(sb: any, ctx: any, input: any, review: any, transcript: any) {
@@ -310,8 +334,8 @@ async function persistPantryAndDrive(sb: any, ctx: any, review: any, reviewId: s
   const target = targetForPart(ctx.plan.selected_part);
   const log = practicalLogMarkdown({ review, partName: ctx.plan.selected_part, date: ctx.plan.plan_date, planId: ctx.plan.id, threadId: ctx.thread.id, reviewId, status });
   const packages = [
-    { package_type: "playroom_detail_analysis", content_md: review.detailed_analysis_text, drive_target_path: target, report_kind: "detail_analysis", content_type: "playroom_detail_analysis" },
-    { package_type: "playroom_practical_report", content_md: review.practical_report_text, drive_target_path: target, report_kind: "practical_report", content_type: "playroom_practical_report" },
+    { package_type: "playroom_detail_analysis", content_md: detailAnalysisMarkdown({ text: review.detailed_analysis_text, partName: ctx.plan.selected_part, date: ctx.plan.plan_date, planId: ctx.plan.id, reviewId }), drive_target_path: target, report_kind: "detail_analysis", content_type: "playroom_detail_analysis" },
+    { package_type: "playroom_practical_report", content_md: practicalReportMarkdown({ text: review.practical_report_text, partName: ctx.plan.selected_part, date: ctx.plan.plan_date, planId: ctx.plan.id, reviewId }), drive_target_path: target, report_kind: "practical_report", content_type: "playroom_practical_report" },
     { package_type: "playroom_log", content_md: log, drive_target_path: "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG", report_kind: "central_log", content_type: "playroom_log" },
   ];
   const writeIds: string[] = [];
