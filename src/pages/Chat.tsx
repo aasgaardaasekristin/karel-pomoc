@@ -1930,6 +1930,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     const currentDraftKey = draftKey;
     clearAttachments();
     const userContent = buildAttachmentContent(userMessage, currentAttachments);
+    const safety = detectSafetyMention(userMessage);
     setMessages((prev) => [...prev, { role: "user", content: userContent as any }]);
     if (mode === "childcare") didContextPrime.trackMessage();
     setIsLoading(true);
@@ -1954,6 +1955,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             ...(mode === "childcare" && didSubMode ? { didSubMode } : {}),
             ...(mode === "childcare" && trimmedPrimeCache ? { didContextPrimeCache: trimmedPrimeCache } : {}),
             ...(mode === "childcare" && activeThread ? { didPartName: activeThread.partName, didThreadLabel: activeThread.threadLabel, didEnteredName: activeThread.enteredName } : {}),
+            ...persistenceRequest,
           };
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 90000);
@@ -1971,6 +1973,16 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           return n;
         });
       });
+
+      if (safety.matched) {
+        const safetyText = buildSafetyResponse(safety, noSave);
+        assistantContent = [safetyText, assistantContent].filter(Boolean).join("\n\n---\n\n");
+        setMessages((prev) => {
+          const n = [...prev];
+          if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content: assistantContent };
+          return n;
+        });
+      }
 
       // ═══ SWITCH DETECTION (tag-based + DB-based) ═══
       if (activeThread && didSubMode === "cast" && assistantContent) {
