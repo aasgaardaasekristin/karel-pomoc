@@ -176,6 +176,21 @@ Deno.serve(async (req) => {
     const resolutionMode = String(body.resolution_mode ?? ((ask?.expected_resolution === "update_program" || ask?.requires_immediate_program_update) ? "apply_to_program" : "store_observation"));
     const decisionBeforeApply = buildDecision(ask, therapistResponse, resolutionMode);
 
+    let broadExistingQuery = admin
+      .from("briefing_ask_resolutions")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("briefing_id", briefing.id)
+      .eq("ask_id", askId)
+      .eq("thread_id", threadId)
+      .eq("target_type", targetType)
+      .not("processed_at", "is", null)
+      .order("processed_at", { ascending: true })
+      .limit(1);
+    broadExistingQuery = targetItemId ? broadExistingQuery.eq("target_item_id", targetItemId) : broadExistingQuery.is("target_item_id", null);
+    const { data: broadExisting } = await broadExistingQuery.maybeSingle();
+    if (broadExisting?.processed_at) return json({ resolution: broadExisting, reused: true, status_text: "Tato odpověď už byla započítána; program se znovu nemění." });
+
     let existingQuery = admin
       .from("briefing_ask_resolutions")
       .select("*")
