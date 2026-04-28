@@ -213,15 +213,21 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { data: updatedRow, error: updErr } = await admin
-      .from("did_team_deliberations")
-      .update(patch)
-      .eq("id", deliberationId)
-      .select("*")
-      .single();
+    const syncPlanMarkdown = buildApprovedSessionPlanMarkdown(row as Record<string, any>);
+    const { data: syncResult, error: syncErr } = await admin.rpc(
+      "team_deliberation_signoff_and_sync",
+      {
+        p_deliberation_id: deliberationId,
+        p_user_id: userId,
+        p_signer: signer,
+        p_plan_markdown: syncPlanMarkdown,
+        p_ready_to_start: false,
+        p_sync_source: "atomic_signoff_sync",
+      },
+    );
 
-    if (updErr) {
-      return new Response(JSON.stringify({ error: updErr.message }), {
+    if (syncErr) {
+      return new Response(JSON.stringify({ error: syncErr.message }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -260,10 +266,11 @@ Deno.serve(async (req: Request) => {
     //      briefingu, která neobsahuje úpravy schválené v poradě (přesně bug,
     //      který terapeutky hlásily — šachy/Káťa/asociační experiment chyběly).
     //   3) Když plán neexistuje, bridge ho vytvoří jako dosud (INSERT).
-    let bridgedPlanId: string | null = updated.linked_live_session_id ?? null;
+    let bridgedPlanId: string | null = ((syncResult as any)?.bridged_plan_id as string | null) ?? updated.linked_live_session_id ?? null;
     let crisisEffects: Record<string, any> = {};
-    let bridgeMode: "insert" | "update" | "skipped" = "skipped";
+    let bridgeMode: "insert" | "update" | "skipped" = ((syncResult as any)?.bridge_mode as any) ?? "skipped";
     if (
+      false &&
       updated.status === "approved" &&
       updated.deliberation_type === "session_plan"
     ) {

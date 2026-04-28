@@ -6042,7 +6042,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      team_deliberation_signoff_and_sync: {
+        Args: {
+          p_deliberation_id: string
+          p_plan_markdown?: string
+          p_ready_to_start?: boolean
+          p_signer: string
+          p_sync_source?: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
