@@ -720,9 +720,9 @@ const Chat = () => {
   };
 
   const handleNewConversation = useCallback(() => {
-    if (activeThread && messages.length >= 2) {
+    if (!noSave && activeThread && messages.length >= 2) {
       didThreads.updateThreadMessages(activeThread.id, messages);
-    } else if (didSubMode && messages.length >= 2) {
+    } else if (!noSave && didSubMode && messages.length >= 2) {
       saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
     clearMessages(mode);
@@ -734,13 +734,13 @@ const Chat = () => {
     setMessages([]);
     setDidFlowState("entry");
     refreshHistory();
-  }, [mode, messages, didSubMode, didInitialContext, didSessionId, activeThread]);
+  }, [mode, messages, didSubMode, didInitialContext, didSessionId, activeThread, noSave]);
 
   // ═══ Hierarchical back navigation for DID ═══
   const handleDidBackHierarchical = useCallback(() => {
-    if (activeThread && messages.length >= 2) {
+    if (!noSave && activeThread && messages.length >= 2) {
       didThreads.updateThreadMessages(activeThread.id, messages);
-    } else if (didSubMode && messages.length >= 2 && didFlowState === "chat") {
+    } else if (!noSave && didSubMode && messages.length >= 2 && didFlowState === "chat") {
       saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
 
