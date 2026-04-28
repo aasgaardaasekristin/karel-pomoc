@@ -4087,53 +4087,74 @@ export type Database = {
       }
       karel_action_jobs: {
         Row: {
+          attempt_count: number
           completed_at: string | null
           created_at: string
           dedupe_key: string
           error_message: string | null
+          finished_at: string | null
           id: string
           job_type: string
+          last_error: string | null
+          part_name: string | null
+          plan_id: string | null
           result_payload: Json | null
           result_summary: string | null
+          review_id: string | null
           source_function: string | null
           started_at: string | null
           status: string
           target_id: string | null
           target_type: string | null
+          thread_id: string | null
           updated_at: string
           user_id: string | null
         }
         Insert: {
+          attempt_count?: number
           completed_at?: string | null
           created_at?: string
           dedupe_key: string
           error_message?: string | null
+          finished_at?: string | null
           id?: string
           job_type: string
+          last_error?: string | null
+          part_name?: string | null
+          plan_id?: string | null
           result_payload?: Json | null
           result_summary?: string | null
+          review_id?: string | null
           source_function?: string | null
           started_at?: string | null
           status: string
           target_id?: string | null
           target_type?: string | null
+          thread_id?: string | null
           updated_at?: string
           user_id?: string | null
         }
         Update: {
+          attempt_count?: number
           completed_at?: string | null
           created_at?: string
           dedupe_key?: string
           error_message?: string | null
+          finished_at?: string | null
           id?: string
           job_type?: string
+          last_error?: string | null
+          part_name?: string | null
+          plan_id?: string | null
           result_payload?: Json | null
           result_summary?: string | null
+          review_id?: string | null
           source_function?: string | null
           started_at?: string | null
           status?: string
           target_id?: string | null
           target_type?: string | null
+          thread_id?: string | null
           updated_at?: string
           user_id?: string | null
         }
