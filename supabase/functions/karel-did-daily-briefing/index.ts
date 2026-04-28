@@ -200,100 +200,94 @@ function reviewEvidenceBasis(review: any): "planned_only" | "started_partial" | 
   return "unknown";
 }
 
-function enrichYesterdaySessionReview(payload: any, context: any) {
+function buildYesterdaySessionReview(context: any) {
   const reviews = Array.isArray(context?.yesterday_session_reviews) ? context.yesterday_session_reviews : [];
   const sessionReviews = reviews.filter((r: any) => String(r?.mode ?? "session") !== "playroom");
-  const clinicalReviews = sessionReviews.filter((r: any) => ["started_partial", "completed"].includes(reviewEvidenceBasis(r)));
-  // Non-playroom session review je autoritativní stopa včerejšího sezení i tehdy,
-  // když chybí did_part_sessions nebo evidence_basis vyjde unknown/evidence_limited.
-  const latestReview = clinicalReviews[0] ?? sessionReviews[0] ?? null;
-  const latestSession = latestReview && Array.isArray(context?.yesterday_sessions)
-    ? context.yesterday_sessions.find((s: any) => String(s?.part_name ?? "").toLowerCase() === String(latestReview.part_name ?? "").toLowerCase()) ?? null
-    : null;
-  const plannedOnly = sessionReviews.find((r: any) => reviewEvidenceBasis(r) === "planned_only");
-
-  if (!latestSession && !latestReview) {
-    if (plannedOnly) {
-      payload.yesterday_session_review = {
-        held: false,
-        part_name: plannedOnly.part_name,
-        review_status: plannedOnly.status,
-        completion: "abandoned",
-        evidence_limited: true,
-        evidence_basis: "planned_only",
-        evidence_limitations: plannedOnly.evidence_limitations,
-        review_id: plannedOnly.id,
-        plan_id: plannedOnly.plan_id,
-        karel_summary: plannedOnly.clinical_summary,
-        key_finding_about_part: "Nelze dělat závěr o prožívání části, protože není evidence zahájení sezení.",
-        implications_for_plan: plannedOnly.therapeutic_implications ?? "Ověřit u terapeutky, zda se pokus skutečně odehrál.",
-        team_acknowledgement: "Bez záznamu terapeutické akce nelze hodnotit práci terapeutky.",
-      };
-    }
-    return payload;
+  const review = sessionReviews[0] ?? null;
+  if (review) {
+    const analysis = review.analysis_json && typeof review.analysis_json === "object" ? review.analysis_json : {};
+    const evidenceBasis = reviewEvidenceBasis(review);
+    return {
+      exists: true,
+      held: !["pending_review", "analysis_running"].includes(String(review.status)),
+      status: review.status,
+      review_status: review.status,
+      part_name: review.part_name,
+      plan_id: review.plan_id,
+      thread_id: analysis.thread_id ?? analysis.confirmed_facts?.thread_id ?? review.evidence_items?.find?.((e: any) => e?.kind === "thread_transcript")?.source_id ?? null,
+      review_id: review.id,
+      lead_person: review.lead_person ?? review.lead ?? null,
+      lead: normalizeTherapistLabel(review.lead_person ?? review.lead) ?? undefined,
+      assistant_persons: review.assistant_persons ?? [],
+      completion: evidenceBasis === "completed" ? "completed" : review.status === "evidence_limited" || review.status === "partially_analyzed" ? "partial" : "abandoned",
+      practical_report_text: cleanBlockText(analysis.practical_report_text ?? review.clinical_summary ?? ""),
+      detailed_analysis_text: cleanBlockText(analysis.detailed_analysis_text ?? ""),
+      team_closing_text: cleanBlockText(analysis.team_closing_text ?? review.team_closing ?? ""),
+      karel_summary: cleanBlockText(analysis.practical_report_text ?? review.clinical_summary ?? review.evidence_limitations ?? ""),
+      key_finding_about_part: cleanBlockText(review.implications_for_part ?? review.therapeutic_implications ?? analysis.implications_for_part ?? ""),
+      implications_for_plan: cleanBlockText(review.recommendations_for_next_session ?? review.next_session_recommendation ?? analysis.recommendations_for_next_session ?? ""),
+      team_acknowledgement: cleanBlockText(analysis.team_closing_text ?? review.team_closing ?? review.team_implications ?? ""),
+      implications_for_part: cleanBlockText(review.implications_for_part ?? analysis.implications_for_part ?? ""),
+      implications_for_system: cleanBlockText(review.implications_for_whole_system ?? analysis.implications_for_system ?? ""),
+      recommendations_for_therapists: cleanBlockText(review.recommendations_for_therapists ?? analysis.recommendations_for_therapists ?? ""),
+      recommendations_for_next_session: cleanBlockText(review.recommendations_for_next_session ?? review.next_session_recommendation ?? analysis.recommendations_for_next_session ?? ""),
+      recommendations_for_next_playroom: cleanBlockText(review.recommendations_for_next_playroom ?? analysis.recommendations_for_next_playroom ?? ""),
+      detail_analysis_drive_url: review.detail_analysis_drive_url ?? null,
+      practical_report_drive_url: review.practical_report_drive_url ?? null,
+      drive_sync_status: review.drive_sync_status ?? "not_queued",
+      source_of_truth_status: review.source_of_truth_status ?? "pending_drive_sync",
+      evidence_basis: evidenceBasis,
+      evidence_limitations: buildBriefingEvidenceLimitations(review),
+    };
   }
-
-  const review = payload?.yesterday_session_review && typeof payload.yesterday_session_review === "object"
-    ? { ...payload.yesterday_session_review }
-    : {};
-
-  const analysis = String(latestSession?.ai_analysis ?? latestReview?.clinical_summary ?? "");
-  const sessionArc = extractMarkdownSection(analysis, "Oblouk sezení");
-  const childPerspective = extractMarkdownSectionByPrefix(analysis, "Z pohledu");
-  const keyInsights = extractMarkdownSection(analysis, "Klíčové závěry");
-  const implications = extractMarkdownSection(analysis, "Co z toho plyne pro další postup");
-  const therapistWork = extractMarkdownSection(analysis, "Práce terapeutky");
-  const completedCount = jsonItemCount(latestReview?.completed_checklist_items);
-  const missingCount = jsonItemCount(latestReview?.missing_checklist_items);
-  const totalCount = completedCount + missingCount;
-  const evidenceLabel = totalCount > 0 ? `${completedCount}/${totalCount} checklist položek` : undefined;
-  const partCard = getResolvedPartCardEvidence(latestReview);
-  const evidenceLimit = latestReview ? buildBriefingEvidenceLimitations(latestReview) : review.evidence_limitations;
-  const clinicalSummary = stripContradictoryPartCardText(latestReview?.clinical_summary, partCard);
-  const evidenceBasis = latestReview ? reviewEvidenceBasis(latestReview) : review.evidence_basis;
-  const statusLine = latestReview
-    ? `Stav review: ${latestReview.status}; evidence_basis: ${evidenceBasis}; evidence ${evidenceLabel ?? "neúplná"}. ${evidenceLimit}`
-    : "";
-
-  payload.yesterday_session_review = {
-    held: true,
-    part_name: String(latestReview?.part_name ?? latestSession?.part_name ?? review.part_name ?? "").trim() || undefined,
-    lead: normalizeTherapistLabel(latestSession?.therapist ?? review.lead) ?? review.lead,
-    review_status: latestReview?.status ?? review.review_status,
-    completion: evidenceBasis === "completed" ? "completed" : latestReview?.status === "partially_analyzed" ? "partial" : latestReview?.status === "evidence_limited" ? "partial" : (review.completion ?? "partial"),
-    completed_checklist_count: latestReview ? completedCount : review.completed_checklist_count,
-    total_checklist_count: latestReview ? totalCount : review.total_checklist_count,
-    evidence_label: evidenceLabel ?? review.evidence_label,
-    evidence_limited: latestReview ? latestReview.status !== "analyzed" : review.evidence_limited,
-    evidence_basis: evidenceBasis,
-    evidence_limitations: latestReview ? evidenceLimit : review.evidence_limitations,
-    review_id: latestReview?.id ?? review.review_id,
-    plan_id: latestReview?.plan_id ?? review.plan_id,
-    karel_summary: mergeUniqueParagraphs(
-      statusLine,
-      latestSession?.karel_notes,
-      sessionArc,
-      childPerspective,
-      clinicalSummary,
-      review.karel_summary,
-    ),
-    key_finding_about_part: mergeUniqueParagraphs(
-      keyInsights,
-      review.key_finding_about_part,
-    ),
-    implications_for_plan: mergeUniqueParagraphs(
-      latestSession?.handoff_note,
-      implications,
-      latestReview?.therapeutic_implications,
-      review.implications_for_plan,
-    ),
-    team_acknowledgement: mergeUniqueParagraphs(
-      latestSession?.karel_therapist_feedback,
-      therapistWork,
-      review.team_acknowledgement,
-    ),
+  const activity = Array.isArray(context?.yesterday_plans) ? context.yesterday_plans.find((p: any) => String(p?.mode ?? "session") !== "playroom") : null;
+  if (!activity) return { exists: false, status: "none" };
+  return {
+    exists: true,
+    held: false,
+    status: "pending_review",
+    fallback_reason: "session_activity_exists_without_review",
+    part_name: activity.selected_part ?? activity.part_name ?? null,
+    plan_id: activity.id ?? null,
+    thread_id: null,
+    evidence_count: 1,
+    practical_report_text: "Včerejší Sezení proběhlo nebo bylo zahájeno, ale čeká na vyhodnocení. Karlův přehled ho uvádí jako pending_review, ne jako hotový klinický závěr.",
+    detailed_analysis_text: "",
+    team_closing_text: "",
+    drive_sync_status: "not_queued",
+    source_of_truth_status: "pending_drive_sync",
   };
+}
 
+function enrichYesterdaySessionReview(payload: any, context: any) {
+  payload.yesterday_session_review = buildYesterdaySessionReview(context);
+  return payload;
+}
+
+function injectSessionReviewIntoProposals(payload: any) {
+  const y = payload?.yesterday_session_review;
+  if (!y?.exists || !y?.review_id) return payload;
+  const report = cleanBlockText(y.practical_report_text);
+  const nextSession = cleanBlockText(y.recommendations_for_next_session || y.recommendations_for_therapists || y.implications_for_plan);
+  if (payload?.proposed_session && typeof payload.proposed_session === "object") {
+    const ps = payload.proposed_session;
+    ps.evidence_sources = Array.from(new Set([...(Array.isArray(ps.evidence_sources) ? ps.evidence_sources : []), "VČEREJŠÍ SEZENÍ — PRAKTICKÝ REPORT", "VČEREJŠÍ SEZENÍ — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ"]));
+    ps.backend_context_inputs = {
+      ...(ps.backend_context_inputs ?? {}),
+      used_yesterday_session_review: true,
+      yesterday_session_review_id: y.review_id,
+      practical_report_excerpt: report.slice(0, 1200),
+      next_session_recommendation_excerpt: nextSession.slice(0, 1200),
+    };
+    payload.proposed_session = ps;
+  }
+  const nextPlayroom = cleanBlockText(y.recommendations_for_next_playroom);
+  if (nextPlayroom && payload?.proposed_playroom && typeof payload.proposed_playroom === "object") {
+    const pp = payload.proposed_playroom;
+    pp.evidence_sources = Array.from(new Set([...(Array.isArray(pp.evidence_sources) ? pp.evidence_sources : []), "VČEREJŠÍ SEZENÍ — PRAKTICKÝ REPORT"]));
+    pp.backend_context_inputs = { ...(pp.backend_context_inputs ?? {}), used_yesterday_session_review: true, yesterday_session_review_id: y.review_id };
+    payload.proposed_playroom = pp;
+  }
   return payload;
 }
 
@@ -393,6 +387,7 @@ function buildDeterministicBriefingPayload(context: any, candidates: SessionCand
     closing: "Beru to jako bezpečně omezený přehled: závěry z Herny jsou převzaté z DB review a návrh další Herny je na ně výslovně navázaný.",
   };
   injectPlayroomReviewIntoProposal(payload);
+  injectSessionReviewIntoProposals(payload);
   return payload;
 }
 
