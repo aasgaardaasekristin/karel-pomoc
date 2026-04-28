@@ -1006,14 +1006,14 @@ const Chat = () => {
   const handleLeaveThread = useCallback(async () => {
     const threadToProcess = activeThread;
     const currentMessages = [...messages];
-    if (activeThread && messages.length >= 2) {
+    if (!noSave && activeThread && messages.length >= 2) {
       await didThreads.updateThreadMessages(activeThread.id, messages);
       triggerEpisodeGeneration(activeThread.id);
     }
 
     // ═══ SESSION MEMORY EXTRACTION ═══
     // Extract structured memory when leaving a thread with 3+ messages
-    if (threadToProcess && currentMessages.length >= 3 && threadToProcess.partName) {
+    if (!noSave && threadToProcess && currentMessages.length >= 3 && threadToProcess.partName) {
       supabase.functions.invoke("extract-session-memory", {
         body: {
           partName: threadToProcess.partName,
@@ -1037,7 +1037,7 @@ const Chat = () => {
       setDidFlowState("thread-list");
       didThreads.fetchActiveThreads("cast");
     }
-  }, [activeThread, messages, setMessages, didSubMode, triggerEpisodeGeneration, restoreGlobalTheme]);
+  }, [activeThread, messages, setMessages, didSubMode, triggerEpisodeGeneration, restoreGlobalTheme, noSave]);
 
   // Quick thread entry from dashboard
   const handleQuickThread = useCallback(async (threadId: string, partName: string) => {
@@ -1780,13 +1780,13 @@ const Chat = () => {
 
   const handleDidEndCall = useCallback(async () => {
     const threadToProcess = activeThread;
-    if (activeThread && messages.length >= 2) {
+    if (!noSave && activeThread && messages.length >= 2) {
       await didThreads.updateThreadMessages(activeThread.id, messages);
-    } else if (didSubMode && messages.length >= 2) {
+    } else if (!noSave && didSubMode && messages.length >= 2) {
       saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
 
-    if (threadToProcess && messages.length >= 2) {
+    if (!noSave && threadToProcess && messages.length >= 2) {
       triggerEpisodeGeneration(threadToProcess.id);
     }
 
@@ -1802,7 +1802,7 @@ const Chat = () => {
     setMessages([{ role: "assistant", content: `Haničko, právě skončil rozhovor${endedPartName ? ` s částí ${endedPartName}` : ""}.
 
 Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se zpracují při nejbližší automatické nebo manuální aktualizaci kartotéky.` }]);
-  }, [activeThread, messages, didSubMode, didInitialContext, didSessionId, mode, triggerEpisodeGeneration]);
+  }, [activeThread, messages, didSubMode, didInitialContext, didSessionId, mode, triggerEpisodeGeneration, noSave]);
 
   const handleDidResearch = useCallback(async () => {
     if (isDidResearchLoading) return;
