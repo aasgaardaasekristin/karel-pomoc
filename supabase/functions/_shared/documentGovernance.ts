@@ -36,6 +36,7 @@ export type ContentType =
   | "long_term_trajectory"
   | "dashboard_status"
   | "crisis_context"
+  | "team_decision_log"
   | "session_log"
   | "card_section_update"
   | "pattern_observation"
@@ -168,6 +169,11 @@ const ROUTING_TABLE: Record<ContentType, (subjectId?: string) => RouteResult> = 
     layer: "05A",
     driveTarget: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
     writeType: "replace",
+  }),
+  team_decision_log: () => ({
+    layer: "05A",
+    driveTarget: "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG",
+    writeType: "append",
   }),
 
   // ── 05B — střednědobý výhled ──
@@ -322,6 +328,7 @@ export function isGovernedTarget(target: string): boolean {
     "KARTOTEKA_DID/00_CENTRUM/05C_DLOUHODOBA_INTEGRACNI_TRAJEKTORIE",
     "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG",
     "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG",
+    "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG",
     "KARTOTEKA_DID/00_CENTRUM/DASHBOARD",
   ];
   if (centrumDocs.includes(target)) return true;
