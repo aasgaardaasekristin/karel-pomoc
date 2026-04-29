@@ -1423,15 +1423,15 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               <ArrowRight className="w-3.5 h-3.5 text-primary/60 ml-auto" />
             </div>
             <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
-              {p.proposed_session.why_today}
+              {cleanVisibleClinicalText(p.proposed_session.why_today)}
             </p>
             <div className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">
               <span className="text-muted-foreground italic">První pracovní verze (k diskusi v poradě): </span>
-              {p.proposed_session.first_draft}
+              {cleanVisibleClinicalText(p.proposed_session.first_draft)}
             </div>
             {p.proposed_session.kata_involvement && (
               <p className="text-[12px] text-muted-foreground italic whitespace-pre-line">
-                {p.proposed_session.kata_involvement}
+                {cleanVisibleClinicalText(p.proposed_session.kata_involvement)}
               </p>
             )}
             {sessionContextSummary && (
