@@ -1618,22 +1618,13 @@ Deno.serve(async (req) => {
     // method="manual" (UI tlačítko `Přegenerovat`) tento guard NEPOUŽÍVÁ —
     // ruční regenerace musí jít vždy, i bez completed cycle.
     if (generationMethod === "auto") {
-      // MORNING WINDOW: 04:00–10:00 UTC
-      // Důvod: ranní cron `did-daily-cycle-morning` startuje v 07:00 Praha
-      //   = 05:00 UTC (léto) / 06:00 UTC (zima).
-      // Okno 04:00–10:00 UTC pokrývá:
-      //   - DST varianty (CET/CEST)
-      //   - manuální backfill / retry téhož ranního runu
-      //   - early start ±1h
-      // Odpolední cron `did-daily-cycle-14cet` (15:00 Praha = 13:00/14:00 UTC)
-      // do tohoto okna nespadá → guard ho ignoruje a nemůže způsobit falešný
-      // skip auto briefingu.
-      const morningStartUtc = `${today}T04:00:00Z`;
+      const morningStartUtc = `${today}T00:00:00Z`;
       const morningEndUtc   = `${today}T10:00:00Z`;
       const { data: cycleRow, error: cycleErr } = await supabase
         .from("did_update_cycles")
-        .select("id, status, started_at, completed_at, last_error")
+        .select("id, status, started_at, completed_at, last_error, heartbeat_at, phase")
         .eq("cycle_type", "daily")
+        .eq("user_id", scopedUserId)
         .gte("started_at", morningStartUtc)
         .lt("started_at", morningEndUtc)
         .order("started_at", { ascending: false })
@@ -1644,20 +1635,40 @@ Deno.serve(async (req) => {
         console.error("[briefing-guard] cycle lookup error:", cycleErr);
       }
 
-      const cycleStatus: "running" | "failed" | "completed" | "missing" =
+      let cycleStatus: "running" | "failed" | "completed" | "missing" | "failed_stale" =
         !cycleRow ? "missing" : (cycleRow.status as any);
+      if (cycleRow && cycleStatus === "running") {
+        const ageMs = Date.now() - new Date(cycleRow.heartbeat_at || cycleRow.started_at).getTime();
+        if (ageMs > STALE_CYCLE_MINUTES * 60 * 1000) {
+          await supabase.from("did_update_cycles").update({
+            status: "failed_stale",
+            completed_at: new Date().toISOString(),
+            last_error: "daily_cycle_stuck_timeout",
+          }).eq("id", cycleRow.id).eq("status", "running");
+          cycleStatus = "failed_stale";
+          cycleRow.status = "failed_stale";
+          cycleRow.last_error = "daily_cycle_stuck_timeout";
+        }
+      }
 
       if (cycleStatus !== "completed") {
         const reason =
           cycleStatus === "running" ? "cycle_running" :
+          cycleStatus === "failed_stale" ? "cycle_stuck" :
           cycleStatus === "failed"  ? "cycle_failed"  :
           "cycle_missing";
         console.warn(
           `[briefing-guard] auto SKIPPED — daily-cycle-morning status='${cycleStatus}' for ${today}. ` +
           `cycle_id=${cycleRow?.id || "(none)"} started_at=${cycleRow?.started_at || "(none)"}`,
         );
-        return new Response(
-          JSON.stringify({
+        await finishBriefingAttempt(supabase, attemptId, {
+          status: "skipped",
+          error_code: reason,
+          error_message: cycleRow?.last_error || "Denní cyklus není dokončený.",
+          cycle_status: cycleStatus,
+          cycle_id: cycleRow?.id || null,
+        });
+        return jsonResponse({
             skipped: true,
             reason,
             cycle_status: cycleStatus,
@@ -1667,10 +1678,9 @@ Deno.serve(async (req) => {
             briefing_date: today,
             note: "Auto briefing nebyl vygenerován — dnešní ranní cycle ještě nedoběhl. " +
                   "Existující briefing dne (manual nebo dřívější auto) zůstává kanonický.",
-          }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+          });
       }
+      await finishBriefingAttempt(supabase, attemptId, { cycle_status: cycleStatus, cycle_id: cycleRow?.id || null });
     }
 
     // Pokud existuje fresh briefing pro dnešek a nechceme force, vrať ho
