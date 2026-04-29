@@ -878,7 +878,7 @@ serve(async (req) => {
     const sb = getServiceClient();
 
     // ═══ STEP 1: Load memory + Analyze (PARALLEL) ═══
-    const [[episodes, strategies, entities, patterns, relations], analysis] = await Promise.all([
+    const [[episodes, strategies, entities, patterns, relations], continuityContext, analysis] = await Promise.all([
       Promise.all([
         loadRecentEpisodes(sb, user.id),
         loadStrategies(sb, user.id),
@@ -886,6 +886,7 @@ serve(async (req) => {
         loadSemanticPatterns(sb, user.id),
         loadSemanticRelations(sb, user.id),
       ]),
+      loadHanaPersonalContinuityContext(sb, user.id, conversationId, persistencePolicy.no_save),
       analyzeInput(messages, [], LOVABLE_API_KEY),
     ]);
     console.log(`Analysis: domain=${analysis.domain}, state=${analysis.hana_state}, intensity=${analysis.emotional_intensity}, tags=${analysis.tags.join(",")}`);
@@ -893,6 +894,9 @@ serve(async (req) => {
     // ═══ STEP 2: Build situation cache + prompt ═══
     const situationCache = buildSituationCache(analysis, episodes, strategies, entities, patterns, relations);
     let systemPrompt = buildHanaSystemPrompt(situationCache, analysis);
+    if (continuityContext.text) {
+      systemPrompt += `\n\n${continuityContext.text}`;
+    }
     
     // Inject context-prime cache if available (dynamic 3D memory)
     if (contextPrimeCache && typeof contextPrimeCache === "string" && contextPrimeCache.length > 50) {
@@ -974,6 +978,15 @@ serve(async (req) => {
           request_mode: "hana_osobni",
           evaluation_status: "hana_personal_output_guard_replaced",
           metadata: { reasons: guarded.reasons, current_date_prague: pragueDateISO() },
+        });
+      }
+      if (continuityContext.sources.length > 0) {
+        await sb.from("karel_runtime_audit_logs").insert({
+          user_id: user.id,
+          function_name: "karel-hana-chat",
+          request_mode: "hana_osobni",
+          evaluation_status: "hana_personal_continuity_context_used",
+          metadata: { sources: continuityContext.sources, mode_id: persistencePolicy.mode_id, no_save_context: persistencePolicy.no_save },
         });
       }
       runHanaBackgroundProcessing({ user, sb, messages, conversationId, analysis, fullResponse, safety, persistencePolicy, lastUserTextForSafety, LOVABLE_API_KEY })
