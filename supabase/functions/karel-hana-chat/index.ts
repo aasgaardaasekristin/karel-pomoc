@@ -1024,7 +1024,7 @@ serve(async (req) => {
               signals: safety.signals,
               action_taken: "safety_response_and_minimal_audit",
             },
-          }).then(() => {}).catch((e: any) => console.warn("[hana-safety] audit failed:", e));
+          }).then(undefined, (e: any) => console.warn("[hana-safety] audit failed:", e));
         }
 
         if (fullResponse.length > 10 && !persistencePolicy.no_save) {
@@ -1071,11 +1071,10 @@ serve(async (req) => {
                     sb.from("karel_hana_conversations")
                       .update({ messages: msgs })
                       .eq("id", conversationId)
-                      .then(() => {})
-                      .catch((e: any) => console.warn("[hana-role-scope] persist failed:", e));
+                      .then(undefined, (e: any) => console.warn("[hana-role-scope] persist failed:", e));
                   }
                 })
-                .catch((e: any) => console.warn("[hana-role-scope] read failed:", e));
+                .then(undefined, (e: any) => console.warn("[hana-role-scope] read failed:", e));
             }
 
             // Run writeback with role scope context
