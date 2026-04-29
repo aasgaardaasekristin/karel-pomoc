@@ -4037,7 +4037,7 @@ Datum: ${dateStr}` },
       void setPhase("ai_analysis_keepalive", "Fáze 3b: čekám na AI gateway");
     }, 45_000) as unknown as number;
     const analysisController = new AbortController();
-    const analysisTimeout = setTimeout(() => analysisController.abort(), 120000);
+    let analysisTimeout: number | undefined = setTimeout(() => analysisController.abort(), 120000) as unknown as number;
     let analysisResponse: Response;
     try {
     analysisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -4484,10 +4484,8 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
         ],
       }),
     });
-    clearTimeout(analysisTimeout);
     if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
     } catch (abortErr: any) {
-      clearTimeout(analysisTimeout);
       if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
       if (abortErr?.name === "AbortError") {
         console.error("[AI analysis] TIMEOUT after 120s — continuing with empty analysis");
@@ -4496,6 +4494,8 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       } else {
         throw abortErr;
       }
+    } finally {
+      if (analysisTimeout !== undefined) { clearTimeout(analysisTimeout); analysisTimeout = undefined; }
     }
 
     let analysisText = "";
