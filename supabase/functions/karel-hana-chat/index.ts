@@ -866,6 +866,28 @@ serve(async (req) => {
     }
 
     // Create a TransformStream to intercept the response and capture full text
+    const shouldBufferForHanaGuard = persistencePolicy.mode_id === "hana_osobni";
+    if (shouldBufferForHanaGuard) {
+      const rawResponse = await readStreamedAiText(response.body!);
+      const guarded = guardHanaPersonalResponse(rawResponse, lastUserTextForSafety);
+      fullResponse = guarded.text;
+      if (guarded.replaced) {
+        console.warn("[hana-chat-guard] response replaced", guarded.reasons);
+        await sb.from("karel_runtime_audit_logs").insert({
+          user_id: user.id,
+          function_name: "karel-hana-chat",
+          request_mode: "hana_osobni",
+          evaluation_status: "hana_personal_output_guard_replaced",
+          metadata: { reasons: guarded.reasons, current_date_prague: pragueDateISO() },
+        });
+      }
+      runHanaBackgroundProcessing({ user, sb, messages, conversationId, analysis, fullResponse, safety, persistencePolicy, lastUserTextForSafety, LOVABLE_API_KEY })
+        .catch((e) => console.error("[hana-background] failed:", e));
+      return new Response(sseFromText(fullResponse), {
+        headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+      });
+    }
+
     const { readable, writable } = new TransformStream();
     const writer = writable.getWriter();
     const reader = response.body!.getReader();
