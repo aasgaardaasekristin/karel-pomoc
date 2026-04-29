@@ -4,14 +4,29 @@ import { classifyDidRelevance, normalizeEvent } from "../_shared/didEventIngesti
 
 Deno.test("Hana/Osobní real-world response guard replaces overinterpretation", () => {
   const input = "Děti sledují záchrannou akci Timmiho, keporkaka. Je to skutečné zvíře a aktuální situace.";
-  const badOutput = "Timmi je symbol zranitelných částí a jednoznačně ukazuje hluboký signál.";
+  const badOutput = "Timmi se pro ně stává symbolem a je symbol zranitelných částí. Jednoznačně ukazuje hluboký signál.";
   const guarded = guardHanaPersonalResponse(badOutput, input, "2026-04-29");
 
   assertEquals(guarded.replaced, true);
-  assertEquals(/DENNÍ BRIEFING|2\. května|diagnostick[ýy] sign[áa]l|projekce|symbol zraniteln[ýy]ch [čc][áa]st[íi]|ztělesnění|vysvětluje to|jednoznačně ukazuje/i.test(guarded.text), false);
-  assertStringIncludes(guarded.text, "skutečnou aktuální situaci");
+  assertEquals(/DENNÍ BRIEFING|2\. května|diagnostick[ýy] sign[áa]l|projekce|symbol|symbolizuje|ztělesňuje|ztělesnění|vysvětluje|jednoznačně ukazuje/i.test(guarded.text), false);
+  assertStringIncludes(guarded.text, "skutečná aktuální situace");
   assertStringIncludes(guarded.text, "emoční kontext");
-  assertStringIncludes(guarded.text, "bez jejich vlastní reakce");
+  assertStringIncludes(guarded.text, "bez závěru bez vlastní reakce kluků");
+  assertStringIncludes(guarded.text, "co o té situaci sami říkají");
+  assertStringIncludes(guarded.text, "co cítí v těle");
+  assertStringIncludes(guarded.text, "co by teď potřebovali");
+});
+
+Deno.test("Hana/Osobní non-Timmy real-world event is not symbolized", () => {
+  const input = "Děti dnes slyšely o skutečném požáru ve zprávách. Není to symbol, je to reálná událost.";
+  const badOutput = "Požár je metaforou jejich vnitřního stavu a reprezentuje únavu dětí. Je to projekce.";
+  const guarded = guardHanaPersonalResponse(badOutput, input, "2026-04-29");
+
+  assertEquals(guarded.replaced, true);
+  assertEquals(/symbol|metafor|projekc|reprezentuje|ztělesňuje|diagnostick[ýy] sign[áa]l|jednoznačně ukazuje|vysvětluje/i.test(guarded.text), false);
+  assertStringIncludes(guarded.text, "skutečná aktuální situace");
+  assertStringIncludes(guarded.text, "emoční kontext");
+  assertStringIncludes(guarded.text, "co o té situaci sami říkají");
 });
 
 Deno.test("generic real-world correction is factual context, not child evidence", () => {
