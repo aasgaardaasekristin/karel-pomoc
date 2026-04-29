@@ -1557,10 +1557,10 @@ Deno.serve(async (req) => {
     let effectiveCronSecret = Deno.env.get("KAREL_CRON_SECRET") || "";
     if (!effectiveCronSecret && cronSecretHeader) {
       try {
-        const { data: vaultSecret } = await supabase.schema("vault").from("decrypted_secrets").select("decrypted_secret").eq("name", "KAREL_CRON_SECRET").maybeSingle();
-        effectiveCronSecret = vaultSecret?.decrypted_secret || "";
+        const { data: secretOk } = await supabase.rpc("verify_karel_cron_secret", { p_secret: cronSecretHeader });
+        effectiveCronSecret = secretOk === true ? cronSecretHeader : "";
       } catch (e) {
-        console.warn("[briefing-auth] cron secret vault lookup failed:", (e as Error)?.message || e);
+        console.warn("[briefing-auth] cron secret rpc verification failed:", (e as Error)?.message || e);
       }
     }
     const isCronSecretCall = !!effectiveCronSecret && cronSecretHeader === effectiveCronSecret;
