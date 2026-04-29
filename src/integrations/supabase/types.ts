@@ -1824,6 +1824,66 @@ export type Database = {
         }
         Relationships: []
       }
+      did_daily_briefing_attempts: {
+        Row: {
+          auth_mode: string
+          briefing_date: string
+          completed_at: string | null
+          created_at: string
+          created_briefing_id: string | null
+          cycle_id: string | null
+          cycle_status: string | null
+          error_code: string | null
+          error_message: string | null
+          generation_method: string
+          id: string
+          metadata: Json
+          started_at: string
+          status: string
+          trigger_source: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          auth_mode?: string
+          briefing_date: string
+          completed_at?: string | null
+          created_at?: string
+          created_briefing_id?: string | null
+          cycle_id?: string | null
+          cycle_status?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          generation_method?: string
+          id?: string
+          metadata?: Json
+          started_at?: string
+          status?: string
+          trigger_source?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          auth_mode?: string
+          briefing_date?: string
+          completed_at?: string | null
+          created_at?: string
+          created_briefing_id?: string | null
+          cycle_id?: string | null
+          cycle_status?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          generation_method?: string
+          id?: string
+          metadata?: Json
+          started_at?: string
+          status?: string
+          trigger_source?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       did_daily_briefings: {
         Row: {
           briefing_date: string
