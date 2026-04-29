@@ -4,7 +4,7 @@ import { liveStartStatusText, planApprovalSynced } from "@/lib/dailyPlanStartPol
 
 const migrations = [
   "supabase/migrations/20260429071725_24456f65-0a6c-4970-9a0d-a6512eb15d40.sql",
-  "supabase/migrations/20260429071850_4c59eeb0-06d9-48e9-bb49-8d8330ed8a3e.sql",
+  "supabase/migrations/20260429071847_a92227b6-80a4-438b-b3d0-0e622b0e55d9.sql",
 ].map((path) => readFileSync(path, "utf8")).join("\n");
 
 describe("backend-authoritative daily plan start", () => {
