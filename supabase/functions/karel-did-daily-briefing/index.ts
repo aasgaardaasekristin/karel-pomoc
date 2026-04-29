@@ -1593,7 +1593,7 @@ Deno.serve(async (req) => {
       await finishBriefingAttempt(supabase, auditId, { status: "failed" });
       return jsonResponse({ error: "Unauthorized" }, 401);
     }
-    if (!isServiceCall) {
+    if (!isServiceCall && !isCronSecretCall) {
       const authResult = await requireAuth(req);
       if (authResult instanceof Response) {
         const auditId = await startBriefingAttempt(supabase, {
@@ -1612,11 +1612,11 @@ Deno.serve(async (req) => {
       }
       authenticatedUserId = String((authResult as { user: any }).user?.id ?? "");
     }
-    if (!isServiceCall && body?.userId && String(body.userId) !== authenticatedUserId) {
+    if (!isServiceCall && !isCronSecretCall && body?.userId && String(body.userId) !== authenticatedUserId) {
       return jsonResponse({ error: "user_scope_mismatch" }, 403);
     }
-    let scopedUserId = !isServiceCall ? authenticatedUserId : null;
-    if (isServiceCall) {
+    let scopedUserId = !isServiceCall && !isCronSecretCall ? authenticatedUserId : null;
+    if (isServiceCall || isCronSecretCall) {
       const { data: activeCycleUser } = await supabase.from("did_update_cycles")
         .select("user_id")
         .not("user_id", "is", null)
@@ -1642,7 +1642,7 @@ Deno.serve(async (req) => {
 
     const today = pragueDayISO();
     const triggerSource = body?.source === "cron" ? "cron" : body?.source === "service" ? "service" : "ui";
-    const authMode = isServiceCall ? "service_role" : "user";
+    const authMode = isServiceCall ? "service_role" : isCronSecretCall ? "cron_secret" : "user";
     attemptId = await startBriefingAttempt(supabase, {
       user_id: scopedUserId,
       briefing_date: today,
