@@ -195,7 +195,7 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
             ? "program_change"
             : sourceKind === "therapist_task_note"
               ? "task_note"
-        : sourceKind === "therapist_task_note" || sourceKind === "therapist_note"
+        : sourceKind === "therapist_note"
           ? "therapist_observation_D2"
           : isClinical
             ? "hypothesis"
