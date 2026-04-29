@@ -15,6 +15,7 @@ const corsHeaders = {
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { isGovernedTarget } from "../_shared/documentGovernance.ts";
+import { requireAuth } from "../_shared/auth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -181,6 +182,13 @@ Deno.serve(async (req: Request) => {
     const packageIds = normalizeStringArray(body?.package_ids);
     const scoped = body?.mode === "scoped" || packageIds.length > 0;
     const dryRun = Boolean(body?.dry_run);
+    const authHeader = req.headers.get("Authorization") || "";
+    const isServiceCall = authHeader === `Bearer ${SERVICE_KEY}`;
+    if (!isServiceCall) {
+      if (!scoped) return json({ ok: false, error: "Unauthorized" }, 401);
+      const auth = await requireAuth(req);
+      if (auth instanceof Response) return auth;
+    }
 
     if (scoped) {
       if (packageIds.length === 0) {
