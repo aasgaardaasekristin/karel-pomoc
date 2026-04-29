@@ -3107,12 +3107,12 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
     if (stuckDailyCycles && stuckDailyCycles.length > 0) {
       for (const stuck of stuckDailyCycles) {
         await sb.from("did_update_cycles").update({
-          status: "failed",
+          status: "failed_stale",
           completed_at: new Date().toISOString(),
-          last_error: `stuck_no_heartbeat_${STUCK_WINDOW_MIN}min(phase=${(stuck as any).phase || "unknown"})`,
+          last_error: `daily_cycle_stuck_timeout:${(stuck as any).phase || "unknown"}`,
         }).eq("id", stuck.id);
       }
-      console.log(`[daily-cycle] Auto-cleanup: ${stuckDailyCycles.length} stuck daily cycles marked failed (window=${STUCK_WINDOW_MIN}min)`);
+      console.log(`[daily-cycle] Auto-cleanup: ${stuckDailyCycles.length} stuck daily cycles marked failed_stale (window=${STUCK_WINDOW_MIN}min)`);
     }
 
     // 2) CONCURRENCY GUARD podle freshness, ne podle started_at.
@@ -3595,7 +3595,7 @@ Datum: ${dateStr}` },
     // Without a periodic heartbeat the cleanup-watcher (E3) can mark the run
     // stuck mid-flight (observed: 74a1ed4d died after 10s). Tick every 45s;
     // cleared in the matching finally below before Phase 3b begins.
-    let compileDataKeepAlive: number | undefined = setInterval(() => {
+    compileDataKeepAlive = setInterval(() => {
       void setPhase("compile_data_keepalive", "Fáze 3: čtu Drive (CENTRUM/karty/dohody)");
     }, 45_000) as unknown as number;
     // 3. COMPILE THREAD + CONVERSATION DATA (token-safe, truncated)
@@ -4032,7 +4032,6 @@ Datum: ${dateStr}` },
     // ─── KEEP-ALIVE: Phase 3b AI gateway call can take 60–120s. Without
     // a periodic heartbeat the cleanup-watcher (E3) sees stale heartbeat_at
     // and marks the cycle stuck mid-flight. Tick every 45s; cleared in finally.
-    let aiAnalysisKeepAlive: number | undefined;
     aiAnalysisKeepAlive = setInterval(() => {
       void setPhase("ai_analysis_keepalive", "Fáze 3b: čekám na AI gateway");
     }, 45_000) as unknown as number;
