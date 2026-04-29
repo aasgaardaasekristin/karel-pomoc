@@ -312,7 +312,7 @@ function buildYesterdaySessionReview(context: any) {
       assistant_persons: review.assistant_persons ?? [],
       completion: technicalTest ? "abandoned" : evidenceBasis === "completed" ? "completed" : review.status === "evidence_limited" || review.status === "partially_analyzed" ? "partial" : "abandoned",
       practical_report_text: isOpenedPartialSessionReview(review) && !technicalTest
-        ? `Včerejší Sezení s ${review.part_name || "částí"} bylo otevřené nebo částečně rozpracované, ale zatím nemá plné dovyhodnocení. Máme potvrzený started/live/progress signál, proto ho neoznačuji jako neproběhlé; zacházím s ním jako s pending_review / evidence_limited.`
+        ? `Včerejší Sezení s ${review.part_name || "částí"} bylo otevřené nebo částečně rozpracované, ale zatím nemá plné dovyhodnocení. Máme potvrzený signál, že práce začala, proto ho neoznačuji jako neproběhlé; budu z něj vycházet opatrně a bez plného klinického závěru.`
         : technicalTest
         ? `Plánované Sezení s ${review.part_name || "částí"} se klinicky neuskutečnilo. Záznam odpovídá technickému testu nebo plánované aktivitě bez klinického průběhu, proto z něj nevyvozujeme nové klinické poznatky. Původní potřeba Sezení — zejména práce s tělesnými potížemi a neverbálním zpracováním — zůstává otevřená.`
         : cleanBlockText(analysis.practical_report_text ?? review.clinical_summary ?? ""),
@@ -352,7 +352,7 @@ function buildYesterdaySessionReview(context: any) {
     plan_id: activity.id ?? null,
     thread_id: null,
     evidence_count: 1,
-    practical_report_text: "Včerejší Sezení proběhlo nebo bylo zahájeno, ale čeká na vyhodnocení. Karlův přehled ho uvádí jako pending_review, ne jako hotový klinický závěr.",
+    practical_report_text: "Včerejší Sezení proběhlo nebo bylo zahájeno, ale čeká na vyhodnocení. Karlův přehled ho proto bere jako otevřený materiál, ne jako hotový klinický závěr.",
     detailed_analysis_text: "",
     team_closing_text: "",
     drive_sync_status: "not_queued",
@@ -376,7 +376,7 @@ function injectSessionReviewIntoProposals(payload: any) {
       const openedPartial = y.fallback_reason === "opened_or_partial_activity_detected" || y.evidence_basis === "started_partial" || ["pending_review", "evidence_limited"].includes(String(y.review_status ?? y.status));
       ps.carry_over_reason = openedPartial ? "opened_partial_yesterday_session_pending_review" : "unheld_yesterday_session";
       ps.why_today = openedPartial
-        ? `Carry-over z otevřeného / částečně rozpracovaného Sezení. Tento návrh navazuje na potvrzený started/progress signál, ale nepředstírá plné dovyhodnocení; pracuje se stavem pending_review / evidence_limited. ${cleanBlockText(ps.why_today)}`.trim()
+        ? `Návaznost na otevřené nebo částečně rozpracované Sezení. Tento návrh navazuje na potvrzený signál, že práce začala, ale nepředstírá plné dovyhodnocení. ${cleanBlockText(ps.why_today)}`.trim()
         : `Carry-over z neuskutečněného Sezení. Tento návrh nenavazuje na nové klinické poznatky ze včerejšího Sezení, protože to klinicky neproběhlo; navazuje na původní potřebu řešit tělesné potíže a neverbální zpracování tělesného stavu. ${cleanBlockText(ps.why_today)}`.trim();
       ps.first_draft = `Začít krátkým ověřením tělesného a emočního stavu, bez tlaku na vysvětlování. Pokud je část dostupná a stabilní, pokračovat krátkým terapeutkou vedeným Sezením; pokud je unavená nebo zahlcená, zůstat jen u stabilizačního kontaktu. ${cleanBlockText(ps.first_draft)}`.trim();
     }
