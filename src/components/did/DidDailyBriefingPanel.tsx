@@ -261,6 +261,10 @@ export const cleanVisibleClinicalText = (value: unknown): string => String(value
   .replace(/\breal-world\s+(?:context|kontext)\b/gi, "skutečná událost a její emoční rámec")
   .replace(/\breal-world\s+fact\b/gi, "skutečná událost")
   .replace(/\breal-world\b/gi, "skutečný")
+  .replace(/Máme potvrzený started\/live\/progress signál/gi, "Máme potvrzený signál, že práce začala")
+  .replace(/V ranním přehledu se má objevit jako [^\.\n]+, ne jako neuskutečněné Sezení\.?/gi, "V přehledu ho proto držím jako otevřený materiál, ne jako neuskutečněné Sezení.")
+  .replace(/Timmi je reálný externí kontext/gi, "Timmi je skutečná událost a emoční kontext")
+  .replace(/\bawaiting_therapist_review\b/gi, "čeká na schválení terapeutkami")
   .replace(/\boperational context\b|operační\s+kontext/gi, "důležitý kontext")
   .replace(/briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log/gi, "podklad")
   .trim();
