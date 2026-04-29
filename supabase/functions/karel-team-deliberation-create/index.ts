@@ -246,7 +246,7 @@ function scrubKarelOnlyText(value: string): string {
 function normalizeProgramBlock(raw: any, hybridContract: Record<string, any> | null) {
   const mode = String(hybridContract?.therapist_led_vs_karel_only ?? hybridContract?.session_mode ?? "karel_only");
   const therapistLed = mode === "therapist_led" || mode === "tandem";
-  const clinicalIntent = nonEmptyString(raw?.clinical_intent) ?? nonEmptyString(raw?.clinical_goal) ?? nonEmptyString(raw?.diagnostic_or_therapeutic_intent) ?? nonEmptyString(hybridContract?.clinical_goal) ?? nonEmptyString(hybridContract?.diagnostic_or_therapeutic_intent) ?? nonEmptyString(raw?.detail) ?? "Evidence-limited bezpečné ověření aktuální připravenosti bez klinických závěrů.";
+  const clinicalIntent = nonEmptyString(raw?.clinical_intent) ?? nonEmptyString(raw?.clinical_goal) ?? nonEmptyString(raw?.diagnostic_or_therapeutic_intent) ?? nonEmptyString(hybridContract?.clinical_goal) ?? nonEmptyString(hybridContract?.diagnostic_or_therapeutic_intent) ?? nonEmptyString(raw?.detail) ?? "Bezpečně ověřit aktuální připravenost bez předčasných závěrů.";
   const playfulForm = nonEmptyString(raw?.playful_form) ?? nonEmptyString(hybridContract?.playful_theme) ?? "neutrální bezpečná symbolická volba";
   const script = nonEmptyString(raw?.script) ?? asStringArray(hybridContract?.what_therapist_says)[0] ?? "Můžeme u toho zůstat jen krátce a bezpečně; kdykoli můžeme přestat.";
   const observe = therapistLed ? asStringArray(raw?.observe, asStringArray(hybridContract?.what_therapist_observes, ["míru bezpečného zapojení", "změnu napětí", "doslovnou odpověď"])) : ["textovou odpověď", "míru bezpečného zapojení", "přání pokračovat nebo skončit"];
@@ -274,13 +274,12 @@ function toAgendaBlocks(value: unknown, hybridContract: Record<string, any> | nu
 
 function fallbackSessionProgramDraft(subjectParts: string[], hybridContract: Record<string, any> | null) {
   const partName = subjectParts[0] ?? "část";
-  return [normalizeProgramBlock({
-    block: "Evidence-limited bezpečné ověření připravenosti",
-    minutes: 10,
-    detail: `Pracovní fallback pro ${partName}: nejprve si od Haničky/Káti vyžádat aktuální stav, rizika a hranice kontaktu. Bez terapeutčina potvrzení nedělat klinické závěry, fyzické/testové prvky ani hlubší práci; režim needs_therapist_input.`,
-    tool_id: "needs_therapist_input",
-    script: `Haničko/Káťo, prosím nejdřív potvrď, jestli je dnes bezpečné ${partName} vůbec zvát ke kontaktu.`,
-  }, hybridContract)];
+  return [
+    { block: "Bezpečný vstup a ověření přítomnosti", minutes: 8, detail: `Terapeutka nejdřív ověří, jestli je ${partName} dnes dostupná a jestli kontakt zůstává bezpečný. Karel pouze pomáhá držet strukturu otázek.`, script: "Můžeme začít jen krátce a kdykoli zastavit.", observe: ["ochotu ke kontaktu", "napětí", "doslovnou odpověď"], evidence_to_record: ["co část sama řekla", "zda souhlasí s pokračováním"], stop_if: ["úzkost", "odmítnutí", "ztráta bezpečí"], requires_physical_therapist: true, karel_can_do_alone: false },
+    { block: "Tělesné a emoční mapování", minutes: 10, detail: "Terapeutka jemně mapuje tělo a emoci bez interpretace. Karel navrhuje formulace, ale závěr nechává na přímém materiálu.", script: "Kde v těle je dnes nejvíc nebo nejmíň klidu?", observe: ["změnu napětí", "slova pro emoci", "potřebu pauzy"], evidence_to_record: ["konkrétní popis těla", "pojmenované emoce"], stop_if: ["zahlcení", "odpojení"], requires_physical_therapist: true, karel_can_do_alone: false },
+    { block: "Opatrné otevření tématu nebo stabilizační alternativa", minutes: 15, detail: "Pokud je kontakt stabilní, terapeutka nabídne velmi malé přiblížení k tématu; pokud ne, zůstane u stabilizace. Karel hlídá, aby se nevyvozoval závěr bez vlastní reakce kluků.", script: "Chceš se toho jen dotknout jednou větou, nebo dnes raději zůstat u opory?", observe: ["volbu části", "míru bezpečí", "hranici kontaktu"], evidence_to_record: ["zvolenou variantu", "co bylo moc", "co pomohlo"], stop_if: ["tlak", "zmatek", "somatické zhoršení"], requires_physical_therapist: true, karel_can_do_alone: false },
+    { block: "Integrace a měkké ukončení", minutes: 8, detail: "Terapeutka shrne jen to, co bylo skutečně řečeno, a vrátí část do bezpečného ukončení. Karel připraví poznámky pro další plán.", script: "Zůstane nám jen jeden malý bod, který dnes pomohl.", observe: ["zklidnění", "schopnost ukončit", "potřebu následné opory"], evidence_to_record: ["shrnutí části", "doporučení pro další krok"], stop_if: ["nové zahlcení při shrnutí"], requires_physical_therapist: true, karel_can_do_alone: false },
+  ].map((block) => normalizeProgramBlock(block, { ...(hybridContract ?? {}), therapist_led_vs_karel_only: "therapist_led" }));
 }
 
 function nonEmptyString(value: unknown): string | null {
