@@ -604,9 +604,9 @@ async function runHanaPostChatWriteback(args: {
   roleScope: RoleScopeResult;
   allowDriveWriteback?: boolean;
 }): Promise<void> {
-  if (!args.allowDriveWriteback) {
-    console.log("[hana-writeback] skipped by persistence policy (no raw Drive / no-history)");
-    return;
+  const allowDriveWriteback = args.allowDriveWriteback === true;
+  if (!allowDriveWriteback) {
+    console.log("[hana-writeback] Drive enqueue disabled by Hana/osobní privacy policy; DB evidence may still run");
   }
   const { userText, karelResponse, conversationId, apiKey, roleScope } = args;
   const sb = getServiceClient();
@@ -705,13 +705,15 @@ async function runHanaPostChatWriteback(args: {
         subject_type: resolveGovernedSubjectType(intent),
         subject_id: resolveGovernedSubjectId(intent, therapistKey),
       });
-      const { error: writeErr } = await sb.from("did_pending_drive_writes").insert({
-        target_document: intent.target.documentKey,
-        content: governedContent,
-        priority: intent.evidenceKind === "FACT" ? "high" : "normal",
-        status: "pending",
-        write_type: "append",
-      });
+      const writeErr = allowDriveWriteback
+        ? (await sb.from("did_pending_drive_writes").insert({
+          target_document: intent.target.documentKey,
+          content: governedContent,
+          priority: intent.evidenceKind === "FACT" ? "high" : "normal",
+          status: "pending",
+          write_type: "append",
+        })).error
+        : null;
 
       // ── FÁZE 2B: DB evidence pipeline (parallel with Drive enqueue) ──
       let observationId: string | null = null;
@@ -725,6 +727,9 @@ async function runHanaPostChatWriteback(args: {
         }
       }
 
+      if (!allowDriveWriteback) {
+        continue;
+      }
       if (writeErr) {
         console.warn(`[hana-writeback] Write error for ${intent.target.documentKey}:`, writeErr.message);
         await auditDriveEnqueue(sb, {
