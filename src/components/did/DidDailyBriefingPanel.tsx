@@ -232,7 +232,7 @@ interface BriefingPayload {
   hana_personal_did_relevant_implications?: any[];
 }
 
-const realityContextText = (p: BriefingPayload): string => {
+export const realityContextText = (p: BriefingPayload): string => {
   const entries = [...(Array.isArray(p.operational_context_used) ? p.operational_context_used : []), ...(Array.isArray(p.hana_personal_did_relevant_implications) ? p.hana_personal_did_relevant_implications : [])];
   const match = entries.find((e: any) => /tim+m[iy]|kepork|rybi|real-world|skute|faktick|external_fact|therapist_factual_correction/i.test(`${e?.summary ?? ""} ${JSON.stringify(e?.detail ?? {})} ${e?.evidence_level ?? ""}`));
   if (!match) return "";
@@ -240,7 +240,7 @@ const realityContextText = (p: BriefingPayload): string => {
   return `${summary}\nSamo o sobě to ještě nevypovídá o tom, co prožívá konkrétní část. Terapeuticky důležité bude až to, co kluci sami řeknou, ukážou v těle nebo jak na téma zareagují.`;
 };
 
-const backendContextSummary = (inputs: Record<string, any> | undefined): string => {
+export const backendContextSummary = (inputs: Record<string, any> | undefined): string => {
   if (!inputs) return "";
   const used = inputs.used_recent_operational_context || inputs.used_reality_correction || inputs.reality_correction_used || inputs.used_hana_personal_processed_implication;
   if (!used) return "";
@@ -248,7 +248,7 @@ const backendContextSummary = (inputs: Record<string, any> | undefined): string 
   return cleanVisibleClinicalText(`Používá včerejší důležitý kontext. Čeho se dnes vyvarovat: ${limits}. Nejdřív ověřit vlastní reakci kluků.`);
 };
 
-const cleanVisibleClinicalText = (value: unknown): string => String(value ?? "")
+export const cleanVisibleClinicalText = (value: unknown): string => String(value ?? "")
   .replace(/pending_review\s*\/\s*evidence_limited/gi, "otevřené nebo částečně rozpracované, zatím bez plného dovyhodnocení")
   .replace(/\bpending_review\b/gi, "čeká na klinické dovyhodnocení")
   .replace(/\bevidence_limited\b/gi, "zatím bez dostatečného materiálu pro plný klinický závěr")
@@ -261,6 +261,10 @@ const cleanVisibleClinicalText = (value: unknown): string => String(value ?? "")
   .replace(/\breal-world\s+(?:context|kontext)\b/gi, "skutečná událost a její emoční rámec")
   .replace(/\breal-world\s+fact\b/gi, "skutečná událost")
   .replace(/\breal-world\b/gi, "skutečný")
+  .replace(/Máme potvrzený started\/live\/progress signál/gi, "Máme potvrzený signál, že práce začala")
+  .replace(/V ranním přehledu se má objevit jako [^\.\n]+, ne jako neuskutečněné Sezení\.?/gi, "V přehledu ho proto držím jako otevřený materiál, ne jako neuskutečněné Sezení.")
+  .replace(/Timmi je reálný externí kontext/gi, "Timmi je skutečná událost a emoční kontext")
+  .replace(/\bawaiting_therapist_review\b/gi, "čeká na schválení terapeutkami")
   .replace(/\boperational context\b|operační\s+kontext/gi, "důležitý kontext")
   .replace(/briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log/gi, "podklad")
   .trim();
@@ -1324,7 +1328,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                   <div>
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Karlovo vyhodnocení</p>
                     <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
-                      {yesterdayReview.karel_summary}
+                      {cleanVisibleClinicalText(yesterdayReview.karel_summary)}
                     </p>
                   </div>
                 ) : (
@@ -1336,7 +1340,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                   <div>
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co teď víme o části</p>
                     <p className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
-                      {yesterdayReview.key_finding_about_part}
+                      {cleanVisibleClinicalText(yesterdayReview.key_finding_about_part)}
                     </p>
                   </div>
                 )}
@@ -1344,7 +1348,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                   <div>
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co z toho plyne pro plán</p>
                     <p className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
-                      {yesterdayReview.implications_for_plan}
+                      {cleanVisibleClinicalText(yesterdayReview.implications_for_plan)}
                     </p>
                   </div>
                 )}
@@ -1352,14 +1356,14 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                   <div className="pt-1 border-t border-border/40">
                     <p className="text-[11px] uppercase tracking-wide text-primary/70">Týmové uzavření</p>
                     <p className="text-[12px] leading-relaxed text-foreground/85 italic whitespace-pre-line mt-0.5">
-                      {yesterdayReview.team_acknowledgement}
+                      {cleanVisibleClinicalText(yesterdayReview.team_acknowledgement)}
                     </p>
                   </div>
                 )}
                 {(yesterdayReview as YesterdayFallbackReview).detailed_analysis && (
                   <details className="rounded-md border border-border/50 bg-background/35 p-2">
                     <summary className="cursor-pointer text-[12px] font-medium text-primary">Přečíst si detailní analýzu ze včerejšího sezení</summary>
-                    <p className="mt-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{(yesterdayReview as YesterdayFallbackReview).detailed_analysis}</p>
+                    <p className="mt-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{cleanVisibleClinicalText((yesterdayReview as YesterdayFallbackReview).detailed_analysis)}</p>
                   </details>
                 )}
               </>
@@ -1377,7 +1381,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                 <div>
                   <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Další krok</p>
                   <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">
-                    Karel má dohledat nebo dogenerovat evidence-limited review sezení odděleně od playroom review; Herna nesmí být použita jako náhrada terapeutického sezení.
+                    Karel má dohledat nebo doplnit klinické dovyhodnocení sezení odděleně od vyhodnocení Herny; Herna nesmí být použita jako náhrada terapeutického sezení.
                   </p>
                 </div>
               </>
