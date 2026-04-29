@@ -2491,7 +2491,7 @@ serve(async (req) => {
   console.log(`[daily-cycle] Email Guard: pragueHour=${pragueHourForEmailGuard}, isCronCall=${isCronCall}, isCatchup=${isCatchup}, isWatchdog=${isWatchdog}, suppressEmails=${suppressEmails}, shouldSendEmails=${shouldSendEmails}`);
 
   let cycleId: string | null = null;
-  let sb: ReturnType<typeof createClient> | null = null;
+  let sb: any = null;
   let consolidationRunId: string | null = null;
   let compileDataKeepAlive: number | undefined;
   let aiAnalysisKeepAlive: number | undefined;
