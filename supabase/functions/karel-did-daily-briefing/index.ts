@@ -517,8 +517,6 @@ function operationalContextEntries(context: any): any[] {
   });
 }
 
-export const operationalContextEntriesForTest = operationalContextEntries;
-
 function injectOperationalContextIntoProposals(payload: any, context: any) {
   const entries = operationalContextEntries(context);
   if (!entries.length) return payload;
@@ -794,8 +792,6 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     technical_note: payload?.technical_note || "Briefing byl sestaven z DB review a dostupných reportů; technický stav není hlavním obsahem přehledu.",
   };
 }
-
-export const buildBriefingOpeningForTest = buildOpeningMonologue;
 
 function applyOpeningMonologue(payload: any, context: any, candidates: SessionCandidate[]) {
   payload.last_3_days = buildClinicalLast3Days(payload, context, candidates);
