@@ -422,18 +422,21 @@ function LiveProgramDraftPanel({
   const fallback = (d.agenda_outline ?? []) as AgendaBlock[];
   const blocks = draft.length > 0 ? draft : fallback;
   const usingDraft = draft.length > 0;
+  const sp = d.session_params && typeof d.session_params === "object" ? d.session_params as Record<string, unknown> : {};
+  const isPlayroom = sp.session_actor === "karel_direct" || sp.ui_surface === "did_kids_playroom" || sp.session_format === "playroom" || !!sp.playroom_plan;
+  const unsafeExecutable = d.deliberation_type === "session_plan" && !isPlayroom && (blocks.length < 4 || blocks.some((b) => isUnsafeFallbackBlock(b as LiveProgramBlock)));
 
-  if (blocks.length === 0) {
+  if (blocks.length === 0 || unsafeExecutable) {
     return (
       <section className="rounded-lg border border-dashed border-border/60 bg-card/30 p-3">
         <h4 className="text-[11px] font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-primary" />
-          Živý program sezení
+          Živý program sezení není připravený
         </h4>
         <p className="text-[10.5px] text-muted-foreground italic">
-          Karel ještě nemá co iterovat — jakmile Hanička nebo Káťa odpoví na
-          otázku nebo přidá podnět do diskuse, Karel program sestaví bod po bodu
-          a dál ho s vámi bude upřesňovat.
+          Karel zatím nemá dost podkladů pro vykonatelné terapeutické Sezení.
+          Potřebuje od Haničky nebo Káti upřesnit aktuální stav části, bezpečnost
+          a dostupnost; potom sestaví nový návrh bod po bodu.
         </p>
       </section>
     );
@@ -470,15 +473,15 @@ function LiveProgramDraftPanel({
                     : ""}
                 </span>
                 <span className="font-medium text-foreground">
-                  {block.block}
+                  {cleanVisiblePlanText(block.block, `Krok ${i + 1}`)}
                 </span>
               </div>
               {!hasStructured && block.detail && (
-                <p className="text-foreground/75">{block.detail}</p>
+                <p className="text-foreground/75">{cleanVisiblePlanText(block.detail)}</p>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1">
                 {PROGRAM_TEXT_FIELDS.map(([key, label]) => {
-                  const value = textValue(block[key]);
+                  const value = cleanVisiblePlanText(textValue(block[key]));
                   if (!value) return null;
                   return (
                     <p key={String(key)} className="text-foreground/85">
@@ -490,7 +493,7 @@ function LiveProgramDraftPanel({
                   );
                 })}
                 {PROGRAM_LIST_FIELDS.map(([key, label]) => {
-                  const values = listValue(block[key]);
+                  const values = listValue(block[key]).map((value) => cleanVisiblePlanText(value)).filter(Boolean);
                   if (values.length === 0) return null;
                   return (
                     <p key={String(key)} className="text-foreground/85">
@@ -507,13 +510,12 @@ function LiveProgramDraftPanel({
                 <div className="flex flex-wrap gap-1.5 pt-0.5">
                   {typeof block.requires_physical_therapist === "boolean" && (
                     <Badge variant="outline" className="text-[10px] h-5">
-                      Vyžaduje fyzickou terapeutku:{" "}
-                      {yesNo(block.requires_physical_therapist)}
+                      Vyžaduje terapeutku: {yesNo(isPlayroom ? Boolean(block.requires_physical_therapist) : true)}
                     </Badge>
                   )}
                   {typeof block.karel_can_do_alone === "boolean" && (
                     <Badge variant="outline" className="text-[10px] h-5">
-                      Karel může sám: {yesNo(block.karel_can_do_alone)}
+                      Karel asistuje: {isPlayroom ? "po schválení" : "Ano"}
                     </Badge>
                   )}
                 </div>
