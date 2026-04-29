@@ -38,6 +38,7 @@ const corsHeaders = {
 
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-2.5-pro";
+const STALE_CYCLE_MINUTES = 90;
 
 const pragueDayISO = (d: Date = new Date()): string =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(d);
@@ -47,6 +48,31 @@ const daysAgoISO = (n: number): string => {
   d.setDate(d.getDate() - n);
   return pragueDayISO(d);
 };
+
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+async function startBriefingAttempt(sb: any, values: Record<string, unknown>): Promise<string | null> {
+  try {
+    const { data } = await sb.from("did_daily_briefing_attempts").insert(values).select("id").single();
+    return data?.id ?? null;
+  } catch (e) {
+    console.warn("[briefing-audit] start failed:", (e as Error)?.message || e);
+    return null;
+  }
+}
+
+async function finishBriefingAttempt(sb: any, attemptId: string | null, values: Record<string, unknown>) {
+  if (!attemptId) return;
+  try {
+    await sb.from("did_daily_briefing_attempts").update({ ...values, completed_at: new Date().toISOString() }).eq("id", attemptId);
+  } catch (e) {
+    console.warn("[briefing-audit] finish failed:", (e as Error)?.message || e);
+  }
+}
 
 const normalizeTherapistLabel = (value: unknown): "Hanička" | "Káťa" | "společně" | undefined => {
   const raw = String(value ?? "").trim().toLowerCase();
