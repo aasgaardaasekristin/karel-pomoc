@@ -127,6 +127,20 @@ const jsonItemCount = (value: unknown): number => {
   return 0;
 };
 
+const REAL_WORLD_CONTEXT_RE = /(therapist_factual_correction|external_fact|skute|re[áa]ln|faktick|odkaz|url|https?:\/\/|aktu[áa]ln|zpr[áa]v|[čc]l[áa]nek|telefon[áa]t|[úu]mrt|ztr[áa]t|zdravotn|po[žz][áa]r|v[áa]lk|[úu]tulek|z[áa]chran|instituc|nen[íi]\s+to\s+(?:symbol|projekce|fiktivn))/i;
+const OPERATIONAL_EVIDENCE_LEVELS = new Set(["therapist_factual_correction", "external_fact", "therapist_observation_D2", "direct_child_evidence", "team_decision", "program_change", "task_note"]);
+
+function isOpenedPartialSessionReview(review: any): boolean {
+  const status = String(review?.status ?? "").toLowerCase();
+  const kind = String(review?.review_kind ?? "").toLowerCase();
+  const basis = reviewEvidenceBasis(review);
+  return basis === "started_partial"
+    || status === "pending_review"
+    || status === "evidence_limited"
+    || kind === "safety_net_opened_partial"
+    || /opened_or_partial_activity_detected|started_partial|safety_net_opened_partial/i.test(JSON.stringify(review?.analysis_json ?? {}));
+}
+
 const buildMandatoryPlayroomProposal = (payload: any, context: any, candidates: Array<{ part_name: string; score: number; reasons: string[] }>) => {
   const selectedPart = String(payload?.proposed_session?.part_name || candidates?.[0]?.part_name || context?.crises?.[0]?.part_name || context?.recent_threads?.[0]?.part_name || "část vybraná ranním přehledem").trim();
   const whyToday = cleanBlockText(payload?.proposed_session?.why_today)
@@ -169,7 +183,7 @@ const buildMandatoryPlayroomProposal = (payload: any, context: any, candidates: 
 
 function buildMandatorySessionProposal(payload: any, context: any, candidates: Array<{ part_name: string; score: number; reasons: string[] }>) {
   const entries = operationalContextEntries(context);
-  const sessionRelevant = entries.filter((e: any) => e?.detail?.include_in_next_session_plan === true || /sezen|session|timmy|timmi|velryb|kepor|skute|reáln|odkaz/i.test(`${e?.summary ?? ""} ${JSON.stringify(e?.detail ?? {})}`));
+  const sessionRelevant = entries.filter((e: any) => e?.detail?.include_in_next_session_plan === true || /sezen|session/i.test(`${e?.summary ?? ""} ${JSON.stringify(e?.detail ?? {})}`) || REAL_WORLD_CONTEXT_RE.test(`${e?.summary ?? ""} ${JSON.stringify(e?.detail ?? {})}`));
   const selectedPart = String(context?.yesterday_session_reviews?.[0]?.part_name || context?.yesterday_plans?.[0]?.selected_part || sessionRelevant?.[0]?.related_part_name || candidates?.[0]?.part_name || payload?.proposed_playroom?.part_name || "část vybraná ranním přehledem").trim();
   const refs = sessionRelevant.map((e: any) => e.source_ref || e.id).filter(Boolean).slice(0, 10);
   const excerpts = sessionRelevant.map((e: any) => cleanBlockText(e.summary || e.detail?.operational_implication || "")).filter(Boolean).slice(0, 6);
@@ -177,10 +191,10 @@ function buildMandatorySessionProposal(payload: any, context: any, candidates: A
   return {
     part_name: selectedPart,
     status: "awaiting_therapist_review",
-    why_today: "Navázat na včerejší aktivitu a real-world korekci bez předstírání klinického závěru: nejdřív ověřit tělo, emoci, dostupnost a bezpečí.",
+    why_today: "Navázat na včerejší aktivitu a real-world / terapeuticky faktický kontext bez předstírání klinického závěru: nejdřív ověřit tělo, emoci, dostupnost a bezpečí.",
     led_by: "Hanička",
     duration_min: 20,
-    first_draft: "Krátké terapeutkou vedené Sezení: 1) ověřit aktuální stav a únavu, 2) přiznat Timmyho/keporkaka jako skutečný externí stresor, 3) ptát se jen na vlastní reakci kluků, neinterpretovat samotnou zprávu jako projekci, 4) ukončit stabilizačně.",
+    first_draft: "Krátké terapeutkou vedené Sezení: 1) ověřit aktuální stav a únavu, 2) přiznat doložený real-world kontext jako skutečný externí/faktický rámec, 3) ptát se jen na vlastní reakci kluků, neinterpretovat samotnou zprávu jako projekci, 4) ukončit stabilizačně.",
     kata_involvement: "Káťa hlídá evidence discipline: real-world fact / therapist correction není child evidence bez samostatné reakce části.",
     evidence_sources: ["RECENT OPERATIONAL CONTEXT — Pantry B", "YESTERDAY ACTIVITY — plans/progress/reviews"],
     backend_context_inputs: {
