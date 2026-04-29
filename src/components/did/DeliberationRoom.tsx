@@ -156,6 +156,26 @@ function listValue(value: unknown) {
   return single ? [single] : [];
 }
 
+const FORBIDDEN_VISIBLE_DEBUG_RE = /pending_review|evidence_limited|needs_therapist_input|awaiting_therapist_review|backend_context_inputs|source_ref|therapist_factual_correction|external_fact|evidence discipline|child evidence|real-world context|operational context|faktick[áa]\s+korekce\s+reality|nepředstírat klinické závěry|průběh, který nemá transcript|První pracovní návrh:\s*Část|Stav:\s*awaiting/i;
+
+function cleanVisiblePlanText(value: unknown, fallback = "") {
+  const cleaned = String(value ?? "")
+    .replace(/\bpending_review\b/gi, "čeká na klinické dovyhodnocení")
+    .replace(/\bevidence_limited\b/gi, "zatím bez dostatečných podkladů")
+    .replace(/\bneeds_therapist_input\b/gi, "čeká na doplnění od terapeutek")
+    .replace(/\bawaiting_therapist_review\b/gi, "čeká na schválení terapeutkami")
+    .replace(/nepředstírat klinické závěry[^.\n]*/gi, "klinické závěry dělat až po přímé reakci kluků")
+    .replace(/průběh, který nemá transcript/gi, "situaci bez dostatečného přímého materiálu")
+    .replace(/briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log/gi, "podklad")
+    .trim();
+  if (!cleaned || FORBIDDEN_VISIBLE_DEBUG_RE.test(cleaned)) return fallback;
+  return cleaned;
+}
+
+function isUnsafeFallbackBlock(block: LiveProgramBlock) {
+  return FORBIDDEN_VISIBLE_DEBUG_RE.test(JSON.stringify(block)) || /Evidence-limited/i.test(String(block.block ?? ""));
+}
+
 function hasStructuredProgramFields(block: LiveProgramBlock) {
   return (
     [...PROGRAM_TEXT_FIELDS, ...PROGRAM_LIST_FIELDS].some(([key]) => {
@@ -402,18 +422,21 @@ function LiveProgramDraftPanel({
   const fallback = (d.agenda_outline ?? []) as AgendaBlock[];
   const blocks = draft.length > 0 ? draft : fallback;
   const usingDraft = draft.length > 0;
+  const sp = d.session_params && typeof d.session_params === "object" ? d.session_params as Record<string, unknown> : {};
+  const isPlayroom = sp.session_actor === "karel_direct" || sp.ui_surface === "did_kids_playroom" || sp.session_format === "playroom" || !!sp.playroom_plan;
+  const unsafeExecutable = d.deliberation_type === "session_plan" && !isPlayroom && (blocks.length < 4 || blocks.some((b) => isUnsafeFallbackBlock(b as LiveProgramBlock)));
 
-  if (blocks.length === 0) {
+  if (blocks.length === 0 || unsafeExecutable) {
     return (
       <section className="rounded-lg border border-dashed border-border/60 bg-card/30 p-3">
         <h4 className="text-[11px] font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-primary" />
-          Živý program sezení
+          Živý program sezení není připravený
         </h4>
         <p className="text-[10.5px] text-muted-foreground italic">
-          Karel ještě nemá co iterovat — jakmile Hanička nebo Káťa odpoví na
-          otázku nebo přidá podnět do diskuse, Karel program sestaví bod po bodu
-          a dál ho s vámi bude upřesňovat.
+          Karel zatím nemá dost podkladů pro vykonatelné terapeutické Sezení.
+          Potřebuje od Haničky nebo Káti upřesnit aktuální stav části, bezpečnost
+          a dostupnost; potom sestaví nový návrh bod po bodu.
         </p>
       </section>
     );
@@ -450,15 +473,15 @@ function LiveProgramDraftPanel({
                     : ""}
                 </span>
                 <span className="font-medium text-foreground">
-                  {block.block}
+                  {cleanVisiblePlanText(block.block, `Krok ${i + 1}`)}
                 </span>
               </div>
               {!hasStructured && block.detail && (
-                <p className="text-foreground/75">{block.detail}</p>
+                <p className="text-foreground/75">{cleanVisiblePlanText(block.detail)}</p>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1">
                 {PROGRAM_TEXT_FIELDS.map(([key, label]) => {
-                  const value = textValue(block[key]);
+                  const value = cleanVisiblePlanText(textValue(block[key]));
                   if (!value) return null;
                   return (
                     <p key={String(key)} className="text-foreground/85">
@@ -470,7 +493,7 @@ function LiveProgramDraftPanel({
                   );
                 })}
                 {PROGRAM_LIST_FIELDS.map(([key, label]) => {
-                  const values = listValue(block[key]);
+                  const values = listValue(block[key]).map((value) => cleanVisiblePlanText(value)).filter(Boolean);
                   if (values.length === 0) return null;
                   return (
                     <p key={String(key)} className="text-foreground/85">
@@ -487,13 +510,12 @@ function LiveProgramDraftPanel({
                 <div className="flex flex-wrap gap-1.5 pt-0.5">
                   {typeof block.requires_physical_therapist === "boolean" && (
                     <Badge variant="outline" className="text-[10px] h-5">
-                      Vyžaduje fyzickou terapeutku:{" "}
-                      {yesNo(block.requires_physical_therapist)}
+                      Vyžaduje terapeutku: {yesNo(isPlayroom ? Boolean(block.requires_physical_therapist) : true)}
                     </Badge>
                   )}
                   {typeof block.karel_can_do_alone === "boolean" && (
                     <Badge variant="outline" className="text-[10px] h-5">
-                      Karel může sám: {yesNo(block.karel_can_do_alone)}
+                      Karel asistuje: {isPlayroom ? "po schválení" : "Ano"}
                     </Badge>
                   )}
                 </div>
@@ -532,8 +554,8 @@ function ClinicalContractPanel({ d }: { d: TeamDeliberation }) {
       : sp.last_plan_change_state;
   const entries = [
     ["Fáze", sp.treatment_phase],
-    ["Readiness", sp.readiness_today],
-    ["Režim", sp.session_mode],
+    ["Připravenost", sp.readiness_today],
+    ["Role", sp.session_actor === "karel_direct" || sp.ui_surface === "did_kids_playroom" || sp.session_format === "playroom" ? "Herna: Karel vede až po schválení terapeutkami" : "Sezení: terapeutka vede, Karel asistuje"],
     ["První otázka", sp.first_question],
     ["Změna plánu", lastPlanChange],
   ].filter(
@@ -552,14 +574,14 @@ function ClinicalContractPanel({ d }: { d: TeamDeliberation }) {
         {entries.map(([label, value]) => (
           <div key={label} className="text-[10.5px]">
             <span className="text-muted-foreground">{label}: </span>
-            <span className="text-foreground/90">{value}</span>
+            <span className="text-foreground/90">{cleanVisiblePlanText(value)}</span>
           </div>
         ))}
       </div>
       {stopRules.length > 0 && (
         <ul className="list-disc pl-4 text-[10.5px] text-foreground/85 space-y-0.5">
           {stopRules.map((rule, idx) => (
-            <li key={idx}>{rule}</li>
+            <li key={idx}>{cleanVisiblePlanText(rule)}</li>
           ))}
         </ul>
       )}
@@ -1191,12 +1213,18 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                   <section className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                     <h4 className="text-[11px] font-semibold text-primary mb-1.5">
                       {d.deliberation_type === "session_plan"
-                        ? "První pracovní návrh"
+                        ? "Lidský návrh k poradě"
                         : "Karlův pracovní návrh"}
                     </h4>
-                    <RichMarkdown compact>
-                      {d.karel_proposed_plan ?? "(zatím bez návrhu)"}
-                    </RichMarkdown>
+                    {d.deliberation_type === "session_plan" ? (
+                      <p className="text-[12px] leading-relaxed text-foreground/85 whitespace-pre-line">
+                        {cleanVisiblePlanText(d.reason || d.title, "Program je pracovní a čeká na doplnění terapeutek. Raw stav ani auditní metadata zde nezobrazuji.")}
+                      </p>
+                    ) : (
+                      <RichMarkdown compact>
+                        {cleanVisiblePlanText(d.karel_proposed_plan, "(zatím bez návrhu)")}
+                      </RichMarkdown>
+                    )}
                   </section>
 
                   {/* THERAPIST-LED TRUTH PASS — Živý program (program_draft).
