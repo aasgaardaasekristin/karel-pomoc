@@ -236,19 +236,34 @@ const realityContextText = (p: BriefingPayload): string => {
   const entries = [...(Array.isArray(p.operational_context_used) ? p.operational_context_used : []), ...(Array.isArray(p.hana_personal_did_relevant_implications) ? p.hana_personal_did_relevant_implications : [])];
   const match = entries.find((e: any) => /tim+m[iy]|kepork|rybi|real-world|skute|faktick|external_fact|therapist_factual_correction/i.test(`${e?.summary ?? ""} ${JSON.stringify(e?.detail ?? {})} ${e?.evidence_level ?? ""}`));
   if (!match) return "";
-  const source = String(match.source_ref || match.detail?.source_trace?.source_ref || match.id || "zpracovaný Hana/Osobní vstup");
-  const summary = String(match.summary || match.detail?.operational_implication || "Hana/Osobní real-world kontext byl zohledněn.").trim();
-  return `${summary}\nZdroj: ${source}\nEvidence discipline: real-world fakt není child evidence; Karel má nejdřív ověřit, co kluci sami říkají, co cítí v těle a co potřebují.`;
+  const summary = cleanVisibleClinicalText(String(match.summary || match.detail?.operational_implication || "Hanička upřesnila důležitý faktický rámec, který má být dnes držen opatrně.").trim());
+  return `${summary}\nSamo o sobě to ještě nevypovídá o tom, co prožívá konkrétní část. Terapeuticky důležité bude až to, co kluci sami řeknou, ukážou v těle nebo jak na téma zareagují.`;
 };
 
 const backendContextSummary = (inputs: Record<string, any> | undefined): string => {
   if (!inputs) return "";
   const used = inputs.used_recent_operational_context || inputs.used_reality_correction || inputs.reality_correction_used || inputs.used_hana_personal_processed_implication;
   if (!used) return "";
-  const refs = Array.isArray(inputs.source_refs) ? inputs.source_refs : Array.isArray(inputs.operational_context_source_refs) ? inputs.operational_context_source_refs : [];
-  const limits = Array.isArray(inputs.what_not_to_conclude) ? inputs.what_not_to_conclude.filter(Boolean).slice(0, 2).join(" ") : "real-world fakt není child evidence bez samostatné reakce části";
-  return `Používá včerejší operační kontext${refs.length ? ` (${refs.slice(0, 2).join(", ")})` : ""}. Nevyvozovat: ${limits}`;
+  const limits = Array.isArray(inputs.what_not_to_conclude) ? inputs.what_not_to_conclude.filter(Boolean).slice(0, 2).join(" ") : "nedělat z reálné události automaticky projekci, symbol nebo diagnózu";
+  return cleanVisibleClinicalText(`Používá včerejší důležitý kontext. Čeho se dnes vyvarovat: ${limits}. Nejdřív ověřit vlastní reakci kluků.`);
 };
+
+const cleanVisibleClinicalText = (value: unknown): string => String(value ?? "")
+  .replace(/pending_review\s*\/\s*evidence_limited/gi, "otevřené nebo částečně rozpracované, zatím bez plného dovyhodnocení")
+  .replace(/\bpending_review\b/gi, "čeká na klinické dovyhodnocení")
+  .replace(/\bevidence_limited\b/gi, "zatím bez dostatečného materiálu pro plný klinický závěr")
+  .replace(/therapist_factual_correction\s*\/\s*external_fact/gi, "Hanička upřesnila faktický rámec skutečné události")
+  .replace(/\btherapist_factual_correction\b/gi, "Hanička upřesnila faktický rámec")
+  .replace(/\bexternal_fact\b/gi, "skutečná událost")
+  .replace(/faktick[áa]\s+korekce\s+reality/gi, "upřesněný faktický rámec")
+  .replace(/\bchild evidence\b/gi, "vlastní slova, tělesná reakce nebo chování kluků")
+  .replace(/\bevidence discipline\b/gi, "opatrnost v závěrech")
+  .replace(/\breal-world\s+(?:context|kontext)\b/gi, "skutečná událost a její emoční rámec")
+  .replace(/\breal-world\s+fact\b/gi, "skutečná událost")
+  .replace(/\breal-world\b/gi, "skutečný")
+  .replace(/\boperational context\b|operační\s+kontext/gi, "důležitý kontext")
+  .replace(/briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log/gi, "podklad")
+  .trim();
 
 interface BriefingRow {
   id: string;
@@ -1139,7 +1154,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
   const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
   const legacyTechnicalGreeting = /těžk[áa]\s+syntéza|fallback|bezpečn[ýy]\s+režim/i.test(p.greeting || "");
-  const openingMonologueText = (p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnes držme hlavně klinickou návaznost, opatrnost v závěrech a jeden bezpečný další krok pro kluky. Budu rozlišovat, co víme jistě, co je pracovní hypotéza a co ještě čeká na ověření." : p.greeting) || "").trim();
+  const openingMonologueText = cleanVisibleClinicalText(p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnes držme hlavně klinickou návaznost, opatrnost v závěrech a jeden bezpečný další krok pro kluky. Budu rozlišovat, co víme jistě, co je pracovní hypotéza a co ještě čeká na ověření." : p.greeting) || "");
   const technicalNote = (p.technical_note || p.opening_monologue?.technical_note || "").trim();
   const visibleRealityContext = realityContextText(p);
   const sessionContextSummary = backendContextSummary(p.proposed_session?.backend_context_inputs);
@@ -1189,7 +1204,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       {visibleRealityContext && (
         <>
           <NarrativeDivider />
-          <SectionHead>Včerejší real-world kontext</SectionHead>
+          <SectionHead>Včerejší důležitý kontext</SectionHead>
           <div className="mt-2 rounded-lg border border-border/60 bg-card/40 p-3">
             <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{visibleRealityContext}</p>
           </div>
@@ -1202,7 +1217,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           <NarrativeDivider />
           <SectionHead>Za poslední tři dny</SectionHead>
           <p className="text-[13px] leading-relaxed text-foreground/80 mt-2 whitespace-pre-line">
-            {p.last_3_days}
+            {cleanVisibleClinicalText(p.last_3_days)}
           </p>
         </>
       )}
@@ -1223,7 +1238,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           <NarrativeDivider />
           <SectionHead>Dnešní terapeutická priorita</SectionHead>
           <p className="text-[13px] leading-relaxed text-foreground/85 mt-2 whitespace-pre-line">
-            {p.daily_therapeutic_priority}
+            {cleanVisibleClinicalText(p.daily_therapeutic_priority)}
           </p>
         </>
       )}
@@ -1408,15 +1423,15 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               <ArrowRight className="w-3.5 h-3.5 text-primary/60 ml-auto" />
             </div>
             <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
-              {p.proposed_session.why_today}
+              {cleanVisibleClinicalText(p.proposed_session.why_today)}
             </p>
             <div className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">
               <span className="text-muted-foreground italic">První pracovní verze (k diskusi v poradě): </span>
-              {p.proposed_session.first_draft}
+              {cleanVisibleClinicalText(p.proposed_session.first_draft)}
             </div>
             {p.proposed_session.kata_involvement && (
               <p className="text-[12px] text-muted-foreground italic whitespace-pre-line">
-                {p.proposed_session.kata_involvement}
+                {cleanVisibleClinicalText(p.proposed_session.kata_involvement)}
               </p>
             )}
             {sessionContextSummary && (
@@ -1451,18 +1466,17 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             </div>
             <div>
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Hlavní téma dnešní Herny</p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{playroomProposal.main_theme}</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{cleanVisibleClinicalText(playroomProposal.main_theme)}</p>
             </div>
             <div>
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Proč právě tato Herna</p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomProposal.why_this_part_today}</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{cleanVisibleClinicalText(playroomProposal.why_this_part_today)}</p>
             </div>
-            {playroomContextSummary && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Použitý operační kontext</p><p className="mt-0.5 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{playroomContextSummary}</p></div>}
+            {playroomContextSummary && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Použitý včerejší kontext</p><p className="mt-0.5 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{playroomContextSummary}</p></div>}
             {Array.isArray(playroomProposal.goals) && playroomProposal.goals.length > 0 && (
               <div>
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Cíle Herny</p>
                 <ul className="mt-1 space-y-1 text-[13px] leading-relaxed text-foreground/80">
-                  {playroomProposal.goals.slice(0, 4).map((goal, index) => <li key={`${goal}-${index}`}>{index + 1}. {goal}</li>)}
+                  {playroomProposal.goals.slice(0, 4).map((goal, index) => <li key={`${goal}-${index}`}>{index + 1}. {cleanVisibleClinicalText(goal)}</li>)}
                 </ul>
               </div>
             )}
@@ -1471,13 +1485,13 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Program pro Hernu</p>
                 <div className="mt-1 space-y-1.5">
                   {playroomProposal.playroom_plan.therapeutic_program.slice(0, 5).map((block, index) => (
-                    <p key={`${block.block}-${index}`} className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line"><span className="font-medium text-foreground/90">{index + 1}. {block.block}</span>{block.detail ? ` — ${block.detail}` : ""}</p>
+                    <p key={`${block.block}-${index}`} className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line"><span className="font-medium text-foreground/90">{index + 1}. {cleanVisibleClinicalText(block.block)}</span>{block.detail ? ` — ${cleanVisibleClinicalText(block.detail)}` : ""}</p>
                   ))}
                 </div>
               </div>
             )}
-            {playroomProposal.playroom_plan?.child_safe_version && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Dětsky bezpečná verze</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomProposal.playroom_plan.child_safe_version}</p></div>}
-            {Array.isArray(playroomProposal.playroom_plan?.risks_and_stop_signals) && playroomProposal.playroom_plan.risks_and_stop_signals.length > 0 && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Rizika a stop signály</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomProposal.playroom_plan.risks_and_stop_signals.slice(0, 4).map((x) => `- ${x}`).join("\n")}</p></div>}
+            {playroomProposal.playroom_plan?.child_safe_version && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Dětsky bezpečná verze</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{cleanVisibleClinicalText(playroomProposal.playroom_plan.child_safe_version)}</p></div>}
+            {Array.isArray(playroomProposal.playroom_plan?.risks_and_stop_signals) && playroomProposal.playroom_plan.risks_and_stop_signals.length > 0 && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Rizika a stop signály</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomProposal.playroom_plan.risks_and_stop_signals.slice(0, 4).map((x) => `- ${cleanVisibleClinicalText(x)}`).join("\n")}</p></div>}
             <p className="text-[11px] text-primary/70 italic">Otevřít poradu ke schválení Herny →</p>
           </button>
         </>

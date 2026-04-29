@@ -141,7 +141,7 @@ const summarizeRealityCorrections = (entries: any[]): string => {
   const concrete = /tim+m[iy]|kepork|rybi/i.test(summaries)
     ? "Hanička popsala reálný kontext kolem Timmiho/keporkaka."
     : "Hanička popsala reálný externí kontext nebo faktickou korekci reality.";
-  return `${concrete} Beru to jako skutečnou událost a emoční/operační kontext, ne jako projekci, symbol ani diagnostický signál bez přímé reakce kluků. Dnes je bezpečné nejprve ověřit, co o tom kluci sami říkají, co cítí v těle a co potřebují.${summaries ? ` Zpracovaná implikace: ${trimSentence(summaries, 360)}` : ""}`;
+  return ensureVisibleClinicalText(`${concrete} Beru to jako skutečnou událost a emoční rámec, ne jako projekci, symbol ani diagnostický signál bez přímé reakce kluků. Dnes je bezpečné nejprve ověřit, co o tom kluci sami říkají, co cítí v těle a co potřebují.${summaries ? ` ${trimSentence(summaries, 360)}` : ""}`);
 };
 
 function isOpenedPartialSessionReview(review: any): boolean {
@@ -210,11 +210,11 @@ function buildMandatorySessionProposal(payload: any, context: any, candidates: A
   return {
     part_name: selectedPart,
     status: "awaiting_therapist_review",
-    why_today: "Navázat na včerejší aktivitu a real-world / terapeuticky faktický kontext bez předstírání klinického závěru: nejdřív ověřit tělo, emoci, dostupnost a bezpečí.",
+    why_today: "Navázat na včerejší aktivitu a skutečnou událost bez předstírání klinického závěru: nejdřív ověřit tělo, emoci, dostupnost a bezpečí.",
     led_by: "Hanička",
     duration_min: 20,
-    first_draft: "Krátké terapeutkou vedené Sezení: 1) ověřit aktuální stav a únavu, 2) přiznat doložený real-world kontext jako skutečný externí/faktický rámec, 3) ptát se jen na vlastní reakci kluků, neinterpretovat samotnou zprávu jako projekci, 4) ukončit stabilizačně.",
-    kata_involvement: "Káťa hlídá evidence discipline: real-world fact / therapist correction není child evidence bez samostatné reakce části.",
+    first_draft: "Krátké terapeutkou vedené Sezení: 1) ověřit aktuální stav a únavu, 2) přiznat doložený faktický rámec jako skutečnou událost, 3) ptát se jen na vlastní reakci kluků, neinterpretovat samotnou zprávu jako projekci, 4) ukončit stabilizačně.",
+    kata_involvement: "Káťa hlídá opatrnost v závěrech: skutečná událost sama o sobě ještě nevypovídá o klucích bez jejich vlastní reakce.",
     evidence_sources: ["RECENT OPERATIONAL CONTEXT — Pantry B", "YESTERDAY ACTIVITY — plans/progress/reviews"],
     backend_context_inputs: {
       used_yesterday_activity: true,
@@ -312,7 +312,7 @@ function buildYesterdaySessionReview(context: any) {
       assistant_persons: review.assistant_persons ?? [],
       completion: technicalTest ? "abandoned" : evidenceBasis === "completed" ? "completed" : review.status === "evidence_limited" || review.status === "partially_analyzed" ? "partial" : "abandoned",
       practical_report_text: isOpenedPartialSessionReview(review) && !technicalTest
-        ? `Včerejší Sezení s ${review.part_name || "částí"} bylo otevřené nebo částečně rozpracované, ale zatím nemá plné dovyhodnocení. Máme potvrzený started/live/progress signál, proto ho neoznačuji jako neproběhlé; zacházím s ním jako s pending_review / evidence_limited.`
+        ? `Včerejší Sezení s ${review.part_name || "částí"} bylo otevřené nebo částečně rozpracované, ale zatím nemá plné dovyhodnocení. Máme potvrzený signál, že práce začala, proto ho neoznačuji jako neproběhlé; budu z něj vycházet opatrně a bez plného klinického závěru.`
         : technicalTest
         ? `Plánované Sezení s ${review.part_name || "částí"} se klinicky neuskutečnilo. Záznam odpovídá technickému testu nebo plánované aktivitě bez klinického průběhu, proto z něj nevyvozujeme nové klinické poznatky. Původní potřeba Sezení — zejména práce s tělesnými potížemi a neverbálním zpracováním — zůstává otevřená.`
         : cleanBlockText(analysis.practical_report_text ?? review.clinical_summary ?? ""),
@@ -352,7 +352,7 @@ function buildYesterdaySessionReview(context: any) {
     plan_id: activity.id ?? null,
     thread_id: null,
     evidence_count: 1,
-    practical_report_text: "Včerejší Sezení proběhlo nebo bylo zahájeno, ale čeká na vyhodnocení. Karlův přehled ho uvádí jako pending_review, ne jako hotový klinický závěr.",
+    practical_report_text: "Včerejší Sezení proběhlo nebo bylo zahájeno, ale čeká na vyhodnocení. Karlův přehled ho proto bere jako otevřený materiál, ne jako hotový klinický závěr.",
     detailed_analysis_text: "",
     team_closing_text: "",
     drive_sync_status: "not_queued",
@@ -376,7 +376,7 @@ function injectSessionReviewIntoProposals(payload: any) {
       const openedPartial = y.fallback_reason === "opened_or_partial_activity_detected" || y.evidence_basis === "started_partial" || ["pending_review", "evidence_limited"].includes(String(y.review_status ?? y.status));
       ps.carry_over_reason = openedPartial ? "opened_partial_yesterday_session_pending_review" : "unheld_yesterday_session";
       ps.why_today = openedPartial
-        ? `Carry-over z otevřeného / částečně rozpracovaného Sezení. Tento návrh navazuje na potvrzený started/progress signál, ale nepředstírá plné dovyhodnocení; pracuje se stavem pending_review / evidence_limited. ${cleanBlockText(ps.why_today)}`.trim()
+        ? `Návaznost na otevřené nebo částečně rozpracované Sezení. Tento návrh navazuje na potvrzený signál, že práce začala, ale nepředstírá plné dovyhodnocení. ${cleanBlockText(ps.why_today)}`.trim()
         : `Carry-over z neuskutečněného Sezení. Tento návrh nenavazuje na nové klinické poznatky ze včerejšího Sezení, protože to klinicky neproběhlo; navazuje na původní potřebu řešit tělesné potíže a neverbální zpracování tělesného stavu. ${cleanBlockText(ps.why_today)}`.trim();
       ps.first_draft = `Začít krátkým ověřením tělesného a emočního stavu, bez tlaku na vysvětlování. Pokud je část dostupná a stabilní, pokračovat krátkým terapeutkou vedeným Sezením; pokud je unavená nebo zahlcená, zůstat jen u stabilizačního kontaktu. ${cleanBlockText(ps.first_draft)}`.trim();
     }
@@ -650,8 +650,31 @@ const trimSentence = (value: unknown, max = 360): string => {
 const partGenitive = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupka" : name;
 const partDative = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupkovi" : name;
 
-const sanitizeKarelClinicalText = (value: unknown): string =>
+const FORBIDDEN_VISIBLE_DEBUG_LANGUAGE_RE = /(pending_review|evidence_limited|child evidence|evidence discipline|therapist_factual_correction|external_fact|real-world context|real-world kontext|operational context|operační kontext|briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log|faktick[áa]\s+korekce\s+reality)/i;
+
+const translateInternalStateToClinicalProse = (value: unknown): string =>
   cleanBlockText(value)
+    .replace(/pending_review\s*\/\s*evidence_limited/gi, "otevřené nebo částečně rozpracované, zatím bez plného dovyhodnocení")
+    .replace(/\bpending_review\b/gi, "čeká na klinické dovyhodnocení")
+    .replace(/\bevidence_limited\b/gi, "zatím bez dostatečného materiálu pro plný klinický závěr")
+    .replace(/therapist_factual_correction\s*\/\s*external_fact/gi, "Hanička upřesnila faktický rámec skutečné události")
+    .replace(/\btherapist_factual_correction\b/gi, "Hanička upřesnila faktický rámec")
+    .replace(/\bexternal_fact\b/gi, "skutečná událost")
+    .replace(/faktick[áa]\s+korekce\s+reality/gi, "upřesněný faktický rámec")
+    .replace(/\bchild evidence\b/gi, "vlastní slova, tělesná reakce nebo chování kluků")
+    .replace(/\bevidence discipline\b/gi, "opatrnost v závěrech")
+    .replace(/\breal-world\s+(?:context|kontext)\b/gi, "skutečná událost a její emoční rámec")
+    .replace(/\breal-world\s+fact\b/gi, "skutečná událost")
+    .replace(/\breal-world\b/gi, "skutečný")
+    .replace(/\boperational context\b/gi, "důležitý kontext")
+    .replace(/operační\s+kontext/gi, "důležitý kontext")
+    .replace(/briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log/gi, "podklad")
+    .replace(/RECENT OPERATIONAL CONTEXT\s*—\s*Pantry B/gi, "VČEREJŠÍ DŮLEŽITÝ KONTEXT")
+    .replace(/REALITY CORRECTION\s*—\s*not child evidence/gi, "SKUTEČNÁ UDÁLOST — NEVYVOZOVAT BEZ REAKCE KLUCI")
+    .trim();
+
+const sanitizeKarelClinicalText = (value: unknown): string =>
+  translateInternalStateToClinicalProse(value)
     .replace(/DID\s+syst[eé]m/gi, "kluci")
     .replace(/\bsyst[eé]mu\b/gi, "kluků")
     .replace(/\bsyst[eé]m\b/gi, "kluci")
@@ -665,6 +688,12 @@ const sanitizeKarelClinicalText = (value: unknown): string =>
     .replace(/P[řr][íi][šs]t[íi]\s+Herna\s+s\s+Tundrupkem\s+by\s+mohla\s+za[čc][íi]t\s+p[řr][íi]m[ýy]m\s+dotazem\s+na\s+['"][^\n]*?\./gi, "Příští Herna s Tundrupkem má začít jemným check-inem bezpečného místa nebo dnešního vnitřního počasí, ne přímým dotazem na ochranné bytosti.")
     .replace(/Je\s+to\s+siln[ýy]\s+zdroj,\s+kter[ýy]\s+mohou\s+ostatn[íi]\s+kluci\s+vyu[žz][íi]vat\.?/gi, "Je to silný zdroj pro tuto část; u ostatních kluků ho nelze používat bez ověření.")
     .trim();
+
+const ensureVisibleClinicalText = (value: unknown): string => {
+  const text = sanitizeKarelClinicalText(value);
+  if (!FORBIDDEN_VISIBLE_DEBUG_LANGUAGE_RE.test(text)) return text;
+  return sanitizeKarelClinicalText(text);
+};
 
 const isTechnicalStatusText = (value: unknown): boolean =>
   /(t[eě][žz]k[áa]\s+synt[eé]za|fallback|bezpe[čc]n[ýy]\s+re[žz]im|technick|funk[čc]nost|v[šs]e\s+b[eě][žz][íi]|db review|payload|backend)/i.test(cleanBlockText(value));
@@ -698,7 +727,7 @@ function buildClinicalLast3Days(payload: any, context: any, candidates: SessionC
   return [
     `Za posledních 24–72 hodin máme nejvýraznější doloženou aktivitu u ${partGenitive(activePart)}. V komunikaci se objevuje zejména ${communicated}; u kormidla to ale neznamená celodenní jistotu, jen nejsilnější dostupnou stopu.`,
     play ? `Včerejší Herna ukázala práci přes symboly bezpečí, domova, světla nebo ochrany; beru je jako aktuální jazyk této části, ne jako hotovou charakteristiku všech kluků.` : "Z Herny za včerejšek nemám dostatečný uzavřený materiál pro klinický závěr.",
-    openedPartialSession ? "Včerejší Sezení bylo otevřené / částečně rozpracované a čeká na plné dovyhodnocení; zacházím s ním jako s pending_review / evidence_limited, ne jako s neproběhlým." : sessionNotHeld ? "Plánované terapeutické Sezení klinicky neproběhlo, případně odpovídá technickému testu; z něj proto nevyvozuji nové klinické poznatky." : sess?.held ? "Včerejší Sezení má doložený klinický vstup a může sloužit jako samostatný zdroj pro dnešní plán." : "O samostatném včerejším Sezení nemám dost dat.",
+    openedPartialSession ? "Včerejší Sezení bylo otevřené nebo částečně rozpracované a čeká na plné dovyhodnocení; zacházím s ním jako s otevřeným materiálem, ne jako s neproběhlým." : sessionNotHeld ? "Plánované terapeutické Sezení klinicky neproběhlo, případně odpovídá technickému testu; z něj proto nevyvozuji nové klinické poznatky." : sess?.held ? "Včerejší Sezení má doložený klinický vstup a může sloužit jako samostatný zdroj pro dnešní plán." : "O samostatném včerejším Sezení nemám dost dat.",
     "Bezpečný závěr pro dnešek: držet se doloženého materiálu, oddělit jisté poznatky od hypotéz a nejprve ověřit aktuální tělesnou i emoční dostupnost části.",
   ].join("\n\n");
 }
@@ -713,7 +742,7 @@ function buildDailyTherapeuticPriority(payload: any): string {
   const sess = payload?.yesterday_session_review?.exists ? payload.yesterday_session_review : null;
   const part = String(play?.part_name || sess?.part_name || payload?.proposed_session?.part_name || payload?.proposed_playroom?.part_name || "části").trim();
   if (sess?.exists && isOpenedPartialSessionReview(sess)) {
-    return `Protože včerejší Sezení bylo otevřené nebo částečně rozpracované, ale zatím nemá plné dovyhodnocení, první krok dne má být krátké ověření aktuálního tělesného a emočního stavu ${partGenitive(part)}. Pracujeme se stavem pending_review / evidence_limited a nepředstíráme hotový klinický závěr.`;
+    return `Protože včerejší Sezení bylo otevřené nebo částečně rozpracované, ale zatím nemá plné dovyhodnocení, první krok dne má být krátké ověření aktuálního tělesného a emočního stavu ${partGenitive(part)}. Pracujeme opatrně a nepředstíráme hotový klinický závěr.`;
   }
   if (sess?.exists && sess?.held === false) {
     return `Protože plánované Sezení kvůli tělesným nebo neverbálním potížím klinicky neproběhlo, první krok dne má být krátké ověření aktuálního tělesného a emočního stavu ${partGenitive(part)}. Teprve podle toho má tým rozhodnout, zda dnes udělat terapeutkou vedené Sezení, nízkoprahovou stabilizační Hernu, nebo jen bezpečný kontakt bez otevírání nového těžkého materiálu.`;
@@ -741,7 +770,7 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   const evidenceKnown: string[] = [];
   if (play) evidenceKnown.push(`${activePart} byl včera aktivní v Herně a pracoval se symboly bezpečí, světla, domova nebo ochrany.`);
   if (sess?.held) evidenceKnown.push(`${sess.part_name || activePart} má doložené včerejší Sezení${sess.status ? ` se stavem ${sess.status}` : ""}.`);
-  if (openedPartialSession) evidenceKnown.push(`Včerejší Sezení s ${sess.part_name || activePart} bylo otevřené / částečně rozpracované a je ve stavu pending_review / evidence_limited; neoznačuji ho jako neproběhlé.`);
+  if (openedPartialSession) evidenceKnown.push(`Včerejší Sezení s ${sess.part_name || activePart} bylo otevřené nebo částečně rozpracované a čeká na plné dovyhodnocení; neoznačuji ho jako neproběhlé.`);
   else if (sess?.exists && !sess?.held) evidenceKnown.push(`Plánované Sezení s ${sess.part_name || activePart} klinicky neproběhlo; z tohoto záznamu nevyvozujeme nové klinické poznatky.`);
   if (!evidenceKnown.length) evidenceKnown.push("V dostupném payloadu zatím nevidím plné review včerejší Herny ani Sezení.");
 
@@ -755,7 +784,7 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   const executive_summary = [
     `Nejdůležitější pro dnešek jsou tři věci. Zaprvé, ${activePart} je aktuálně nejvýraznější doložená stopa.`,
     hasRealityCorrection
-      ? `Zadruhé, faktický rámec z terapeutické korekce nebo externí reality držíme jako real-world kontext; není to child evidence ani diagnostický důkaz bez samostatné reakce části.`
+      ? `Zadruhé, Hanička upřesnila faktický rámec skutečné události; samo o sobě to ještě není diagnostický důkaz bez vlastní reakce části.`
       : `Zadruhé, duchovní a ochranná symbolika se v této evidenci jeví jako zdroj bezpečí, ale je potřeba ji dál ověřovat jemně a bez vnucování.`,
     `Zatřetí, dnešní práce má nejdřív ověřit tělesný a emoční stav; pokračování do Herny nebo Sezení má přijít až podle dostupnosti části.`,
   ].join(" ");
@@ -766,25 +795,25 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     ? `Nové nebo nejpodstatnější z včerejška je toto: ${trimSentence(newInfo, 520).replace(/m[ůu][žz]e\s+pos[íi]lit\s+jeho\s+pocit\s+kontroly\s+a\s+d[ůu]v[eě]ry/i, "může být pracovně významné pro jeho pocit kontroly a důvěry, pokud se to dnes potvrdí")}`
     : "Nové informace z včerejška jsou zatím omezené. To samo o sobě je klinicky důležité: dnešní krok má být ověřovací, ne interpretačně těžký.";
   const clinical_formulation = hasRealityCorrection
-    ? `Moje pracovní formulace pro dnešek je opatrná: doložená real-world informace má být přiznaná jako skutečná událost a faktický stresor. Klinicky smíme pracovat až s tím, co kluci sami řeknou, cítí nebo ukážou; samotný odkaz ani zpráva nejsou projekce části.`
+      ? `Moje pracovní formulace pro dnešek je opatrná: doložená informace má být přiznaná jako skutečná událost a faktický stresor. Klinicky smíme pracovat až s tím, co kluci sami řeknou, cítí nebo ukážou; samotný odkaz ani zpráva nejsou projekce části.`
     : `Moje pracovní formulace pro dnešek je opatrná: ${activePart} včera použil vlastní symbolický jazyk bezpečí. Zatím je bezpečnější chápat ho jako aktuální zdroj této části, ne jako definitivní charakteristiku ani společný jazyk všech kluků. Praktický cíl je pomoci pocit ochrany přenést zpět do přítomného těla, dne a vztahu s bezpečnými dospělými.`;
   const recommendations_for_hana = `Haničko, u tebe dnes vidím jako hlavní úkol jemně ověřit tělesný stav a dostupnost ${partGenitive(activePart)}, bez tlaku na vysvětlování. Pokud je stabilní, může následovat krátké Sezení nebo nízkoprahová Herna; pokud je zahlcený, stačí kontakt a připomenutí zdrojů.`;
   const recommendations_for_katka = hasRealityCorrection
-    ? `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: real-world fakt nebo terapeutická korekce nejsou child evidence. Nepoužít je jako závěr za kluky dřív, než se ukáže jejich vlastní reakce.`
+    ? `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: skutečná událost ani Hančino upřesnění samy o sobě ještě nevypovídají o klucích. Nepoužít je jako závěr dřív, než se ukáže jejich vlastní reakce.`
     : `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: nepřenášet včerejší symboly automaticky na ostatní části a nepoužít je dřív, než se ukáže, že jsou dnes pro ${partGenitive(activePart)} stále bezpečné.`;
   const what_not_to_do_today = "Dnes bych se vyhnul třem věcem: netlačit do vysvětlování, neotevírat nové trauma téma bez stabilizačního rámce a nepředávat části příliš velkou odpovědnost otázkou typu „co chceš dělat?“. Bezpečnější je nabídnout dvě nebo tři malé možnosti.";
   const priority_of_the_day = buildDailyTherapeuticPriority(payload);
   const evidence_limits = [
     `Jistě víme: ${evidenceKnown.join(" ")}`,
     hasRealityCorrection
-      ? "Pracovní rámec: real-world fakt je operační a emoční kontext, ne důkaz o klucích. Teprve jejich vlastní slova, tělo nebo reakce mohou být klinická evidence."
+      ? "Pracovní rámec: skutečná událost je důležitý emoční kontext, ne důkaz o klucích. Teprve jejich vlastní slova, tělo nebo reakce mohou dát klinický význam."
       : `Pracovní hypotéza: tyto symboly mohou části ${activePart} pomáhat vytvořit vnitřní prostor ochrany a klidu, pokud s nimi dnes bude sama souhlasit.`,
     hasRealityCorrection
       ? "Nevíme / čeká na ověření: co o té události kluci sami vědí, co cítí v těle, co potřebují a zda je bezpečné téma dnes otevírat."
       : "Nevíme / čeká na ověření: zda jde o stabilní zdroj dostupný i dnes, zda je bezpečné tento jazyk rozšiřovat k ostatním částem, a jaký je aktuální tělesný stav.",
   ].join("\n");
   const team_closing_line = "Včerejší práce nám dává materiál. Dnes ho nemusíme zvětšovat; potřebujeme ho správně podržet a převést do jednoho bezpečného kroku.";
-  const opening_monologue_text = [
+  const opening_monologue_text = ensureVisibleClinicalText([
     greeting,
     frame,
     team_recognition,
@@ -798,7 +827,7 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     priority_of_the_day,
     evidence_limits,
     team_closing_line,
-  ].join("\n\n");
+  ].join("\n\n"));
 
   return {
     greeting,
@@ -814,14 +843,27 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     team_closing_line,
     evidence_limits,
     opening_monologue_text,
-    technical_note: payload?.technical_note || "Briefing byl sestaven z DB review a dostupných reportů; technický stav není hlavním obsahem přehledu.",
+    technical_note: "",
   };
 }
 
 function applyOpeningMonologue(payload: any, context: any, candidates: SessionCandidate[]) {
-  payload.last_3_days = buildClinicalLast3Days(payload, context, candidates);
-  payload.lingering = buildClinicalLingering(payload, candidates);
-  payload.daily_therapeutic_priority = buildDailyTherapeuticPriority(payload);
+  payload.last_3_days = ensureVisibleClinicalText(buildClinicalLast3Days(payload, context, candidates));
+  payload.lingering = ensureVisibleClinicalText(buildClinicalLingering(payload, candidates));
+  payload.daily_therapeutic_priority = ensureVisibleClinicalText(buildDailyTherapeuticPriority(payload));
+  if (payload?.proposed_session && typeof payload.proposed_session === "object") {
+    for (const key of ["why_today", "first_draft", "kata_involvement"]) payload.proposed_session[key] = ensureVisibleClinicalText(payload.proposed_session[key]);
+  }
+  if (payload?.proposed_playroom && typeof payload.proposed_playroom === "object") {
+    for (const key of ["why_this_part_today", "main_theme"]) payload.proposed_playroom[key] = ensureVisibleClinicalText(payload.proposed_playroom[key]);
+    if (Array.isArray(payload.proposed_playroom.goals)) payload.proposed_playroom.goals = payload.proposed_playroom.goals.map(ensureVisibleClinicalText);
+    const plan = payload.proposed_playroom.playroom_plan;
+    if (plan && typeof plan === "object") {
+      plan.child_safe_version = ensureVisibleClinicalText(plan.child_safe_version);
+      if (Array.isArray(plan.therapeutic_program)) plan.therapeutic_program = plan.therapeutic_program.map((b: any) => ({ ...b, block: ensureVisibleClinicalText(b?.block), detail: ensureVisibleClinicalText(b?.detail) }));
+      if (Array.isArray(plan.forbidden_directions)) plan.forbidden_directions = plan.forbidden_directions.map(ensureVisibleClinicalText);
+    }
+  }
   if (payload?.yesterday_playroom_review && typeof payload.yesterday_playroom_review === "object") {
     for (const key of ["practical_report_text", "detailed_analysis_text", "implications_for_part", "implications_for_system", "recommendations_for_therapists", "recommendations_for_next_playroom", "recommendations_for_next_session"]) {
       payload.yesterday_playroom_review[key] = sanitizeKarelClinicalText(payload.yesterday_playroom_review[key]);
