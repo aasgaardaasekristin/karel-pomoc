@@ -759,6 +759,93 @@ async function runHanaPostChatWriteback(args: {
   }
 }
 
+async function readStreamedAiText(body: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = decoder.decode(value, { stream: true });
+    for (const line of chunk.split("\n")) {
+      if (!line.startsWith("data: ") || line.trim() === "data: [DONE]") continue;
+      try {
+        const parsed = JSON.parse(line.slice(6));
+        text += parsed.choices?.[0]?.delta?.content || "";
+      } catch { /* ignore partial SSE json */ }
+    }
+  }
+  return text;
+}
+
+async function runHanaBackgroundProcessing(args: {
+  user: { id: string };
+  sb: any;
+  messages: any[];
+  conversationId: string | null;
+  analysis: AnalysisResult;
+  fullResponse: string;
+  safety: ReturnType<typeof detectSafetyMention>;
+  persistencePolicy: ReturnType<typeof resolvePersistencePolicy>;
+  lastUserTextForSafety: string;
+  LOVABLE_API_KEY: string;
+}) {
+  const { user, sb, messages, conversationId, analysis, fullResponse, safety, persistencePolicy, lastUserTextForSafety, LOVABLE_API_KEY } = args;
+  if (safety.matched) {
+    await sb.from("karel_runtime_audit_logs").insert({
+      user_id: user.id,
+      function_name: "karel-hana-chat",
+      request_mode: "hana_osobni",
+      evaluation_status: "safety_mention_detected",
+      metadata: {
+        event_type: "safety_mention",
+        severity: safety.severity,
+        mode_id: persistencePolicy.mode_id,
+        no_save_context: persistencePolicy.no_save,
+        content_excerpt: persistencePolicy.no_save ? null : redactedSafetyExcerpt(lastUserTextForSafety),
+        signals: safety.signals,
+        action_taken: "safety_response_and_minimal_audit",
+      },
+    });
+  }
+  if (fullResponse.length > 10 && !persistencePolicy.no_save) {
+    await saveEpisodeInBackground(user.id, analysis, fullResponse, conversationId || null);
+  }
+  if (fullResponse.length <= 30 || persistencePolicy.no_save) return;
+  const lastUserMsg = messages.filter((m: any) => m.role === "user").pop();
+  const userTextHana = typeof lastUserMsg?.content === "string"
+    ? lastUserMsg.content
+    : Array.isArray(lastUserMsg?.content)
+      ? (lastUserMsg.content.find((c: any) => c?.type === "text")?.text || "")
+      : "";
+  if (userTextHana.length <= 15) return;
+  const roleScope = await classifyRoleScope(userTextHana, LOVABLE_API_KEY);
+  if (conversationId) {
+    const { data: convData } = await sb.from("karel_hana_conversations").select("messages").eq("id", conversationId).maybeSingle();
+    if (Array.isArray(convData?.messages)) {
+      const msgs = convData.messages as any[];
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i]?.role === "user") {
+          msgs[i].role_scope = roleScope.role_scope;
+          msgs[i].role_scope_meta = roleScope.role_scope_meta;
+          if (roleScope.role_scope_segments) msgs[i].role_scope_segments = roleScope.role_scope_segments;
+          break;
+        }
+      }
+      await sb.from("karel_hana_conversations").update({ messages: msgs }).eq("id", conversationId);
+    }
+  }
+  await runHanaPostChatWriteback({
+    userId: user.id,
+    userText: userTextHana,
+    karelResponse: fullResponse,
+    conversationId: conversationId || null,
+    apiKey: LOVABLE_API_KEY,
+    roleScope,
+    allowDriveWriteback: persistencePolicy.mode_id === "hana_osobni" && persistencePolicy.drive_policy === "no_raw_personal" && persistencePolicy.pantry_policy === "processed_did_implication_only",
+  });
+}
+
 // ═══ MAIN HANDLER ═══
 serve(async (req) => {
   if (req.method === "OPTIONS") {
