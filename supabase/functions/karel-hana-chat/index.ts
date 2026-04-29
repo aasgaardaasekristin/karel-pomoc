@@ -829,7 +829,8 @@ serve(async (req) => {
 
   try {
     const { messages, conversationId, contextPrimeCache, mode_id, no_save } = await req.json();
-    const persistencePolicy = resolvePersistencePolicy({ mode_id: mode_id || "hana_osobni", no_save, mode: "childcare", didSubMode: "general" });
+    const requestedModeId = mode_id || "hana_osobni";
+    const persistencePolicy = resolvePersistencePolicy({ mode_id: requestedModeId, no_save, mode: "childcare", didSubMode: "general" });
     const lastUserMsgForSafety = [...(messages || [])].reverse().find((m: any) => m.role === "user");
     const lastUserTextForSafety = typeof lastUserMsgForSafety?.content === "string"
       ? lastUserMsgForSafety.content
@@ -926,7 +927,7 @@ serve(async (req) => {
     let fullResponse = "";
 
     // Create a TransformStream to intercept the response and capture full text
-    const shouldBufferForHanaGuard = persistencePolicy.mode_id === "hana_osobni";
+    const shouldBufferForHanaGuard = requestedModeId === "hana_osobni" || persistencePolicy.mode_id === "hana_osobni";
     if (shouldBufferForHanaGuard) {
       const rawResponse = await readStreamedAiText(response.body!);
       const guarded = guardHanaPersonalResponse(rawResponse, lastUserTextForSafety);
