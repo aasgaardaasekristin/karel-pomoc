@@ -6324,6 +6324,7 @@ export type Database = {
         }
         Returns: Json
       }
+      verify_karel_cron_secret: { Args: { p_secret: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
