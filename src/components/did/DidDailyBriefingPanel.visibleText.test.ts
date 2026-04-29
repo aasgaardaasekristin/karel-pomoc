@@ -58,6 +58,8 @@ describe("DidDailyBriefingPanel visible clinical text helpers", () => {
 
   it("renders reality context as user-facing prose", () => {
     const text = realityContextText({
+      greeting: "",
+      last_3_days: "",
       decisions: [],
       ask_hanka: [],
       ask_kata: [],
