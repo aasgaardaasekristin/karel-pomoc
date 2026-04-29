@@ -130,6 +130,20 @@ const jsonItemCount = (value: unknown): number => {
 const REAL_WORLD_CONTEXT_RE = /(therapist_factual_correction|external_fact|skute|re[áa]ln|faktick|odkaz|url|https?:\/\/|aktu[áa]ln|zpr[áa]v|[čc]l[áa]nek|telefon[áa]t|[úu]mrt|ztr[áa]t|zdravotn|po[žz][áa]r|v[áa]lk|[úu]tulek|z[áa]chran|instituc|nen[íi]\s+to\s+(?:symbol|projekce|fiktivn))/i;
 const OPERATIONAL_EVIDENCE_LEVELS = new Set(["therapist_factual_correction", "external_fact", "therapist_observation_D2", "direct_child_evidence", "team_decision", "program_change", "task_note"]);
 
+const summarizeRealityCorrections = (entries: any[]): string => {
+  const relevant = entries.filter((e: any) => REAL_WORLD_CONTEXT_RE.test(`${e?.summary ?? ""} ${JSON.stringify(e?.detail ?? {})}`));
+  if (!relevant.length) return "";
+  const summaries = relevant
+    .map((e: any) => cleanBlockText(e.summary || e.detail?.operational_implication || ""))
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(" ");
+  const concrete = /tim+m[iy]|kepork|rybi/i.test(summaries)
+    ? "Hanička popsala reálný kontext kolem Timmiho/keporkaka."
+    : "Hanička popsala reálný externí kontext nebo faktickou korekci reality.";
+  return `${concrete} Beru to jako skutečnou událost a emoční/operační kontext, ne jako projekci, symbol ani diagnostický signál bez přímé reakce kluků. Dnes je bezpečné nejprve ověřit, co o tom kluci sami říkají, co cítí v těle a co potřebují.${summaries ? ` Zpracovaná implikace: ${trimSentence(summaries, 360)}` : ""}`;
+};
+
 function isOpenedPartialSessionReview(review: any): boolean {
   const status = String(review?.status ?? "").toLowerCase();
   const kind = String(review?.review_kind ?? "").toLowerCase();
@@ -142,17 +156,22 @@ function isOpenedPartialSessionReview(review: any): boolean {
 }
 
 const buildMandatoryPlayroomProposal = (payload: any, context: any, candidates: Array<{ part_name: string; score: number; reasons: string[] }>) => {
+  const entries = operationalContextEntries(context);
+  const realitySummary = summarizeRealityCorrections(entries);
   const selectedPart = String(payload?.proposed_session?.part_name || candidates?.[0]?.part_name || context?.crises?.[0]?.part_name || context?.recent_threads?.[0]?.part_name || "část vybraná ranním přehledem").trim();
   const whyToday = cleanBlockText(payload?.proposed_session?.why_today)
     || cleanBlockText(candidates?.[0]?.reasons?.join(", "))
     || cleanBlockText(context?.last_3_days)
     || "Ranní přehled musí každý den připravit samostatnou Hernu; aktuální signály jsou slabé, proto volím bezpečný nízkoprahový diagnosticko-terapeutický program.";
+  const framedWhyToday = realitySummary
+    ? `${realitySummary} Pokud se téma samo objeví, držet ho jako skutečnou událost a emoční kontext; nejprve ověřit, co část sama ví, co cítí a co potřebuje. ${whyToday}`.trim()
+    : whyToday;
 
   return {
     part_name: selectedPart,
     status: "awaiting_therapist_review",
-    why_this_part_today: whyToday,
-    main_theme: `Bezpečný kontakt a zmapování toho, co ${selectedPart} dnes unese`,
+    why_this_part_today: framedWhyToday,
+    main_theme: realitySummary ? "Bezpečný kontakt s real-world kontextem bez interpretace za kluky" : `Bezpečný kontakt a zmapování toho, co ${selectedPart} dnes unese`,
     evidence_sources: ["ranní briefing", "poslední tři dny", "kandidáti dnešního sezení"],
     goals: [
       "navázat kontakt bez tlaku na výkon",
