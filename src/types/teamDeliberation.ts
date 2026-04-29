@@ -16,6 +16,7 @@ export type DeliberationStatus =
   | "active"
   | "awaiting_signoff"
   | "approved"
+  | "in_revision"
   | "closed"
   | "archived";
 
