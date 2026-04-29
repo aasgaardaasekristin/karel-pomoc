@@ -673,12 +673,13 @@ function buildClinicalLast3Days(payload: any, context: any, candidates: SessionC
   const recentThreads = Array.isArray(context?.recent_threads) ? context.recent_threads : [];
   const recentNames = Array.from(new Set(recentThreads.map((t: any) => String(t?.part_name ?? "").trim()).filter(Boolean))).slice(0, 4);
   const communicated = recentNames.length ? recentNames.join(", ") : activePart;
-  const sessionNotHeld = sess?.exists && sess?.held === false;
+  const openedPartialSession = sess?.exists && isOpenedPartialSessionReview(sess);
+  const sessionNotHeld = sess?.exists && sess?.held === false && !openedPartialSession;
   if (!play && !sess && recentNames.length === 0) return "Na toto nemám dost dat.";
   return [
     `Za posledních 24–72 hodin máme nejvýraznější doloženou aktivitu u ${partGenitive(activePart)}. V komunikaci se objevuje zejména ${communicated}; u kormidla to ale neznamená celodenní jistotu, jen nejsilnější dostupnou stopu.`,
     play ? `Včerejší Herna ukázala práci přes symboly bezpečí, domova, světla nebo ochrany; beru je jako aktuální jazyk této části, ne jako hotovou charakteristiku všech kluků.` : "Z Herny za včerejšek nemám dostatečný uzavřený materiál pro klinický závěr.",
-    sessionNotHeld ? "Plánované terapeutické Sezení klinicky neproběhlo, případně odpovídá technickému testu; z něj proto nevyvozuji nové klinické poznatky." : sess?.held ? "Včerejší Sezení má doložený klinický vstup a může sloužit jako samostatný zdroj pro dnešní plán." : "O samostatném včerejším Sezení nemám dost dat.",
+    openedPartialSession ? "Včerejší Sezení bylo otevřené / částečně rozpracované a čeká na plné dovyhodnocení; zacházím s ním jako s pending_review / evidence_limited, ne jako s neproběhlým." : sessionNotHeld ? "Plánované terapeutické Sezení klinicky neproběhlo, případně odpovídá technickému testu; z něj proto nevyvozuji nové klinické poznatky." : sess?.held ? "Včerejší Sezení má doložený klinický vstup a může sloužit jako samostatný zdroj pro dnešní plán." : "O samostatném včerejším Sezení nemám dost dat.",
     "Bezpečný závěr pro dnešek: držet se doloženého materiálu, oddělit jisté poznatky od hypotéz a nejprve ověřit aktuální tělesnou i emoční dostupnost části.",
   ].join("\n\n");
 }
@@ -692,6 +693,9 @@ function buildDailyTherapeuticPriority(payload: any): string {
   const play = payload?.yesterday_playroom_review?.exists ? payload.yesterday_playroom_review : null;
   const sess = payload?.yesterday_session_review?.exists ? payload.yesterday_session_review : null;
   const part = String(play?.part_name || sess?.part_name || payload?.proposed_session?.part_name || payload?.proposed_playroom?.part_name || "části").trim();
+  if (sess?.exists && isOpenedPartialSessionReview(sess)) {
+    return `Protože včerejší Sezení bylo otevřené nebo částečně rozpracované, ale zatím nemá plné dovyhodnocení, první krok dne má být krátké ověření aktuálního tělesného a emočního stavu ${partGenitive(part)}. Pracujeme se stavem pending_review / evidence_limited a nepředstíráme hotový klinický závěr.`;
+  }
   if (sess?.exists && sess?.held === false) {
     return `Protože plánované Sezení kvůli tělesným nebo neverbálním potížím klinicky neproběhlo, první krok dne má být krátké ověření aktuálního tělesného a emočního stavu ${partGenitive(part)}. Teprve podle toho má tým rozhodnout, zda dnes udělat terapeutkou vedené Sezení, nízkoprahovou stabilizační Hernu, nebo jen bezpečný kontakt bez otevírání nového těžkého materiálu.`;
   }
