@@ -11,7 +11,7 @@ Deno.test("processed operational context remains briefing-relevant without Timmi
 Deno.test("opening treats pending safety-net session as opened partial, not not-held", () => {
   const source = Deno.readTextFileSync(new URL("./index.ts", import.meta.url));
   assertStringIncludes(source, "isOpenedPartialSessionReview");
-  assertStringIncludes(source, "otevřené / částečně rozpracované");
+  assertStringIncludes(source, "otevřené nebo částečně rozpracované");
   assertStringIncludes(source, "otevřené nebo částečně rozpracované, zatím bez plného dovyhodnocení");
   assertEquals(/if \(sess\?\.exists && sess\?\.held === false\) evidenceKnown\.push\(`Plánované Sezení/i.test(source), false);
 });
