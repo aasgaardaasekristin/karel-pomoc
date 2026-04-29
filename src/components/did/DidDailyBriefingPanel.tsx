@@ -1272,6 +1272,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const playroomProposal = p.proposed_playroom?.part_name
     ? p.proposed_playroom
     : createFallbackPlayroomProposal(p);
+  const sessionView = toProposedSessionView(p.proposed_session);
+  const playroomView = toProposedPlayroomView(playroomProposal);
   const decisions = (p.decisions ?? []).slice(0, 3);
   const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
   const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
@@ -1514,7 +1516,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           schválená (status='approved' nebo existuje plan v
           did_daily_session_plans), schová se — autoritativní zdroj je
           v Pracovna → Dnes → "Plán dnešního sezení". */}
-      {hasProposed && p.proposed_session && !proposedAlreadyApproved && (
+      {hasProposed && p.proposed_session && sessionView && !proposedAlreadyApproved && (
         <>
           <NarrativeDivider />
           <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary" />}>
@@ -1527,14 +1529,17 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           >
             <div className="flex items-center gap-2 flex-wrap">
               <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">
-                {p.proposed_session.part_name}
+                {sessionView.part_name}
               </Badge>
               <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">
-                vede {p.proposed_session.led_by}
+                vede {sessionView.lead}
+              </Badge>
+              <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">
+                Karel asistuje
               </Badge>
               {p.proposed_session.duration_min && (
                 <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">
-                  ~{p.proposed_session.duration_min} min
+                  {sessionView.duration}
                 </Badge>
               )}
               {p.proposed_session.carry_over_reason === "unheld_yesterday_session" && (
@@ -1545,12 +1550,23 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               <ArrowRight className="w-3.5 h-3.5 text-primary/60 ml-auto" />
             </div>
             <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
-              {cleanVisibleClinicalText(p.proposed_session.why_today)}
+              {sessionView.rationale}
             </p>
-            <div className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">
-              <span className="text-muted-foreground italic">První pracovní verze (k diskusi v poradě): </span>
-              {cleanVisibleClinicalText(p.proposed_session.first_draft)}
-            </div>
+            <p className="text-[12px] leading-relaxed text-primary/80 italic">{sessionView.status_label}</p>
+            {sessionView.blocks.length > 0 ? (
+              <ol className="space-y-1.5 text-[13px] leading-relaxed text-foreground/80">
+                {sessionView.blocks.map((block, index) => (
+                  <li key={`${block.title}-${index}`}>
+                    <span className="font-medium text-foreground/90">{index + 1}. {block.title}</span>
+                    <span className="text-muted-foreground"> — {block.aim}</span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <div className="rounded-md border border-border/50 bg-background/35 p-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">
+                Potřebné doplnění: {sessionView.goals.join("; ")}. Program zatím není připravený ke spuštění.
+              </div>
+            )}
             {p.proposed_session.kata_involvement && (
               <p className="text-[12px] text-muted-foreground italic whitespace-pre-line">
                 {cleanVisibleClinicalText(p.proposed_session.kata_involvement)}
@@ -1569,7 +1585,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       )}
 
       {/* 4.5 Dnešní navržená Herna — samostatný Karel-led program, nikdy ne session first_draft. */}
-      {playroomProposal && (
+      {playroomProposal && playroomView && (
         <>
           <NarrativeDivider />
           <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary" />}>
@@ -1581,39 +1597,39 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             className="mt-2 w-full text-left p-3 rounded-lg border border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors space-y-3 cursor-pointer"
           >
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">Část: {playroomProposal.part_name}</Badge>
-              <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{playroomProposal.status || "awaiting_therapist_review"}</Badge>
-              <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">vede Karel</Badge>
+              <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">{playroomView.part_name}</Badge>
+              <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{playroomView.approval_label}</Badge>
+              <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{playroomView.lead_label}</Badge>
               <ArrowRight className="w-3.5 h-3.5 text-primary/60 ml-auto" />
             </div>
             <div>
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Hlavní téma dnešní Herny</p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{cleanVisibleClinicalText(playroomProposal.main_theme)}</p>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Cíl</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{playroomView.title}</p>
             </div>
             <div>
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Proč právě tato Herna</p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{cleanVisibleClinicalText(playroomProposal.why_this_part_today)}</p>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Proč dnes</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomView.rationale}</p>
             </div>
             {playroomContextSummary && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Použitý včerejší kontext</p><p className="mt-0.5 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{playroomContextSummary}</p></div>}
             {Array.isArray(playroomProposal.goals) && playroomProposal.goals.length > 0 && (
               <div>
                 <ul className="mt-1 space-y-1 text-[13px] leading-relaxed text-foreground/80">
-                  {playroomProposal.goals.slice(0, 4).map((goal, index) => <li key={`${goal}-${index}`}>{index + 1}. {cleanVisibleClinicalText(goal)}</li>)}
+                  {playroomView.goals.slice(0, 4).map((goal, index) => <li key={`${goal}-${index}`}>{index + 1}. {goal}</li>)}
                 </ul>
               </div>
             )}
-            {Array.isArray(playroomProposal.playroom_plan?.therapeutic_program) && playroomProposal.playroom_plan.therapeutic_program.length > 0 && (
+            {playroomView.blocks.length > 0 && (
               <div>
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Program pro Hernu</p>
                 <div className="mt-1 space-y-1.5">
-                  {playroomProposal.playroom_plan.therapeutic_program.slice(0, 5).map((block, index) => (
-                    <p key={`${block.block}-${index}`} className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line"><span className="font-medium text-foreground/90">{index + 1}. {cleanVisibleClinicalText(block.block)}</span>{block.detail ? ` — ${cleanVisibleClinicalText(block.detail)}` : ""}</p>
+                  {playroomView.blocks.map((block, index) => (
+                    <p key={`${block.title}-${index}`} className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line"><span className="font-medium text-foreground/90">{index + 1}. {block.title}</span> — {block.aim}</p>
                   ))}
                 </div>
               </div>
             )}
-            {playroomProposal.playroom_plan?.child_safe_version && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Dětsky bezpečná verze</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{cleanVisibleClinicalText(playroomProposal.playroom_plan.child_safe_version)}</p></div>}
-            {Array.isArray(playroomProposal.playroom_plan?.risks_and_stop_signals) && playroomProposal.playroom_plan.risks_and_stop_signals.length > 0 && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Rizika a stop signály</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomProposal.playroom_plan.risks_and_stop_signals.slice(0, 4).map((x) => `- ${cleanVisibleClinicalText(x)}`).join("\n")}</p></div>}
+            {playroomView.child_safe_text && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Dětsky bezpečná verze</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomView.child_safe_text}</p></div>}
+            {playroomView.stop_rules.length > 0 && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Rizika a stop signály</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomView.stop_rules.slice(0, 4).map((x) => `- ${x}`).join("\n")}</p></div>}
             <p className="text-[11px] text-primary/70 italic">Otevřít poradu ke schválení Herny →</p>
           </button>
         </>
