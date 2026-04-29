@@ -847,7 +847,7 @@ async function runHanaBackgroundProcessing(args: {
     conversationId: conversationId || null,
     apiKey: LOVABLE_API_KEY,
     roleScope,
-    allowDriveWriteback: persistencePolicy.mode_id === "hana_osobni" && persistencePolicy.drive_policy === "no_raw_personal" && persistencePolicy.pantry_policy === "processed_did_implication_only",
+    allowDriveWriteback: false,
   });
 }
 
@@ -1090,7 +1090,7 @@ serve(async (req) => {
               conversationId: conversationId || null,
               apiKey: LOVABLE_API_KEY,
               roleScope,
-              allowDriveWriteback: persistencePolicy.mode_id === "hana_osobni" && persistencePolicy.drive_policy === "no_raw_personal" && persistencePolicy.pantry_policy === "processed_did_implication_only",
+              allowDriveWriteback: false,
             }).catch((e) => console.error("[hana-writeback] failed:", e));
           }
         }
