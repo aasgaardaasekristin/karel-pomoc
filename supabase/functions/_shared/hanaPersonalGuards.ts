@@ -33,7 +33,7 @@ export function guardHanaPersonalResponse(output: string, userInput: string, cur
       reasons,
       text: `Hani, rozumím. Beru to jako skutečnou aktuální situaci a důležitý emoční kontext, ne jako automatický závěr o klucích.
 
-Nebudu z toho dělat projekci, diagnostický signál ani symbolický výklad bez jejich vlastní reakce. Stojí za to jemně ověřit, co o té situaci sami říkají, co cítí v těle, jestli jsou zahlcení, co by teď potřebovali a co jim pomáhá zůstat tady a v bezpečí.`,
+Nebudu z toho dělat klinický výklad bez jejich vlastní reakce. Stojí za to jemně ověřit vlastní reakci kluků/dětí: co o té situaci sami říkají, co cítí v těle, jestli jsou zahlcení, co by teď potřebovali a co jim pomáhá zůstat tady a v bezpečí.`,
     };
   }
   return {
