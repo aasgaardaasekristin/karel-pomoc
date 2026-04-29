@@ -2052,8 +2052,11 @@ export type Database = {
           selected_part: string
           session_format: string
           session_lead: string
+          start_audit: Json
           start_block_reason: string | null
+          start_source: string | null
           started_at: string | null
+          started_by: string | null
           status: string
           therapist: string
           updated_at: string
@@ -2094,8 +2097,11 @@ export type Database = {
           selected_part: string
           session_format?: string
           session_lead?: string
+          start_audit?: Json
           start_block_reason?: string | null
+          start_source?: string | null
           started_at?: string | null
+          started_by?: string | null
           status?: string
           therapist?: string
           updated_at?: string
@@ -2136,8 +2142,11 @@ export type Database = {
           selected_part?: string
           session_format?: string
           session_lead?: string
+          start_audit?: Json
           start_block_reason?: string | null
+          start_source?: string | null
           started_at?: string | null
+          started_by?: string | null
           status?: string
           therapist?: string
           updated_at?: string
@@ -3940,6 +3949,9 @@ export type Database = {
       did_team_deliberations: {
         Row: {
           agenda_outline: Json
+          approved_program_draft_hash: string | null
+          approved_program_snapshot: Json
+          approved_session_params_hash: string | null
           closed_at: string | null
           created_at: string
           created_by: string
@@ -3977,6 +3989,9 @@ export type Database = {
         }
         Insert: {
           agenda_outline?: Json
+          approved_program_draft_hash?: string | null
+          approved_program_snapshot?: Json
+          approved_session_params_hash?: string | null
           closed_at?: string | null
           created_at?: string
           created_by?: string
@@ -4014,6 +4029,9 @@ export type Database = {
         }
         Update: {
           agenda_outline?: Json
+          approved_program_draft_hash?: string | null
+          approved_program_snapshot?: Json
+          approved_session_params_hash?: string | null
           closed_at?: string | null
           created_at?: string
           created_by?: string
@@ -6189,6 +6207,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      sync_and_start_approved_daily_plan: {
+        Args: { p_deliberation_id: string; p_user_id: string }
+        Returns: Json
+      }
       team_deliberation_signoff_and_sync: {
         Args: {
           p_deliberation_id: string
