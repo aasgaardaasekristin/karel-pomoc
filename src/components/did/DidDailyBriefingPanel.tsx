@@ -238,6 +238,14 @@ interface BriefingRow {
   decisions_count: number;
 }
 
+interface BriefingDiagnostic {
+  reason: string;
+  detail: string;
+  lastBriefingDate?: string | null;
+  lastAttemptStatus?: string | null;
+  lastAttemptCode?: string | null;
+}
+
 interface YesterdayFallbackReview extends YesterdaySessionReview {
   status_label?: string;
   mode?: "playroom" | "session";
@@ -419,6 +427,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [openingItemId, setOpeningItemId] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<BriefingDiagnostic | null>(null);
   const [yesterdaySessionFallback, setYesterdaySessionFallback] = useState<YesterdayFallbackReview | null>(null);
   const [yesterdayPlayroomFallback, setYesterdayPlayroomFallback] = useState<YesterdayFallbackReview | null>(null);
   /**
