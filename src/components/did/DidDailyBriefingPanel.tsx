@@ -80,6 +80,7 @@ interface ProposedSession {
   questions_for_hanka?: string[];
   /** SLICE 3 — předem připravené otázky pro Káťu k tomuto sezení. */
   questions_for_kata?: string[];
+  backend_context_inputs?: Record<string, any>;
 }
 
 interface ProposedPlayroom {
@@ -102,6 +103,7 @@ interface ProposedPlayroom {
   };
   questions_for_hanka?: string[];
   questions_for_kata?: string[];
+  backend_context_inputs?: Record<string, any>;
 }
 
 type BriefingAskIntent =
