@@ -167,6 +167,33 @@ const buildMandatoryPlayroomProposal = (payload: any, context: any, candidates: 
   };
 };
 
+function buildMandatorySessionProposal(payload: any, context: any, candidates: Array<{ part_name: string; score: number; reasons: string[] }>) {
+  const entries = operationalContextEntries(context);
+  const sessionRelevant = entries.filter((e: any) => e?.detail?.include_in_next_session_plan === true || /sezen|session|timmy|timmi|velryb|kepor|skute|reáln|odkaz/i.test(`${e?.summary ?? ""} ${JSON.stringify(e?.detail ?? {})}`));
+  const selectedPart = String(context?.yesterday_session_reviews?.[0]?.part_name || context?.yesterday_plans?.[0]?.selected_part || sessionRelevant?.[0]?.related_part_name || candidates?.[0]?.part_name || payload?.proposed_playroom?.part_name || "část vybraná ranním přehledem").trim();
+  const refs = sessionRelevant.map((e: any) => e.source_ref || e.id).filter(Boolean).slice(0, 10);
+  const excerpts = sessionRelevant.map((e: any) => cleanBlockText(e.summary || e.detail?.operational_implication || "")).filter(Boolean).slice(0, 6);
+  if (!refs.length && !context?.yesterday_session_reviews?.length && !context?.yesterday_plans?.length) return null;
+  return {
+    part_name: selectedPart,
+    status: "awaiting_therapist_review",
+    why_today: "Navázat na včerejší aktivitu a real-world korekci bez předstírání klinického závěru: nejdřív ověřit tělo, emoci, dostupnost a bezpečí.",
+    led_by: "Hanička",
+    duration_min: 20,
+    first_draft: "Krátké terapeutkou vedené Sezení: 1) ověřit aktuální stav a únavu, 2) přiznat Timmyho/keporkaka jako skutečný externí stresor, 3) ptát se jen na vlastní reakci kluků, neinterpretovat samotnou zprávu jako projekci, 4) ukončit stabilizačně.",
+    kata_involvement: "Káťa hlídá evidence discipline: real-world fact / therapist correction není child evidence bez samostatné reakce části.",
+    evidence_sources: ["RECENT OPERATIONAL CONTEXT — Pantry B", "YESTERDAY ACTIVITY — plans/progress/reviews"],
+    backend_context_inputs: {
+      used_yesterday_activity: true,
+      used_recent_operational_context: true,
+      reality_correction_used: refs.length > 0,
+      operational_context_source_refs: refs,
+      operational_context_excerpts: excerpts,
+      evidence_discipline: "real-world fact / therapist correction is operational context, not child evidence unless the child response is separately recorded",
+    },
+  };
+}
+
 const getResolvedPartCardEvidence = (review: any): any | null => {
   const items = Array.isArray(review?.evidence_items) ? review.evidence_items : [];
   return items.find((item: any) =>
@@ -1859,6 +1886,13 @@ Deno.serve(async (req) => {
     if (!payload.proposed_playroom || typeof payload.proposed_playroom !== "object" || !String(payload.proposed_playroom?.part_name ?? "").trim()) {
       console.warn("[briefing] AI payload missing proposed_playroom — applying mandatory backend fallback.");
       payload.proposed_playroom = buildMandatoryPlayroomProposal(payload, context, candidates);
+    }
+    if (!payload.proposed_session || typeof payload.proposed_session !== "object") {
+      const fallbackSession = buildMandatorySessionProposal(payload, context, candidates);
+      if (fallbackSession) {
+        console.warn("[briefing] AI payload missing proposed_session despite yesterday/reality context — applying backend fallback.");
+        payload.proposed_session = fallbackSession;
+      }
     }
     injectPlayroomReviewIntoProposal(payload);
     injectSessionReviewIntoProposals(payload);
