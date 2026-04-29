@@ -1324,7 +1324,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                   <div>
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Karlovo vyhodnocení</p>
                     <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
-                      {yesterdayReview.karel_summary}
+                      {cleanVisibleClinicalText(yesterdayReview.karel_summary)}
                     </p>
                   </div>
                 ) : (
@@ -1336,7 +1336,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                   <div>
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co teď víme o části</p>
                     <p className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
-                      {yesterdayReview.key_finding_about_part}
+                      {cleanVisibleClinicalText(yesterdayReview.key_finding_about_part)}
                     </p>
                   </div>
                 )}
@@ -1344,7 +1344,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                   <div>
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co z toho plyne pro plán</p>
                     <p className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
-                      {yesterdayReview.implications_for_plan}
+                      {cleanVisibleClinicalText(yesterdayReview.implications_for_plan)}
                     </p>
                   </div>
                 )}
