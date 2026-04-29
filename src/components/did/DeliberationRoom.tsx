@@ -55,18 +55,11 @@ interface LiveSessionPlanRow {
   therapist: string | null;
   plan_markdown: string;
   status?: string | null;
+  lifecycle_status?: string | null;
   program_status?: string | null;
   approved_at?: string | null;
   urgency_breakdown?: Record<string, unknown> | null;
 }
-
-const isSignatureGuardError = (error: unknown) =>
-  String((error as any)?.message ?? error ?? "").includes(
-    "daily_session_plan_requires_signatures_before_start",
-  );
-
-const approvalDesyncMessage =
-  "Porada je podepsaná, ale denní plán nemá aktuální approval metadata. Karel právě synchronizuje schválení.";
 
 const PROGRAM_START_BLOCKED_STATUSES = new Set([
   "draft",
@@ -121,6 +114,38 @@ function unsignedStartBlockReason(
     return "Program byl upraven podle odpovědi terapeutky a čeká na podpis Haničky a Káti.";
   }
   return null;
+}
+
+function planApprovalSynced(plan?: LiveSessionPlanRow | null) {
+  const contract =
+    plan?.urgency_breakdown && typeof plan.urgency_breakdown === "object"
+      ? (plan.urgency_breakdown as Record<string, any>)
+      : {};
+  const approvalSync = contract.approval_sync ?? {};
+  return (
+    approvalSync.status === "synced" &&
+    !!approvalSync.program_draft_hash &&
+    !!approvalSync.plan_markdown_hash &&
+    !!plan?.approved_at &&
+    ["approved", "ready_to_start", "in_progress"].includes(
+      String(plan?.program_status ?? "").toLowerCase(),
+    )
+  );
+}
+
+function liveStartStatusText(args: {
+  signed: boolean;
+  starting: boolean;
+  plan?: LiveSessionPlanRow | null;
+  lastErrorCode?: string | null;
+}) {
+  if (!args.signed) return null;
+  if (args.starting) return "Synchronizuji schválení…";
+  if (args.lastErrorCode) {
+    return "Porada je podepsaná, ale plán stále není bezpečně připravený ke spuštění.";
+  }
+  if (planApprovalSynced(args.plan)) return "Připraveno k zahájení";
+  return "Schváleno v poradě, čeká na propsání schválení do denního plánu.";
 }
 
 type LiveProgramBlock = {
