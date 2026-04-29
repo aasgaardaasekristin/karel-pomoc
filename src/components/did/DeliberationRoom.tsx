@@ -991,94 +991,45 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
     }
   };
 
-  /**
-   * SPUSTIT SEZENÍ TRUTH PASS (2026-04-23):
-   *   Live DID sezení se musí otevřít PŘÍMO UVNITŘ této schválené porady,
-   *   nikoliv přepnutím na kartu Dnes. Proto tady:
-   *     1) vezmeme přesně navázaný `did_daily_session_plans.id`,
-   *     2) přepneme tento KONKRÉTNÍ plán do `in_progress`,
-   *     3) z DB ihned načteme jeho aktuální markdown,
-   *     4) v tom samém dialogu přerenderujeme `DidLiveSessionPanel`.
-   *   Tím se odstraní race condition s `firstPendingPlan`, kvůli které se
-   *   někdy otevíral starší plán z karty Dnes místo právě schváleného programu.
-   */
+  /** Backend-authoritative start: UI nesmí zapisovat in_progress přímo. */
   const goToLiveSession = async () => {
     const planId = bridgedPlanId ?? d?.linked_live_session_id;
-    if (!planId || startingLive) return;
-    const preflightReason = unsignedStartBlockReason(d);
+    if (!d || !planId || startingLive) return;
+    const preflightReason = unsignedStartBlockReason(d, linkedPlan);
     if (preflightReason) {
       toast.info(preflightReason);
       return;
     }
     setStartingLive(true);
+    setLastStartErrorCode(null);
     try {
-      const nowIso = new Date().toISOString();
-      const [{ error: statusErr }, deliberationRes] = await Promise.all([
-        (supabase as any)
-          .from("did_daily_session_plans")
-          .update({
-            status: "in_progress",
-            lifecycle_status: "in_progress",
-            started_at: nowIso,
-            updated_at: nowIso,
-          })
-          .eq("id", planId)
-          .select("id")
-          .single(),
-        deliberationId
-          ? (supabase as any)
-              .from("did_team_deliberations")
-              .select(
-                "title, reason, agenda_outline, final_summary, program_draft, session_params",
-              )
-              .eq("id", deliberationId)
-              .maybeSingle()
-          : Promise.resolve({ data: null, error: null }),
-      ]);
-
-      if (statusErr) {
-        console.error(
-          "[DeliberationRoom] startLiveSession status update failed:",
-          statusErr,
-        );
+      const headers = await getAuthHeaders();
+      const startResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-daily-plan-sync-start`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ deliberation_id: d.id }),
+        },
+      );
+      const startPayload = await startResponse.json().catch(() => ({}));
+      if (!startResponse.ok || startPayload?.ok === false) {
+        const errorCode = String(startPayload?.error_code ?? "sync_failed");
+        setLastStartErrorCode(errorCode);
         toast.error(
-          isSignatureGuardError(statusErr)
-            ? approvalDesyncMessage
-            : "Nepodařilo se zahájit sezení (DB update).",
+          startPayload?.message ||
+            "Porada je podepsaná, ale plán stále není bezpečně připravený ke spuštění.",
         );
         return;
       }
 
-      const authoritativeMarkdown = buildApprovedLivePlanMarkdown(
-        (deliberationRes?.data as LiveDeliberationSource | null) ??
-          (d as any as LiveDeliberationSource | null),
-      );
-      const liveSource =
-        (deliberationRes?.data as LiveDeliberationSource | null) ??
-        (d as any as LiveDeliberationSource | null);
+      const liveSource = d as any as LiveDeliberationSource | null;
       const isPlayroom = isPlayroomDeliberation(liveSource);
-
-      if (authoritativeMarkdown) {
-        const { error: syncErr } = await (supabase as any)
-          .from("did_daily_session_plans")
-          .update({
-            plan_markdown: authoritativeMarkdown,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", planId);
-
-        if (syncErr) {
-          console.warn(
-            "[DeliberationRoom] failed to resync live plan markdown:",
-            syncErr,
-          );
-        }
-      }
 
       const { data: planRow, error: fetchErr } = await (supabase as any)
         .from("did_daily_session_plans")
         .select(
-          "id, selected_part, session_lead, therapist, plan_markdown, status, program_status, approved_at, urgency_breakdown",
+          "id, selected_part, session_lead, therapist, plan_markdown, status, lifecycle_status, program_status, approved_at, urgency_breakdown",
         )
         .eq("id", planId)
         .single();
@@ -1100,9 +1051,9 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
         toast.info(planBlockReason);
         return;
       }
+      setLinkedPlan(planRow as LiveSessionPlanRow);
 
       if (isPlayroom) {
-        const headers = await getAuthHeaders();
         const response = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-part-session-prepare`,
           {
@@ -1133,7 +1084,6 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
 
       setLivePlan({
         ...(planRow as LiveSessionPlanRow),
-        plan_markdown: authoritativeMarkdown || planRow.plan_markdown,
       });
       toast.success("Sezení zahájeno.");
     } finally {
