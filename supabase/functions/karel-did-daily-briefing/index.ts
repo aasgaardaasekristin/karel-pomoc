@@ -1539,6 +1539,7 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let activeAttemptId: string | null = null;
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1599,6 +1600,7 @@ Deno.serve(async (req) => {
       status: "started",
       metadata: { force: forceRegenerate, source: body?.source ?? null },
     });
+    activeAttemptId = attemptId;
 
     // ───────────────────────────────────────────────────────────
     // CYCLE GUARD (auto only)
@@ -2075,6 +2077,10 @@ Deno.serve(async (req) => {
     return jsonResponse({ briefing: inserted, cached: false, candidates: candidates.slice(0, 5) });
   } catch (err: any) {
     console.error("[karel-did-daily-briefing] Error:", err);
+    if (activeAttemptId) {
+      const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      await finishBriefingAttempt(sb, activeAttemptId, { status: "failed", error_code: "generation_failed", error_message: String(err?.message || err).slice(0, 1000) });
+    }
     return jsonResponse({ error: err?.message || "Unknown error" }, 500);
   }
 });
