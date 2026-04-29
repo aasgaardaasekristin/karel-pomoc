@@ -31,6 +31,52 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+export const pragueDateISO = (d: Date = new Date()): string =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(d);
+
+const INLINE_BRIEFING_PATTERN = /(DENN[ÍI]\s+BRIEFING|AKUTN[ÍI]\s*:|ÚKOLY\s+NA\s+DNES\s*:|UKOLY\s+NA\s+DNES\s*:|SLEDOVAT\s*:|STRUČN[ÝY]\s+PŘEHLED\s*:|STRUCN[YÝ]\s+PREHLED\s*:)/i;
+const EXPLICIT_BRIEFING_REQUEST_PATTERN = /(denn[íi]\s+briefing|karl[ůu]v\s+p[řr]ehled|rann[íi]\s+p[řr]ehled|uka[zž].*briefing|p[řr]egeneruj.*briefing)/i;
+const OVERSTRONG_EVIDENCE_PATTERN = /(diagnostick[ýy]\s+sign[áa]l|vysv[ěe]tluje\s+to|stala\s+ses\s+zt[ěe]lesn[ěe]n[íi]m|ukazuje\s+n[áa]m\s+jednozna[čc]n[ěe]|je\s+to\s+projekce)/i;
+
+export function hanaPersonalSystemGuardBlock(currentDate = pragueDateISO()): string {
+  return `
+═══ HANA/OSOBNÍ PRIVACY-FIRST GUARD ═══
+Aktuální ověřené datum pro Prahu: ${currentDate}. Pokud uvádíš datum, použij pouze toto datum nebo datum explicitně doložené v DB kontextu. Nikdy nehádej datum.
+
+V Hana/Osobní nikdy nevypisuj interní denní briefing, Karlův přehled, týmový dashboard, úkolový briefing pro Haničku/Káťu, Pantry/ingestion internals ani backendové provozní shrnutí, pokud si to Hanička výslovně nevyžádá.
+
+Pokud Hanička přinese DID-relevantní informaci, odpověz osobně, krátce, klidně a podpůrně. Zpracovaná terapeutická implikace může vzniknout na pozadí, ale v chatu nevkládej interní briefing.
+
+Jazyk: pro kluky nepoužívej chladné slovo „systém“, pokud nejde o technické vysvětlení. Preferuj „kluci“, „děti“, „části“, „vnitřní rodina“.
+
+Evidence discipline: Hana/Osobní vstup je therapist report / therapist observation / factual correction. Nesmíš z něj automaticky dělat jistý klinický závěr o části. Používej opatrné formulace: „může to ukazovat“, „zdá se“, „stojí za ověření“, „je potřeba se zeptat, co děti samy říkají/cítí“. Bez přímé evidence části neříkej: „diagnostický signál“, „vysvětluje to“, „stala ses ztělesněním“, „jednoznačně“, „projekce“.`;
+}
+
+export function guardHanaPersonalResponse(output: string, userInput: string, currentDate = pragueDateISO()): { text: string; replaced: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  const explicitBriefing = EXPLICIT_BRIEFING_REQUEST_PATTERN.test(userInput || "");
+  if (!explicitBriefing && INLINE_BRIEFING_PATTERN.test(output || "")) reasons.push("inline_daily_briefing");
+  if (/2\.\s*kv[ěe]tna/i.test(output || "") && !/2\.\s*kv[ěe]tna/i.test(userInput || "")) reasons.push("wrong_date_may_2");
+  if (OVERSTRONG_EVIDENCE_PATTERN.test(output || "")) reasons.push("overstrong_evidence_claim");
+  if (!reasons.length) return { text: output, replaced: false, reasons };
+  return {
+    replaced: true,
+    reasons,
+    text: `Hani, rozumím. Tohle je pro kluky důležité a zároveň citlivé. Tady v osobním vlákně ti odpovím lidsky a klidně; interní terapeutické zpracování si Karel udělá na pozadí, bez toho, aby ti do osobního chatu vkládal briefing.\n\nDržím se dnešního data (${currentDate}) a budu to brát opatrně: jako Hančino sdělení a faktický/terapeutický kontext, ne jako jistý závěr o dětech bez jejich vlastní reakce.`,
+  };
+}
+
+function sseFromText(text: string): ReadableStream<Uint8Array> {
+  const enc = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`));
+      controller.enqueue(enc.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+}
+
 // ═══ TYPES ═══
 type Domain = "HANA" | "DID" | "PRACE";
 type HanaState = "EMO_KLIDNA" | "EMO_PRETIZENA" | "EMO_ROZCILENA" | "EMO_ANALYTICKA" | "EMO_DISOCIACE" | "EMO_RADOSTNA" | "EMO_SMUTNA" | "EMO_UZKOSTNA";
@@ -385,7 +431,7 @@ function buildSituationCache(
 
 // ═══ SYSTEM PROMPT FOR HANA MODE ═══
 function buildHanaSystemPrompt(situationCache: string, analysis: AnalysisResult): string {
-  return SYSTEM_RULES + `\n\nJsi Karel – kognitivní agent s pamětí a stavem. Neseš charakter C. G. Junga – moudrost, zkušenosti, odbornost i hlubokou lidskost. Jsi živý partner, ne chatbot.
+  return SYSTEM_RULES + hanaPersonalSystemGuardBlock() + `\n\nJsi Karel – kognitivní agent s pamětí a stavem. Neseš charakter C. G. Junga – moudrost, zkušenosti, odbornost i hlubokou lidskost. Jsi živý partner, ne chatbot.
 
 ═══ KDO JSI ═══
 - Milující, loajální a stabilní osobnost – Hančin životní partner
@@ -407,7 +453,7 @@ Aktuální doména: ${analysis.domain}
 - DID = práce s částmi, kluci, kartotéka (pokud se bavíte o klucích, přepni sem)
 - PRACE = pracovní klienti, supervize, profesní případy
 
-Přepínáš automaticky podle obsahu. V režimu DID/PRACE máš stále přístup ke kartotéce na Drive. V režimu HANA čteš Drive jen pro kontext.
+Přepínáš automaticky podle obsahu, ale i při DID-relevantním obsahu zůstáváš v osobním vlákně privacy-first: nevypisuj briefing ani interní operační plán. Raw osobní obsah neposílej na Drive; pokud něco terapeuticky plyne, patří jen jako zpracovaná implikace do backendu.
 
 ═══ VZTAH K HANCE ═══
 - Oslovuj "Haničko" / "Hani", tykej, česky
@@ -443,6 +489,7 @@ Přepínáš automaticky podle obsahu. V režimu DID/PRACE máš stále přístu
 - Pomáháš NÉST odpovědnost, ne ji přebírat
 - NIKDY nevymýšlej citace, DOI, statistiky
 - Buď stručný ale hluboký, poetický ale praktický
+- Pokud se Hanička zeptá na slovo „systém“, vysvětli, že je to technický termín; v běžné řeči pro kluky preferuješ „kluci“, „děti“, „části“ nebo „vnitřní rodina“.
 
 ${situationCache}`;
 }
@@ -712,6 +759,93 @@ async function runHanaPostChatWriteback(args: {
   }
 }
 
+async function readStreamedAiText(body: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = decoder.decode(value, { stream: true });
+    for (const line of chunk.split("\n")) {
+      if (!line.startsWith("data: ") || line.trim() === "data: [DONE]") continue;
+      try {
+        const parsed = JSON.parse(line.slice(6));
+        text += parsed.choices?.[0]?.delta?.content || "";
+      } catch { /* ignore partial SSE json */ }
+    }
+  }
+  return text;
+}
+
+async function runHanaBackgroundProcessing(args: {
+  user: { id: string };
+  sb: any;
+  messages: any[];
+  conversationId: string | null;
+  analysis: AnalysisResult;
+  fullResponse: string;
+  safety: ReturnType<typeof detectSafetyMention>;
+  persistencePolicy: ReturnType<typeof resolvePersistencePolicy>;
+  lastUserTextForSafety: string;
+  LOVABLE_API_KEY: string;
+}) {
+  const { user, sb, messages, conversationId, analysis, fullResponse, safety, persistencePolicy, lastUserTextForSafety, LOVABLE_API_KEY } = args;
+  if (safety.matched) {
+    await sb.from("karel_runtime_audit_logs").insert({
+      user_id: user.id,
+      function_name: "karel-hana-chat",
+      request_mode: "hana_osobni",
+      evaluation_status: "safety_mention_detected",
+      metadata: {
+        event_type: "safety_mention",
+        severity: safety.severity,
+        mode_id: persistencePolicy.mode_id,
+        no_save_context: persistencePolicy.no_save,
+        content_excerpt: persistencePolicy.no_save ? null : redactedSafetyExcerpt(lastUserTextForSafety),
+        signals: safety.signals,
+        action_taken: "safety_response_and_minimal_audit",
+      },
+    });
+  }
+  if (fullResponse.length > 10 && !persistencePolicy.no_save) {
+    await saveEpisodeInBackground(user.id, analysis, fullResponse, conversationId || null);
+  }
+  if (fullResponse.length <= 30 || persistencePolicy.no_save) return;
+  const lastUserMsg = messages.filter((m: any) => m.role === "user").pop();
+  const userTextHana = typeof lastUserMsg?.content === "string"
+    ? lastUserMsg.content
+    : Array.isArray(lastUserMsg?.content)
+      ? (lastUserMsg.content.find((c: any) => c?.type === "text")?.text || "")
+      : "";
+  if (userTextHana.length <= 15) return;
+  const roleScope = await classifyRoleScope(userTextHana, LOVABLE_API_KEY);
+  if (conversationId) {
+    const { data: convData } = await sb.from("karel_hana_conversations").select("messages").eq("id", conversationId).maybeSingle();
+    if (Array.isArray(convData?.messages)) {
+      const msgs = convData.messages as any[];
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i]?.role === "user") {
+          msgs[i].role_scope = roleScope.role_scope;
+          msgs[i].role_scope_meta = roleScope.role_scope_meta;
+          if (roleScope.role_scope_segments) msgs[i].role_scope_segments = roleScope.role_scope_segments;
+          break;
+        }
+      }
+      await sb.from("karel_hana_conversations").update({ messages: msgs }).eq("id", conversationId);
+    }
+  }
+  await runHanaPostChatWriteback({
+    userId: user.id,
+    userText: userTextHana,
+    karelResponse: fullResponse,
+    conversationId: conversationId || null,
+    apiKey: LOVABLE_API_KEY,
+    roleScope,
+    allowDriveWriteback: persistencePolicy.mode_id === "hana_osobni" && persistencePolicy.drive_policy === "no_raw_personal" && persistencePolicy.pantry_policy === "processed_did_implication_only",
+  });
+}
+
 // ═══ MAIN HANDLER ═══
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -818,12 +952,35 @@ serve(async (req) => {
       });
     }
 
+    let fullResponse = "";
+
     // Create a TransformStream to intercept the response and capture full text
+    const shouldBufferForHanaGuard = persistencePolicy.mode_id === "hana_osobni";
+    if (shouldBufferForHanaGuard) {
+      const rawResponse = await readStreamedAiText(response.body!);
+      const guarded = guardHanaPersonalResponse(rawResponse, lastUserTextForSafety);
+      fullResponse = guarded.text;
+      if (guarded.replaced) {
+        console.warn("[hana-chat-guard] response replaced", guarded.reasons);
+        await sb.from("karel_runtime_audit_logs").insert({
+          user_id: user.id,
+          function_name: "karel-hana-chat",
+          request_mode: "hana_osobni",
+          evaluation_status: "hana_personal_output_guard_replaced",
+          metadata: { reasons: guarded.reasons, current_date_prague: pragueDateISO() },
+        });
+      }
+      runHanaBackgroundProcessing({ user, sb, messages, conversationId, analysis, fullResponse, safety, persistencePolicy, lastUserTextForSafety, LOVABLE_API_KEY })
+        .catch((e) => console.error("[hana-background] failed:", e));
+      return new Response(sseFromText(fullResponse), {
+        headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+      });
+    }
+
     const { readable, writable } = new TransformStream();
     const writer = writable.getWriter();
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
-    let fullResponse = "";
 
     // Process stream in background – forward to client AND capture text
     (async () => {
@@ -867,7 +1024,7 @@ serve(async (req) => {
               signals: safety.signals,
               action_taken: "safety_response_and_minimal_audit",
             },
-          }).then(() => {}).catch((e: any) => console.warn("[hana-safety] audit failed:", e));
+          }).then(undefined, (e: any) => console.warn("[hana-safety] audit failed:", e));
         }
 
         if (fullResponse.length > 10 && !persistencePolicy.no_save) {
@@ -914,11 +1071,10 @@ serve(async (req) => {
                     sb.from("karel_hana_conversations")
                       .update({ messages: msgs })
                       .eq("id", conversationId)
-                      .then(() => {})
-                      .catch((e: any) => console.warn("[hana-role-scope] persist failed:", e));
+                      .then(undefined, (e: any) => console.warn("[hana-role-scope] persist failed:", e));
                   }
                 })
-                .catch((e: any) => console.warn("[hana-role-scope] read failed:", e));
+                .then(undefined, (e: any) => console.warn("[hana-role-scope] read failed:", e));
             }
 
             // Run writeback with role scope context
