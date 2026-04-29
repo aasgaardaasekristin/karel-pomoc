@@ -1553,7 +1553,16 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization") || "";
     const cronSecret = Deno.env.get("KAREL_CRON_SECRET") || "";
     const isServiceCall = !!serviceKey && authHeader === `Bearer ${serviceKey}`;
-    const isCronSecretCall = !!cronSecret && req.headers.get("X-Karel-Cron-Secret") === cronSecret;
+    const cronSecretHeader = req.headers.get("X-Karel-Cron-Secret") || "";
+    let isCronSecretCall = !!cronSecret && cronSecretHeader === cronSecret;
+    if (!isCronSecretCall && cronSecretHeader) {
+      try {
+        const { data: vaultSecret } = await supabase.schema("vault").from("decrypted_secrets").select("decrypted_secret").eq("name", "KAREL_CRON_SECRET").maybeSingle();
+        isCronSecretCall = !!vaultSecret?.decrypted_secret && cronSecretHeader === vaultSecret.decrypted_secret;
+      } catch (e) {
+        console.warn("[briefing-auth] cron secret vault lookup failed:", (e as Error)?.message || e);
+      }
+    }
     const wantsAuto = body?.method === "auto" || body?.source === "cron";
     let authenticatedUserId: string | null = null;
     let attemptId: string | null = null;
