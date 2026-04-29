@@ -7846,11 +7846,12 @@ Vra\u0165 JSON:
   } catch (error) {
     console.error('[DAILY-CYCLE FATAL ERROR]', error?.message || error, error?.stack || '');
 
+    if (compileDataKeepAlive !== undefined) { clearInterval(compileDataKeepAlive); compileDataKeepAlive = undefined; }
+    if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
+    if (phaseTimeoutGuard !== undefined) { clearTimeout(phaseTimeoutGuard); phaseTimeoutGuard = undefined; }
+
     if (sb && cycleId) {
       try {
-        if (compileDataKeepAlive !== undefined) { clearInterval(compileDataKeepAlive); compileDataKeepAlive = undefined; }
-        if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
-        if (phaseTimeoutGuard !== undefined) { clearTimeout(phaseTimeoutGuard); phaseTimeoutGuard = undefined; }
         await sb.from("did_update_cycles").update({
           status: "failed",
           completed_at: new Date().toISOString(),
