@@ -2052,8 +2052,11 @@ export type Database = {
           selected_part: string
           session_format: string
           session_lead: string
+          start_audit: Json
           start_block_reason: string | null
+          start_source: string | null
           started_at: string | null
+          started_by: string | null
           status: string
           therapist: string
           updated_at: string
@@ -2094,8 +2097,11 @@ export type Database = {
           selected_part: string
           session_format?: string
           session_lead?: string
+          start_audit?: Json
           start_block_reason?: string | null
+          start_source?: string | null
           started_at?: string | null
+          started_by?: string | null
           status?: string
           therapist?: string
           updated_at?: string
@@ -2136,8 +2142,11 @@ export type Database = {
           selected_part?: string
           session_format?: string
           session_lead?: string
+          start_audit?: Json
           start_block_reason?: string | null
+          start_source?: string | null
           started_at?: string | null
+          started_by?: string | null
           status?: string
           therapist?: string
           updated_at?: string
@@ -2154,6 +2163,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      did_daily_session_start_audit: {
+        Row: {
+          approval_hashes: Json
+          created_at: string
+          deliberation_id: string | null
+          error_code: string | null
+          id: string
+          message: string | null
+          plan_id: string | null
+          result: string
+          started_by: string | null
+          sync_source: string
+          user_id: string
+        }
+        Insert: {
+          approval_hashes?: Json
+          created_at?: string
+          deliberation_id?: string | null
+          error_code?: string | null
+          id?: string
+          message?: string | null
+          plan_id?: string | null
+          result: string
+          started_by?: string | null
+          sync_source?: string
+          user_id: string
+        }
+        Update: {
+          approval_hashes?: Json
+          created_at?: string
+          deliberation_id?: string | null
+          error_code?: string | null
+          id?: string
+          message?: string | null
+          plan_id?: string | null
+          result?: string
+          started_by?: string | null
+          sync_source?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       did_doc_sync_log: {
         Row: {
@@ -3940,6 +3991,9 @@ export type Database = {
       did_team_deliberations: {
         Row: {
           agenda_outline: Json
+          approved_program_draft_hash: string | null
+          approved_program_snapshot: Json
+          approved_session_params_hash: string | null
           closed_at: string | null
           created_at: string
           created_by: string
@@ -3977,6 +4031,9 @@ export type Database = {
         }
         Insert: {
           agenda_outline?: Json
+          approved_program_draft_hash?: string | null
+          approved_program_snapshot?: Json
+          approved_session_params_hash?: string | null
           closed_at?: string | null
           created_at?: string
           created_by?: string
@@ -4014,6 +4071,9 @@ export type Database = {
         }
         Update: {
           agenda_outline?: Json
+          approved_program_draft_hash?: string | null
+          approved_program_snapshot?: Json
+          approved_session_params_hash?: string | null
           closed_at?: string | null
           created_at?: string
           created_by?: string
@@ -6189,6 +6249,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      sync_and_start_approved_daily_plan: {
+        Args: { p_deliberation_id: string; p_user_id: string }
+        Returns: Json
+      }
       team_deliberation_signoff_and_sync: {
         Args: {
           p_deliberation_id: string

@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { useTeamDeliberations } from "@/hooks/useTeamDeliberations";
 import DidLiveSessionPanel from "./DidLiveSessionPanel";
 import { getAuthHeaders } from "@/lib/auth";
+import { liveStartStatusText, planApprovalSynced } from "@/lib/dailyPlanStartPolicy";
 import {
   signoffProgress,
   type TeamDeliberation,
@@ -55,18 +56,11 @@ interface LiveSessionPlanRow {
   therapist: string | null;
   plan_markdown: string;
   status?: string | null;
+  lifecycle_status?: string | null;
   program_status?: string | null;
   approved_at?: string | null;
   urgency_breakdown?: Record<string, unknown> | null;
 }
-
-const isSignatureGuardError = (error: unknown) =>
-  String((error as any)?.message ?? error ?? "").includes(
-    "daily_session_plan_requires_signatures_before_start",
-  );
-
-const approvalDesyncMessage =
-  "Porada je podepsaná, ale denní plán nemá aktuální approval metadata. Karel právě synchronizuje schválení.";
 
 const PROGRAM_START_BLOCKED_STATUSES = new Set([
   "draft",
@@ -776,6 +770,8 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
   const lastIterateInputRef = useRef<string>("");
   const [startingLive, setStartingLive] = useState(false);
   const [livePlan, setLivePlan] = useState<LiveSessionPlanRow | null>(null);
+  const [linkedPlan, setLinkedPlan] = useState<LiveSessionPlanRow | null>(null);
+  const [lastStartErrorCode, setLastStartErrorCode] = useState<string | null>(null);
 
   useEffect(() => {
     const found = items.find((x) => x.id === deliberationId) ?? null;
@@ -821,6 +817,28 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
       (supabase as any).removeChannel(ch);
     };
   }, [deliberationId]);
+
+  useEffect(() => {
+    const planId = bridgedPlanId ?? d?.linked_live_session_id;
+    if (!planId) {
+      setLinkedPlan(null);
+      return;
+    }
+    let alive = true;
+    (async () => {
+      const { data } = await (supabase as any)
+        .from("did_daily_session_plans")
+        .select(
+          "id, selected_part, session_lead, therapist, plan_markdown, status, lifecycle_status, program_status, approved_at, urgency_breakdown",
+        )
+        .eq("id", planId)
+        .maybeSingle();
+      if (alive) setLinkedPlan((data as LiveSessionPlanRow | null) ?? null);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [bridgedPlanId, d?.linked_live_session_id, startingLive]);
 
   if (!deliberationId) return null;
 
@@ -942,94 +960,45 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
     }
   };
 
-  /**
-   * SPUSTIT SEZENÍ TRUTH PASS (2026-04-23):
-   *   Live DID sezení se musí otevřít PŘÍMO UVNITŘ této schválené porady,
-   *   nikoliv přepnutím na kartu Dnes. Proto tady:
-   *     1) vezmeme přesně navázaný `did_daily_session_plans.id`,
-   *     2) přepneme tento KONKRÉTNÍ plán do `in_progress`,
-   *     3) z DB ihned načteme jeho aktuální markdown,
-   *     4) v tom samém dialogu přerenderujeme `DidLiveSessionPanel`.
-   *   Tím se odstraní race condition s `firstPendingPlan`, kvůli které se
-   *   někdy otevíral starší plán z karty Dnes místo právě schváleného programu.
-   */
+  /** Backend-authoritative start: UI nesmí zapisovat in_progress přímo. */
   const goToLiveSession = async () => {
     const planId = bridgedPlanId ?? d?.linked_live_session_id;
-    if (!planId || startingLive) return;
-    const preflightReason = unsignedStartBlockReason(d);
+    if (!d || !planId || startingLive) return;
+    const preflightReason = unsignedStartBlockReason(d, linkedPlan);
     if (preflightReason) {
       toast.info(preflightReason);
       return;
     }
     setStartingLive(true);
+    setLastStartErrorCode(null);
     try {
-      const nowIso = new Date().toISOString();
-      const [{ error: statusErr }, deliberationRes] = await Promise.all([
-        (supabase as any)
-          .from("did_daily_session_plans")
-          .update({
-            status: "in_progress",
-            lifecycle_status: "in_progress",
-            started_at: nowIso,
-            updated_at: nowIso,
-          })
-          .eq("id", planId)
-          .select("id")
-          .single(),
-        deliberationId
-          ? (supabase as any)
-              .from("did_team_deliberations")
-              .select(
-                "title, reason, agenda_outline, final_summary, program_draft, session_params",
-              )
-              .eq("id", deliberationId)
-              .maybeSingle()
-          : Promise.resolve({ data: null, error: null }),
-      ]);
-
-      if (statusErr) {
-        console.error(
-          "[DeliberationRoom] startLiveSession status update failed:",
-          statusErr,
-        );
+      const headers = await getAuthHeaders();
+      const startResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-daily-plan-sync-start`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ deliberation_id: d.id }),
+        },
+      );
+      const startPayload = await startResponse.json().catch(() => ({}));
+      if (!startResponse.ok || startPayload?.ok === false) {
+        const errorCode = String(startPayload?.error_code ?? "sync_failed");
+        setLastStartErrorCode(errorCode);
         toast.error(
-          isSignatureGuardError(statusErr)
-            ? approvalDesyncMessage
-            : "Nepodařilo se zahájit sezení (DB update).",
+          startPayload?.message ||
+            "Porada je podepsaná, ale plán stále není bezpečně připravený ke spuštění.",
         );
         return;
       }
 
-      const authoritativeMarkdown = buildApprovedLivePlanMarkdown(
-        (deliberationRes?.data as LiveDeliberationSource | null) ??
-          (d as any as LiveDeliberationSource | null),
-      );
-      const liveSource =
-        (deliberationRes?.data as LiveDeliberationSource | null) ??
-        (d as any as LiveDeliberationSource | null);
+      const liveSource = d as any as LiveDeliberationSource | null;
       const isPlayroom = isPlayroomDeliberation(liveSource);
-
-      if (authoritativeMarkdown) {
-        const { error: syncErr } = await (supabase as any)
-          .from("did_daily_session_plans")
-          .update({
-            plan_markdown: authoritativeMarkdown,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", planId);
-
-        if (syncErr) {
-          console.warn(
-            "[DeliberationRoom] failed to resync live plan markdown:",
-            syncErr,
-          );
-        }
-      }
 
       const { data: planRow, error: fetchErr } = await (supabase as any)
         .from("did_daily_session_plans")
         .select(
-          "id, selected_part, session_lead, therapist, plan_markdown, status, program_status, approved_at, urgency_breakdown",
+          "id, selected_part, session_lead, therapist, plan_markdown, status, lifecycle_status, program_status, approved_at, urgency_breakdown",
         )
         .eq("id", planId)
         .single();
@@ -1051,9 +1020,9 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
         toast.info(planBlockReason);
         return;
       }
+      setLinkedPlan(planRow as LiveSessionPlanRow);
 
       if (isPlayroom) {
-        const headers = await getAuthHeaders();
         const response = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-part-session-prepare`,
           {
@@ -1084,7 +1053,6 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
 
       setLivePlan({
         ...(planRow as LiveSessionPlanRow),
-        plan_markdown: authoritativeMarkdown || planRow.plan_markdown,
       });
       toast.success("Sezení zahájeno.");
     } finally {
@@ -1477,27 +1445,35 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                   );
                 })()}
 
-                {/* READY-TO-START stav — viditelný hned po dvou terapeutických podpisech.
-                Bridge proběhne na serveru, trigger překlopí status na approved
-                a vznikne plán v did_daily_session_plans. */}
                 {d.deliberation_type === "session_plan" &&
                   !!d.hanka_signed_at &&
-                  !!d.kata_signed_at && (
-                    <section className="rounded-md border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="text-[11px] font-semibold text-emerald-700">
-                          Připraveno k zahájení
-                        </p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">
-                          Hanička i Káťa stvrdily podpisem souhlas.{" "}
-                          {isPlayroomPlan
-                            ? "Herna je připravená jako dětská místnost v DID/Kluci/Herna."
-                            : "Plán je propsán do dnešního sezení."}
-                        </p>
-                      </div>
-                    </section>
-                  )}
+                  !!d.kata_signed_at &&
+                  (() => {
+                    const statusText = liveStartStatusText({
+                      signed: true,
+                      starting: startingLive,
+                      plan: linkedPlan,
+                      lastErrorCode: lastStartErrorCode,
+                    });
+                    const synced = planApprovalSynced(linkedPlan);
+                    return (
+                      <section className={`rounded-md border px-3 py-2 flex items-start gap-2 ${synced ? "border-primary/30 bg-primary/5" : "border-border/60 bg-muted/30"}`}>
+                        {startingLive ? (
+                          <Loader2 className="w-4 h-4 text-primary shrink-0 mt-0.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                        )}
+                        <div className="flex-1">
+                          <p className="text-[11px] font-semibold text-foreground">
+                            {statusText}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            Start proběhne pouze přes bezpečnou backendovou sync+start kontrolu.
+                          </p>
+                        </div>
+                      </section>
+                    );
+                  })()}
 
                 {(d.status === "approved" || bridgedPlanId) &&
                   d.deliberation_type === "session_plan" &&
@@ -1525,7 +1501,7 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                             <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                           ) : null}
                           {startingLive ? (
-                            "Otevírám…"
+                            "Synchronizuji schválení…"
                           ) : (
                             <>
                               {isPlayroomPlan
