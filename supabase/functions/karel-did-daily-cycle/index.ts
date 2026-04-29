@@ -7210,10 +7210,11 @@ Vra\u0165 JSON:
     // Replaced inline profiling (was ~150 lines of raw AI + ungoverned writes)
     // with delegation to karel-daily-therapist-intelligence which uses
     // encodeGovernedWrite + normalizeSignal + proper dedup markers
+    let tpTimeout: number | undefined;
     try {
       const tpUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-daily-therapist-intelligence`;
       const tpController = new AbortController();
-      const tpTimeout = setTimeout(() => tpController.abort(), 30000);
+      tpTimeout = setTimeout(() => tpController.abort(), 30000) as unknown as number;
       const tpRes = await fetch(tpUrl, {
         method: "POST",
         signal: tpController.signal,
@@ -7223,8 +7224,6 @@ Vra\u0165 JSON:
         },
         body: JSON.stringify({ source: "daily-cycle" }),
       });
-      clearTimeout(tpTimeout);
-
       if (tpRes.ok) {
         const tpBody = await tpRes.json();
         criticalPhaseStatus.therapistIntelligenceOk = tpBody.ok !== false;
@@ -7237,6 +7236,8 @@ Vra\u0165 JSON:
     } catch (tpErr) {
       console.error("[PHASE_3] Therapist intelligence FAILED (timeout or network):", tpErr);
       // criticalPhaseStatus.therapistIntelligenceOk remains false
+    } finally {
+      if (tpTimeout !== undefined) clearTimeout(tpTimeout);
     }
 
     // ═══ FÁZE 6.5: PAMET_KAREL — krizová profilace terapeutek ═══
@@ -7334,6 +7335,7 @@ Vra\u0165 JSON:
 
         if (inRegistry && inRegistry.status === "sleeping") {
           console.log(`[PART-STATUS] Detected sleeping part with recent activity: ${normalizedName}`);
+          let evalTo: number | undefined;
           try {
             const syncUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-part-status-sync`;
             const syncRes = await fetch(syncUrl, {
@@ -7434,7 +7436,7 @@ Vra\u0165 JSON:
             }
             const evalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-did-session-finalize`;
             const evalCtl = new AbortController();
-            const evalTo = setTimeout(() => evalCtl.abort(), 60000);
+            evalTo = setTimeout(() => evalCtl.abort(), 60000) as unknown as number;
             const evalRes = await fetch(evalUrl, {
               method: "POST",
               signal: evalCtl.signal,
@@ -7452,13 +7454,14 @@ Vra\u0165 JSON:
                 observationsByBlock,
               }),
             });
-            clearTimeout(evalTo);
             const okText = evalRes.ok ? "OK" : `HTTP ${evalRes.status}`;
             console.log(`[PHASE_8A5] Plan ${(plan as any).id} (${(plan as any).selected_part}, ${(plan as any).plan_date}): ${okText}`);
             if (evalRes.ok) phase8a5ProcessedSessions++;
             if (((liveProgress as any)?.completed_blocks ?? 0) < ((liveProgress as any)?.total_blocks ?? 1)) phase8a5PartialSessions++;
           } catch (evalErr) {
             console.warn(`[PHASE_8A5] Evaluator failed for plan ${(plan as any).id}:`, (evalErr as any)?.message ?? evalErr);
+          } finally {
+            if (evalTo !== undefined) clearTimeout(evalTo);
           }
         }
         if (consolidationRunId) {
