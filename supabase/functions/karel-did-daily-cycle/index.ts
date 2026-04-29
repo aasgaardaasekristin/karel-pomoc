@@ -2491,7 +2491,7 @@ serve(async (req) => {
   console.log(`[daily-cycle] Email Guard: pragueHour=${pragueHourForEmailGuard}, isCronCall=${isCronCall}, isCatchup=${isCatchup}, isWatchdog=${isWatchdog}, suppressEmails=${suppressEmails}, shouldSendEmails=${shouldSendEmails}`);
 
   let cycleId: string | null = null;
-  let sb: ReturnType<typeof createClient> | null = null;
+  let sb: any = null;
   let consolidationRunId: string | null = null;
   let compileDataKeepAlive: number | undefined;
   let aiAnalysisKeepAlive: number | undefined;
@@ -7394,6 +7394,7 @@ Vra\u0165 JSON:
         let phase8a5ProcessedSessions = 0;
         let phase8a5PartialSessions = 0;
         for (const plan of stalePlans ?? []) {
+          let evalTo: number | undefined;
           try {
             const { data: liveProgress } = await sb
               .from("did_live_session_progress")
