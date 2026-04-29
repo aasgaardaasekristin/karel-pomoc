@@ -36,7 +36,7 @@ export const pragueDateISO = (d: Date = new Date()): string =>
 
 const INLINE_BRIEFING_PATTERN = /(DENN[ÍI]\s+BRIEFING|AKUTN[ÍI]\s*:|ÚKOLY\s+NA\s+DNES\s*:|UKOLY\s+NA\s+DNES\s*:|SLEDOVAT\s*:|STRUČN[ÝY]\s+PŘEHLED\s*:|STRUCN[YÝ]\s+PREHLED\s*:)/i;
 const EXPLICIT_BRIEFING_REQUEST_PATTERN = /(denn[íi]\s+briefing|karl[ůu]v\s+p[řr]ehled|rann[íi]\s+p[řr]ehled|uka[zž].*briefing|p[řr]egeneruj.*briefing)/i;
-const OVERSTRONG_EVIDENCE_PATTERN = /(diagnostick[ýy]\s+sign[áa]l|vysv[ěe]tluje\s+to|stala\s+ses\s+zt[ěe]lesn[ěe]n[íi]m|ukazuje\s+n[áa]m\s+jednozna[čc]n[ěe]|je\s+to\s+projekce)/i;
+const OVERSTRONG_EVIDENCE_PATTERN = /(diagnostick[ýy]\s+sign[áa]l|vysv[ěe]tluje\s+to|stala\s+ses\s+zt[ěe]lesn[ěe]n[íi]m|ukazuje\s+n[áa]m\s+jednozna[čc]n[ěe]|je\s+to\s+projekce|st[aá]v[aá]\s+se\s+[^.!?\n]{0,80}\bsymbolem\b|dob[řr]e\s+znaj[íi]\s+[^.!?\n]{0,80}\bpot[řr]ebu\b|pot[řr]ebu\s+b[ýy]t\s+zachr[aá]n[ěe]n|souzn[ěe]j[íi]|ob[řr][íi]\s+empatie)/i;
 
 export function hanaPersonalSystemGuardBlock(currentDate = pragueDateISO()): string {
   return `
