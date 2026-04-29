@@ -742,7 +742,7 @@ function buildDailyTherapeuticPriority(payload: any): string {
   const sess = payload?.yesterday_session_review?.exists ? payload.yesterday_session_review : null;
   const part = String(play?.part_name || sess?.part_name || payload?.proposed_session?.part_name || payload?.proposed_playroom?.part_name || "části").trim();
   if (sess?.exists && isOpenedPartialSessionReview(sess)) {
-    return `Protože včerejší Sezení bylo otevřené nebo částečně rozpracované, ale zatím nemá plné dovyhodnocení, první krok dne má být krátké ověření aktuálního tělesného a emočního stavu ${partGenitive(part)}. Pracujeme se stavem pending_review / evidence_limited a nepředstíráme hotový klinický závěr.`;
+    return `Protože včerejší Sezení bylo otevřené nebo částečně rozpracované, ale zatím nemá plné dovyhodnocení, první krok dne má být krátké ověření aktuálního tělesného a emočního stavu ${partGenitive(part)}. Pracujeme opatrně a nepředstíráme hotový klinický závěr.`;
   }
   if (sess?.exists && sess?.held === false) {
     return `Protože plánované Sezení kvůli tělesným nebo neverbálním potížím klinicky neproběhlo, první krok dne má být krátké ověření aktuálního tělesného a emočního stavu ${partGenitive(part)}. Teprve podle toho má tým rozhodnout, zda dnes udělat terapeutkou vedené Sezení, nízkoprahovou stabilizační Hernu, nebo jen bezpečný kontakt bez otevírání nového těžkého materiálu.`;
@@ -843,7 +843,7 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     team_closing_line,
     evidence_limits,
     opening_monologue_text,
-    technical_note: payload?.technical_note || "Briefing byl sestaven z DB review a dostupných reportů; technický stav není hlavním obsahem přehledu.",
+    technical_note: "",
   };
 }
 
