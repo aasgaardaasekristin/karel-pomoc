@@ -1550,24 +1550,55 @@ Deno.serve(async (req) => {
     let body: any = {};
     try { body = await req.json(); } catch { /* GET / no body */ }
     const authHeader = req.headers.get("Authorization") || "";
-    const isServiceCall = serviceKey && authHeader === `Bearer ${serviceKey}`;
+    const cronSecret = Deno.env.get("KAREL_CRON_SECRET") || "";
+    const isServiceCall = !!serviceKey && authHeader === `Bearer ${serviceKey}`;
+    const isCronSecretCall = !!cronSecret && req.headers.get("X-Karel-Cron-Secret") === cronSecret;
+    const wantsAuto = body?.method === "auto" || body?.source === "cron";
     let authenticatedUserId: string | null = null;
-    if (!isServiceCall) {
+    let attemptId: string | null = null;
+    if (!isServiceCall && !isCronSecretCall) {
       const authResult = await requireAuth(req);
-      if (authResult instanceof Response) return authResult;
+      if (authResult instanceof Response) {
+        const auditId = await startBriefingAttempt(supabase, {
+          briefing_date: pragueDayISO(),
+          generation_method: body?.method || (wantsAuto ? "auto" : "manual"),
+          trigger_source: body?.source === "cron" ? "cron" : "unauthorized",
+          auth_mode: "unauthorized",
+          status: "failed",
+          error_code: wantsAuto ? "unauthorized_cron_call" : "unauthorized_user_call",
+          error_message: "Chybí platné interní nebo uživatelské oprávnění.",
+          completed_at: new Date().toISOString(),
+          metadata: { source: body?.source ?? null, method: body?.method ?? null },
+        });
+        await finishBriefingAttempt(supabase, auditId, { status: "failed" });
+        return authResult;
+      }
       authenticatedUserId = String((authResult as { user: any }).user?.id ?? "");
     }
     if (!isServiceCall && body?.userId && String(body.userId) !== authenticatedUserId) {
-      return new Response(JSON.stringify({ error: "user_scope_mismatch" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "user_scope_mismatch" }, 403);
     }
-    const scopedUserId = isServiceCall ? (body?.userId ?? null) : authenticatedUserId;
-    const generationMethod = body?.method || "manual";
+    let scopedUserId = !isServiceCall && !isCronSecretCall ? authenticatedUserId : String(body?.userId ?? "").trim() || null;
+    if ((isServiceCall || isCronSecretCall) && !scopedUserId) {
+      const { data: anyThread } = await supabase.from("did_threads").select("user_id").not("user_id", "is", null).order("last_activity_at", { ascending: false }).limit(1).maybeSingle();
+      scopedUserId = anyThread?.user_id ?? null;
+    }
+    if (!scopedUserId) return jsonResponse({ error: "missing_user_scope" }, 400);
+    const generationMethod = body?.method || (wantsAuto ? "auto" : "manual");
     const forceRegenerate = body?.force === true;
 
     const today = pragueDayISO();
+    const triggerSource = body?.source === "cron" ? "cron" : body?.source === "service" ? "service" : "ui";
+    const authMode = isServiceCall ? "service_role" : isCronSecretCall ? "cron_secret" : "user";
+    attemptId = await startBriefingAttempt(supabase, {
+      user_id: scopedUserId,
+      briefing_date: today,
+      generation_method: generationMethod,
+      trigger_source: triggerSource,
+      auth_mode: authMode,
+      status: "started",
+      metadata: { force: forceRegenerate, source: body?.source ?? null },
+    });
 
     // ───────────────────────────────────────────────────────────
     // CYCLE GUARD (auto only)
