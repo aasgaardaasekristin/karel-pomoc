@@ -232,7 +232,7 @@ interface BriefingPayload {
   hana_personal_did_relevant_implications?: any[];
 }
 
-const realityContextText = (p: BriefingPayload): string => {
+export const realityContextText = (p: BriefingPayload): string => {
   const entries = [...(Array.isArray(p.operational_context_used) ? p.operational_context_used : []), ...(Array.isArray(p.hana_personal_did_relevant_implications) ? p.hana_personal_did_relevant_implications : [])];
   const match = entries.find((e: any) => /tim+m[iy]|kepork|rybi|real-world|skute|faktick|external_fact|therapist_factual_correction/i.test(`${e?.summary ?? ""} ${JSON.stringify(e?.detail ?? {})} ${e?.evidence_level ?? ""}`));
   if (!match) return "";
@@ -240,7 +240,7 @@ const realityContextText = (p: BriefingPayload): string => {
   return `${summary}\nSamo o sobě to ještě nevypovídá o tom, co prožívá konkrétní část. Terapeuticky důležité bude až to, co kluci sami řeknou, ukážou v těle nebo jak na téma zareagují.`;
 };
 
-const backendContextSummary = (inputs: Record<string, any> | undefined): string => {
+export const backendContextSummary = (inputs: Record<string, any> | undefined): string => {
   if (!inputs) return "";
   const used = inputs.used_recent_operational_context || inputs.used_reality_correction || inputs.reality_correction_used || inputs.used_hana_personal_processed_implication;
   if (!used) return "";
@@ -248,7 +248,7 @@ const backendContextSummary = (inputs: Record<string, any> | undefined): string 
   return cleanVisibleClinicalText(`Používá včerejší důležitý kontext. Čeho se dnes vyvarovat: ${limits}. Nejdřív ověřit vlastní reakci kluků.`);
 };
 
-const cleanVisibleClinicalText = (value: unknown): string => String(value ?? "")
+export const cleanVisibleClinicalText = (value: unknown): string => String(value ?? "")
   .replace(/pending_review\s*\/\s*evidence_limited/gi, "otevřené nebo částečně rozpracované, zatím bez plného dovyhodnocení")
   .replace(/\bpending_review\b/gi, "čeká na klinické dovyhodnocení")
   .replace(/\bevidence_limited\b/gi, "zatím bez dostatečného materiálu pro plný klinický závěr")
