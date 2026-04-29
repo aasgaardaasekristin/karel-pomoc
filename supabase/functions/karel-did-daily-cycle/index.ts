@@ -2326,7 +2326,7 @@ serve(async (req) => {
         .eq("cycle_type", "daily").eq("status", "completed")
         .order("completed_at", { ascending: false }).limit(1).maybeSingle(),
       adminSb.from("did_update_cycles")
-        .select("id, started_at, status, phase, phase_detail, heartbeat_at, last_error")
+        .select("id, started_at, status, phase, phase_detail, heartbeat_at, last_heartbeat_at, phase_started_at, phase_timeout_seconds, last_error")
         .eq("cycle_type", "daily").eq("status", "running")
         .order("started_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
@@ -2334,7 +2334,7 @@ serve(async (req) => {
     let heartbeatAgeSec: number | null = null;
     let stuck = false;
     if (running) {
-      const hb = running.heartbeat_at ? new Date(running.heartbeat_at).getTime() : new Date(running.started_at).getTime();
+      const hb = running.last_heartbeat_at || running.heartbeat_at ? new Date(running.last_heartbeat_at || running.heartbeat_at).getTime() : new Date(running.started_at).getTime();
       heartbeatAgeSec = Math.floor((Date.now() - hb) / 1000);
       stuck = heartbeatAgeSec > 30 * 60;
     }
@@ -2492,6 +2492,9 @@ serve(async (req) => {
   let cycleId: string | null = null;
   let sb: ReturnType<typeof createClient> | null = null;
   let consolidationRunId: string | null = null;
+  let compileDataKeepAlive: number | undefined;
+  let aiAnalysisKeepAlive: number | undefined;
+  let phaseTimeoutGuard: number | undefined;
 
   try {
     // ═══ FAST-PATH: syncRegistry – batched: list + process_one ═══
@@ -3167,7 +3170,19 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
           phase,
           phase_detail: detail.slice(0, 500),
           heartbeat_at: new Date().toISOString(),
+          last_heartbeat_at: new Date().toISOString(),
+          phase_started_at: new Date().toISOString(),
+          phase_timeout_seconds: 30 * 60,
         }).eq("id", cycleId);
+        if (phaseTimeoutGuard !== undefined) clearTimeout(phaseTimeoutGuard);
+        phaseTimeoutGuard = setTimeout(() => {
+          void sb.from("did_update_cycles").update({
+            status: "failed_stale",
+            completed_at: new Date().toISOString(),
+            last_error: `daily_cycle_stuck_timeout:${phase}`,
+            report_summary: `STALE: phase timeout after 1800s (${phase})`,
+          }).eq("id", cycleId).eq("status", "running");
+        }, 30 * 60 * 1000) as unknown as number;
       } catch (e) {
         console.warn(`[daily-cycle] setPhase("${phase}") failed:`, (e as Error)?.message || e);
       }
