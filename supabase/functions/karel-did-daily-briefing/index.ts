@@ -1006,25 +1006,19 @@ async function gatherContext(supabase: any, proofReviewId?: string | null, reque
         .from("karel_pantry_b_entries")
         .select("id, entry_kind, source_kind, source_ref, summary, detail, intended_destinations, related_part_name, related_therapist, related_crisis_event_id, created_at, processed_at, processed_by, flush_result")
         .eq("user_id", userIdResolved)
-        .in("source_kind", [
-          "live_session_reality_override",
-          "live_session_progress",
-          "hana_personal_ingestion",
-          "therapist_task_note",
-          "briefing_ask_resolution",
-        ])
         .contains("intended_destinations", ["briefing_input"])
-        .gte("created_at", new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
+        .gte("created_at", new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString())
         .order("created_at", { ascending: false })
-        .limit(50);
+        .limit(80);
       const isStillRelevant = (entry: any) => {
         const detail = entry?.detail && typeof entry.detail === "object" ? entry.detail : {};
         const text = `${entry?.summary ?? ""} ${JSON.stringify(detail)}`.toLowerCase();
         return Boolean(detail?.action_required)
           || detail?.include_in_next_session_plan === true
           || detail?.include_in_next_playroom_plan === true
-          || ["live_session_reality_override", "live_session_progress", "briefing_ask_resolution"].includes(String(entry?.source_kind ?? ""))
-          || /timmy|timmi|velryb|kepor|skute|reáln|odkaz|aktualne|mělčin|záchran/.test(text);
+          || OPERATIONAL_EVIDENCE_LEVELS.has(String(detail?.evidence_level ?? ""))
+          || ["live_session_reality_override", "live_session_progress", "briefing_ask_resolution", "hana_personal_ingestion", "therapist_task_note", "therapist_note", "playroom_progress", "did_thread_ingestion", "deliberation_event"].includes(String(entry?.source_kind ?? ""))
+          || REAL_WORLD_CONTEXT_RE.test(text);
       };
       const mergedById = new Map<string, any>();
       for (const entry of [...pantryBEntries, ...((recentOperationalContext ?? []).filter(isStillRelevant))]) {
