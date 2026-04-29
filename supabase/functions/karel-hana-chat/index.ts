@@ -108,6 +108,11 @@ interface SemanticRelation {
   description: string;
 }
 
+export interface HanaPersonalContinuityContext {
+  text: string;
+  sources: Array<{ source_table: string; conversation_id: string; source_ref: string; privacy_boundary: string }>;
+}
+
 // ═══ AUTH ═══
 async function requireAuth(req: Request) {
   const authHeader = req.headers.get("Authorization");
@@ -148,6 +153,35 @@ async function loadRecentEpisodes(sb: any, userId: string, days = 14): Promise<E
     .order("timestamp_start", { ascending: false })
     .limit(50);
   return data || [];
+}
+
+export async function loadHanaPersonalContinuityContext(sb: any, userId: string, currentConversationId?: string | null, noSave = false): Promise<HanaPersonalContinuityContext> {
+  if (noSave) return { text: "", sources: [] };
+  const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await sb.from("karel_hana_conversations")
+    .select("id, started_at, last_activity_at, thread_label, preview, messages")
+    .eq("user_id", userId)
+    .eq("sub_mode", "personal")
+    .gte("last_activity_at", since)
+    .order("last_activity_at", { ascending: false })
+    .limit(8);
+
+  const rows = (data || []).filter((r: any) => !currentConversationId || r.id !== currentConversationId);
+  const relevant = rows.filter((r: any) => /tim+m[iy]|kepork|rybi|velryb|z[áa]chran|v[čc]erej/i.test(`${r.thread_label ?? ""} ${r.preview ?? ""} ${JSON.stringify(r.messages ?? [])}`)).slice(0, 3);
+  const sources: HanaPersonalContinuityContext["sources"] = [];
+  const lines = relevant.map((r: any) => {
+    const messages = Array.isArray(r.messages) ? r.messages : [];
+    const lastRelevant = [...messages].reverse().find((m: any) => /tim+m[iy]|kepork|rybi|velryb|z[áa]chran/i.test(String(m?.content ?? "")));
+    const excerpt = String(lastRelevant?.content || r.preview || r.thread_label || "").replace(/\s+/g, " ").slice(0, 360);
+    const sourceRef = `karel_hana_conversations:${r.id}`;
+    sources.push({ source_table: "karel_hana_conversations", conversation_id: r.id, source_ref: sourceRef, privacy_boundary: "Hana/Osobní same-user runtime only; no Drive/DID raw writeback" });
+    return `- ${r.last_activity_at?.slice(0, 10) || r.started_at?.slice(0, 10) || "nedávno"} | ${sourceRef} | ${excerpt}`;
+  });
+  if (!lines.length) return { text: "", sources: [] };
+  return {
+    text: `═══ HANA/OSOBNÍ NÁVAZNOST MEZI VLÁKNY ═══\nPouze same-user osobní runtime kontext. Neposílat raw obsah na Drive ani do DID evidence; nepřevádět do briefingu. Použij jen k přirozené osobní návaznosti. Pokud Hanička navazuje na "rybičku", jde pravděpodobně o Timmiho/keporkaka a včerejší reálnou záchrannou situaci. Drž to jako skutečnou událost a emoční kontext, ne jako projekci/symbol/diagnostický signál bez vlastní reakce kluků.\n${lines.join("\n")}`,
+    sources,
+  };
 }
 
 async function loadStrategies(sb: any, userId: string): Promise<Strategy[]> {
@@ -844,7 +878,7 @@ serve(async (req) => {
     const sb = getServiceClient();
 
     // ═══ STEP 1: Load memory + Analyze (PARALLEL) ═══
-    const [[episodes, strategies, entities, patterns, relations], analysis] = await Promise.all([
+    const [[episodes, strategies, entities, patterns, relations], continuityContext, analysis] = await Promise.all([
       Promise.all([
         loadRecentEpisodes(sb, user.id),
         loadStrategies(sb, user.id),
@@ -852,6 +886,7 @@ serve(async (req) => {
         loadSemanticPatterns(sb, user.id),
         loadSemanticRelations(sb, user.id),
       ]),
+      loadHanaPersonalContinuityContext(sb, user.id, conversationId, persistencePolicy.no_save),
       analyzeInput(messages, [], LOVABLE_API_KEY),
     ]);
     console.log(`Analysis: domain=${analysis.domain}, state=${analysis.hana_state}, intensity=${analysis.emotional_intensity}, tags=${analysis.tags.join(",")}`);
@@ -859,6 +894,9 @@ serve(async (req) => {
     // ═══ STEP 2: Build situation cache + prompt ═══
     const situationCache = buildSituationCache(analysis, episodes, strategies, entities, patterns, relations);
     let systemPrompt = buildHanaSystemPrompt(situationCache, analysis);
+    if (continuityContext.text) {
+      systemPrompt += `\n\n${continuityContext.text}`;
+    }
     
     // Inject context-prime cache if available (dynamic 3D memory)
     if (contextPrimeCache && typeof contextPrimeCache === "string" && contextPrimeCache.length > 50) {
@@ -940,6 +978,15 @@ serve(async (req) => {
           request_mode: "hana_osobni",
           evaluation_status: "hana_personal_output_guard_replaced",
           metadata: { reasons: guarded.reasons, current_date_prague: pragueDateISO() },
+        });
+      }
+      if (continuityContext.sources.length > 0) {
+        await sb.from("karel_runtime_audit_logs").insert({
+          user_id: user.id,
+          function_name: "karel-hana-chat",
+          request_mode: "hana_osobni",
+          evaluation_status: "hana_personal_continuity_context_used",
+          metadata: { sources: continuityContext.sources, mode_id: persistencePolicy.mode_id, no_save_context: persistencePolicy.no_save },
         });
       }
       runHanaBackgroundProcessing({ user, sb, messages, conversationId, analysis, fullResponse, safety, persistencePolicy, lastUserTextForSafety, LOVABLE_API_KEY })

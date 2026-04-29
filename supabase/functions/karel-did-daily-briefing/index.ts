@@ -130,6 +130,20 @@ const jsonItemCount = (value: unknown): number => {
 const REAL_WORLD_CONTEXT_RE = /(therapist_factual_correction|external_fact|skute|re[áa]ln|faktick|odkaz|url|https?:\/\/|aktu[áa]ln|zpr[áa]v|[čc]l[áa]nek|telefon[áa]t|[úu]mrt|ztr[áa]t|zdravotn|po[žz][áa]r|v[áa]lk|[úu]tulek|z[áa]chran|instituc|nen[íi]\s+to\s+(?:symbol|projekce|fiktivn))/i;
 const OPERATIONAL_EVIDENCE_LEVELS = new Set(["therapist_factual_correction", "external_fact", "therapist_observation_D2", "direct_child_evidence", "team_decision", "program_change", "task_note"]);
 
+const summarizeRealityCorrections = (entries: any[]): string => {
+  const relevant = entries.filter((e: any) => REAL_WORLD_CONTEXT_RE.test(`${e?.summary ?? ""} ${JSON.stringify(e?.detail ?? {})}`));
+  if (!relevant.length) return "";
+  const summaries = relevant
+    .map((e: any) => cleanBlockText(e.summary || e.detail?.operational_implication || ""))
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(" ");
+  const concrete = /tim+m[iy]|kepork|rybi/i.test(summaries)
+    ? "Hanička popsala reálný kontext kolem Timmiho/keporkaka."
+    : "Hanička popsala reálný externí kontext nebo faktickou korekci reality.";
+  return `${concrete} Beru to jako skutečnou událost a emoční/operační kontext, ne jako projekci, symbol ani diagnostický signál bez přímé reakce kluků. Dnes je bezpečné nejprve ověřit, co o tom kluci sami říkají, co cítí v těle a co potřebují.${summaries ? ` Zpracovaná implikace: ${trimSentence(summaries, 360)}` : ""}`;
+};
+
 function isOpenedPartialSessionReview(review: any): boolean {
   const status = String(review?.status ?? "").toLowerCase();
   const kind = String(review?.review_kind ?? "").toLowerCase();
@@ -142,17 +156,22 @@ function isOpenedPartialSessionReview(review: any): boolean {
 }
 
 const buildMandatoryPlayroomProposal = (payload: any, context: any, candidates: Array<{ part_name: string; score: number; reasons: string[] }>) => {
+  const entries = operationalContextEntries(context);
+  const realitySummary = summarizeRealityCorrections(entries);
   const selectedPart = String(payload?.proposed_session?.part_name || candidates?.[0]?.part_name || context?.crises?.[0]?.part_name || context?.recent_threads?.[0]?.part_name || "část vybraná ranním přehledem").trim();
   const whyToday = cleanBlockText(payload?.proposed_session?.why_today)
     || cleanBlockText(candidates?.[0]?.reasons?.join(", "))
     || cleanBlockText(context?.last_3_days)
     || "Ranní přehled musí každý den připravit samostatnou Hernu; aktuální signály jsou slabé, proto volím bezpečný nízkoprahový diagnosticko-terapeutický program.";
+  const framedWhyToday = realitySummary
+    ? `${realitySummary} Pokud se téma samo objeví, držet ho jako skutečnou událost a emoční kontext; nejprve ověřit, co část sama ví, co cítí a co potřebuje. ${whyToday}`.trim()
+    : whyToday;
 
   return {
     part_name: selectedPart,
     status: "awaiting_therapist_review",
-    why_this_part_today: whyToday,
-    main_theme: `Bezpečný kontakt a zmapování toho, co ${selectedPart} dnes unese`,
+    why_this_part_today: framedWhyToday,
+    main_theme: realitySummary ? "Bezpečný kontakt s real-world kontextem bez interpretace za kluky" : `Bezpečný kontakt a zmapování toho, co ${selectedPart} dnes unese`,
     evidence_sources: ["ranní briefing", "poslední tři dny", "kandidáti dnešního sezení"],
     goals: [
       "navázat kontakt bez tlaku na výkon",
@@ -163,7 +182,7 @@ const buildMandatoryPlayroomProposal = (payload: any, context: any, candidates: 
     playroom_plan: {
       therapeutic_program: [
         { block: "Bezpečný práh", minutes: 3, detail: "Karel nabídne odpověď slovem, symbolem nebo tichem; cílem je zjistit dostupnost části, ne vynutit výkon." },
-        { block: "Vnitřní počasí", minutes: 6, detail: "Část vybere barvu, obraz nebo jedno slovo pro dnešní stav. Karel sleduje konkrétnost, vyhýbání a toleranci kontaktu." },
+        { block: "Vnitřní počasí", minutes: 6, detail: realitySummary ? "Část může říct, co o reálné situaci sama ví, co cítí v těle a co potřebuje; Karel nic nevyvozuje za ni." : "Část vybere barvu, obraz nebo jedno slovo pro dnešní stav. Karel sleduje konkrétnost, vyhýbání a toleranci kontaktu." },
         { block: "Symbolická postava", minutes: 8, detail: "Krátká bezpečná imaginativní hra s jednou postavou nebo předmětem, bez otevírání traumatické paměti." },
         { block: "Jeden malý krok", minutes: 5, detail: "Karel hledá jeden zvládnutelný krok pro tělo, klid nebo kontakt; bez slibů a bez konfrontace." },
         { block: "Měkké uzavření", minutes: 3, detail: "Karel shrne slyšené, nabídne zakotvení a označí podklady pro review." },
@@ -173,7 +192,7 @@ const buildMandatoryPlayroomProposal = (payload: any, context: any, candidates: 
       expected_child_reactions: ["krátké odpovědi", "nejistota", "odmítnutí tématu", "zájem o symbol", "únava"],
       recommended_karel_responses: ["zpomalit", "nabídnout volbu", "potvrdit právo neodpovědět", "držet symbolickou rovinu", "ukončit při stop signálu"],
       risks_and_stop_signals: ["náhlé stažení", "zmatek v čase nebo místě", "somatické zhoršení", "tlak na tajemství", "výrazné odpojení"],
-      forbidden_directions: ["nevynucovat vzpomínky", "neinterpretovat kresbu jako diagnózu bez review", "neeskalovat trauma", "nepokračovat přes stop signál"],
+      forbidden_directions: ["nevynucovat vzpomínky", "neinterpretovat externí real-world událost jako symbol/projekci/diagnostický signál bez reakce části", "neinterpretovat kresbu jako diagnózu bez review", "neeskalovat trauma", "nepokračovat přes stop signál"],
       runtime_packet_seed: { source: "mandatory_backend_fallback" },
     },
     questions_for_hanka: ["Je dnes pro tuto část bezpečnější krátká Karel-led Herna, nebo má být Hanička fyzicky poblíž?"],
@@ -750,13 +769,19 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     ? `Moje pracovní formulace pro dnešek je opatrná: doložená real-world informace má být přiznaná jako skutečná událost a faktický stresor. Klinicky smíme pracovat až s tím, co kluci sami řeknou, cítí nebo ukážou; samotný odkaz ani zpráva nejsou projekce části.`
     : `Moje pracovní formulace pro dnešek je opatrná: ${activePart} včera použil vlastní symbolický jazyk bezpečí. Zatím je bezpečnější chápat ho jako aktuální zdroj této části, ne jako definitivní charakteristiku ani společný jazyk všech kluků. Praktický cíl je pomoci pocit ochrany přenést zpět do přítomného těla, dne a vztahu s bezpečnými dospělými.`;
   const recommendations_for_hana = `Haničko, u tebe dnes vidím jako hlavní úkol jemně ověřit tělesný stav a dostupnost ${partGenitive(activePart)}, bez tlaku na vysvětlování. Pokud je stabilní, může následovat krátké Sezení nebo nízkoprahová Herna; pokud je zahlcený, stačí kontakt a připomenutí zdrojů.`;
-  const recommendations_for_katka = `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: nepřenášet včerejší symboly automaticky na ostatní části a nepoužít je dřív, než se ukáže, že jsou dnes pro ${partGenitive(activePart)} stále bezpečné.`;
+  const recommendations_for_katka = hasRealityCorrection
+    ? `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: real-world fakt nebo terapeutická korekce nejsou child evidence. Nepoužít je jako závěr za kluky dřív, než se ukáže jejich vlastní reakce.`
+    : `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: nepřenášet včerejší symboly automaticky na ostatní části a nepoužít je dřív, než se ukáže, že jsou dnes pro ${partGenitive(activePart)} stále bezpečné.`;
   const what_not_to_do_today = "Dnes bych se vyhnul třem věcem: netlačit do vysvětlování, neotevírat nové trauma téma bez stabilizačního rámce a nepředávat části příliš velkou odpovědnost otázkou typu „co chceš dělat?“. Bezpečnější je nabídnout dvě nebo tři malé možnosti.";
   const priority_of_the_day = buildDailyTherapeuticPriority(payload);
   const evidence_limits = [
     `Jistě víme: ${evidenceKnown.join(" ")}`,
-    `Pracovní hypotéza: tyto symboly mohou části ${activePart} pomáhat vytvořit vnitřní prostor ochrany a klidu, pokud s nimi dnes bude sama souhlasit.`,
-    "Nevíme / čeká na ověření: zda jde o stabilní zdroj dostupný i dnes, zda je bezpečné tento jazyk rozšiřovat k ostatním částem, a jaký je aktuální tělesný stav.",
+    hasRealityCorrection
+      ? "Pracovní rámec: real-world fakt je operační a emoční kontext, ne důkaz o klucích. Teprve jejich vlastní slova, tělo nebo reakce mohou být klinická evidence."
+      : `Pracovní hypotéza: tyto symboly mohou části ${activePart} pomáhat vytvořit vnitřní prostor ochrany a klidu, pokud s nimi dnes bude sama souhlasit.`,
+    hasRealityCorrection
+      ? "Nevíme / čeká na ověření: co o té události kluci sami vědí, co cítí v těle, co potřebují a zda je bezpečné téma dnes otevírat."
+      : "Nevíme / čeká na ověření: zda jde o stabilní zdroj dostupný i dnes, zda je bezpečné tento jazyk rozšiřovat k ostatním částem, a jaký je aktuální tělesný stav.",
   ].join("\n");
   const team_closing_line = "Včerejší práce nám dává materiál. Dnes ho nemusíme zvětšovat; potřebujeme ho správně podržet a převést do jednoho bezpečného kroku.";
   const opening_monologue_text = [

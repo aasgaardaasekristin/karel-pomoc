@@ -80,6 +80,7 @@ interface ProposedSession {
   questions_for_hanka?: string[];
   /** SLICE 3 — předem připravené otázky pro Káťu k tomuto sezení. */
   questions_for_kata?: string[];
+  backend_context_inputs?: Record<string, any>;
 }
 
 interface ProposedPlayroom {
@@ -102,6 +103,7 @@ interface ProposedPlayroom {
   };
   questions_for_hanka?: string[];
   questions_for_kata?: string[];
+  backend_context_inputs?: Record<string, any>;
 }
 
 type BriefingAskIntent =
@@ -226,7 +228,27 @@ interface BriefingPayload {
   ask_kata: AskItemRaw[];
   waiting_for?: string[];
   closing: string;
+  operational_context_used?: any[];
+  hana_personal_did_relevant_implications?: any[];
 }
+
+const realityContextText = (p: BriefingPayload): string => {
+  const entries = [...(Array.isArray(p.operational_context_used) ? p.operational_context_used : []), ...(Array.isArray(p.hana_personal_did_relevant_implications) ? p.hana_personal_did_relevant_implications : [])];
+  const match = entries.find((e: any) => /tim+m[iy]|kepork|rybi|real-world|skute|faktick|external_fact|therapist_factual_correction/i.test(`${e?.summary ?? ""} ${JSON.stringify(e?.detail ?? {})} ${e?.evidence_level ?? ""}`));
+  if (!match) return "";
+  const source = String(match.source_ref || match.detail?.source_trace?.source_ref || match.id || "zpracovaný Hana/Osobní vstup");
+  const summary = String(match.summary || match.detail?.operational_implication || "Hana/Osobní real-world kontext byl zohledněn.").trim();
+  return `${summary}\nZdroj: ${source}\nEvidence discipline: real-world fakt není child evidence; Karel má nejdřív ověřit, co kluci sami říkají, co cítí v těle a co potřebují.`;
+};
+
+const backendContextSummary = (inputs: Record<string, any> | undefined): string => {
+  if (!inputs) return "";
+  const used = inputs.used_recent_operational_context || inputs.used_reality_correction || inputs.reality_correction_used || inputs.used_hana_personal_processed_implication;
+  if (!used) return "";
+  const refs = Array.isArray(inputs.source_refs) ? inputs.source_refs : Array.isArray(inputs.operational_context_source_refs) ? inputs.operational_context_source_refs : [];
+  const limits = Array.isArray(inputs.what_not_to_conclude) ? inputs.what_not_to_conclude.filter(Boolean).slice(0, 2).join(" ") : "real-world fakt není child evidence bez samostatné reakce části";
+  return `Používá včerejší operační kontext${refs.length ? ` (${refs.slice(0, 2).join(", ")})` : ""}. Nevyvozovat: ${limits}`;
+};
 
 interface BriefingRow {
   id: string;
@@ -1119,6 +1141,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const legacyTechnicalGreeting = /těžk[áa]\s+syntéza|fallback|bezpečn[ýy]\s+režim/i.test(p.greeting || "");
   const openingMonologueText = (p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnes držme hlavně klinickou návaznost, opatrnost v závěrech a jeden bezpečný další krok pro kluky. Budu rozlišovat, co víme jistě, co je pracovní hypotéza a co ještě čeká na ověření." : p.greeting) || "").trim();
   const technicalNote = (p.technical_note || p.opening_monologue?.technical_note || "").trim();
+  const visibleRealityContext = realityContextText(p);
+  const sessionContextSummary = backendContextSummary(p.proposed_session?.backend_context_inputs);
+  const playroomContextSummary = backendContextSummary(playroomProposal?.backend_context_inputs);
 
   return (
     <div className="space-y-1">
@@ -1160,6 +1185,16 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           </p>
         )}
       </div>
+
+      {visibleRealityContext && (
+        <>
+          <NarrativeDivider />
+          <SectionHead>Včerejší real-world kontext</SectionHead>
+          <div className="mt-2 rounded-lg border border-border/60 bg-card/40 p-3">
+            <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{visibleRealityContext}</p>
+          </div>
+        </>
+      )}
 
       {/* 2. Co se změnilo za poslední 3 dny */}
       {p.last_3_days && (
@@ -1384,6 +1419,11 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                 {p.proposed_session.kata_involvement}
               </p>
             )}
+            {sessionContextSummary && (
+              <p className="rounded-md border border-border/50 bg-background/35 p-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">
+                {sessionContextSummary}
+              </p>
+            )}
             <p className="text-[11px] text-primary/70 italic">
               Otevřít poradu →
             </p>
@@ -1417,6 +1457,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Proč právě tato Herna</p>
               <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomProposal.why_this_part_today}</p>
             </div>
+            {playroomContextSummary && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Použitý operační kontext</p><p className="mt-0.5 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{playroomContextSummary}</p></div>}
             {Array.isArray(playroomProposal.goals) && playroomProposal.goals.length > 0 && (
               <div>
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Cíle Herny</p>
