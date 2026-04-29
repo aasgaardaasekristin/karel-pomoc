@@ -141,7 +141,7 @@ const summarizeRealityCorrections = (entries: any[]): string => {
   const concrete = /tim+m[iy]|kepork|rybi/i.test(summaries)
     ? "Hanička popsala reálný kontext kolem Timmiho/keporkaka."
     : "Hanička popsala reálný externí kontext nebo faktickou korekci reality.";
-  return `${concrete} Beru to jako skutečnou událost a emoční/operační kontext, ne jako projekci, symbol ani diagnostický signál bez přímé reakce kluků. Dnes je bezpečné nejprve ověřit, co o tom kluci sami říkají, co cítí v těle a co potřebují.${summaries ? ` Zpracovaná implikace: ${trimSentence(summaries, 360)}` : ""}`;
+  return ensureVisibleClinicalText(`${concrete} Beru to jako skutečnou událost a emoční rámec, ne jako projekci, symbol ani diagnostický signál bez přímé reakce kluků. Dnes je bezpečné nejprve ověřit, co o tom kluci sami říkají, co cítí v těle a co potřebují.${summaries ? ` ${trimSentence(summaries, 360)}` : ""}`);
 };
 
 function isOpenedPartialSessionReview(review: any): boolean {
@@ -210,11 +210,11 @@ function buildMandatorySessionProposal(payload: any, context: any, candidates: A
   return {
     part_name: selectedPart,
     status: "awaiting_therapist_review",
-    why_today: "Navázat na včerejší aktivitu a real-world / terapeuticky faktický kontext bez předstírání klinického závěru: nejdřív ověřit tělo, emoci, dostupnost a bezpečí.",
+    why_today: "Navázat na včerejší aktivitu a skutečnou událost bez předstírání klinického závěru: nejdřív ověřit tělo, emoci, dostupnost a bezpečí.",
     led_by: "Hanička",
     duration_min: 20,
-    first_draft: "Krátké terapeutkou vedené Sezení: 1) ověřit aktuální stav a únavu, 2) přiznat doložený real-world kontext jako skutečný externí/faktický rámec, 3) ptát se jen na vlastní reakci kluků, neinterpretovat samotnou zprávu jako projekci, 4) ukončit stabilizačně.",
-    kata_involvement: "Káťa hlídá evidence discipline: real-world fact / therapist correction není child evidence bez samostatné reakce části.",
+    first_draft: "Krátké terapeutkou vedené Sezení: 1) ověřit aktuální stav a únavu, 2) přiznat doložený faktický rámec jako skutečnou událost, 3) ptát se jen na vlastní reakci kluků, neinterpretovat samotnou zprávu jako projekci, 4) ukončit stabilizačně.",
+    kata_involvement: "Káťa hlídá opatrnost v závěrech: skutečná událost sama o sobě ještě nevypovídá o klucích bez jejich vlastní reakce.",
     evidence_sources: ["RECENT OPERATIONAL CONTEXT — Pantry B", "YESTERDAY ACTIVITY — plans/progress/reviews"],
     backend_context_inputs: {
       used_yesterday_activity: true,
