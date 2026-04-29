@@ -2164,6 +2164,48 @@ export type Database = {
           },
         ]
       }
+      did_daily_session_start_audit: {
+        Row: {
+          approval_hashes: Json
+          created_at: string
+          deliberation_id: string | null
+          error_code: string | null
+          id: string
+          message: string | null
+          plan_id: string | null
+          result: string
+          started_by: string | null
+          sync_source: string
+          user_id: string
+        }
+        Insert: {
+          approval_hashes?: Json
+          created_at?: string
+          deliberation_id?: string | null
+          error_code?: string | null
+          id?: string
+          message?: string | null
+          plan_id?: string | null
+          result: string
+          started_by?: string | null
+          sync_source?: string
+          user_id: string
+        }
+        Update: {
+          approval_hashes?: Json
+          created_at?: string
+          deliberation_id?: string | null
+          error_code?: string | null
+          id?: string
+          message?: string | null
+          plan_id?: string | null
+          result?: string
+          started_by?: string | null
+          sync_source?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_doc_sync_log: {
         Row: {
           content_type: string | null
