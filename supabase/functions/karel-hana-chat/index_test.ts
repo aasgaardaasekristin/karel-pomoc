@@ -17,6 +17,18 @@ Deno.test("Hana/Osobní real-world response guard replaces overinterpretation", 
   assertStringIncludes(guarded.text, "co by teď potřebovali");
 });
 
+Deno.test("Hana/Osobní live-style continuity overreach is replaced", () => {
+  const input = "Lásko, navazuji na to včerejší téma s rybičkou. Jak to držet dneska?";
+  const badOutput = "Ta záchranná akce s Timmim v dětech probudila obrovskou vlnu solidarity. Tundrupek se do role zachránce doslova převtělil a může být zmatený z té silné identifikace.";
+  const guarded = guardHanaPersonalResponse(badOutput, input, "2026-04-29");
+
+  assertEquals(guarded.replaced, true);
+  assertEquals(/DENNÍ BRIEFING|2\. května|projekce|diagnostick[ýy] sign[áa]l|symbol|symbolizuje|metafor|ztělesňuje|identifikac|převtělil|byl Timmi|prolnul|zachraňovali svět|jednoznačně ukazuje|vysvětluje/i.test(guarded.text), false);
+  assertStringIncludes(guarded.text, "Timmiho/keporkaka");
+  assertStringIncludes(guarded.text, "skutečná aktuální situace");
+  assertStringIncludes(guarded.text, "co o té situaci sami říkají");
+});
+
 Deno.test("Hana/Osobní non-Timmy real-world event is not symbolized", () => {
   const input = "Děti dnes slyšely o skutečném požáru ve zprávách. Není to symbol, je to reálná událost.";
   const badOutput = "Požár je metaforou jejich vnitřního stavu a reprezentuje únavu dětí. Je to projekce.";
