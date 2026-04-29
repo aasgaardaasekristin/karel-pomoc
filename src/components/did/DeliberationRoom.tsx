@@ -1213,12 +1213,18 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                   <section className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                     <h4 className="text-[11px] font-semibold text-primary mb-1.5">
                       {d.deliberation_type === "session_plan"
-                        ? "První pracovní návrh"
+                        ? "Lidský návrh k poradě"
                         : "Karlův pracovní návrh"}
                     </h4>
-                    <RichMarkdown compact>
-                      {d.karel_proposed_plan ?? "(zatím bez návrhu)"}
-                    </RichMarkdown>
+                    {d.deliberation_type === "session_plan" ? (
+                      <p className="text-[12px] leading-relaxed text-foreground/85 whitespace-pre-line">
+                        {cleanVisiblePlanText(d.reason || d.title, "Program je pracovní a čeká na doplnění terapeutek. Raw stav ani auditní metadata zde nezobrazuji.")}
+                      </p>
+                    ) : (
+                      <RichMarkdown compact>
+                        {cleanVisiblePlanText(d.karel_proposed_plan, "(zatím bez návrhu)")}
+                      </RichMarkdown>
+                    )}
                   </section>
 
                   {/* THERAPIST-LED TRUTH PASS — Živý program (program_draft).
