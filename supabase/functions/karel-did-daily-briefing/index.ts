@@ -1696,10 +1696,8 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (existing) {
-        return new Response(
-          JSON.stringify({ briefing: existing, cached: true }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+        await finishBriefingAttempt(supabase, attemptId, { status: "succeeded", created_briefing_id: existing.id, metadata: { cached: true } });
+        return jsonResponse({ briefing: existing, cached: true });
       }
     }
 
@@ -2048,6 +2046,7 @@ Deno.serve(async (req) => {
       .single();
 
     if (insertErr) throw insertErr;
+    await finishBriefingAttempt(supabase, attemptId, { status: "succeeded", created_briefing_id: inserted.id });
 
     payload.ask_hanka = (payload.ask_hanka as AskItem[]).map((item) => ({ ...item, briefing_id: inserted.id }));
     payload.ask_kata = (payload.ask_kata as AskItem[]).map((item) => ({ ...item, briefing_id: inserted.id }));
@@ -2073,15 +2072,9 @@ Deno.serve(async (req) => {
       console.warn("[briefing] Pantry B mark-processed failed (non-fatal):", mErr);
     }
 
-    return new Response(
-      JSON.stringify({ briefing: inserted, cached: false, candidates: candidates.slice(0, 5) }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return jsonResponse({ briefing: inserted, cached: false, candidates: candidates.slice(0, 5) });
   } catch (err: any) {
     console.error("[karel-did-daily-briefing] Error:", err);
-    return new Response(
-      JSON.stringify({ error: err?.message || "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return jsonResponse({ error: err?.message || "Unknown error" }, 500);
   }
 });
