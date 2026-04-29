@@ -500,11 +500,13 @@ function operationalContextEntries(context: any): any[] {
   return entries.filter((e: any) => {
     const detail = e?.detail && typeof e.detail === "object" ? e.detail : {};
     const text = `${e?.summary ?? ""} ${JSON.stringify(detail)}`.toLowerCase();
-    return ["live_session_reality_override", "live_session_progress", "hana_personal_ingestion", "therapist_task_note", "briefing_ask_resolution"].includes(String(e?.source_kind ?? ""))
+    const evidenceLevel = String(detail?.evidence_level ?? "");
+    return ["live_session_reality_override", "live_session_progress", "hana_personal_ingestion", "therapist_task_note", "therapist_note", "did_thread_ingestion", "playroom_progress", "briefing_ask_resolution", "deliberation_event"].includes(String(e?.source_kind ?? ""))
       && (detail?.action_required === true
         || detail?.include_in_next_session_plan === true
         || detail?.include_in_next_playroom_plan === true
-        || /timmy|timmi|velryb|kepor|skute|reáln|odkaz|aktualne|mělčin|záchran/.test(text));
+        || OPERATIONAL_EVIDENCE_LEVELS.has(evidenceLevel)
+        || REAL_WORLD_CONTEXT_RE.test(text));
   });
 }
 
@@ -513,7 +515,9 @@ function injectOperationalContextIntoProposals(payload: any, context: any) {
   if (!entries.length) return payload;
   const refs = entries.map((e: any) => e.source_ref || e.id).filter(Boolean).slice(0, 12);
   const excerpts = entries.map((e: any) => cleanBlockText(e.summary || e.detail?.operational_implication || "")).filter(Boolean).slice(0, 8);
-  const hasReality = entries.some((e: any) => ["live_session_reality_override", "hana_personal_ingestion", "therapist_task_note"].includes(String(e?.source_kind ?? "")) && /timmy|timmi|velryb|kepor|skute|reáln|odkaz|aktualne|mělčin|záchran/i.test(`${e?.summary ?? ""} ${JSON.stringify(e?.detail ?? {})}`));
+  const hasReality = entries.some((e: any) => REAL_WORLD_CONTEXT_RE.test(`${e?.summary ?? ""} ${JSON.stringify(e?.detail ?? {})}`));
+  const evidenceLevels = Array.from(new Set(entries.map((e: any) => String(e?.detail?.evidence_level ?? "")).filter(Boolean))).slice(0, 12);
+  const whatNotToConclude = Array.from(new Set(entries.map((e: any) => String(e?.detail?.what_not_to_conclude ?? "")).filter(Boolean))).slice(0, 8);
   const patchTarget = (target: any) => {
     if (!target || typeof target !== "object") return;
     target.backend_context_inputs = {
@@ -521,8 +525,13 @@ function injectOperationalContextIntoProposals(payload: any, context: any) {
       used_yesterday_activity: true,
       used_recent_operational_context: true,
       operational_context_source_refs: refs,
+      source_refs: refs,
       operational_context_excerpts: excerpts,
       reality_correction_used: hasReality,
+      used_reality_correction: hasReality,
+      used_hana_personal_processed_implication: entries.some((e: any) => e?.source_kind === "hana_personal_ingestion"),
+      evidence_levels: evidenceLevels,
+      what_not_to_conclude: whatNotToConclude,
       evidence_discipline: "real-world fact / therapist correction is operational context, not child evidence unless the child response is separately recorded",
     };
     target.evidence_sources = Array.from(new Set([...(Array.isArray(target.evidence_sources) ? target.evidence_sources : []), "RECENT OPERATIONAL CONTEXT — Pantry B", "REALITY CORRECTION — not child evidence"]));
