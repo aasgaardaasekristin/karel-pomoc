@@ -259,7 +259,8 @@ serve(async (req: Request) => {
           .filter((entry: string[]) => String(entry[1] ?? "").trim().length > 0),
       );
       const artifactCount = Object.values(liveProgress?.artifacts_by_block ?? {}).reduce((sum: number, value: any) => sum + (Array.isArray(value) ? value.length : value && typeof value === "object" ? Object.keys(value).length : 0), 0);
-      const sessionStarted = (liveProgress?.completed_blocks ?? 0) > 0 || hasNonEmptyTurns(liveProgress?.turns_by_block ?? {}) || hasNonEmptyObservations(items) || artifactCount > 0 || hasThreadUserResponse(matchingThreads ?? []);
+      const planOpened = !!plan.started_at || ["in_progress", "active", "started"].includes(String(plan.lifecycle_status ?? plan.status ?? "").toLowerCase());
+      const sessionStarted = planOpened || !!liveProgress || (liveProgress?.completed_blocks ?? 0) > 0 || hasNonEmptyTurns(liveProgress?.turns_by_block ?? {}) || hasNonEmptyObservations(items) || artifactCount > 0 || hasThreadUserResponse(matchingThreads ?? []);
       const sessionActor = plan.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown.session_actor : null;
       if (source === "auto_safety_net" && !sessionStarted && sessionActor !== "karel_direct") {
         const resultPayload = await persistPlannedNotStarted(sb, plan, jobBase, jobId, reason);
