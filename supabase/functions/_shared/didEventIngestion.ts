@@ -158,7 +158,8 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
   const isChild = event.author_role === "child" || sourceKind === "playroom_progress";
   const isRealityOverride = sourceKind === "live_session_reality_override";
   const isTechnical = (sourceKind === "live_session_progress" || isRealityOverride) && hasAny(text, [/replan|override|paused|stop|zastav/i]);
-  const isFactualCorrection = isRealityOverride || hasAny(text, [/skutečn|reáln|faktick|odkaz|url|extern/i]);
+  const isExternalCurrentEvent = hasAny(text, [/timmy|timmi|velryb|kepor|kytovec|m[eě]lčin|z[aá]chran|n[eě]meck|aktu[aá]ln[eě]|posledn[ií]\s+pokus|https?:\/\//i]);
+  const isFactualCorrection = isRealityOverride || hasAny(text, [/skutečn|reáln|faktick|odkaz|url|extern/i]) || (sourceKind === "hana_personal_ingestion" && isExternalCurrentEvent);
   const isRisk = hasAny(text, [/rizik|kriz|sebepo|ubl[ií]žit|nebezpe|stop sign[aá]l|disoci/i]);
   const isTask = hasAny(text, [/úkol|ukol|domluv|zařiď|zarid|follow[- ]?up|ověř|over|připomeň|pripomen/i]);
   const isPlan = hasAny(text, [/pl[aá]n|program|zm[eě]na|příště|priste|sezen[ií]|herna|blok/i]);
@@ -224,7 +225,7 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
     action_required: isRisk || isTask || isPlan || isTechnical,
     requires_human_review: isRisk || evidence_level === "hypothesis",
     include_in_daily_briefing: isClinical || isRisk || isTask || isPlan || isTechnical || isFactualCorrection,
-    include_in_next_session_plan: isClinical || isRisk || isPlan,
+    include_in_next_session_plan: isClinical || isRisk || isPlan || isFactualCorrection,
     include_in_next_playroom_plan: isChild || isFactualCorrection,
     write_to_drive: isRisk || isPlan || sourceKind === "briefing_ask_resolution" || sourceKind === "deliberation_event",
     related_part_name: event.related_part_name,
