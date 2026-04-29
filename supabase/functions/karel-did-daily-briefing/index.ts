@@ -848,9 +848,22 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
 }
 
 function applyOpeningMonologue(payload: any, context: any, candidates: SessionCandidate[]) {
-  payload.last_3_days = buildClinicalLast3Days(payload, context, candidates);
-  payload.lingering = buildClinicalLingering(payload, candidates);
-  payload.daily_therapeutic_priority = buildDailyTherapeuticPriority(payload);
+  payload.last_3_days = ensureVisibleClinicalText(buildClinicalLast3Days(payload, context, candidates));
+  payload.lingering = ensureVisibleClinicalText(buildClinicalLingering(payload, candidates));
+  payload.daily_therapeutic_priority = ensureVisibleClinicalText(buildDailyTherapeuticPriority(payload));
+  if (payload?.proposed_session && typeof payload.proposed_session === "object") {
+    for (const key of ["why_today", "first_draft", "kata_involvement"]) payload.proposed_session[key] = ensureVisibleClinicalText(payload.proposed_session[key]);
+  }
+  if (payload?.proposed_playroom && typeof payload.proposed_playroom === "object") {
+    for (const key of ["why_this_part_today", "main_theme"]) payload.proposed_playroom[key] = ensureVisibleClinicalText(payload.proposed_playroom[key]);
+    if (Array.isArray(payload.proposed_playroom.goals)) payload.proposed_playroom.goals = payload.proposed_playroom.goals.map(ensureVisibleClinicalText);
+    const plan = payload.proposed_playroom.playroom_plan;
+    if (plan && typeof plan === "object") {
+      plan.child_safe_version = ensureVisibleClinicalText(plan.child_safe_version);
+      if (Array.isArray(plan.therapeutic_program)) plan.therapeutic_program = plan.therapeutic_program.map((b: any) => ({ ...b, block: ensureVisibleClinicalText(b?.block), detail: ensureVisibleClinicalText(b?.detail) }));
+      if (Array.isArray(plan.forbidden_directions)) plan.forbidden_directions = plan.forbidden_directions.map(ensureVisibleClinicalText);
+    }
+  }
   if (payload?.yesterday_playroom_review && typeof payload.yesterday_playroom_review === "object") {
     for (const key of ["practical_report_text", "detailed_analysis_text", "implications_for_part", "implications_for_system", "recommendations_for_therapists", "recommendations_for_next_playroom", "recommendations_for_next_session"]) {
       payload.yesterday_playroom_review[key] = sanitizeKarelClinicalText(payload.yesterday_playroom_review[key]);
