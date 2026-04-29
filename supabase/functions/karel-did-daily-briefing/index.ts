@@ -39,6 +39,7 @@ const corsHeaders = {
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-2.5-pro";
 const STALE_CYCLE_MINUTES = 90;
+const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
 
 const pragueDayISO = (d: Date = new Date()): string =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(d);
@@ -1551,22 +1552,39 @@ Deno.serve(async (req) => {
     let body: any = {};
     try { body = await req.json(); } catch { /* GET / no body */ }
     const authHeader = req.headers.get("Authorization") || "";
-    const cronSecret = Deno.env.get("KAREL_CRON_SECRET") || "";
-    const isServiceCall = !!serviceKey && authHeader === `Bearer ${serviceKey}`;
     const cronSecretHeader = req.headers.get("X-Karel-Cron-Secret") || "";
-    let isCronSecretCall = !!cronSecret && cronSecretHeader === cronSecret;
-    if (!isCronSecretCall && cronSecretHeader) {
-      try {
-        const { data: vaultSecret } = await supabase.schema("vault").from("decrypted_secrets").select("decrypted_secret").eq("name", "KAREL_CRON_SECRET").maybeSingle();
-        isCronSecretCall = !!vaultSecret?.decrypted_secret && cronSecretHeader === vaultSecret.decrypted_secret;
-      } catch (e) {
-        console.warn("[briefing-auth] cron secret vault lookup failed:", (e as Error)?.message || e);
-      }
-    }
+    const isServiceCall = !!serviceKey && authHeader === `Bearer ${serviceKey}`;
+    const isCronSecretCall = false;
     const wantsAuto = body?.method === "auto" || body?.source === "cron";
+    const authHeaderPrefix = authHeader.startsWith("Bearer ") ? "Bearer" : authHeader ? "other" : "none";
+    console.log("[briefing-auth] sanitized", JSON.stringify({
+      has_authorization_header: !!authHeader,
+      auth_header_prefix: authHeaderPrefix,
+      has_x_karel_cron_secret: !!cronSecretHeader,
+      verify_strategy: wantsAuto ? "service_role" : "user_auth",
+      is_service_call: isServiceCall,
+      is_cron_secret_call: isCronSecretCall,
+      trigger_source: body?.source ?? null,
+      user_agent_contains_pg_net: (req.headers.get("User-Agent") || "").toLowerCase().includes("pg_net"),
+    }));
     let authenticatedUserId: string | null = null;
     let attemptId: string | null = null;
-    if (!isServiceCall && !isCronSecretCall) {
+    if (wantsAuto && !isServiceCall) {
+      const auditId = await startBriefingAttempt(supabase, {
+        briefing_date: pragueDayISO(),
+        generation_method: "auto",
+        trigger_source: "cron",
+        auth_mode: "unauthorized",
+        status: "failed",
+        error_code: "unauthorized_cron_call",
+        error_message: "Cron musí použít service-role Authorization bearer.",
+        completed_at: new Date().toISOString(),
+        metadata: { source: body?.source ?? null, method: body?.method ?? null, auth_header_prefix: authHeaderPrefix, has_x_karel_cron_secret: !!cronSecretHeader },
+      });
+      await finishBriefingAttempt(supabase, auditId, { status: "failed" });
+      return jsonResponse({ error: "Unauthorized" }, 401);
+    }
+    if (!isServiceCall) {
       const authResult = await requireAuth(req);
       if (authResult instanceof Response) {
         const auditId = await startBriefingAttempt(supabase, {
@@ -1588,10 +1606,26 @@ Deno.serve(async (req) => {
     if (!isServiceCall && body?.userId && String(body.userId) !== authenticatedUserId) {
       return jsonResponse({ error: "user_scope_mismatch" }, 403);
     }
-    let scopedUserId = !isServiceCall && !isCronSecretCall ? authenticatedUserId : String(body?.userId ?? "").trim() || null;
-    if ((isServiceCall || isCronSecretCall) && !scopedUserId) {
-      const { data: anyThread } = await supabase.from("did_threads").select("user_id").not("user_id", "is", null).order("last_activity_at", { ascending: false }).limit(1).maybeSingle();
-      scopedUserId = anyThread?.user_id ?? null;
+    let scopedUserId = !isServiceCall ? authenticatedUserId : null;
+    if (isServiceCall) {
+      const { data: activeCycleUser } = await supabase.from("did_update_cycles")
+        .select("user_id")
+        .not("user_id", "is", null)
+        .neq("user_id", ZERO_UUID)
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (activeCycleUser?.user_id) scopedUserId = activeCycleUser.user_id;
+      if (!scopedUserId) {
+        const { data: anyThread } = await supabase.from("did_threads")
+          .select("user_id")
+          .not("user_id", "is", null)
+          .neq("user_id", ZERO_UUID)
+          .order("last_activity_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        scopedUserId = anyThread?.user_id ?? null;
+      }
     }
     if (!scopedUserId) return jsonResponse({ error: "missing_user_scope" }, 400);
     const generationMethod = body?.method || (wantsAuto ? "auto" : "manual");
@@ -1599,7 +1633,7 @@ Deno.serve(async (req) => {
 
     const today = pragueDayISO();
     const triggerSource = body?.source === "cron" ? "cron" : body?.source === "service" ? "service" : "ui";
-    const authMode = isServiceCall ? "service_role" : isCronSecretCall ? "cron_secret" : "user";
+    const authMode = isServiceCall ? "service_role" : "user";
     attemptId = await startBriefingAttempt(supabase, {
       user_id: scopedUserId,
       briefing_date: today,
