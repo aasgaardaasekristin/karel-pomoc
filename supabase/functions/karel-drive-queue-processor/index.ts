@@ -19,6 +19,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { requireAuth } from "../_shared/auth.ts";
 import {
   getAccessToken,
   resolveKartotekaRoot,
@@ -210,6 +211,18 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const authHeader = req.headers.get("Authorization") || "";
+    const isServiceCall = authHeader === `Bearer ${serviceKey}`;
+    if (!isServiceCall) {
+      if (!scoped) {
+        return new Response(JSON.stringify({ error: "Unauthorized", log }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const auth = await requireAuth(req);
+      if (auth instanceof Response) return auth;
+    }
     const sb = createClient(supabaseUrl, serviceKey);
 
     if (scoped && writeIds.length === 0) {

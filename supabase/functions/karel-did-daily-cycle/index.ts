@@ -2439,19 +2439,13 @@ serve(async (req) => {
   const authHeaderTrimmed = authHeader.trim();
   const userAgent = (req.headers.get("User-Agent") || "").toLowerCase();
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
-  const publishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
 
-  const tokenMatchesKnownKey = [serviceRoleKey, anonKey, publishableKey]
-    .filter(Boolean)
-    .some((key) => authHeaderTrimmed === `Bearer ${key}`);
-
-  // pg_cron + pg_net calls can arrive with auth header variants; accept only when explicitly marked as cron source
+  // Cron/self-invoke musí být servisní volání. Anon/publishable klíč není interní oprávnění.
   let requestBody: any = {};
   try { requestBody = await req.clone().json(); } catch {}
   const isCronSource = requestBody?.source === "cron";
   const isPgNetCaller = userAgent.includes("pg_net");
-  const isCronCall = tokenMatchesKnownKey || (isCronSource && isPgNetCaller);
+  const isCronCall = !!serviceRoleKey && authHeaderTrimmed === `Bearer ${serviceRoleKey}` && (isCronSource || isPgNetCaller || req.headers.get("x-detached") === "1");
 
   let resolvedUserId: string | null = null;
   if (!isCronCall) {

@@ -13,6 +13,7 @@
  * Alert je auto-resolved při následujícím čistém heartbeatu (mimo scope, sleduje se UI).
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { requireAuth } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,6 +28,11 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const authHeader = req.headers.get("Authorization") || "";
+  if (authHeader !== `Bearer ${serviceKey}`) {
+    const auth = await requireAuth(req);
+    if (auth instanceof Response) return auth;
+  }
   const sb = createClient(supabaseUrl, serviceKey);
 
   const findings: Array<{ severity: string; message: string; details: any }> = [];

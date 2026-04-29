@@ -38,6 +38,7 @@ const corsHeaders = {
 
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-2.5-pro";
+const STALE_CYCLE_MINUTES = 90;
 
 const pragueDayISO = (d: Date = new Date()): string =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(d);
@@ -47,6 +48,31 @@ const daysAgoISO = (n: number): string => {
   d.setDate(d.getDate() - n);
   return pragueDayISO(d);
 };
+
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+async function startBriefingAttempt(sb: any, values: Record<string, unknown>): Promise<string | null> {
+  try {
+    const { data } = await sb.from("did_daily_briefing_attempts").insert(values).select("id").single();
+    return data?.id ?? null;
+  } catch (e) {
+    console.warn("[briefing-audit] start failed:", (e as Error)?.message || e);
+    return null;
+  }
+}
+
+async function finishBriefingAttempt(sb: any, attemptId: string | null, values: Record<string, unknown>) {
+  if (!attemptId) return;
+  try {
+    await sb.from("did_daily_briefing_attempts").update({ ...values, completed_at: new Date().toISOString() }).eq("id", attemptId);
+  } catch (e) {
+    console.warn("[briefing-audit] finish failed:", (e as Error)?.message || e);
+  }
+}
 
 const normalizeTherapistLabel = (value: unknown): "Hanička" | "Káťa" | "společně" | undefined => {
   const raw = String(value ?? "").trim().toLowerCase();
@@ -1513,6 +1539,7 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let activeAttemptId: string | null = null;
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1524,24 +1551,65 @@ Deno.serve(async (req) => {
     let body: any = {};
     try { body = await req.json(); } catch { /* GET / no body */ }
     const authHeader = req.headers.get("Authorization") || "";
-    const isServiceCall = serviceKey && authHeader === `Bearer ${serviceKey}`;
+    const cronSecret = Deno.env.get("KAREL_CRON_SECRET") || "";
+    const isServiceCall = !!serviceKey && authHeader === `Bearer ${serviceKey}`;
+    const cronSecretHeader = req.headers.get("X-Karel-Cron-Secret") || "";
+    let isCronSecretCall = !!cronSecret && cronSecretHeader === cronSecret;
+    if (!isCronSecretCall && cronSecretHeader) {
+      try {
+        const { data: vaultSecret } = await supabase.schema("vault").from("decrypted_secrets").select("decrypted_secret").eq("name", "KAREL_CRON_SECRET").maybeSingle();
+        isCronSecretCall = !!vaultSecret?.decrypted_secret && cronSecretHeader === vaultSecret.decrypted_secret;
+      } catch (e) {
+        console.warn("[briefing-auth] cron secret vault lookup failed:", (e as Error)?.message || e);
+      }
+    }
+    const wantsAuto = body?.method === "auto" || body?.source === "cron";
     let authenticatedUserId: string | null = null;
-    if (!isServiceCall) {
+    let attemptId: string | null = null;
+    if (!isServiceCall && !isCronSecretCall) {
       const authResult = await requireAuth(req);
-      if (authResult instanceof Response) return authResult;
+      if (authResult instanceof Response) {
+        const auditId = await startBriefingAttempt(supabase, {
+          briefing_date: pragueDayISO(),
+          generation_method: body?.method || (wantsAuto ? "auto" : "manual"),
+          trigger_source: body?.source === "cron" ? "cron" : "unauthorized",
+          auth_mode: "unauthorized",
+          status: "failed",
+          error_code: wantsAuto ? "unauthorized_cron_call" : "unauthorized_user_call",
+          error_message: "Chybí platné interní nebo uživatelské oprávnění.",
+          completed_at: new Date().toISOString(),
+          metadata: { source: body?.source ?? null, method: body?.method ?? null },
+        });
+        await finishBriefingAttempt(supabase, auditId, { status: "failed" });
+        return authResult;
+      }
       authenticatedUserId = String((authResult as { user: any }).user?.id ?? "");
     }
     if (!isServiceCall && body?.userId && String(body.userId) !== authenticatedUserId) {
-      return new Response(JSON.stringify({ error: "user_scope_mismatch" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "user_scope_mismatch" }, 403);
     }
-    const scopedUserId = isServiceCall ? (body?.userId ?? null) : authenticatedUserId;
-    const generationMethod = body?.method || "manual";
+    let scopedUserId = !isServiceCall && !isCronSecretCall ? authenticatedUserId : String(body?.userId ?? "").trim() || null;
+    if ((isServiceCall || isCronSecretCall) && !scopedUserId) {
+      const { data: anyThread } = await supabase.from("did_threads").select("user_id").not("user_id", "is", null).order("last_activity_at", { ascending: false }).limit(1).maybeSingle();
+      scopedUserId = anyThread?.user_id ?? null;
+    }
+    if (!scopedUserId) return jsonResponse({ error: "missing_user_scope" }, 400);
+    const generationMethod = body?.method || (wantsAuto ? "auto" : "manual");
     const forceRegenerate = body?.force === true;
 
     const today = pragueDayISO();
+    const triggerSource = body?.source === "cron" ? "cron" : body?.source === "service" ? "service" : "ui";
+    const authMode = isServiceCall ? "service_role" : isCronSecretCall ? "cron_secret" : "user";
+    attemptId = await startBriefingAttempt(supabase, {
+      user_id: scopedUserId,
+      briefing_date: today,
+      generation_method: generationMethod,
+      trigger_source: triggerSource,
+      auth_mode: authMode,
+      status: "started",
+      metadata: { force: forceRegenerate, source: body?.source ?? null },
+    });
+    activeAttemptId = attemptId;
 
     // ───────────────────────────────────────────────────────────
     // CYCLE GUARD (auto only)
@@ -1561,22 +1629,13 @@ Deno.serve(async (req) => {
     // method="manual" (UI tlačítko `Přegenerovat`) tento guard NEPOUŽÍVÁ —
     // ruční regenerace musí jít vždy, i bez completed cycle.
     if (generationMethod === "auto") {
-      // MORNING WINDOW: 04:00–10:00 UTC
-      // Důvod: ranní cron `did-daily-cycle-morning` startuje v 07:00 Praha
-      //   = 05:00 UTC (léto) / 06:00 UTC (zima).
-      // Okno 04:00–10:00 UTC pokrývá:
-      //   - DST varianty (CET/CEST)
-      //   - manuální backfill / retry téhož ranního runu
-      //   - early start ±1h
-      // Odpolední cron `did-daily-cycle-14cet` (15:00 Praha = 13:00/14:00 UTC)
-      // do tohoto okna nespadá → guard ho ignoruje a nemůže způsobit falešný
-      // skip auto briefingu.
-      const morningStartUtc = `${today}T04:00:00Z`;
+      const morningStartUtc = `${today}T00:00:00Z`;
       const morningEndUtc   = `${today}T10:00:00Z`;
       const { data: cycleRow, error: cycleErr } = await supabase
         .from("did_update_cycles")
-        .select("id, status, started_at, completed_at, last_error")
+        .select("id, status, started_at, completed_at, last_error, heartbeat_at, phase")
         .eq("cycle_type", "daily")
+        .eq("user_id", scopedUserId)
         .gte("started_at", morningStartUtc)
         .lt("started_at", morningEndUtc)
         .order("started_at", { ascending: false })
@@ -1587,20 +1646,40 @@ Deno.serve(async (req) => {
         console.error("[briefing-guard] cycle lookup error:", cycleErr);
       }
 
-      const cycleStatus: "running" | "failed" | "completed" | "missing" =
+      let cycleStatus: "running" | "failed" | "completed" | "missing" | "failed_stale" =
         !cycleRow ? "missing" : (cycleRow.status as any);
+      if (cycleRow && cycleStatus === "running") {
+        const ageMs = Date.now() - new Date(cycleRow.heartbeat_at || cycleRow.started_at).getTime();
+        if (ageMs > STALE_CYCLE_MINUTES * 60 * 1000) {
+          await supabase.from("did_update_cycles").update({
+            status: "failed_stale",
+            completed_at: new Date().toISOString(),
+            last_error: "daily_cycle_stuck_timeout",
+          }).eq("id", cycleRow.id).eq("status", "running");
+          cycleStatus = "failed_stale";
+          cycleRow.status = "failed_stale";
+          cycleRow.last_error = "daily_cycle_stuck_timeout";
+        }
+      }
 
       if (cycleStatus !== "completed") {
         const reason =
           cycleStatus === "running" ? "cycle_running" :
+          cycleStatus === "failed_stale" ? "cycle_stuck" :
           cycleStatus === "failed"  ? "cycle_failed"  :
           "cycle_missing";
         console.warn(
           `[briefing-guard] auto SKIPPED — daily-cycle-morning status='${cycleStatus}' for ${today}. ` +
           `cycle_id=${cycleRow?.id || "(none)"} started_at=${cycleRow?.started_at || "(none)"}`,
         );
-        return new Response(
-          JSON.stringify({
+        await finishBriefingAttempt(supabase, attemptId, {
+          status: "skipped",
+          error_code: reason,
+          error_message: cycleRow?.last_error || "Denní cyklus není dokončený.",
+          cycle_status: cycleStatus,
+          cycle_id: cycleRow?.id || null,
+        });
+        return jsonResponse({
             skipped: true,
             reason,
             cycle_status: cycleStatus,
@@ -1610,10 +1689,9 @@ Deno.serve(async (req) => {
             briefing_date: today,
             note: "Auto briefing nebyl vygenerován — dnešní ranní cycle ještě nedoběhl. " +
                   "Existující briefing dne (manual nebo dřívější auto) zůstává kanonický.",
-          }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+          });
       }
+      await finishBriefingAttempt(supabase, attemptId, { cycle_status: cycleStatus, cycle_id: cycleRow?.id || null });
     }
 
     // Pokud existuje fresh briefing pro dnešek a nechceme force, vrať ho
@@ -1629,10 +1707,8 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (existing) {
-        return new Response(
-          JSON.stringify({ briefing: existing, cached: true }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+        await finishBriefingAttempt(supabase, attemptId, { status: "succeeded", created_briefing_id: existing.id, metadata: { cached: true } });
+        return jsonResponse({ briefing: existing, cached: true });
       }
     }
 
@@ -1981,6 +2057,7 @@ Deno.serve(async (req) => {
       .single();
 
     if (insertErr) throw insertErr;
+    await finishBriefingAttempt(supabase, attemptId, { status: "succeeded", created_briefing_id: inserted.id });
 
     payload.ask_hanka = (payload.ask_hanka as AskItem[]).map((item) => ({ ...item, briefing_id: inserted.id }));
     payload.ask_kata = (payload.ask_kata as AskItem[]).map((item) => ({ ...item, briefing_id: inserted.id }));
@@ -2006,15 +2083,13 @@ Deno.serve(async (req) => {
       console.warn("[briefing] Pantry B mark-processed failed (non-fatal):", mErr);
     }
 
-    return new Response(
-      JSON.stringify({ briefing: inserted, cached: false, candidates: candidates.slice(0, 5) }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return jsonResponse({ briefing: inserted, cached: false, candidates: candidates.slice(0, 5) });
   } catch (err: any) {
     console.error("[karel-did-daily-briefing] Error:", err);
-    return new Response(
-      JSON.stringify({ error: err?.message || "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    if (activeAttemptId) {
+      const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      await finishBriefingAttempt(sb, activeAttemptId, { status: "failed", error_code: "generation_failed", error_message: String(err?.message || err).slice(0, 1000) });
+    }
+    return jsonResponse({ error: err?.message || "Unknown error" }, 500);
   }
 });

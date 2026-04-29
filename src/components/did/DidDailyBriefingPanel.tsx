@@ -238,6 +238,14 @@ interface BriefingRow {
   decisions_count: number;
 }
 
+interface BriefingDiagnostic {
+  reason: string;
+  detail: string;
+  lastBriefingDate?: string | null;
+  lastAttemptStatus?: string | null;
+  lastAttemptCode?: string | null;
+}
+
 interface YesterdayFallbackReview extends YesterdaySessionReview {
   status_label?: string;
   mode?: "playroom" | "session";
@@ -412,6 +420,17 @@ const createFallbackPlayroomProposal = (payload: BriefingPayload): ProposedPlayr
   };
 };
 
+const diagnosticText = (code?: string | null, status?: string | null): string => {
+  if (code === "unauthorized_cron_call") return "Automatické ranní volání nebylo autorizované.";
+  if (code === "cycle_running") return "Denní cyklus ještě běží.";
+  if (code === "cycle_stuck") return "Denní cyklus zůstal viset a byl označen jako stale.";
+  if (code === "cycle_failed") return "Denní cyklus skončil chybou.";
+  if (code === "cycle_missing") return "Dnešní ranní denní cyklus nebyl nalezen.";
+  if (status === "failed") return "Poslední pokus o vytvoření přehledu selhal.";
+  if (status === "skipped") return "Poslední pokus byl přeskočen backendovým guardem.";
+  return "Backend zatím neuložil dnešní přehled ani konkrétní dokončený pokus.";
+};
+
 const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) => {
   const navigate = useNavigate();
   const didThreads = useDidThreads();
@@ -419,6 +438,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [openingItemId, setOpeningItemId] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<BriefingDiagnostic | null>(null);
   const [yesterdaySessionFallback, setYesterdaySessionFallback] = useState<YesterdayFallbackReview | null>(null);
   const [yesterdayPlayroomFallback, setYesterdayPlayroomFallback] = useState<YesterdayFallbackReview | null>(null);
   /**
@@ -564,17 +584,34 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     setLoading(true);
     try {
       const today = pragueTodayISO();
-      const { data, error } = await supabase
+      const [{ data, error }, { data: lastBriefing }, { data: lastAttempt }] = await Promise.all([
+        supabase
         .from("did_daily_briefings")
         .select("*")
         .eq("is_stale", false)
         .eq("briefing_date", today)
         .order("generated_at", { ascending: false })
         .limit(1)
-        .maybeSingle();
+        .maybeSingle(),
+        supabase.from("did_daily_briefings").select("briefing_date,generated_at").eq("is_stale", false).order("generated_at", { ascending: false }).limit(1).maybeSingle(),
+        (supabase as any).from("did_daily_briefing_attempts").select("status,error_code,error_message,cycle_status,briefing_date,created_at").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      ]);
 
       if (error) throw error;
       setBriefing((data as unknown as BriefingRow) ?? null);
+      if (!data) {
+        const code = (lastAttempt as any)?.error_code ?? null;
+        const status = (lastAttempt as any)?.status ?? null;
+        setDiagnostic({
+          reason: diagnosticText(code, status),
+          detail: (lastAttempt as any)?.error_message || ((lastAttempt as any)?.cycle_status ? `Stav denního cyklu: ${(lastAttempt as any).cycle_status}` : "Audit zatím nemá detail chyby."),
+          lastBriefingDate: (lastBriefing as any)?.briefing_date ?? null,
+          lastAttemptStatus: status,
+          lastAttemptCode: code,
+        });
+      } else {
+        setDiagnostic(null);
+      }
     } catch (e) {
       console.error("[DidDailyBriefingPanel] load failed:", e);
       setBriefing(null);
@@ -1003,11 +1040,19 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           <Sparkles className="w-4 h-4 text-primary mt-0.5 shrink-0" />
           <div className="flex-1">
             <p className="text-sm text-foreground/80">
-              Pro dnešek zatím nemám připravený přehled.
+              Dnešní Karlův přehled zatím nevznikl.
             </p>
             <p className="text-[12px] text-muted-foreground mt-1">
-              Můžete ho vygenerovat ručně. Jinak vznikne ranním cyklem.
+              {diagnostic?.reason ?? "Zjišťuji poslední backendový stav."}
             </p>
+            {diagnostic?.detail && (
+              <p className="mt-1 text-[11px] text-muted-foreground/90">{diagnostic.detail}</p>
+            )}
+            {diagnostic?.lastBriefingDate && diagnostic.lastBriefingDate !== pragueTodayISO() && (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Poslední dostupný přehled: {formatDate(diagnostic.lastBriefingDate)}
+              </p>
+            )}
           </div>
         </div>
         <Button
@@ -1022,7 +1067,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           ) : (
             <Sparkles className="w-3 h-3 mr-1.5" />
           )}
-          Vygenerovat dnešní přehled
+          Přegenerovat dnešní přehled
         </Button>
       </div>
     );
