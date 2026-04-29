@@ -4378,9 +4378,12 @@ export type Database = {
           heartbeat_at: string | null
           id: string
           last_error: string | null
+          last_heartbeat_at: string | null
           phase: string
           phase_detail: string
+          phase_started_at: string | null
           phase_step: string | null
+          phase_timeout_seconds: number | null
           progress_current: number | null
           progress_total: number | null
           report_summary: string | null
@@ -4397,9 +4400,12 @@ export type Database = {
           heartbeat_at?: string | null
           id?: string
           last_error?: string | null
+          last_heartbeat_at?: string | null
           phase?: string
           phase_detail?: string
+          phase_started_at?: string | null
           phase_step?: string | null
+          phase_timeout_seconds?: number | null
           progress_current?: number | null
           progress_total?: number | null
           report_summary?: string | null
@@ -4416,9 +4422,12 @@ export type Database = {
           heartbeat_at?: string | null
           id?: string
           last_error?: string | null
+          last_heartbeat_at?: string | null
           phase?: string
           phase_detail?: string
+          phase_started_at?: string | null
           phase_step?: string | null
+          phase_timeout_seconds?: number | null
           progress_current?: number | null
           progress_total?: number | null
           report_summary?: string | null
