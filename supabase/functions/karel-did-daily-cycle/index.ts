@@ -2326,7 +2326,7 @@ serve(async (req) => {
         .eq("cycle_type", "daily").eq("status", "completed")
         .order("completed_at", { ascending: false }).limit(1).maybeSingle(),
       adminSb.from("did_update_cycles")
-        .select("id, started_at, status, phase, phase_detail, heartbeat_at, last_error")
+        .select("id, started_at, status, phase, phase_detail, heartbeat_at, last_heartbeat_at, phase_started_at, phase_timeout_seconds, last_error")
         .eq("cycle_type", "daily").eq("status", "running")
         .order("started_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
@@ -2334,7 +2334,7 @@ serve(async (req) => {
     let heartbeatAgeSec: number | null = null;
     let stuck = false;
     if (running) {
-      const hb = running.heartbeat_at ? new Date(running.heartbeat_at).getTime() : new Date(running.started_at).getTime();
+      const hb = running.last_heartbeat_at || running.heartbeat_at ? new Date(running.last_heartbeat_at || running.heartbeat_at).getTime() : new Date(running.started_at).getTime();
       heartbeatAgeSec = Math.floor((Date.now() - hb) / 1000);
       stuck = heartbeatAgeSec > 30 * 60;
     }
@@ -2492,6 +2492,9 @@ serve(async (req) => {
   let cycleId: string | null = null;
   let sb: ReturnType<typeof createClient> | null = null;
   let consolidationRunId: string | null = null;
+  let compileDataKeepAlive: number | undefined;
+  let aiAnalysisKeepAlive: number | undefined;
+  let phaseTimeoutGuard: number | undefined;
 
   try {
     // ═══ FAST-PATH: syncRegistry – batched: list + process_one ═══
@@ -3104,12 +3107,12 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
     if (stuckDailyCycles && stuckDailyCycles.length > 0) {
       for (const stuck of stuckDailyCycles) {
         await sb.from("did_update_cycles").update({
-          status: "failed",
+          status: "failed_stale",
           completed_at: new Date().toISOString(),
-          last_error: `stuck_no_heartbeat_${STUCK_WINDOW_MIN}min(phase=${(stuck as any).phase || "unknown"})`,
+          last_error: `daily_cycle_stuck_timeout:${(stuck as any).phase || "unknown"}`,
         }).eq("id", stuck.id);
       }
-      console.log(`[daily-cycle] Auto-cleanup: ${stuckDailyCycles.length} stuck daily cycles marked failed (window=${STUCK_WINDOW_MIN}min)`);
+      console.log(`[daily-cycle] Auto-cleanup: ${stuckDailyCycles.length} stuck daily cycles marked failed_stale (window=${STUCK_WINDOW_MIN}min)`);
     }
 
     // 2) CONCURRENCY GUARD podle freshness, ne podle started_at.
@@ -3167,7 +3170,19 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
           phase,
           phase_detail: detail.slice(0, 500),
           heartbeat_at: new Date().toISOString(),
+          last_heartbeat_at: new Date().toISOString(),
+          phase_started_at: new Date().toISOString(),
+          phase_timeout_seconds: 30 * 60,
         }).eq("id", cycleId);
+        if (phaseTimeoutGuard !== undefined) clearTimeout(phaseTimeoutGuard);
+        phaseTimeoutGuard = setTimeout(() => {
+          void sb.from("did_update_cycles").update({
+            status: "failed_stale",
+            completed_at: new Date().toISOString(),
+            last_error: `daily_cycle_stuck_timeout:${phase}`,
+            report_summary: `STALE: phase timeout after 1800s (${phase})`,
+          }).eq("id", cycleId).eq("status", "running");
+        }, 30 * 60 * 1000) as unknown as number;
       } catch (e) {
         console.warn(`[daily-cycle] setPhase("${phase}") failed:`, (e as Error)?.message || e);
       }
@@ -3580,7 +3595,7 @@ Datum: ${dateStr}` },
     // Without a periodic heartbeat the cleanup-watcher (E3) can mark the run
     // stuck mid-flight (observed: 74a1ed4d died after 10s). Tick every 45s;
     // cleared in the matching finally below before Phase 3b begins.
-    let compileDataKeepAlive: number | undefined = setInterval(() => {
+    compileDataKeepAlive = setInterval(() => {
       void setPhase("compile_data_keepalive", "Fáze 3: čtu Drive (CENTRUM/karty/dohody)");
     }, 45_000) as unknown as number;
     // 3. COMPILE THREAD + CONVERSATION DATA (token-safe, truncated)
@@ -4017,7 +4032,6 @@ Datum: ${dateStr}` },
     // ─── KEEP-ALIVE: Phase 3b AI gateway call can take 60–120s. Without
     // a periodic heartbeat the cleanup-watcher (E3) sees stale heartbeat_at
     // and marks the cycle stuck mid-flight. Tick every 45s; cleared in finally.
-    let aiAnalysisKeepAlive: number | undefined;
     aiAnalysisKeepAlive = setInterval(() => {
       void setPhase("ai_analysis_keepalive", "Fáze 3b: čekám na AI gateway");
     }, 45_000) as unknown as number;
@@ -5743,6 +5757,7 @@ ESKALACE: level ${task.escalation_level || 0}`,
       await sb.from("did_update_cycles").update({
         status: hadCardUpdateErrors ? "failed" : "completed",
         completed_at: new Date().toISOString(),
+        last_heartbeat_at: new Date().toISOString(),
         report_summary: validatedReportSummary,
         cards_updated: cardsUpdated,
         context_data: {
@@ -7811,6 +7826,10 @@ Vra\u0165 JSON:
       }).eq("id", consolidationRunId);
     }
 
+    if (compileDataKeepAlive !== undefined) { clearInterval(compileDataKeepAlive); compileDataKeepAlive = undefined; }
+    if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
+    if (phaseTimeoutGuard !== undefined) { clearTimeout(phaseTimeoutGuard); phaseTimeoutGuard = undefined; }
+
     return new Response(JSON.stringify({
       success: !hadCardUpdateErrors,
       threadsProcessed: threads.length,
@@ -7827,11 +7846,17 @@ Vra\u0165 JSON:
   } catch (error) {
     console.error('[DAILY-CYCLE FATAL ERROR]', error?.message || error, error?.stack || '');
 
+    if (compileDataKeepAlive !== undefined) { clearInterval(compileDataKeepAlive); compileDataKeepAlive = undefined; }
+    if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
+    if (phaseTimeoutGuard !== undefined) { clearTimeout(phaseTimeoutGuard); phaseTimeoutGuard = undefined; }
+
     if (sb && cycleId) {
       try {
         await sb.from("did_update_cycles").update({
           status: "failed",
           completed_at: new Date().toISOString(),
+          last_heartbeat_at: new Date().toISOString(),
+          last_error: `daily_cycle_failed:${(error?.message || String(error)).slice(0, 300)}`,
           report_summary: `FATAL: ${(error?.message || String(error))}`.slice(0, 500),
         }).eq("id", cycleId);
       } catch (cycleUpdateErr) {
