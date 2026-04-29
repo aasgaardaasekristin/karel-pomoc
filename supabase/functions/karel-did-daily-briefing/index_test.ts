@@ -13,5 +13,5 @@ Deno.test("opening treats pending safety-net session as opened partial, not not-
   assertStringIncludes(source, "isOpenedPartialSessionReview");
   assertStringIncludes(source, "otevřené / částečně rozpracované");
   assertStringIncludes(source, "pending_review / evidence_limited");
-  assertEquals(/openedPartialSession[\s\S]{0,500}klinicky neproběhlo/i.test(source), false);
+  assertEquals(/if \(sess\?\.exists && sess\?\.held === false\) evidenceKnown\.push\(`Plánované Sezení/i.test(source), false);
 });
