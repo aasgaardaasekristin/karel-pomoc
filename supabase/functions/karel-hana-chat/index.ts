@@ -31,6 +31,52 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+export const pragueDateISO = (d: Date = new Date()): string =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(d);
+
+const INLINE_BRIEFING_PATTERN = /(DENN[ÍI]\s+BRIEFING|AKUTN[ÍI]\s*:|ÚKOLY\s+NA\s+DNES\s*:|UKOLY\s+NA\s+DNES\s*:|SLEDOVAT\s*:|STRUČN[ÝY]\s+PŘEHLED\s*:|STRUCN[YÝ]\s+PREHLED\s*:)/i;
+const EXPLICIT_BRIEFING_REQUEST_PATTERN = /(denn[íi]\s+briefing|karl[ůu]v\s+p[řr]ehled|rann[íi]\s+p[řr]ehled|uka[zž].*briefing|p[řr]egeneruj.*briefing)/i;
+const OVERSTRONG_EVIDENCE_PATTERN = /(diagnostick[ýy]\s+sign[áa]l|vysv[ěe]tluje\s+to|stala\s+ses\s+zt[ěe]lesn[ěe]n[íi]m|ukazuje\s+n[áa]m\s+jednozna[čc]n[ěe]|je\s+to\s+projekce)/i;
+
+export function hanaPersonalSystemGuardBlock(currentDate = pragueDateISO()): string {
+  return `
+═══ HANA/OSOBNÍ PRIVACY-FIRST GUARD ═══
+Aktuální ověřené datum pro Prahu: ${currentDate}. Pokud uvádíš datum, použij pouze toto datum nebo datum explicitně doložené v DB kontextu. Nikdy nehádej datum.
+
+V Hana/Osobní nikdy nevypisuj interní denní briefing, Karlův přehled, týmový dashboard, úkolový briefing pro Haničku/Káťu, Pantry/ingestion internals ani backendové provozní shrnutí, pokud si to Hanička výslovně nevyžádá.
+
+Pokud Hanička přinese DID-relevantní informaci, odpověz osobně, krátce, klidně a podpůrně. Zpracovaná terapeutická implikace může vzniknout na pozadí, ale v chatu nevkládej interní briefing.
+
+Jazyk: pro kluky nepoužívej chladné slovo „systém“, pokud nejde o technické vysvětlení. Preferuj „kluci“, „děti“, „části“, „vnitřní rodina“.
+
+Evidence discipline: Hana/Osobní vstup je therapist report / therapist observation / factual correction. Nesmíš z něj automaticky dělat jistý klinický závěr o části. Používej opatrné formulace: „může to ukazovat“, „zdá se“, „stojí za ověření“, „je potřeba se zeptat, co děti samy říkají/cítí“. Bez přímé evidence části neříkej: „diagnostický signál“, „vysvětluje to“, „stala ses ztělesněním“, „jednoznačně“, „projekce“.`;
+}
+
+export function guardHanaPersonalResponse(output: string, userInput: string, currentDate = pragueDateISO()): { text: string; replaced: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  const explicitBriefing = EXPLICIT_BRIEFING_REQUEST_PATTERN.test(userInput || "");
+  if (!explicitBriefing && INLINE_BRIEFING_PATTERN.test(output || "")) reasons.push("inline_daily_briefing");
+  if (/2\.\s*kv[ěe]tna/i.test(output || "") && !/2\.\s*kv[ěe]tna/i.test(userInput || "")) reasons.push("wrong_date_may_2");
+  if (OVERSTRONG_EVIDENCE_PATTERN.test(output || "")) reasons.push("overstrong_evidence_claim");
+  if (!reasons.length) return { text: output, replaced: false, reasons };
+  return {
+    replaced: true,
+    reasons,
+    text: `Hani, rozumím. Tohle je pro kluky důležité a zároveň citlivé. Tady v osobním vlákně ti odpovím lidsky a klidně; interní terapeutické zpracování si Karel udělá na pozadí, bez toho, aby ti do osobního chatu vkládal briefing.\n\nDržím se dnešního data (${currentDate}) a budu to brát opatrně: jako Hančino sdělení a faktický/terapeutický kontext, ne jako jistý závěr o dětech bez jejich vlastní reakce.`,
+  };
+}
+
+function sseFromText(text: string): ReadableStream<Uint8Array> {
+  const enc = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`));
+      controller.enqueue(enc.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+}
+
 // ═══ TYPES ═══
 type Domain = "HANA" | "DID" | "PRACE";
 type HanaState = "EMO_KLIDNA" | "EMO_PRETIZENA" | "EMO_ROZCILENA" | "EMO_ANALYTICKA" | "EMO_DISOCIACE" | "EMO_RADOSTNA" | "EMO_SMUTNA" | "EMO_UZKOSTNA";
