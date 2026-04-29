@@ -283,7 +283,7 @@ function buildYesterdaySessionReview(context: any) {
       held: !technicalTest && !["pending_review", "analysis_running"].includes(String(review.status)),
       status: technicalTest ? "technical_test" : review.status,
       review_status: review.status,
-      fallback_reason: technicalTest ? "planned_session_not_clinically_held" : undefined,
+      fallback_reason: technicalTest ? "planned_session_not_clinically_held" : isOpenedPartialSessionReview(review) ? "opened_or_partial_activity_detected" : undefined,
       part_name: review.part_name,
       plan_id: review.plan_id,
       thread_id: analysis.thread_id ?? analysis.confirmed_facts?.thread_id ?? review.evidence_items?.find?.((e: any) => e?.kind === "thread_transcript")?.source_id ?? null,
@@ -292,12 +292,16 @@ function buildYesterdaySessionReview(context: any) {
       lead: normalizeTherapistLabel(review.lead_person ?? review.lead) ?? undefined,
       assistant_persons: review.assistant_persons ?? [],
       completion: technicalTest ? "abandoned" : evidenceBasis === "completed" ? "completed" : review.status === "evidence_limited" || review.status === "partially_analyzed" ? "partial" : "abandoned",
-      practical_report_text: technicalTest
+      practical_report_text: isOpenedPartialSessionReview(review) && !technicalTest
+        ? `Včerejší Sezení s ${review.part_name || "částí"} bylo otevřené nebo částečně rozpracované, ale zatím nemá plné dovyhodnocení. Máme potvrzený started/live/progress signál, proto ho neoznačuji jako neproběhlé; zacházím s ním jako s pending_review / evidence_limited.`
+        : technicalTest
         ? `Plánované Sezení s ${review.part_name || "částí"} se klinicky neuskutečnilo. Záznam odpovídá technickému testu nebo plánované aktivitě bez klinického průběhu, proto z něj nevyvozujeme nové klinické poznatky. Původní potřeba Sezení — zejména práce s tělesnými potížemi a neverbálním zpracováním — zůstává otevřená.`
         : cleanBlockText(analysis.practical_report_text ?? review.clinical_summary ?? ""),
       detailed_analysis_text: cleanBlockText(analysis.detailed_analysis_text ?? ""),
       team_closing_text: cleanBlockText(analysis.team_closing_text ?? review.team_closing ?? ""),
-      karel_summary: technicalTest
+      karel_summary: isOpenedPartialSessionReview(review) && !technicalTest
+        ? `Včerejší Sezení bylo otevřené nebo částečně rozpracované a čeká na plné dovyhodnocení; není označené jako neproběhlé.`
+        : technicalTest
         ? `Plánované Sezení s ${review.part_name || "částí"} se klinicky neuskutečnilo. Z tohoto záznamu nevyvozujeme nové klinické poznatky; původní potřeba Sezení zůstává otevřená.`
         : cleanBlockText(analysis.practical_report_text ?? review.clinical_summary ?? review.evidence_limitations ?? ""),
       key_finding_about_part: cleanBlockText(review.implications_for_part ?? review.therapeutic_implications ?? analysis.implications_for_part ?? ""),
