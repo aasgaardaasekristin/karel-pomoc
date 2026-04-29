@@ -37,7 +37,7 @@ export function guardHanaPersonalResponse(output: string, userInput: string, cur
     return {
       replaced: true,
       reasons,
-      text: fishContext ? `Hani, myslíš Timmiho/keporkaka a to, jak kluci včera sledovali reálnou záchrannou situaci. Budu to držet jako skutečnou událost a emoční kontext, ne jako projekci ani závěr o klucích.
+      text: fishContext ? `Hani, myslíš Timmiho/keporkaka a to, jak kluci včera sledovali reálnou záchrannou situaci. Je to skutečná aktuální situace a budu ji držet jako skutečnou událost a emoční kontext, ne jako projekci ani závěr o klucích.
 
 Nevyvodím z toho význam bez jejich vlastní reakce. Dnes bych šel jemně: nejdřív ověřit, co o tom sami říkají, co cítí v těle, jestli jsou zahlcení a co by teď potřebovali, aby zůstali tady a v bezpečí.` : `Hani, rozumím. Je to skutečná aktuální situace a důležitý emoční kontext, ne automatický závěr o klucích.
 
