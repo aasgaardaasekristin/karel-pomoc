@@ -1466,13 +1466,13 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             </div>
             <div>
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Hlavní téma dnešní Herny</p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{playroomProposal.main_theme}</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{cleanVisibleClinicalText(playroomProposal.main_theme)}</p>
             </div>
             <div>
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Proč právě tato Herna</p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomProposal.why_this_part_today}</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{cleanVisibleClinicalText(playroomProposal.why_this_part_today)}</p>
             </div>
-            {playroomContextSummary && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Použitý operační kontext</p><p className="mt-0.5 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{playroomContextSummary}</p></div>}
+            {playroomContextSummary && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Použitý včerejší kontext</p><p className="mt-0.5 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{playroomContextSummary}</p></div>}
             {Array.isArray(playroomProposal.goals) && playroomProposal.goals.length > 0 && (
               <div>
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Cíle Herny</p>
