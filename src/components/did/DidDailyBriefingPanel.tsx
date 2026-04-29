@@ -1040,11 +1040,19 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           <Sparkles className="w-4 h-4 text-primary mt-0.5 shrink-0" />
           <div className="flex-1">
             <p className="text-sm text-foreground/80">
-              Pro dnešek zatím nemám připravený přehled.
+              Dnešní Karlův přehled zatím nevznikl.
             </p>
             <p className="text-[12px] text-muted-foreground mt-1">
-              Můžete ho vygenerovat ručně. Jinak vznikne ranním cyklem.
+              {diagnostic?.reason ?? "Zjišťuji poslední backendový stav."}
             </p>
+            {diagnostic?.detail && (
+              <p className="mt-1 text-[11px] text-muted-foreground/90">{diagnostic.detail}</p>
+            )}
+            {diagnostic?.lastBriefingDate && diagnostic.lastBriefingDate !== pragueTodayISO() && (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Poslední dostupný přehled: {formatDate(diagnostic.lastBriefingDate)}
+              </p>
+            )}
           </div>
         </div>
         <Button
@@ -1059,7 +1067,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           ) : (
             <Sparkles className="w-3 h-3 mr-1.5" />
           )}
-          Vygenerovat dnešní přehled
+          Přegenerovat dnešní přehled
         </Button>
       </div>
     );
