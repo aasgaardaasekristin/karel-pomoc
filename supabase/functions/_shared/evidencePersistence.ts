@@ -298,7 +298,7 @@ export async function persistEvidenceForIntent(
   }
 
   // ── 4. needsVerification → did_pending_questions ──
-  if (output.needsVerification && output.sensitivity !== "secret_karel_only") {
+  if (output.needsVerification) {
     try {
       const directedTo =
         ctx.therapistKey === "KATA" ? "kata" :

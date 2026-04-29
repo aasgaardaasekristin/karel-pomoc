@@ -36,7 +36,7 @@ export const pragueDateISO = (d: Date = new Date()): string =>
 
 const INLINE_BRIEFING_PATTERN = /(DENN[ÍI]\s+BRIEFING|AKUTN[ÍI]\s*:|ÚKOLY\s+NA\s+DNES\s*:|UKOLY\s+NA\s+DNES\s*:|SLEDOVAT\s*:|STRUČN[ÝY]\s+PŘEHLED\s*:|STRUCN[YÝ]\s+PREHLED\s*:)/i;
 const EXPLICIT_BRIEFING_REQUEST_PATTERN = /(denn[íi]\s+briefing|karl[ůu]v\s+p[řr]ehled|rann[íi]\s+p[řr]ehled|uka[zž].*briefing|p[řr]egeneruj.*briefing)/i;
-const OVERSTRONG_EVIDENCE_PATTERN = /(diagnostick[ýy]\s+sign[áa]l|vysv[ěe]tluje\s+to|stala\s+ses\s+zt[ěe]lesn[ěe]n[íi]m|ukazuje\s+n[áa]m\s+jednozna[čc]n[ěe]|je\s+to\s+projekce)/i;
+const OVERSTRONG_EVIDENCE_PATTERN = /(diagnostick[ýy]\s+sign[áa]l|vysv[ěe]tluje\s+to|stala\s+ses\s+zt[ěe]lesn[ěe]n[íi]m|ukazuje\s+n[áa]m\s+jednozna[čc]n[ěe]|je\s+to\s+projekce|st[aá]v[aá]\s+se\s+[^.!?\n]{0,80}\bsymbolem\b|dob[řr]e\s+znaj[íi]\s+[^.!?\n]{0,80}\bpot[řr]ebu\b|pot[řr]ebu\s+b[ýy]t\s+zachr[aá]n[ěe]n|souzn[ěe]j[íi]|ob[řr][íi]\s+empatie)/i;
 
 export function hanaPersonalSystemGuardBlock(currentDate = pragueDateISO()): string {
   return `
@@ -604,9 +604,9 @@ async function runHanaPostChatWriteback(args: {
   roleScope: RoleScopeResult;
   allowDriveWriteback?: boolean;
 }): Promise<void> {
-  if (!args.allowDriveWriteback) {
-    console.log("[hana-writeback] skipped by persistence policy (no raw Drive / no-history)");
-    return;
+  const allowDriveWriteback = args.allowDriveWriteback === true;
+  if (!allowDriveWriteback) {
+    console.log("[hana-writeback] Drive enqueue disabled by Hana/osobní privacy policy; DB evidence may still run");
   }
   const { userText, karelResponse, conversationId, apiKey, roleScope } = args;
   const sb = getServiceClient();
@@ -705,13 +705,15 @@ async function runHanaPostChatWriteback(args: {
         subject_type: resolveGovernedSubjectType(intent),
         subject_id: resolveGovernedSubjectId(intent, therapistKey),
       });
-      const { error: writeErr } = await sb.from("did_pending_drive_writes").insert({
-        target_document: intent.target.documentKey,
-        content: governedContent,
-        priority: intent.evidenceKind === "FACT" ? "high" : "normal",
-        status: "pending",
-        write_type: "append",
-      });
+      const writeErr = allowDriveWriteback
+        ? (await sb.from("did_pending_drive_writes").insert({
+          target_document: intent.target.documentKey,
+          content: governedContent,
+          priority: intent.evidenceKind === "FACT" ? "high" : "normal",
+          status: "pending",
+          write_type: "append",
+        })).error
+        : null;
 
       // ── FÁZE 2B: DB evidence pipeline (parallel with Drive enqueue) ──
       let observationId: string | null = null;
@@ -725,6 +727,9 @@ async function runHanaPostChatWriteback(args: {
         }
       }
 
+      if (!allowDriveWriteback) {
+        continue;
+      }
       if (writeErr) {
         console.warn(`[hana-writeback] Write error for ${intent.target.documentKey}:`, writeErr.message);
         await auditDriveEnqueue(sb, {
@@ -842,7 +847,7 @@ async function runHanaBackgroundProcessing(args: {
     conversationId: conversationId || null,
     apiKey: LOVABLE_API_KEY,
     roleScope,
-    allowDriveWriteback: persistencePolicy.mode_id === "hana_osobni" && persistencePolicy.drive_policy === "no_raw_personal" && persistencePolicy.pantry_policy === "processed_did_implication_only",
+    allowDriveWriteback: false,
   });
 }
 
@@ -1085,7 +1090,7 @@ serve(async (req) => {
               conversationId: conversationId || null,
               apiKey: LOVABLE_API_KEY,
               roleScope,
-              allowDriveWriteback: persistencePolicy.mode_id === "hana_osobni" && persistencePolicy.drive_policy === "no_raw_personal" && persistencePolicy.pantry_policy === "processed_did_implication_only",
+              allowDriveWriteback: false,
             }).catch((e) => console.error("[hana-writeback] failed:", e));
           }
         }

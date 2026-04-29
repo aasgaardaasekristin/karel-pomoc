@@ -841,12 +841,14 @@ function sessionStartedEvidence(args: {
   observationsByBlock?: Record<string, string>;
   liveProgress?: any;
   threads?: any[];
+  plan?: any;
 }) {
   const completedBlocks =
     args.completedBlocks ?? args.liveProgress?.completed_blocks ?? 0;
   const turns = args.turnsByBlock ?? args.liveProgress?.turns_by_block ?? {};
   const observations = args.observationsByBlock ?? {};
   const artifacts = args.liveProgress?.artifacts_by_block ?? {};
+  const liveItems = Array.isArray(args.liveProgress?.items) ? args.liveProgress.items : [];
   const postSessionResult =
     args.liveProgress?.post_session_result &&
     typeof args.liveProgress.post_session_result === "object"
@@ -863,6 +865,14 @@ function sessionStartedEvidence(args: {
       (v: any) => String(v || "").trim().length > 0,
     )
       ? "observations"
+      : null,
+    liveItems.some((item: any) => String(item?.observation ?? item?.text ?? item?.title ?? "").trim().length > 0)
+      ? "live_progress_items"
+      : null,
+    args.liveProgress?.id ? "live_progress_row" : null,
+    args.plan?.started_at ? "plan_started_at" : null,
+    ["in_progress", "active", "started"].includes(String(args.plan?.lifecycle_status ?? args.plan?.status ?? "").toLowerCase())
+      ? "plan_opened_status"
       : null,
     countArtifactsByBlock(artifacts) > 0 ? "artifacts" : null,
     postSessionResult?.provenance === "therapist_entered" ||
@@ -3033,6 +3043,7 @@ Deno.serve(async (req: Request) => {
       observationsByBlock,
       liveProgress,
       threads: ctx.threads,
+      plan: ctx.plan,
     });
     const sessionContract =
       ctx.plan.urgency_breakdown &&
