@@ -7394,6 +7394,7 @@ Vra\u0165 JSON:
         let phase8a5ProcessedSessions = 0;
         let phase8a5PartialSessions = 0;
         for (const plan of stalePlans ?? []) {
+          let evalTo: number | undefined;
           try {
             const { data: liveProgress } = await sb
               .from("did_live_session_progress")
