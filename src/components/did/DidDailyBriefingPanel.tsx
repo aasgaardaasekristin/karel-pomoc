@@ -1141,6 +1141,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const legacyTechnicalGreeting = /těžk[áa]\s+syntéza|fallback|bezpečn[ýy]\s+režim/i.test(p.greeting || "");
   const openingMonologueText = (p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnes držme hlavně klinickou návaznost, opatrnost v závěrech a jeden bezpečný další krok pro kluky. Budu rozlišovat, co víme jistě, co je pracovní hypotéza a co ještě čeká na ověření." : p.greeting) || "").trim();
   const technicalNote = (p.technical_note || p.opening_monologue?.technical_note || "").trim();
+  const visibleRealityContext = realityContextText(p);
+  const sessionContextSummary = backendContextSummary(p.proposed_session?.backend_context_inputs);
+  const playroomContextSummary = backendContextSummary(playroomProposal?.backend_context_inputs);
 
   return (
     <div className="space-y-1">
@@ -1182,6 +1185,16 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           </p>
         )}
       </div>
+
+      {visibleRealityContext && (
+        <>
+          <NarrativeDivider />
+          <SectionHead>Včerejší real-world kontext</SectionHead>
+          <div className="mt-2 rounded-lg border border-border/60 bg-card/40 p-3">
+            <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{visibleRealityContext}</p>
+          </div>
+        </>
+      )}
 
       {/* 2. Co se změnilo za poslední 3 dny */}
       {p.last_3_days && (
