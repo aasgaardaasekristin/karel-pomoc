@@ -7,6 +7,7 @@ const OVERSTRONG_EVIDENCE_PATTERN = /(diagnostick[ýy]\s+sign[áa]l|vysv[ěe]tlu
 const EXTERNAL_FACT_OVERINTERPRETATION_PATTERN = /(\b(?:je|jsou|byl[ao]?|bude|p[ůu]sob[íi]\s+jako)\s+[^.!?\n]{0,80}\bsymbol(?:em|u|y|ick[ýy])\b|\bsymbolizuje\b|\b(?:se\s+[^.!?\n]{0,80})?st[aá]v[aá]\s+[^.!?\n]{0,80}\bsymbolem\b|\bzt[ěe]les[nň]uje\b|\bje\s+[^.!?\n]{0,80}\bzt[ěe]lesn[ěe]n[íi]m\b|\bje\s+[^.!?\n]{0,80}\b(?:obrazem|metaforou)\b|\breprezentuje\b|\bodr[aá][zž][íi]\s+(?:jejich|vnit[řr]n[íi])\s+stav\b|\bukazuje\s+[^.!?\n]{0,80}\b(?:jejich\s+)?pot[řr]ebu\b|\bvysv[ěe]tluje\s+[^.!?\n]{0,80}\b(?:jejich\s+)?(?:[úu]navu|stav|strach|reakci|pro[žz][ií]v[aá]n[íi])\b|\b(?:je\s+[^.!?\n]{0,40}\b)?projekc[íi]\b|diagnostick[ýy]\s+sign[áa]l|hlubok[ýy]\s+sign[áa]l|jednozna[čc]n[ěe]\s+ukazuje|d[ěe]ti\s+(?:jsou|se\s+s\s+n[íi]m\s+ztoto[zž]nil[yi]|se\s+ztoto[zž]nil[yi])\s+[^.!?\n]{0,80}\b(?:v\s+n[ěe]m|j[íi]m|s\s+n[íi]m)?\b)/i;
 const EXTERNAL_FACT_CHILD_STATE_CLAIM_PATTERN = /(pro\s+(?:na[sš]e\s+)?(?:d[ěe]ti|kluky|[čc][aá]sti)\s+[^.!?\n]{0,120}\b(?:je|nen[íi]|vytv[aá][řr][íi]|spou[sš]t[íi]|znamen[aá])\b|(?:d[ěe]ti|kluci|[čc][aá]sti)\s+[^.!?\n]{0,120}\b(?:c[ií]t[íi]|pro[žz][ií]vaj[íi]|pot[řr]ebuj[íi]|maj[íi]|spou[sš]t[íi]|identifikuj[íi]|ztoto[zž][nň]uj[íi])\b|jejich\s+(?:[úu]zkost|strach|stav|pro[žz][ií]v[aá]n[íi]|pot[řr]eba|reakce)\s+[^.!?\n]{0,80}\b(?:je|ukazuje|znamen[aá]|souvis[íi])\b|vnit[řr]n[íi]\s+(?:sv[ěe]t|po[zž][aá]r|pr[aá]ce|stav)\b|nen[íi]\s+jen\s+(?:informace|zpr[aá]va|ud[aá]lost|zv[ií][řr]e))/i;
 const REAL_WORLD_FACT_INPUT_PATTERN = /(skute[čc]n(?:[áaéeý]|ou)|re[aá]ln(?:[áaéeý]|ou)|aktu[aá]ln[íi]|zpr[aá]v[ayu]|odkaz|url|https?:\/\/|nen[íi]\s+to\s+(?:symbol|projekce|fiktivn[íi])|nepochopil\s+jsi\s+situaci|z[aá]chrann(?:[áaý]|ou)|telefon[aá]t|[úu]mrt[íi]|ztr[aá]t[au]|v[aá]lk[ay]|po[žz][aá]r|nemoc|zdravotn[íi]\s+ud[aá]lost|[čc]l[aá]nek|rybi[čc]k|tim+m[iy]|kepork|velryb)/i;
+const REAL_WORLD_FACT_RUNTIME_OVERREACH_PATTERN = /(identifikoval[aiy]?|aktivoval[aoiy]?\s+v\s+nich|vy[žz]d[íi]mal|vlezl[ioy]?\s+do\s+toho|boj\s+o\s+[žz]ivot|uk[áa]zalo\s+to,?\s+jak\s+hluboko|touha\s+pom[áa]hat\s+a\s+zachra[nň]ovat|zasekl[aiy]?\s+v\s+tom)/i;
 
 export function hanaPersonalSystemGuardBlock(currentDate = pragueDateISO()): string {
   return `
@@ -31,6 +32,7 @@ export function guardHanaPersonalResponse(output: string, userInput: string, cur
   if (OVERSTRONG_EVIDENCE_PATTERN.test(output || "")) reasons.push("overstrong_evidence_claim");
   if (realWorldFactInput && EXTERNAL_FACT_OVERINTERPRETATION_PATTERN.test(output || "")) reasons.push("external_fact_overinterpretation");
   if (realWorldFactInput && EXTERNAL_FACT_CHILD_STATE_CLAIM_PATTERN.test(output || "")) reasons.push("external_fact_child_state_claim");
+  if (realWorldFactInput && REAL_WORLD_FACT_RUNTIME_OVERREACH_PATTERN.test(output || "")) reasons.push("external_fact_runtime_overreach");
   if (!reasons.length) return { text: output, replaced: false, reasons };
   if (realWorldFactInput) {
     const fishContext = /rybi[čc]k|tim+m[iy]|kepork|velryb/i.test(`${userInput}\n${output}`);
