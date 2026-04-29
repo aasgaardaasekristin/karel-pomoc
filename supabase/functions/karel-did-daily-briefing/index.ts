@@ -354,8 +354,11 @@ function injectSessionReviewIntoProposals(payload: any) {
   if (payload?.proposed_session && typeof payload.proposed_session === "object") {
     const ps = payload.proposed_session;
     if (y.held === false || y.status === "technical_test") {
-      ps.carry_over_reason = "unheld_yesterday_session";
-      ps.why_today = `Carry-over z neuskutečněného Sezení. Tento návrh nenavazuje na nové klinické poznatky ze včerejšího Sezení, protože to klinicky neproběhlo; navazuje na původní potřebu řešit tělesné potíže a neverbální zpracování tělesného stavu. ${cleanBlockText(ps.why_today)}`.trim();
+      const openedPartial = y.fallback_reason === "opened_or_partial_activity_detected" || y.evidence_basis === "started_partial" || ["pending_review", "evidence_limited"].includes(String(y.review_status ?? y.status));
+      ps.carry_over_reason = openedPartial ? "opened_partial_yesterday_session_pending_review" : "unheld_yesterday_session";
+      ps.why_today = openedPartial
+        ? `Carry-over z otevřeného / částečně rozpracovaného Sezení. Tento návrh navazuje na potvrzený started/progress signál, ale nepředstírá plné dovyhodnocení; pracuje se stavem pending_review / evidence_limited. ${cleanBlockText(ps.why_today)}`.trim()
+        : `Carry-over z neuskutečněného Sezení. Tento návrh nenavazuje na nové klinické poznatky ze včerejšího Sezení, protože to klinicky neproběhlo; navazuje na původní potřebu řešit tělesné potíže a neverbální zpracování tělesného stavu. ${cleanBlockText(ps.why_today)}`.trim();
       ps.first_draft = `Začít krátkým ověřením tělesného a emočního stavu, bez tlaku na vysvětlování. Pokud je část dostupná a stabilní, pokračovat krátkým terapeutkou vedeným Sezením; pokud je unavená nebo zahlcená, zůstat jen u stabilizačního kontaktu. ${cleanBlockText(ps.first_draft)}`.trim();
     }
     ps.evidence_sources = Array.from(new Set([...(Array.isArray(ps.evidence_sources) ? ps.evidence_sources : []), "VČEREJŠÍ SEZENÍ — PRAKTICKÝ REPORT", "VČEREJŠÍ SEZENÍ — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ"]));
