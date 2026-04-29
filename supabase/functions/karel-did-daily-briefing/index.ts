@@ -650,8 +650,31 @@ const trimSentence = (value: unknown, max = 360): string => {
 const partGenitive = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupka" : name;
 const partDative = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupkovi" : name;
 
-const sanitizeKarelClinicalText = (value: unknown): string =>
+const FORBIDDEN_VISIBLE_DEBUG_LANGUAGE_RE = /(pending_review|evidence_limited|child evidence|evidence discipline|therapist_factual_correction|external_fact|real-world context|real-world kontext|operational context|operační kontext|briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log|faktick[áa]\s+korekce\s+reality)/i;
+
+const translateInternalStateToClinicalProse = (value: unknown): string =>
   cleanBlockText(value)
+    .replace(/pending_review\s*\/\s*evidence_limited/gi, "otevřené nebo částečně rozpracované, zatím bez plného dovyhodnocení")
+    .replace(/\bpending_review\b/gi, "čeká na klinické dovyhodnocení")
+    .replace(/\bevidence_limited\b/gi, "zatím bez dostatečného materiálu pro plný klinický závěr")
+    .replace(/therapist_factual_correction\s*\/\s*external_fact/gi, "Hanička upřesnila faktický rámec skutečné události")
+    .replace(/\btherapist_factual_correction\b/gi, "Hanička upřesnila faktický rámec")
+    .replace(/\bexternal_fact\b/gi, "skutečná událost")
+    .replace(/faktick[áa]\s+korekce\s+reality/gi, "upřesněný faktický rámec")
+    .replace(/\bchild evidence\b/gi, "vlastní slova, tělesná reakce nebo chování kluků")
+    .replace(/\bevidence discipline\b/gi, "opatrnost v závěrech")
+    .replace(/\breal-world\s+(?:context|kontext)\b/gi, "skutečná událost a její emoční rámec")
+    .replace(/\breal-world\s+fact\b/gi, "skutečná událost")
+    .replace(/\breal-world\b/gi, "skutečný")
+    .replace(/\boperational context\b/gi, "důležitý kontext")
+    .replace(/operační\s+kontext/gi, "důležitý kontext")
+    .replace(/briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log/gi, "podklad")
+    .replace(/RECENT OPERATIONAL CONTEXT\s*—\s*Pantry B/gi, "VČEREJŠÍ DŮLEŽITÝ KONTEXT")
+    .replace(/REALITY CORRECTION\s*—\s*not child evidence/gi, "SKUTEČNÁ UDÁLOST — NEVYVOZOVAT BEZ REAKCE KLUCI")
+    .trim();
+
+const sanitizeKarelClinicalText = (value: unknown): string =>
+  translateInternalStateToClinicalProse(value)
     .replace(/DID\s+syst[eé]m/gi, "kluci")
     .replace(/\bsyst[eé]mu\b/gi, "kluků")
     .replace(/\bsyst[eé]m\b/gi, "kluci")
@@ -665,6 +688,12 @@ const sanitizeKarelClinicalText = (value: unknown): string =>
     .replace(/P[řr][íi][šs]t[íi]\s+Herna\s+s\s+Tundrupkem\s+by\s+mohla\s+za[čc][íi]t\s+p[řr][íi]m[ýy]m\s+dotazem\s+na\s+['"][^\n]*?\./gi, "Příští Herna s Tundrupkem má začít jemným check-inem bezpečného místa nebo dnešního vnitřního počasí, ne přímým dotazem na ochranné bytosti.")
     .replace(/Je\s+to\s+siln[ýy]\s+zdroj,\s+kter[ýy]\s+mohou\s+ostatn[íi]\s+kluci\s+vyu[žz][íi]vat\.?/gi, "Je to silný zdroj pro tuto část; u ostatních kluků ho nelze používat bez ověření.")
     .trim();
+
+const ensureVisibleClinicalText = (value: unknown): string => {
+  const text = sanitizeKarelClinicalText(value);
+  if (!FORBIDDEN_VISIBLE_DEBUG_LANGUAGE_RE.test(text)) return text;
+  return sanitizeKarelClinicalText(text);
+};
 
 const isTechnicalStatusText = (value: unknown): boolean =>
   /(t[eě][žz]k[áa]\s+synt[eé]za|fallback|bezpe[čc]n[ýy]\s+re[žz]im|technick|funk[čc]nost|v[šs]e\s+b[eě][žz][íi]|db review|payload|backend)/i.test(cleanBlockText(value));
