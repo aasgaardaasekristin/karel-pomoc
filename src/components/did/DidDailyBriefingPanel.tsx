@@ -236,19 +236,34 @@ const realityContextText = (p: BriefingPayload): string => {
   const entries = [...(Array.isArray(p.operational_context_used) ? p.operational_context_used : []), ...(Array.isArray(p.hana_personal_did_relevant_implications) ? p.hana_personal_did_relevant_implications : [])];
   const match = entries.find((e: any) => /tim+m[iy]|kepork|rybi|real-world|skute|faktick|external_fact|therapist_factual_correction/i.test(`${e?.summary ?? ""} ${JSON.stringify(e?.detail ?? {})} ${e?.evidence_level ?? ""}`));
   if (!match) return "";
-  const source = String(match.source_ref || match.detail?.source_trace?.source_ref || match.id || "zpracovaný Hana/Osobní vstup");
-  const summary = String(match.summary || match.detail?.operational_implication || "Hana/Osobní real-world kontext byl zohledněn.").trim();
-  return `${summary}\nZdroj: ${source}\nEvidence discipline: real-world fakt není child evidence; Karel má nejdřív ověřit, co kluci sami říkají, co cítí v těle a co potřebují.`;
+  const summary = cleanVisibleClinicalText(String(match.summary || match.detail?.operational_implication || "Hanička upřesnila důležitý faktický rámec, který má být dnes držen opatrně.").trim());
+  return `${summary}\nSamo o sobě to ještě nevypovídá o tom, co prožívá konkrétní část. Terapeuticky důležité bude až to, co kluci sami řeknou, ukážou v těle nebo jak na téma zareagují.`;
 };
 
 const backendContextSummary = (inputs: Record<string, any> | undefined): string => {
   if (!inputs) return "";
   const used = inputs.used_recent_operational_context || inputs.used_reality_correction || inputs.reality_correction_used || inputs.used_hana_personal_processed_implication;
   if (!used) return "";
-  const refs = Array.isArray(inputs.source_refs) ? inputs.source_refs : Array.isArray(inputs.operational_context_source_refs) ? inputs.operational_context_source_refs : [];
-  const limits = Array.isArray(inputs.what_not_to_conclude) ? inputs.what_not_to_conclude.filter(Boolean).slice(0, 2).join(" ") : "real-world fakt není child evidence bez samostatné reakce části";
-  return `Používá včerejší operační kontext${refs.length ? ` (${refs.slice(0, 2).join(", ")})` : ""}. Nevyvozovat: ${limits}`;
+  const limits = Array.isArray(inputs.what_not_to_conclude) ? inputs.what_not_to_conclude.filter(Boolean).slice(0, 2).join(" ") : "nedělat z reálné události automaticky projekci, symbol nebo diagnózu";
+  return cleanVisibleClinicalText(`Používá včerejší důležitý kontext. Čeho se dnes vyvarovat: ${limits}. Nejdřív ověřit vlastní reakci kluků.`);
 };
+
+const cleanVisibleClinicalText = (value: unknown): string => String(value ?? "")
+  .replace(/pending_review\s*\/\s*evidence_limited/gi, "otevřené nebo částečně rozpracované, zatím bez plného dovyhodnocení")
+  .replace(/\bpending_review\b/gi, "čeká na klinické dovyhodnocení")
+  .replace(/\bevidence_limited\b/gi, "zatím bez dostatečného materiálu pro plný klinický závěr")
+  .replace(/therapist_factual_correction\s*\/\s*external_fact/gi, "Hanička upřesnila faktický rámec skutečné události")
+  .replace(/\btherapist_factual_correction\b/gi, "Hanička upřesnila faktický rámec")
+  .replace(/\bexternal_fact\b/gi, "skutečná událost")
+  .replace(/faktick[áa]\s+korekce\s+reality/gi, "upřesněný faktický rámec")
+  .replace(/\bchild evidence\b/gi, "vlastní slova, tělesná reakce nebo chování kluků")
+  .replace(/\bevidence discipline\b/gi, "opatrnost v závěrech")
+  .replace(/\breal-world\s+(?:context|kontext)\b/gi, "skutečná událost a její emoční rámec")
+  .replace(/\breal-world\s+fact\b/gi, "skutečná událost")
+  .replace(/\breal-world\b/gi, "skutečný")
+  .replace(/\boperational context\b|operační\s+kontext/gi, "důležitý kontext")
+  .replace(/briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log/gi, "podklad")
+  .trim();
 
 interface BriefingRow {
   id: string;
