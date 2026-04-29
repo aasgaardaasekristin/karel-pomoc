@@ -124,7 +124,7 @@ function scrubKarelOnlyText(value: string): string {
 function normalizeProgramBlock(raw: any, hybridContract: Record<string, any> | null): AgendaBlock & Record<string, any> {
   const mode = String(hybridContract?.therapist_led_vs_karel_only ?? hybridContract?.session_mode ?? "karel_only");
   const therapistLed = mode === "therapist_led" || mode === "tandem";
-  const clinicalIntent = nonEmptyString(raw?.clinical_intent) ?? nonEmptyString(raw?.clinical_goal) ?? nonEmptyString(raw?.diagnostic_or_therapeutic_intent) ?? nonEmptyString(hybridContract?.clinical_goal) ?? nonEmptyString(hybridContract?.diagnostic_or_therapeutic_intent) ?? nonEmptyString(raw?.detail) ?? "Evidence-limited bezpečné ověření bez klinických závěrů.";
+  const clinicalIntent = nonEmptyString(raw?.clinical_intent) ?? nonEmptyString(raw?.clinical_goal) ?? nonEmptyString(raw?.diagnostic_or_therapeutic_intent) ?? nonEmptyString(hybridContract?.clinical_goal) ?? nonEmptyString(hybridContract?.diagnostic_or_therapeutic_intent) ?? nonEmptyString(raw?.detail) ?? "Bezpečně ověřit aktuální připravenost bez předčasných závěrů.";
   const playfulForm = nonEmptyString(raw?.playful_form) ?? nonEmptyString(hybridContract?.playful_theme) ?? "neutrální bezpečná symbolická volba";
   const script = nonEmptyString(raw?.script) ?? asStringArray(hybridContract?.what_therapist_says)[0] ?? "Můžeme u toho zůstat jen krátce a bezpečně; kdykoli můžeme přestat.";
   const observe = therapistLed ? asStringArray(raw?.observe, asStringArray(hybridContract?.what_therapist_observes, ["míru bezpečného zapojení", "změnu napětí", "doslovnou odpověď"])) : ["textovou odpověď", "míru bezpečného zapojení", "přání pokračovat nebo skončit"];
