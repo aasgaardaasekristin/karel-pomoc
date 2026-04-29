@@ -952,6 +952,8 @@ serve(async (req) => {
       });
     }
 
+    let fullResponse = "";
+
     // Create a TransformStream to intercept the response and capture full text
     const shouldBufferForHanaGuard = persistencePolicy.mode_id === "hana_osobni";
     if (shouldBufferForHanaGuard) {
@@ -979,7 +981,6 @@ serve(async (req) => {
     const writer = writable.getWriter();
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
-    let fullResponse = "";
 
     // Process stream in background – forward to client AND capture text
     (async () => {
