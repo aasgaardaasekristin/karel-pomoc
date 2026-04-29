@@ -1476,27 +1476,35 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                   );
                 })()}
 
-                {/* READY-TO-START stav — viditelný hned po dvou terapeutických podpisech.
-                Bridge proběhne na serveru, trigger překlopí status na approved
-                a vznikne plán v did_daily_session_plans. */}
                 {d.deliberation_type === "session_plan" &&
                   !!d.hanka_signed_at &&
-                  !!d.kata_signed_at && (
-                    <section className="rounded-md border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="text-[11px] font-semibold text-emerald-700">
-                          Připraveno k zahájení
-                        </p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">
-                          Hanička i Káťa stvrdily podpisem souhlas.{" "}
-                          {isPlayroomPlan
-                            ? "Herna je připravená jako dětská místnost v DID/Kluci/Herna."
-                            : "Plán je propsán do dnešního sezení."}
-                        </p>
-                      </div>
-                    </section>
-                  )}
+                  !!d.kata_signed_at &&
+                  (() => {
+                    const statusText = liveStartStatusText({
+                      signed: true,
+                      starting: startingLive,
+                      plan: linkedPlan,
+                      lastErrorCode: lastStartErrorCode,
+                    });
+                    const synced = planApprovalSynced(linkedPlan);
+                    return (
+                      <section className={`rounded-md border px-3 py-2 flex items-start gap-2 ${synced ? "border-primary/30 bg-primary/5" : "border-border/60 bg-muted/30"}`}>
+                        {startingLive ? (
+                          <Loader2 className="w-4 h-4 text-primary shrink-0 mt-0.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                        )}
+                        <div className="flex-1">
+                          <p className="text-[11px] font-semibold text-foreground">
+                            {statusText}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            Start proběhne pouze přes bezpečnou backendovou sync+start kontrolu.
+                          </p>
+                        </div>
+                      </section>
+                    );
+                  })()}
 
                 {(d.status === "approved" || bridgedPlanId) &&
                   d.deliberation_type === "session_plan" &&
@@ -1524,7 +1532,7 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                             <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                           ) : null}
                           {startingLive ? (
-                            "Otevírám…"
+                            "Synchronizuji schválení…"
                           ) : (
                             <>
                               {isPlayroomPlan
