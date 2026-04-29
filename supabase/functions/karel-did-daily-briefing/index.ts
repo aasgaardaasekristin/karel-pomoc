@@ -769,13 +769,19 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     ? `Moje pracovní formulace pro dnešek je opatrná: doložená real-world informace má být přiznaná jako skutečná událost a faktický stresor. Klinicky smíme pracovat až s tím, co kluci sami řeknou, cítí nebo ukážou; samotný odkaz ani zpráva nejsou projekce části.`
     : `Moje pracovní formulace pro dnešek je opatrná: ${activePart} včera použil vlastní symbolický jazyk bezpečí. Zatím je bezpečnější chápat ho jako aktuální zdroj této části, ne jako definitivní charakteristiku ani společný jazyk všech kluků. Praktický cíl je pomoci pocit ochrany přenést zpět do přítomného těla, dne a vztahu s bezpečnými dospělými.`;
   const recommendations_for_hana = `Haničko, u tebe dnes vidím jako hlavní úkol jemně ověřit tělesný stav a dostupnost ${partGenitive(activePart)}, bez tlaku na vysvětlování. Pokud je stabilní, může následovat krátké Sezení nebo nízkoprahová Herna; pokud je zahlcený, stačí kontakt a připomenutí zdrojů.`;
-  const recommendations_for_katka = `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: nepřenášet včerejší symboly automaticky na ostatní části a nepoužít je dřív, než se ukáže, že jsou dnes pro ${partGenitive(activePart)} stále bezpečné.`;
+  const recommendations_for_katka = hasRealityCorrection
+    ? `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: real-world fakt nebo terapeutická korekce nejsou child evidence. Nepoužít je jako závěr za kluky dřív, než se ukáže jejich vlastní reakce.`
+    : `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: nepřenášet včerejší symboly automaticky na ostatní části a nepoužít je dřív, než se ukáže, že jsou dnes pro ${partGenitive(activePart)} stále bezpečné.`;
   const what_not_to_do_today = "Dnes bych se vyhnul třem věcem: netlačit do vysvětlování, neotevírat nové trauma téma bez stabilizačního rámce a nepředávat části příliš velkou odpovědnost otázkou typu „co chceš dělat?“. Bezpečnější je nabídnout dvě nebo tři malé možnosti.";
   const priority_of_the_day = buildDailyTherapeuticPriority(payload);
   const evidence_limits = [
     `Jistě víme: ${evidenceKnown.join(" ")}`,
-    `Pracovní hypotéza: tyto symboly mohou části ${activePart} pomáhat vytvořit vnitřní prostor ochrany a klidu, pokud s nimi dnes bude sama souhlasit.`,
-    "Nevíme / čeká na ověření: zda jde o stabilní zdroj dostupný i dnes, zda je bezpečné tento jazyk rozšiřovat k ostatním částem, a jaký je aktuální tělesný stav.",
+    hasRealityCorrection
+      ? "Pracovní rámec: real-world fakt je operační a emoční kontext, ne důkaz o klucích. Teprve jejich vlastní slova, tělo nebo reakce mohou být klinická evidence."
+      : `Pracovní hypotéza: tyto symboly mohou části ${activePart} pomáhat vytvořit vnitřní prostor ochrany a klidu, pokud s nimi dnes bude sama souhlasit.`,
+    hasRealityCorrection
+      ? "Nevíme / čeká na ověření: co o té události kluci sami vědí, co cítí v těle, co potřebují a zda je bezpečné téma dnes otevírat."
+      : "Nevíme / čeká na ověření: zda jde o stabilní zdroj dostupný i dnes, zda je bezpečné tento jazyk rozšiřovat k ostatním částem, a jaký je aktuální tělesný stav.",
   ].join("\n");
   const team_closing_line = "Včerejší práce nám dává materiál. Dnes ho nemusíme zvětšovat; potřebujeme ho správně podržet a převést do jednoho bezpečného kroku.";
   const opening_monologue_text = [
