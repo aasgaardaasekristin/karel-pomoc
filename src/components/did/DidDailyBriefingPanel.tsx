@@ -1352,14 +1352,14 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                   <div className="pt-1 border-t border-border/40">
                     <p className="text-[11px] uppercase tracking-wide text-primary/70">Týmové uzavření</p>
                     <p className="text-[12px] leading-relaxed text-foreground/85 italic whitespace-pre-line mt-0.5">
-                      {yesterdayReview.team_acknowledgement}
+                      {cleanVisibleClinicalText(yesterdayReview.team_acknowledgement)}
                     </p>
                   </div>
                 )}
                 {(yesterdayReview as YesterdayFallbackReview).detailed_analysis && (
                   <details className="rounded-md border border-border/50 bg-background/35 p-2">
                     <summary className="cursor-pointer text-[12px] font-medium text-primary">Přečíst si detailní analýzu ze včerejšího sezení</summary>
-                    <p className="mt-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{(yesterdayReview as YesterdayFallbackReview).detailed_analysis}</p>
+                    <p className="mt-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{cleanVisibleClinicalText((yesterdayReview as YesterdayFallbackReview).detailed_analysis)}</p>
                   </details>
                 )}
               </>
@@ -1377,7 +1377,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                 <div>
                   <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Další krok</p>
                   <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">
-                    Karel má dohledat nebo dogenerovat evidence-limited review sezení odděleně od playroom review; Herna nesmí být použita jako náhrada terapeutického sezení.
+                    Karel má dohledat nebo doplnit klinické dovyhodnocení sezení odděleně od vyhodnocení Herny; Herna nesmí být použita jako náhrada terapeutického sezení.
                   </p>
                 </div>
               </>
