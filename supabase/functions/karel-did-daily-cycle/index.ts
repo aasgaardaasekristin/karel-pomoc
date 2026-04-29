@@ -5757,6 +5757,7 @@ ESKALACE: level ${task.escalation_level || 0}`,
       await sb.from("did_update_cycles").update({
         status: hadCardUpdateErrors ? "failed" : "completed",
         completed_at: new Date().toISOString(),
+        last_heartbeat_at: new Date().toISOString(),
         report_summary: validatedReportSummary,
         cards_updated: cardsUpdated,
         context_data: {
@@ -7825,6 +7826,10 @@ Vra\u0165 JSON:
       }).eq("id", consolidationRunId);
     }
 
+    if (compileDataKeepAlive !== undefined) { clearInterval(compileDataKeepAlive); compileDataKeepAlive = undefined; }
+    if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
+    if (phaseTimeoutGuard !== undefined) { clearTimeout(phaseTimeoutGuard); phaseTimeoutGuard = undefined; }
+
     return new Response(JSON.stringify({
       success: !hadCardUpdateErrors,
       threadsProcessed: threads.length,
@@ -7843,9 +7848,14 @@ Vra\u0165 JSON:
 
     if (sb && cycleId) {
       try {
+        if (compileDataKeepAlive !== undefined) { clearInterval(compileDataKeepAlive); compileDataKeepAlive = undefined; }
+        if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
+        if (phaseTimeoutGuard !== undefined) { clearTimeout(phaseTimeoutGuard); phaseTimeoutGuard = undefined; }
         await sb.from("did_update_cycles").update({
           status: "failed",
           completed_at: new Date().toISOString(),
+          last_heartbeat_at: new Date().toISOString(),
+          last_error: `daily_cycle_failed:${(error?.message || String(error)).slice(0, 300)}`,
           report_summary: `FATAL: ${(error?.message || String(error))}`.slice(0, 500),
         }).eq("id", cycleId);
       } catch (cycleUpdateErr) {
