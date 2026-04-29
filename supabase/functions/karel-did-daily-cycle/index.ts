@@ -309,9 +309,10 @@ async function semanticDedupCheck(
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) return { isDuplicate: false, reason: "no_api_key" };
 
+  let timeout: number | undefined;
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+    timeout = setTimeout(() => controller.abort(), 5000) as unknown as number; // 5s timeout
 
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -349,8 +350,6 @@ async function semanticDedupCheck(
       }),
     });
 
-    clearTimeout(timeout);
-
     if (!res.ok) {
       console.warn(`[SEMANTIC-DEDUP] AI call failed (${res.status}), falling back to KHASH-only`);
       return { isDuplicate: false, reason: "api_error" };
@@ -372,6 +371,8 @@ async function semanticDedupCheck(
       console.warn(`[SEMANTIC-DEDUP] Error for section ${sectionLabel} of "${partName}":`, e);
     }
     return { isDuplicate: false, reason: "timeout_or_error" };
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
   }
 }
 
