@@ -801,6 +801,8 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
   const lastIterateInputRef = useRef<string>("");
   const [startingLive, setStartingLive] = useState(false);
   const [livePlan, setLivePlan] = useState<LiveSessionPlanRow | null>(null);
+  const [linkedPlan, setLinkedPlan] = useState<LiveSessionPlanRow | null>(null);
+  const [lastStartErrorCode, setLastStartErrorCode] = useState<string | null>(null);
 
   useEffect(() => {
     const found = items.find((x) => x.id === deliberationId) ?? null;
@@ -846,6 +848,28 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
       (supabase as any).removeChannel(ch);
     };
   }, [deliberationId]);
+
+  useEffect(() => {
+    const planId = bridgedPlanId ?? d?.linked_live_session_id;
+    if (!planId) {
+      setLinkedPlan(null);
+      return;
+    }
+    let alive = true;
+    (async () => {
+      const { data } = await (supabase as any)
+        .from("did_daily_session_plans")
+        .select(
+          "id, selected_part, session_lead, therapist, plan_markdown, status, lifecycle_status, program_status, approved_at, urgency_breakdown",
+        )
+        .eq("id", planId)
+        .maybeSingle();
+      if (alive) setLinkedPlan((data as LiveSessionPlanRow | null) ?? null);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [bridgedPlanId, d?.linked_live_session_id, startingLive]);
 
   if (!deliberationId) return null;
 
