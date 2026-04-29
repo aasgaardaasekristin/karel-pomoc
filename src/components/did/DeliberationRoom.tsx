@@ -554,8 +554,8 @@ function ClinicalContractPanel({ d }: { d: TeamDeliberation }) {
       : sp.last_plan_change_state;
   const entries = [
     ["Fáze", sp.treatment_phase],
-    ["Readiness", sp.readiness_today],
-    ["Režim", sp.session_mode],
+    ["Připravenost", sp.readiness_today],
+    ["Role", sp.session_actor === "karel_direct" || sp.ui_surface === "did_kids_playroom" || sp.session_format === "playroom" ? "Herna: Karel vede až po schválení terapeutkami" : "Sezení: terapeutka vede, Karel asistuje"],
     ["První otázka", sp.first_question],
     ["Změna plánu", lastPlanChange],
   ].filter(
@@ -574,14 +574,14 @@ function ClinicalContractPanel({ d }: { d: TeamDeliberation }) {
         {entries.map(([label, value]) => (
           <div key={label} className="text-[10.5px]">
             <span className="text-muted-foreground">{label}: </span>
-            <span className="text-foreground/90">{value}</span>
+            <span className="text-foreground/90">{cleanVisiblePlanText(value)}</span>
           </div>
         ))}
       </div>
       {stopRules.length > 0 && (
         <ul className="list-disc pl-4 text-[10.5px] text-foreground/85 space-y-0.5">
           {stopRules.map((rule, idx) => (
-            <li key={idx}>{rule}</li>
+            <li key={idx}>{cleanVisiblePlanText(rule)}</li>
           ))}
         </ul>
       )}
