@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { useTeamDeliberations } from "@/hooks/useTeamDeliberations";
 import DidLiveSessionPanel from "./DidLiveSessionPanel";
 import { getAuthHeaders } from "@/lib/auth";
+import { liveStartStatusText, planApprovalSynced } from "@/lib/dailyPlanStartPolicy";
 import {
   signoffProgress,
   type TeamDeliberation,
@@ -114,38 +115,6 @@ function unsignedStartBlockReason(
     return "Program byl upraven podle odpovědi terapeutky a čeká na podpis Haničky a Káti.";
   }
   return null;
-}
-
-function planApprovalSynced(plan?: LiveSessionPlanRow | null) {
-  const contract =
-    plan?.urgency_breakdown && typeof plan.urgency_breakdown === "object"
-      ? (plan.urgency_breakdown as Record<string, any>)
-      : {};
-  const approvalSync = contract.approval_sync ?? {};
-  return (
-    approvalSync.status === "synced" &&
-    !!approvalSync.program_draft_hash &&
-    !!approvalSync.plan_markdown_hash &&
-    !!plan?.approved_at &&
-    ["approved", "ready_to_start", "in_progress"].includes(
-      String(plan?.program_status ?? "").toLowerCase(),
-    )
-  );
-}
-
-function liveStartStatusText(args: {
-  signed: boolean;
-  starting: boolean;
-  plan?: LiveSessionPlanRow | null;
-  lastErrorCode?: string | null;
-}) {
-  if (!args.signed) return null;
-  if (args.starting) return "Synchronizuji schválení…";
-  if (args.lastErrorCode) {
-    return "Porada je podepsaná, ale plán stále není bezpečně připravený ke spuštění.";
-  }
-  if (planApprovalSynced(args.plan)) return "Připraveno k zahájení";
-  return "Schváleno v poradě, čeká na propsání schválení do denního plánu.";
 }
 
 type LiveProgramBlock = {
