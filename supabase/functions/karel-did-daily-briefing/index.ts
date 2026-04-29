@@ -182,7 +182,7 @@ const buildMandatoryPlayroomProposal = (payload: any, context: any, candidates: 
     playroom_plan: {
       therapeutic_program: [
         { block: "Bezpečný práh", minutes: 3, detail: "Karel nabídne odpověď slovem, symbolem nebo tichem; cílem je zjistit dostupnost části, ne vynutit výkon." },
-        { block: "Vnitřní počasí", minutes: 6, detail: "Část vybere barvu, obraz nebo jedno slovo pro dnešní stav. Karel sleduje konkrétnost, vyhýbání a toleranci kontaktu." },
+        { block: "Vnitřní počasí", minutes: 6, detail: realitySummary ? "Část může říct, co o reálné situaci sama ví, co cítí v těle a co potřebuje; Karel nic nevyvozuje za ni." : "Část vybere barvu, obraz nebo jedno slovo pro dnešní stav. Karel sleduje konkrétnost, vyhýbání a toleranci kontaktu." },
         { block: "Symbolická postava", minutes: 8, detail: "Krátká bezpečná imaginativní hra s jednou postavou nebo předmětem, bez otevírání traumatické paměti." },
         { block: "Jeden malý krok", minutes: 5, detail: "Karel hledá jeden zvládnutelný krok pro tělo, klid nebo kontakt; bez slibů a bez konfrontace." },
         { block: "Měkké uzavření", minutes: 3, detail: "Karel shrne slyšené, nabídne zakotvení a označí podklady pro review." },
@@ -192,7 +192,7 @@ const buildMandatoryPlayroomProposal = (payload: any, context: any, candidates: 
       expected_child_reactions: ["krátké odpovědi", "nejistota", "odmítnutí tématu", "zájem o symbol", "únava"],
       recommended_karel_responses: ["zpomalit", "nabídnout volbu", "potvrdit právo neodpovědět", "držet symbolickou rovinu", "ukončit při stop signálu"],
       risks_and_stop_signals: ["náhlé stažení", "zmatek v čase nebo místě", "somatické zhoršení", "tlak na tajemství", "výrazné odpojení"],
-      forbidden_directions: ["nevynucovat vzpomínky", "neinterpretovat kresbu jako diagnózu bez review", "neeskalovat trauma", "nepokračovat přes stop signál"],
+      forbidden_directions: ["nevynucovat vzpomínky", "neinterpretovat externí real-world událost jako symbol/projekci/diagnostický signál bez reakce části", "neinterpretovat kresbu jako diagnózu bez review", "neeskalovat trauma", "nepokračovat přes stop signál"],
       runtime_packet_seed: { source: "mandatory_backend_fallback" },
     },
     questions_for_hanka: ["Je dnes pro tuto část bezpečnější krátká Karel-led Herna, nebo má být Hanička fyzicky poblíž?"],
