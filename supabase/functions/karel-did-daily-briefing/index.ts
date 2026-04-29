@@ -33,7 +33,7 @@ import { requireAuth } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-karel-cron-secret",
 };
 
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
@@ -1554,14 +1554,23 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization") || "";
     const cronSecretHeader = req.headers.get("X-Karel-Cron-Secret") || "";
     const isServiceCall = !!serviceKey && authHeader === `Bearer ${serviceKey}`;
-    const isCronSecretCall = false;
+    let effectiveCronSecret = Deno.env.get("KAREL_CRON_SECRET") || "";
+    if (!effectiveCronSecret && cronSecretHeader) {
+      try {
+        const { data: vaultSecret } = await supabase.schema("vault").from("decrypted_secrets").select("decrypted_secret").eq("name", "KAREL_CRON_SECRET").maybeSingle();
+        effectiveCronSecret = vaultSecret?.decrypted_secret || "";
+      } catch (e) {
+        console.warn("[briefing-auth] cron secret vault lookup failed:", (e as Error)?.message || e);
+      }
+    }
+    const isCronSecretCall = !!effectiveCronSecret && cronSecretHeader === effectiveCronSecret;
     const wantsAuto = body?.method === "auto" || body?.source === "cron";
     const authHeaderPrefix = authHeader.startsWith("Bearer ") ? "Bearer" : authHeader ? "other" : "none";
     console.log("[briefing-auth] sanitized", JSON.stringify({
       has_authorization_header: !!authHeader,
       auth_header_prefix: authHeaderPrefix,
       has_x_karel_cron_secret: !!cronSecretHeader,
-      verify_strategy: wantsAuto ? "service_role" : "user_auth",
+      verify_strategy: wantsAuto ? "cron_secret" : "user_auth",
       is_service_call: isServiceCall,
       is_cron_secret_call: isCronSecretCall,
       trigger_source: body?.source ?? null,
@@ -1569,7 +1578,7 @@ Deno.serve(async (req) => {
     }));
     let authenticatedUserId: string | null = null;
     let attemptId: string | null = null;
-    if (wantsAuto && !isServiceCall) {
+    if (wantsAuto && !isServiceCall && !isCronSecretCall) {
       const auditId = await startBriefingAttempt(supabase, {
         briefing_date: pragueDayISO(),
         generation_method: "auto",
@@ -1577,7 +1586,7 @@ Deno.serve(async (req) => {
         auth_mode: "unauthorized",
         status: "failed",
         error_code: "unauthorized_cron_call",
-        error_message: "Cron musí použít service-role Authorization bearer.",
+        error_message: "Cron musí použít platný interní cron secret header.",
         completed_at: new Date().toISOString(),
         metadata: { source: body?.source ?? null, method: body?.method ?? null, auth_header_prefix: authHeaderPrefix, has_x_karel_cron_secret: !!cronSecretHeader },
       });
