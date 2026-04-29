@@ -39,7 +39,7 @@ describe("DidDailyBriefingPanel visible clinical text helpers", () => {
     expectClean(text);
     expect(text).toContain("otevřené nebo částečně rozpracované");
     expect(text).toContain("Hanička upřesnila faktický rámec");
-    expect(text).toContain("skutečná událost");
+    expect(text).toContain("skutečné události");
     expect(text).toContain("vlastní slova, tělesná reakce nebo chování kluků");
   });
 
