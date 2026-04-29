@@ -17,6 +17,10 @@ type EvidenceLevel =
   | "therapist_observation_D2"
   | "therapist_factual_correction"
   | "external_fact"
+  | "team_decision"
+  | "program_change"
+  | "task_note"
+  | "personal_context_not_for_DID"
   | "technical_event"
   | "hypothesis"
   | "admin_note"
@@ -42,6 +46,7 @@ export interface NormalizedDidEvent {
   author_name?: string | null;
   source_surface?: string | null;
   raw_excerpt: string;
+  privacy_class?: "personal_raw" | "therapeutic_note" | "child_direct" | "team_operational" | "external_fact" | "technical" | null;
   related_part_name?: string | null;
   context_type?: string | null;
   evidence_level?: EvidenceLevel;
@@ -158,8 +163,8 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
   const isChild = event.author_role === "child" || sourceKind === "playroom_progress";
   const isRealityOverride = sourceKind === "live_session_reality_override";
   const isTechnical = (sourceKind === "live_session_progress" || isRealityOverride) && hasAny(text, [/replan|override|paused|stop|zastav/i]);
-  const isExternalCurrentEvent = hasAny(text, [/timmy|timmi|velryb|kepor|kytovec|m[eě]lčin|z[aá]chran|n[eě]meck|aktu[aá]ln[eě]|posledn[ií]\s+pokus|https?:\/\//i]);
-  const isFactualCorrection = isRealityOverride || hasAny(text, [/skutečn|reáln|faktick|odkaz|url|extern/i]) || (sourceKind === "hana_personal_ingestion" && isExternalCurrentEvent);
+  const isExternalCurrentEvent = hasAny(text, [/skutečn|skutec|reáln|realn|aktu[aá]ln|zpr[aá]v|odkaz|url|https?:\/\/|čl[aá]nek|clanek|telefon[aá]t|škola|skola|pož[aá]r|pozar|v[aá]lk|útulek|utulek|zdravotn|nemoc|úmrt|umrt|ztr[aá]t|z[aá]chran|instituc|extern/i]);
+  const isFactualCorrection = isRealityOverride || hasAny(text, [/nepochopil\s+jsi\s+situaci|nen[ií]\s+to\s+(?:symbol|projekce|fiktivn)|skutečn|skutec|reáln|realn|faktick|odkaz|url|extern/i]) || (sourceKind === "hana_personal_ingestion" && isExternalCurrentEvent);
   const isRisk = hasAny(text, [/rizik|kriz|sebepo|ubl[ií]žit|nebezpe|stop sign[aá]l|disoci/i]);
   const isTask = hasAny(text, [/úkol|ukol|domluv|zařiď|zarid|follow[- ]?up|ověř|over|připomeň|pripomen/i]);
   const isPlan = hasAny(text, [/pl[aá]n|program|zm[eě]na|příště|priste|sezen[ií]|herna|blok/i]);
@@ -178,17 +183,25 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
     };
   }
 
-  const evidence_level: EvidenceLevel = isChild
+  const evidence_level: EvidenceLevel = event.evidence_level ?? (isChild
     ? "direct_child_evidence"
     : isFactualCorrection
       ? "therapist_factual_correction"
       : isTechnical
         ? "technical_event"
-        : sourceKind === "therapist_task_note" || sourceKind === "therapist_note"
+        : sourceKind === "deliberation_event"
+          ? "team_decision"
+          : isPlan
+            ? "program_change"
+            : sourceKind === "therapist_task_note"
+              ? "task_note"
+        : sourceKind === "therapist_note"
           ? "therapist_observation_D2"
           : isClinical
             ? "hypothesis"
-            : "unknown";
+            : sourceKind === "hana_personal_ingestion"
+              ? "personal_context_not_for_DID"
+              : "unknown");
 
   const entry_kind: PantryBEntryKind = isRisk
     ? "risk"
@@ -222,12 +235,12 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
     what_not_to_conclude: isFactualCorrection
       ? "Neuzavírat, že externí událost je projekce nebo diagnostický signál bez přímého materiálu části."
       : "Nedělat definitivní závěr bez opakované nebo přímé evidence.",
-    action_required: isRisk || isTask || isPlan || isTechnical,
+    action_required: isRisk || isTask || isPlan || isTechnical || isFactualCorrection,
     requires_human_review: isRisk || evidence_level === "hypothesis",
     include_in_daily_briefing: isClinical || isRisk || isTask || isPlan || isTechnical || isFactualCorrection,
     include_in_next_session_plan: isClinical || isRisk || isPlan || isFactualCorrection,
     include_in_next_playroom_plan: isChild || isFactualCorrection,
-    write_to_drive: isRisk || isPlan || sourceKind === "briefing_ask_resolution" || sourceKind === "deliberation_event",
+    write_to_drive: sourceKind === "hana_personal_ingestion" ? false : (isRisk || isPlan || sourceKind === "briefing_ask_resolution" || sourceKind === "deliberation_event"),
     related_part_name: event.related_part_name,
     urgency: isRisk ? "crisis" : isTask || isPlan || isTechnical ? "high" : isClinical ? "normal" : "low",
     clinical_relevance: isClinical || isChild || isRisk,
