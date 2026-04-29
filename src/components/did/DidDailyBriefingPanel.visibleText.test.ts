@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backendContextSummary, cleanVisibleClinicalText, realityContextText } from "./DidDailyBriefingPanel";
+import { backendContextSummary, cleanVisibleClinicalText, realityContextText, toProposedPlayroomView, toProposedSessionView } from "./DidDailyBriefingPanel";
 
 const forbidden = [
   "pending_review",
@@ -22,6 +22,9 @@ const forbidden = [
   "karel_pantry_b_entries",
   "did_event_ingestion_log",
   "faktická korekce reality",
+  "needs_therapist_input",
+  "awaiting_therapist_review",
+  "backend_context_inputs",
 ];
 
 const expectClean = (text: string) => {
@@ -75,5 +78,60 @@ describe("DidDailyBriefingPanel visible clinical text helpers", () => {
     expectClean(text);
     expect(text).toContain("Timmi/keporkak");
     expect(text).toContain("Samo o sobě to ještě nevypovídá");
+  });
+
+  it("does not render a one-block technical fallback as executable session", () => {
+    const view = toProposedSessionView({
+      part_name: "tundrupek",
+      why_today: "pending_review backend_context_inputs",
+      led_by: "Hanička",
+      first_draft: "Evidence-limited bezpečné ověření připravenosti needs_therapist_input",
+      agenda_outline: [{ block: "Evidence-limited bezpečné ověření připravenosti", minutes: 10, detail: "needs_therapist_input" }],
+    });
+
+    expect(view?.executable).toBe(false);
+    expect(view?.blocks).toHaveLength(0);
+    expect(view?.status_label).toContain("není připraveno");
+    expectClean(JSON.stringify(view));
+  });
+
+  it("keeps therapist-led session role contract visible and safe", () => {
+    const view = toProposedSessionView({
+      part_name: "tundrupek",
+      why_today: "Ověřit aktuální stav.",
+      led_by: "Hanička",
+      duration_min: 45,
+      first_draft: "Terapeutkou vedené sezení.",
+      agenda_outline: [
+        { block: "Bezpečný vstup", minutes: 8, detail: "Ověřit bezpečí." },
+        { block: "Mapování těla", minutes: 10, detail: "Sledovat tělesnou reakci." },
+        { block: "Opatrné téma", minutes: 15, detail: "Nabídnout volbu." },
+        { block: "Měkké ukončení", minutes: 8, detail: "Shrnout ověřené." },
+      ],
+    });
+
+    expect(view?.executable).toBe(true);
+    expect(view?.lead).toBe("Hanička");
+    expect(view?.status_label).toContain("Karel asistuje");
+    expect(view?.blocks.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("renders playroom as human text with therapist approval gate", () => {
+    const view = toProposedPlayroomView({
+      part_name: "tundrupek",
+      status: "awaiting_therapist_review",
+      why_this_part_today: "backend_context_inputs source_ref",
+      main_theme: "Bezpečný kontakt",
+      goals: ["needs_therapist_input", "ověřit dostupnost"],
+      playroom_plan: {
+        therapeutic_program: [{ block: "Bezpečný práh", minutes: 3, detail: "awaiting_therapist_review" }],
+        child_safe_version: "Dnes jen opatrně.",
+        risks_and_stop_signals: ["zahlcení"],
+      },
+    });
+
+    expect(view?.lead_label).toBe("vede Karel");
+    expect(view?.approval_label).toContain("schválení terapeutkami");
+    expectClean(JSON.stringify(view));
   });
 });
