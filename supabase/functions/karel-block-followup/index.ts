@@ -538,6 +538,27 @@ ${trigger}
 
 Vrať reakci přes tool emit_followup. karel_text musí být přímo použitelný (terapeutka ho čte v inline chatu).`;
 
+    // ─── TEST-ONLY: force AI fallback paths (service-role only) ───
+    if (forceAiEmpty || forceAiInvalid) {
+      const fakeBody = forceAiEmpty ? "" : "{not valid json";
+      const parsedFake = safeParseJsonString<any>(fakeBody);
+      // parsedFake.ok will be false; mirror the real fallback branch
+      console.warn("[block-followup] TEST-FORCE AI fallback:", parsedFake.reason);
+      return new Response(JSON.stringify({
+        karel_text: buildEmptyAiFallback(effectiveBlock, therapistName),
+        phase: state.phase,
+        state_patch: { phase: state.phase, preserve_current_block: true },
+        done: false,
+        missing_artifacts: [],
+        fallback: true,
+        fallback_reason: `ai_response_${parsedFake.ok ? "unknown" : parsedFake.reason}`,
+        test_forced: forceAiEmpty ? "AI_EMPTY_RESPONSE" : "AI_INVALID_JSON",
+        authority: { source: "server_state_machine", reason: authorityReason, block_index: authoritativeIndex, is_final: effectiveBlock.isFinal },
+      }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
