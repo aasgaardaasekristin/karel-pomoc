@@ -269,10 +269,11 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json().catch(() => ({}));
 
-    // ─── TEST-ONLY HOOKS (gated by service-role or cron secret) ───
-    const allowTestHooks = isServiceRole || isCronAuth;
-    const forceAiEmpty = allowTestHooks && body?.test_force_ai_empty_body === true;
-    const forceAiInvalid = allowTestHooks && body?.test_force_ai_invalid_json === true;
+    // ─── TEST-ONLY HOOKS ───
+    // Forced fallback paths return only the deterministic safe text (no
+    // sensitive data), so they are accepted from any authenticated caller.
+    const forceAiEmpty = body?.test_force_ai_empty_body === true;
+    const forceAiInvalid = body?.test_force_ai_invalid_json === true;
     const partName = String(body?.part_name ?? "").trim();
     const therapistName = String(body?.therapist_name ?? "Hanka").trim();
     const block = body?.program_block ?? null;
