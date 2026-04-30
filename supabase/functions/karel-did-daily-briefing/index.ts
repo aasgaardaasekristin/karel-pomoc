@@ -31,6 +31,36 @@ import { readUnprocessedPantryB, markPantryBProcessed } from "../_shared/pantryB
 import { summarizeToolboxForPrompt } from "../_shared/therapeuticToolbox.ts";
 import { runGlobalDidEventIngestion } from "../_shared/didEventIngestion.ts";
 import { requireAuth } from "../_shared/auth.ts";
+import { buildSourceCoverageSummary, buildDriveStatus } from "../_shared/sourceCoverage.ts";
+
+/**
+ * SLA generation methods (added 2026-04-30, morning_operational_integrity_e2e):
+ *   - "sla_watchdog"               → SLA watchdog volá briefing po dokončeném cyklu
+ *   - "sla_watchdog_repair"        → SLA watchdog volá briefing v limited režimu
+ *                                    (cycle není completed) — payload.limited=true
+ *   - "auto_repair_after_missed_morning"
+ *   - "auto_sla_test"
+ *
+ * Tyto metody se autorizují stejně jako "auto" (cron secret nebo service role)
+ * a stejně jako "auto" potřebují platný cron-secret/service header.
+ *
+ * Rozdíl proti "auto":
+ *   - SLA metody vždy markují starší dnešní rows jako stale (i bez force=true),
+ *     protože jejich účel je nahradit chybějící non-manual row.
+ *   - "*repair*" varianty BYPASS cycle guard a vyrobí limited briefing.
+ */
+const SLA_METHODS = new Set([
+  "sla_watchdog",
+  "sla_watchdog_repair",
+  "auto_repair_after_missed_morning",
+  "auto_sla_test",
+]);
+const SLA_REPAIR_METHODS = new Set([
+  "sla_watchdog_repair",
+  "auto_repair_after_missed_morning",
+]);
+const isSlaMethod = (m: string | null | undefined) => !!m && SLA_METHODS.has(m);
+const isSlaRepairMethod = (m: string | null | undefined) => !!m && SLA_REPAIR_METHODS.has(m);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
