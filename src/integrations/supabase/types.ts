@@ -1695,6 +1695,45 @@ export type Database = {
         }
         Relationships: []
       }
+      did_briefing_sla_runs: {
+        Row: {
+          action: string
+          briefing_attempt_id: string | null
+          briefing_id: string | null
+          cycle_status: string | null
+          generation_method: string | null
+          id: string
+          payload: Json
+          ran_at: string
+          reason: string | null
+          user_id: string
+        }
+        Insert: {
+          action: string
+          briefing_attempt_id?: string | null
+          briefing_id?: string | null
+          cycle_status?: string | null
+          generation_method?: string | null
+          id?: string
+          payload?: Json
+          ran_at?: string
+          reason?: string | null
+          user_id: string
+        }
+        Update: {
+          action?: string
+          briefing_attempt_id?: string | null
+          briefing_id?: string | null
+          cycle_status?: string | null
+          generation_method?: string | null
+          id?: string
+          payload?: Json
+          ran_at?: string
+          reason?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_conversations: {
         Row: {
           created_at: string
