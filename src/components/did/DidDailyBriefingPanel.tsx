@@ -619,6 +619,26 @@ interface BriefingRow {
   is_stale: boolean;
   proposed_session_part_id: string | null;
   decisions_count: number;
+  generation_method?: string | null;
+}
+
+/**
+ * Map generation_method → user-visible badge label.
+ * - auto / cron / cron_secret                 → "Aktuální (auto)"
+ * - sla_watchdog* / auto_repair_after_missed* / auto_sla_test → "Aktuální (SLA záplata)"
+ * - manual / manual_* / null                  → "Aktuální (manuální)"
+ */
+function briefingMethodBadge(method?: string | null): { label: string; tone: "auto" | "sla" | "manual" } {
+  const m = String(method || "").toLowerCase();
+  if (!m || m === "manual" || m.startsWith("manual")) return { label: "Aktuální (manuální)", tone: "manual" };
+  if (m.startsWith("sla_watchdog") || m === "auto_repair_after_missed_morning" || m === "auto_sla_test") {
+    return { label: "Aktuální (SLA záplata)", tone: "sla" };
+  }
+  if (m === "auto" || m === "cron" || m === "cron_secret" || m.startsWith("auto") || m.startsWith("cron")) {
+    return { label: "Aktuální (auto)", tone: "auto" };
+  }
+  // Unknown non-manual → treat as auto so we don't mislabel as manual
+  return { label: "Aktuální (auto)", tone: "auto" };
 }
 
 interface BriefingDiagnostic {
