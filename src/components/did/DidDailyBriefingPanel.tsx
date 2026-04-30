@@ -1475,6 +1475,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             <h2 className="text-sm font-medium text-foreground">Karlův přehled</h2>
             <p className="text-[11px] text-muted-foreground">
               {formatDate(briefing.briefing_date)}
+              {!isCurrentBriefing && briefingDateIso && (
+                <span className="ml-1 text-amber-700">· starý přehled</span>
+              )}
             </p>
           </div>
         </div>
