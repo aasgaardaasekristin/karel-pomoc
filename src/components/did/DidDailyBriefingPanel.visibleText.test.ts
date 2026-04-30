@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backendContextSummary, cleanVisibleClinicalText, ensureKarelOpeningVoice, realityContextText, toProposedPlayroomView, toProposedSessionView } from "./DidDailyBriefingPanel";
+import { backendContextSummary, cleanVisibleClinicalText, ensureKarelOpeningVoice, humanizeRecencyInProse, realityContextText, toProposedPlayroomView, toProposedSessionView } from "./DidDailyBriefingPanel";
 
 const forbidden = [
   "pending_review",
