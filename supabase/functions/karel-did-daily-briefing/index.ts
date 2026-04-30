@@ -650,7 +650,8 @@ const trimSentence = (value: unknown, max = 360): string => {
 const partGenitive = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupka" : name;
 const partDative = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupkovi" : name;
 
-const FORBIDDEN_VISIBLE_DEBUG_LANGUAGE_RE = /(pending_review|evidence_limited|child evidence|evidence discipline|therapist_factual_correction|external_fact|real-world context|real-world kontext|operational context|operační kontext|briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log|faktick[áa]\s+korekce\s+reality)/i;
+const FORBIDDEN_VISIBLE_DEBUG_LANGUAGE_RE = /(pending_review|evidence_limited|child evidence|evidence discipline|therapist_factual_correction|external_fact|real-world context|real-world kontext|operational context|operační kontext|briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log|faktick[áa]\s+korekce\s+reality|Dnešní přehled drží|Karel je jen navigátor|Karel je zapisovatel|Karel nesmí|Karel může|Karel je\b|Karel bude|Sezení nesmí|Herna může běžet)/i;
+const FORBIDDEN_OPENING_META_RE = /(Dnešní přehled drží|Karel je jen navigátor|Karel je zapisovatel|Karel nesmí|Karel může|Karel je\b|Karel bude|Sezení nesmí|Herna může běžet|ne jako symbol ani projekci|not child evidence)/i;
 
 const translateInternalStateToClinicalProse = (value: unknown): string =>
   cleanBlockText(value)
@@ -693,6 +694,12 @@ const ensureVisibleClinicalText = (value: unknown): string => {
   const text = sanitizeKarelClinicalText(value);
   if (!FORBIDDEN_VISIBLE_DEBUG_LANGUAGE_RE.test(text)) return text;
   return sanitizeKarelClinicalText(text);
+};
+
+const ensureKarelFirstPersonOpening = (value: unknown, fallback: string): string => {
+  const text = ensureVisibleClinicalText(value);
+  if (!text || FORBIDDEN_OPENING_META_RE.test(text)) return fallback;
+  return text;
 };
 
 const isTechnicalStatusText = (value: unknown): boolean =>
