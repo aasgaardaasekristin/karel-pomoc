@@ -52,17 +52,45 @@ const daysAgoISO = (n: number): string => {
 
 
 
+/**
+ * KALENDÁŘNÍ INTEGRITA RECENCY (3-date model)
+ * ────────────────────────────────────────────
+ * Karlův přehled rozlišuje TŘI různá data:
+ *   • source_date   = den, kdy proběhla Herna/Sezení/událost
+ *   • briefing_date = den, pro který byl přehled vytvořen
+ *   • viewer_date   = den, kdy ho uživatel právě vidí v UI
+ *
+ * Slovo „včerejší" smí být použité POUZE když:
+ *   source_date === reference_date - 1 day  (Europe/Prague)
+ *
+ * kde `reference_date` je `viewer_date` (preferovaně), protože uživatel
+ * vidí UI dnes — ne v okamžiku generování. Pokud `viewer_date` chybí,
+ * fallbackuje se na `briefing_date` a teprve pak na dnešek.
+ *
+ * Cached briefing po půlnoci NESMÍ tvrdit „včerejší", pokud už to není
+ * včerejší vůči aktuálnímu dni. Proto frontend i backend volá
+ * `revalidateRecencyAgainstViewer` před renderem / vrácením cache.
+ */
 type ClinicalRecency = {
-  date_iso: string | null;
-  days_since_today: number | null;
+  // Zdrojové datum události
+  source_date_iso: string | null;
+  // Vztažné datum (briefing_date nebo viewer_date)
+  reference_date_iso: string;
+  reference_kind: "viewer" | "briefing" | "today";
+  // Spočítáno z source vs reference
+  days_since_reference: number | null;
   human_recency_label: string;
   adjective_label: string;
   is_yesterday: boolean;
   is_today: boolean;
+  // Viditelné labely a věty
   visible_section_title: string;
   visible_sentence_prefix: string;
   visible_label: string;
   not_yesterday_notice: string;
+  // BACKWARDS COMPAT (starý kód čte tyto klíče)
+  date_iso: string | null;
+  days_since_today: number | null;
 };
 
 const dateOnlyToUtcMs = (iso: string): number => {
@@ -79,19 +107,53 @@ const clinicalKindConfig = (kind: "playroom" | "session") => kind === "playroom"
   ? { noun: "Herna", noYesterday: "Včera Herna neproběhla.", verb: "proběhla" }
   : { noun: "Sezení", noYesterday: "Včerejší Sezení neproběhlo.", verb: "proběhlo" };
 
-export function resolveClinicalRecency(dateLike: unknown, todayPrague: string = pragueDayISO(), kind: "playroom" | "session" = "playroom"): ClinicalRecency {
-  let dateIso: string | null = null;
+const normalizeIsoDate = (dateLike: unknown): string | null => {
   if (typeof dateLike === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateLike.slice(0, 10))) {
-    dateIso = dateLike.slice(0, 10);
-  } else if (dateLike) {
-    const parsed = new Date(String(dateLike));
-    if (!Number.isNaN(parsed.getTime())) dateIso = pragueDayISO(parsed);
+    return dateLike.slice(0, 10);
   }
+  if (dateLike) {
+    const parsed = new Date(String(dateLike));
+    if (!Number.isNaN(parsed.getTime())) return pragueDayISO(parsed);
+  }
+  return null;
+};
+
+export type RecencyResolveOpts = {
+  briefing_date?: string;
+  viewer_date?: string;
+};
+
+/**
+ * Resolve clinical recency against a chosen reference date.
+ * Reference priority: viewer_date > briefing_date > today (Europe/Prague).
+ */
+export function resolveClinicalRecency(
+  dateLike: unknown,
+  refOrToday: string | RecencyResolveOpts = pragueDayISO(),
+  kind: "playroom" | "session" = "playroom",
+): ClinicalRecency {
+  // Back-compat: old callers pass a single ISO string as the second arg.
+  let viewerDate: string | undefined;
+  let briefingDate: string | undefined;
+  if (typeof refOrToday === "string") {
+    viewerDate = refOrToday;
+  } else {
+    viewerDate = refOrToday?.viewer_date;
+    briefingDate = refOrToday?.briefing_date;
+  }
+  const referenceDateIso = viewerDate || briefingDate || pragueDayISO();
+  const referenceKind: "viewer" | "briefing" | "today" =
+    viewerDate ? "viewer" : briefingDate ? "briefing" : "today";
+
+  const sourceIso = normalizeIsoDate(dateLike);
   const cfg = clinicalKindConfig(kind);
-  if (!dateIso) {
+
+  if (!sourceIso) {
     return {
-      date_iso: null,
-      days_since_today: null,
+      source_date_iso: null,
+      reference_date_iso: referenceDateIso,
+      reference_kind: referenceKind,
+      days_since_reference: null,
       human_recency_label: "datum není doložené",
       adjective_label: "nedoložené",
       is_yesterday: false,
@@ -100,20 +162,40 @@ export function resolveClinicalRecency(dateLike: unknown, todayPrague: string = 
       visible_sentence_prefix: `${cfg.noun} nemá doložené datum klinické aktivity.`,
       visible_label: `Poslední ${cfg.noun}`,
       not_yesterday_notice: cfg.noYesterday,
+      // back-compat
+      date_iso: null,
+      days_since_today: null,
     };
   }
-  const days = Math.round((dateOnlyToUtcMs(todayPrague) - dateOnlyToUtcMs(dateIso)) / 86_400_000);
-  const human = days === 0 ? "dnes" : days === 1 ? "včera" : days === 2 ? "předevčírem" : days === 3 ? "před 3 dny" : days > 3 ? `před ${days} dny` : "budoucí datum";
-  const adjective = days === 0 ? "dnešní" : days === 1 ? "včerejší" : days === 2 ? "předevčerejší" : "poslední";
-  const visibleLabel = days === 1 ? `Včerejší ${cfg.noun}` : days === 2 ? `Předevčerejší ${cfg.noun}` : `Poslední ${cfg.noun}`;
-  const prefix = days === 1
-    ? `Včerejší ${cfg.noun} ${cfg.verb} ${formatClinicalDate(dateIso)}.`
-    : days === 2
-      ? `Předevčerejší ${cfg.noun} ${cfg.verb} ${formatClinicalDate(dateIso)}.`
-      : `Poslední doložená ${cfg.noun} ${cfg.verb} ${formatClinicalDate(dateIso)}, tedy ${human}.`;
+
+  const days = Math.round((dateOnlyToUtcMs(referenceDateIso) - dateOnlyToUtcMs(sourceIso)) / 86_400_000);
+  const human =
+    days === 0 ? "dnes" :
+    days === 1 ? "včera" :
+    days === 2 ? "předevčírem" :
+    days === 3 ? "před 3 dny" :
+    days > 3 ? `před ${days} dny` :
+    "budoucí datum";
+  const adjective =
+    days === 0 ? "dnešní" :
+    days === 1 ? "včerejší" :
+    days === 2 ? "předevčerejší" :
+    "poslední";
+  const visibleLabel =
+    days === 1 ? `Včerejší ${cfg.noun}` :
+    days === 2 ? `Předevčerejší ${cfg.noun}` :
+    `Poslední ${cfg.noun}`;
+  const prefix =
+    days === 1
+      ? `Včerejší ${cfg.noun} ${cfg.verb} ${formatClinicalDate(sourceIso)}.`
+      : days === 2
+        ? `Předevčerejší ${cfg.noun} ${cfg.verb} ${formatClinicalDate(sourceIso)}.`
+        : `Poslední doložená ${cfg.noun} ${cfg.verb} ${formatClinicalDate(sourceIso)}, tedy ${human}.`;
   return {
-    date_iso: dateIso,
-    days_since_today: days,
+    source_date_iso: sourceIso,
+    reference_date_iso: referenceDateIso,
+    reference_kind: referenceKind,
+    days_since_reference: days,
     human_recency_label: human,
     adjective_label: adjective,
     is_yesterday: days === 1,
@@ -122,54 +204,174 @@ export function resolveClinicalRecency(dateLike: unknown, todayPrague: string = 
     visible_sentence_prefix: prefix,
     visible_label: visibleLabel,
     not_yesterday_notice: days === 1 ? "" : cfg.noYesterday,
+    // back-compat: old code reads `date_iso` and `days_since_today`
+    date_iso: sourceIso,
+    days_since_today: days,
   };
 }
 
-const recencyFields = (dateLike: unknown, kind: "playroom" | "session", todayPrague?: string) => {
-  const recency = resolveClinicalRecency(dateLike, todayPrague ?? pragueDayISO(), kind);
+const recencyFields = (dateLike: unknown, kind: "playroom" | "session", briefingDateOrToday?: string) => {
+  const recency = resolveClinicalRecency(dateLike, { briefing_date: briefingDateOrToday ?? pragueDayISO() }, kind);
   return {
-    session_date_iso: recency.date_iso,
-    days_since_today: recency.days_since_today,
+    session_date_iso: recency.source_date_iso,
+    source_date_iso: recency.source_date_iso,
+    briefing_date_iso: recency.reference_date_iso,
+    days_since_today: recency.days_since_reference,
+    days_since_briefing_date: recency.days_since_reference,
     human_recency_label: recency.human_recency_label,
     adjective_label: recency.adjective_label,
     is_yesterday: recency.is_yesterday,
+    is_yesterday_for_briefing: recency.is_yesterday,
     is_today: recency.is_today,
     visible_section_title: recency.visible_section_title,
     visible_label: recency.visible_label,
     visible_sentence_prefix: recency.visible_sentence_prefix,
     not_yesterday_notice: recency.not_yesterday_notice,
+    // strukturovaná recency pro frontend revalidaci
+    recency_facts: {
+      source_date_iso: recency.source_date_iso,
+      briefing_date_iso: recency.reference_date_iso,
+      kind,
+      noun: clinicalKindConfig(kind).noun,
+      verb: clinicalKindConfig(kind).verb,
+    },
   };
 };
 
-const recencyIntro = (item: any, kind: "playroom" | "session") => {
-  const recency = resolveClinicalRecency(item?.session_date_iso ?? item?.session_date ?? item?.plan_date ?? item?.last_activity_at ?? item?.created_at, pragueDayISO(), kind);
+const recencyIntro = (item: any, kind: "playroom" | "session", briefingDate?: string) => {
+  const recency = resolveClinicalRecency(
+    item?.source_date_iso ?? item?.session_date_iso ?? item?.session_date ?? item?.plan_date ?? item?.last_activity_at ?? item?.created_at,
+    { briefing_date: briefingDate ?? pragueDayISO() },
+    kind,
+  );
   return `${recency.not_yesterday_notice ? `${recency.not_yesterday_notice} ` : ""}${recency.visible_sentence_prefix}`.trim();
 };
 
+/**
+ * HARD GUARD: Po vygenerování (i po revalidaci cache) projedeme veškerý
+ * viditelný text a stripneme/přepíšeme jakékoli „včerejší X" / „včera"
+ * formulace, pokud zdrojové datum NENÍ skutečně včera vůči referenčnímu
+ * datu (briefing_date nebo viewer_date).
+ *
+ * Volá se rekurzivně přes celý payload v `applyClinicalRecencyGuard`.
+ */
 function enforceClinicalRecencyText(value: unknown, payload: any): string {
   let text = String(value ?? "");
   const play = payload?.recent_playroom_review ?? payload?.yesterday_playroom_review;
   const sess = payload?.recent_session_review ?? payload?.yesterday_session_review;
-  if (play?.exists && play.days_since_today !== 1) {
-    const label = play.days_since_today === 2 ? "předevčerejší Herna" : `poslední Herna z ${formatClinicalDate(play.session_date_iso)}, ${play.human_recency_label}`;
+
+  const playDays = play?.days_since_briefing_date ?? play?.days_since_today;
+  const sessDays = sess?.days_since_briefing_date ?? sess?.days_since_today;
+  const playSrc = play?.source_date_iso ?? play?.session_date_iso ?? null;
+  const sessSrc = sess?.source_date_iso ?? sess?.session_date_iso ?? null;
+
+  if (play?.exists && playDays !== 1) {
+    const label = playDays === 2
+      ? `předevčerejší Herna z ${formatClinicalDate(playSrc)}`
+      : `poslední Herna z ${formatClinicalDate(playSrc)}, ${play.human_recency_label}`;
+    const Cap = label.charAt(0).toUpperCase() + label.slice(1);
     text = text
-      .replace(/včerejší\s+Hernu/gi, label)
-      .replace(/včerejší\s+Herna/gi, label)
-      .replace(/Včerejší\s+Herna/g, label.charAt(0).toUpperCase() + label.slice(1))
-      .replace(/včerejší\s+hernu/gi, label.toLowerCase())
-      .replace(/Včerejší\s+herna/g, label.charAt(0).toUpperCase() + label.slice(1))
-      .replace(/ze\s+včerejší\s+Herny/gi, `z ${label}`)
-      .replace(/navázat\s+na\s+včerejší\s+Hernu/gi, `navázat jen opatrně na ${label}`)
-      .replace(/Symboly\s+z\s+včerejška/gi, `Symboly z ${play.human_recency_label}`);
+      // Přesné "Včerejší Herna proběhla DD. M. YYYY." → absolutní věta s datem
+      .replace(/V[čc]erej[šs][íi]\s+Herna\s+prob[eě]hla\s+\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\.?/giu,
+        `Poslední doložená Herna proběhla ${formatClinicalDate(playSrc)}, ${play.human_recency_label}.`)
+      .replace(/[Vv][čc]erej[šs][íi]\s+Hernu/giu, label)
+      .replace(/[Vv][čc]erej[šs][íi]\s+Herna/giu, label)
+      .replace(/[Vv][čc]erej[šs][íi]\s+hernu/giu, label.toLowerCase())
+      .replace(/[Vv][čc]erej[šs][íi]\s+herna/giu, label.toLowerCase())
+      .replace(/ze\s+v[čc]erej[šs][íi]\s+Herny/giu, `z ${label}`)
+      .replace(/nav[áa]zat\s+na\s+v[čc]erej[šs][íi]\s+Hernu/giu, `navázat jen opatrně na ${label}`)
+      .replace(/Symboly\s+z\s+v[čc]erej[šs]ka/giu, `Symboly z ${play.human_recency_label}`)
+      .replace(/\bv[čc]erej[šs]ka\b/giu, play.human_recency_label || "posledního dne s Hernou")
+      // Re-capitalize when we replaced at the beginning of a sentence.
+      .replace(new RegExp(`(^|[.!?]\\s+)${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "gu"), `$1${Cap}`);
   }
-  if (sess?.exists && sess.days_since_today !== 1) {
-    const label = sess.days_since_today === 2 ? "předevčerejší Sezení" : `poslední Sezení z ${formatClinicalDate(sess.session_date_iso)}, ${sess.human_recency_label}`;
+  if (sess?.exists && sessDays !== 1) {
+    const label = sessDays === 2
+      ? `předevčerejší Sezení z ${formatClinicalDate(sessSrc)}`
+      : `poslední Sezení z ${formatClinicalDate(sessSrc)}, ${sess.human_recency_label}`;
+    const Cap = label.charAt(0).toUpperCase() + label.slice(1);
     text = text
-      .replace(/včerejší\s+Sezení/gi, label)
-      .replace(/Včerejší\s+Sezení/g, label.charAt(0).toUpperCase() + label.slice(1))
-      .replace(/ze\s+včerejšího\s+Sezení/gi, `z ${label}`);
+      .replace(/V[čc]erej[šs][íi]\s+Sezen[íi]\s+prob[eě]hlo\s+\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\.?/giu,
+        `Poslední doložené Sezení proběhlo ${formatClinicalDate(sessSrc)}, ${sess.human_recency_label}.`)
+      .replace(/[Vv][čc]erej[šs][íi]\s+Sezen[íi]/giu, label)
+      .replace(/ze\s+v[čc]erej[šs][íi]ho\s+Sezen[íi]/giu, `z ${label}`)
+      .replace(new RegExp(`(^|[.!?]\\s+)${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "gu"), `$1${Cap}`);
   }
   return text;
+}
+
+/**
+ * Revalidates recency metadata in `recent_playroom_review` / `recent_session_review`
+ * (and yesterday_* aliases) against a viewer date — typically called when serving
+ * a cached briefing whose `briefing_date` may differ from today (e.g. user opens
+ * yesterday's briefing this morning).
+ *
+ * Recomputes: days_since_today, is_yesterday, human_recency_label,
+ * visible_section_title, visible_label, visible_sentence_prefix, not_yesterday_notice.
+ *
+ * Mutates the payload in place AND returns it for chaining.
+ */
+function revalidateRecencyAgainstViewer(payload: any, viewerDate: string): any {
+  if (!payload || typeof payload !== "object") return payload;
+  const refresh = (review: any, kind: "playroom" | "session") => {
+    if (!review || typeof review !== "object" || !review.exists) return;
+    const sourceIso = review.source_date_iso ?? review.session_date_iso ?? null;
+    if (!sourceIso) return;
+    const recency = resolveClinicalRecency(sourceIso, { viewer_date: viewerDate }, kind);
+    review.source_date_iso = recency.source_date_iso;
+    review.session_date_iso = recency.source_date_iso;
+    review.days_since_today = recency.days_since_reference;
+    review.days_since_briefing_date = recency.days_since_reference;
+    review.is_yesterday = recency.is_yesterday;
+    review.is_yesterday_for_briefing = recency.is_yesterday;
+    review.is_today = recency.is_today;
+    review.human_recency_label = recency.human_recency_label;
+    review.adjective_label = recency.adjective_label;
+    review.visible_section_title = recency.visible_section_title;
+    review.visible_label = recency.visible_label;
+    review.visible_sentence_prefix = recency.visible_sentence_prefix;
+    review.not_yesterday_notice = recency.not_yesterday_notice;
+    review.recency_facts = {
+      source_date_iso: recency.source_date_iso,
+      viewer_date_iso: viewerDate,
+      kind,
+      noun: clinicalKindConfig(kind).noun,
+      verb: clinicalKindConfig(kind).verb,
+    };
+  };
+  refresh(payload.recent_playroom_review, "playroom");
+  refresh(payload.recent_session_review, "session");
+  refresh(payload.yesterday_playroom_review, "playroom");
+  refresh(payload.yesterday_session_review, "session");
+  return payload;
+}
+
+/**
+ * Revalidates a complete cached briefing row against the viewer's current
+ * Europe/Prague day. Returns a new shallow-cloned briefing with:
+ *   - payload.recency revalidated against viewer_date
+ *   - payload.opening_monologue_text and other visible prose re-stripped
+ *     through enforceClinicalRecencyText so cached "Včerejší X" stops lying
+ *     after midnight
+ *   - viewer_meta.{viewer_date_iso, briefing_date_iso, is_current_briefing}
+ *     so the UI can show a "Zobrazuji starý přehled" banner.
+ */
+function revalidateCachedBriefingForViewer(briefing: any, viewerDate: string): any {
+  if (!briefing || typeof briefing !== "object") return briefing;
+  const cloned = { ...briefing, payload: briefing.payload ? JSON.parse(JSON.stringify(briefing.payload)) : briefing.payload };
+  const briefingDate = String(briefing.briefing_date ?? "").slice(0, 10) || viewerDate;
+  if (cloned.payload && typeof cloned.payload === "object") {
+    revalidateRecencyAgainstViewer(cloned.payload, viewerDate);
+    // Re-strip prose: opening monologue + structured visible fields.
+    cloned.payload = applyClinicalRecencyGuard(cloned.payload);
+    cloned.payload.viewer_meta = {
+      viewer_date_iso: viewerDate,
+      briefing_date_iso: briefingDate,
+      is_current_briefing: viewerDate === briefingDate,
+      days_since_briefing: Math.round((dateOnlyToUtcMs(viewerDate) - dateOnlyToUtcMs(briefingDate)) / 86_400_000),
+    };
+  }
+  return cloned;
 }
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
