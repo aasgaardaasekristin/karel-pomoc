@@ -250,7 +250,12 @@ const BlockDiagnosticChat = ({
           },
         });
         if (error) throw new Error(error.message || "invoke failed");
-        if ((data as any)?.error) throw new Error(String((data as any).error));
+        // Server now returns HTTP 200 with `fallback: true` instead of 500
+        // when AI gateway returns empty/invalid bodies. Surface as toast,
+        // do NOT throw (would trigger blank-screen runtime overlay).
+        const isFallback = !!(data as any)?.fallback;
+        const fallbackReason = String((data as any)?.fallback_reason ?? "");
+        if ((data as any)?.error && !isFallback) throw new Error(String((data as any).error));
         const karelText = String((data as any)?.karel_text ?? "").trim();
         if (!karelText) throw new Error("Karel nevrátil žádný text.");
         const nextTurn: DiagTurn = { from: "karel", text: karelText, ts: new Date().toISOString() };
@@ -265,6 +270,14 @@ const BlockDiagnosticChat = ({
         if (done) {
           const cm = (data as any)?.suggested_close_message;
           setCloseMsg(typeof cm === "string" && cm.trim() ? cm.trim() : "Karel má dost dat — můžeš bod uzavřít.");
+        }
+        if (isFallback) {
+          toast.warning(`Karel teď použil bezpečnou náhradní odpověď (${fallbackReason || "AI nevrátila výsledek"}).`);
+        }
+        // Surface server-side authority guard if it blocked off-plan content
+        const auth = (data as any)?.authority;
+        if (auth?.validation_fallback_used) {
+          toast.warning("Karel chtěl spustit aktivitu mimo závěrečný blok — automaticky jsem ho vrátil k uzavření.");
         }
         return true;
       } catch (e: any) {
