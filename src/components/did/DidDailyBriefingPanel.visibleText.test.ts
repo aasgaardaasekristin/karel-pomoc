@@ -279,3 +279,59 @@ describe("DidDailyBriefingPanel visible clinical text helpers", () => {
     expect(notice).not.toMatch(/Včerejší\s+Herna|včerejší\s+herní\s+materiál|ze\s+včerejší\s+Herny|navázat\s+na\s+včerejší\s+Hernu/i);
   });
 });
+
+describe("frozen 'Včerejší X proběhlo DD. M. YYYY' pattern is sanitized", () => {
+  it("rewrites session sentence to absolute-date-first when viewer date is the day after source", () => {
+    const sessRecency: any = {
+      exists: true,
+      held: true,
+      source_date_iso: "2026-04-29",
+      session_date_iso: "2026-04-29",
+      days_since_today: 1,
+      is_yesterday: true,
+      human_recency_label: "včera",
+    };
+    const out = humanizeRecencyInProse("Včerejší Sezení proběhlo 29. 4. 2026.", null, sessRecency);
+    expect(out).not.toMatch(/V[čc]erej[šs][íi]\s+Sezen[íi]\s+prob[eě]hlo\s+\d/);
+    expect(out).toContain("29. 4. 2026");
+    expect(out).toContain("včera");
+  });
+
+  it("rewrites session sentence with 'předevčírem' when viewer is two days after source", () => {
+    const sessRecency: any = {
+      exists: true,
+      held: true,
+      source_date_iso: "2026-04-29",
+      session_date_iso: "2026-04-29",
+      days_since_today: 2,
+      is_yesterday: false,
+      human_recency_label: "předevčírem",
+    };
+    const out = humanizeRecencyInProse("Včerejší Sezení proběhlo 29. 4. 2026.", null, sessRecency);
+    expect(out).not.toMatch(/V[čc]erej[šs][íi]\s+Sezen[íi]\s+prob[eě]hlo\s+\d/);
+    expect(out).toContain("29. 4. 2026");
+    expect(out).toContain("předevčírem");
+  });
+
+  it("rewrites playroom sentence the same way", () => {
+    const playRecency: any = {
+      exists: true,
+      held: true,
+      source_date_iso: "2026-04-29",
+      session_date_iso: "2026-04-29",
+      days_since_today: 1,
+      is_yesterday: true,
+      human_recency_label: "včera",
+    };
+    const out = humanizeRecencyInProse("Včerejší Herna proběhla 29. 4. 2026.", playRecency, null);
+    expect(out).not.toMatch(/V[čc]erej[šs][íi]\s+Herna\s+prob[eě]hla\s+\d/);
+    expect(out).toContain("29. 4. 2026");
+    expect(out).toContain("včera");
+  });
+
+  it("rewrites the section heading 'VČEREJŠÍ DŮLEŽITÝ KONTEXT'", () => {
+    const out = humanizeRecencyInProse("VČEREJŠÍ DŮLEŽITÝ KONTEXT\nněco", null, null);
+    expect(out).not.toContain("VČEREJŠÍ DŮLEŽITÝ KONTEXT");
+    expect(out).toContain("DŮLEŽITÝ KONTEXT Z POSLEDNÍCH DNÍ");
+  });
+});

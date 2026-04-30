@@ -186,12 +186,14 @@ export function resolveClinicalRecency(
     days === 1 ? `Včerejší ${cfg.noun}` :
     days === 2 ? `Předevčerejší ${cfg.noun}` :
     `Poslední ${cfg.noun}`;
+  // Bezpečný absolute-date-first formát i pro days===1, aby se z věty
+  // nestala zafixovaná lež po půlnoci. Místo "Včerejší Sezení proběhlo
+  // 29. 4. 2026." vždy zapíšeme "Poslední Sezení proběhlo 29. 4. 2026 — včera."
+  // → po půlnoci stačí přepočítat human label, datum zůstává správně.
   const prefix =
-    days === 1
-      ? `Včerejší ${cfg.noun} ${cfg.verb} ${formatClinicalDate(sourceIso)}.`
-      : days === 2
-        ? `Předevčerejší ${cfg.noun} ${cfg.verb} ${formatClinicalDate(sourceIso)}.`
-        : `Poslední doložená ${cfg.noun} ${cfg.verb} ${formatClinicalDate(sourceIso)}, tedy ${human}.`;
+    days <= 2
+      ? `Poslední ${cfg.noun} ${cfg.verb} ${formatClinicalDate(sourceIso)} — ${human}.`
+      : `Poslední doložená ${cfg.noun} ${cfg.verb} ${formatClinicalDate(sourceIso)}, tedy ${human}.`;
   return {
     source_date_iso: sourceIso,
     reference_date_iso: referenceDateIso,
@@ -266,15 +268,34 @@ export function enforceClinicalRecencyText(value: unknown, payload: any): string
   const playSrc = play?.source_date_iso ?? play?.session_date_iso ?? null;
   const sessSrc = sess?.source_date_iso ?? sess?.session_date_iso ?? null;
 
+  // Section heading guard: "VČEREJŠÍ DŮLEŽITÝ KONTEXT" is forbidden because the
+  // section may mix material from yesterday, two days ago, and three days ago.
+  text = text.replace(/V[ČC]EREJ[ŠS][ÍI]\s+D[ŮU]LE[ŽZ]IT[ÝY]\s+KONTEXT/giu, "DŮLEŽITÝ KONTEXT Z POSLEDNÍCH DNÍ");
+
+  // Frozen-pattern guard: even when days===1 (literally yesterday), the
+  // sentence "Včerejší X proběhl[ao] DD. M. YYYY." is forbidden — it becomes a
+  // lie after midnight when served from cache. Always rewrite to absolute-date.
+  if (play?.exists && playSrc) {
+    const human = play.human_recency_label || (playDays === 1 ? "včera" : "");
+    text = text.replace(
+      /V[čc]erej[šs][íi]\s+Herna\s+prob[eě]hla\s+\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\.?/giu,
+      `Poslední Herna proběhla ${formatClinicalDate(playSrc)}${human ? ` — ${human}` : ""}.`,
+    );
+  }
+  if (sess?.exists && sessSrc) {
+    const human = sess.human_recency_label || (sessDays === 1 ? "včera" : "");
+    text = text.replace(
+      /V[čc]erej[šs][íi]\s+Sezen[íi]\s+prob[eě]hlo\s+\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\.?/giu,
+      `Poslední Sezení proběhlo ${formatClinicalDate(sessSrc)}${human ? ` — ${human}` : ""}.`,
+    );
+  }
+
   if (play?.exists && playDays !== 1) {
     const label = playDays === 2
       ? `předevčerejší Herna z ${formatClinicalDate(playSrc)}`
       : `poslední Herna z ${formatClinicalDate(playSrc)}, ${play.human_recency_label}`;
     const Cap = label.charAt(0).toUpperCase() + label.slice(1);
     text = text
-      // Přesné "Včerejší Herna proběhla DD. M. YYYY." → absolutní věta s datem
-      .replace(/V[čc]erej[šs][íi]\s+Herna\s+prob[eě]hla\s+\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\.?/giu,
-        `Poslední doložená Herna proběhla ${formatClinicalDate(playSrc)}, ${play.human_recency_label}.`)
       .replace(/[Vv][čc]erej[šs][íi]\s+Hernu/giu, label)
       .replace(/[Vv][čc]erej[šs][íi]\s+Herna/giu, label)
       .replace(/[Vv][čc]erej[šs][íi]\s+hernu/giu, label.toLowerCase())
@@ -283,7 +304,6 @@ export function enforceClinicalRecencyText(value: unknown, payload: any): string
       .replace(/nav[áa]zat\s+na\s+v[čc]erej[šs][íi]\s+Hernu/giu, `navázat jen opatrně na ${label}`)
       .replace(/Symboly\s+z\s+v[čc]erej[šs]ka/giu, `Symboly z ${play.human_recency_label}`)
       .replace(/\bv[čc]erej[šs]ka\b/giu, play.human_recency_label || "posledního dne s Hernou")
-      // Re-capitalize when we replaced at the beginning of a sentence.
       .replace(new RegExp(`(^|[.!?]\\s+)${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "gu"), `$1${Cap}`);
   }
   if (sess?.exists && sessDays !== 1) {
@@ -292,8 +312,6 @@ export function enforceClinicalRecencyText(value: unknown, payload: any): string
       : `poslední Sezení z ${formatClinicalDate(sessSrc)}, ${sess.human_recency_label}`;
     const Cap = label.charAt(0).toUpperCase() + label.slice(1);
     text = text
-      .replace(/V[čc]erej[šs][íi]\s+Sezen[íi]\s+prob[eě]hlo\s+\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\.?/giu,
-        `Poslední doložené Sezení proběhlo ${formatClinicalDate(sessSrc)}, ${sess.human_recency_label}.`)
       .replace(/[Vv][čc]erej[šs][íi]\s+Sezen[íi]/giu, label)
       .replace(/ze\s+v[čc]erej[šs][íi]ho\s+Sezen[íi]/giu, `z ${label}`)
       .replace(new RegExp(`(^|[.!?]\\s+)${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "gu"), `$1${Cap}`);
@@ -1010,7 +1028,8 @@ const translateInternalStateToClinicalProse = (value: unknown): string =>
     .replace(/\boperational context\b/gi, "důležitý kontext")
     .replace(/operační\s+kontext/gi, "důležitý kontext")
     .replace(/briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log/gi, "podklad")
-    .replace(/RECENT OPERATIONAL CONTEXT\s*—\s*Pantry B/gi, "VČEREJŠÍ DŮLEŽITÝ KONTEXT")
+    .replace(/RECENT OPERATIONAL CONTEXT\s*—\s*Pantry B/gi, "DŮLEŽITÝ KONTEXT Z POSLEDNÍCH DNÍ")
+    .replace(/V[ČC]EREJ[ŠS][ÍI]\s+D[ŮU]LE[ŽZ]IT[ÝY]\s+KONTEXT/giu, "DŮLEŽITÝ KONTEXT Z POSLEDNÍCH DNÍ")
     .replace(/REALITY CORRECTION\s*—\s*not child evidence/gi, "SKUTEČNÁ UDÁLOST — NEVYVOZOVAT BEZ REAKCE KLUCI")
     .trim();
 
