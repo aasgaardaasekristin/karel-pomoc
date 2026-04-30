@@ -1515,12 +1515,20 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                         : "Nedokončeno"}
                     </Badge>
                   )}
+                  {sessionRecencyBadge && (
+                    <Badge className="text-[10px] h-5 px-2 bg-amber-100/50 text-amber-900 border-amber-300/50">{sessionRecencyBadge}</Badge>
+                  )}
                 </div>
+                {sessRecency?.exists && !sessRecency.is_yesterday && (
+                  <p className="text-[12px] leading-relaxed text-amber-900/80 italic">
+                    {sessRecency.not_yesterday_notice || "Včera Sezení neproběhlo."} {sessRecency.visible_sentence_prefix || ""}
+                  </p>
+                )}
                 {yesterdayReview.karel_summary ? (
                   <div>
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Karlovo vyhodnocení</p>
                     <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
-                      {cleanVisibleClinicalText(yesterdayReview.karel_summary)}
+                      {sanitizeProse(yesterdayReview.karel_summary)}
                     </p>
                   </div>
                 ) : (
