@@ -276,8 +276,51 @@ export const cleanVisibleClinicalText = (value: unknown): string => String(value
 
 const FORBIDDEN_VISIBLE_DEBUG_RE = /pending_review|evidence_limited|needs_therapist_input|awaiting_therapist_review|backend_context_inputs|source_ref|therapist_factual_correction|external_fact|evidence discipline|child evidence|real-world context|operational context|faktick[áa]\s+korekce\s+reality|nepředstírat klinické závěry|průběh, který nemá transcript|V ranním přehledu se má objevit|První pracovní návrh:\s*Část|Stav:\s*awaiting|Dnešní přehled drží|Karel je jen navigátor|Karel je zapisovatel|Karel nesmí|Karel může|Karel je\b|Karel bude|Sezení nesmí|Herna může běžet/i;
 
-export const ensureKarelOpeningVoice = (value: unknown): string => {
-  const cleaned = cleanVisibleClinicalText(value);
+type RecencyMeta = {
+  exists?: boolean;
+  session_date_iso?: string | null;
+  days_since_today?: number | null;
+  human_recency_label?: string | null;
+  is_yesterday?: boolean;
+  visible_label?: string | null;
+  visible_sentence_prefix?: string | null;
+  not_yesterday_notice?: string | null;
+};
+
+const formatPragueDateLabel = (iso?: string | null): string => {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso.slice(0, 10))) return "datum není doložené";
+  return new Intl.DateTimeFormat("cs-CZ", { timeZone: "Europe/Prague", day: "numeric", month: "numeric", year: "numeric" }).format(new Date(`${iso.slice(0, 10)}T12:00:00Z`));
+};
+
+export const humanizeRecencyInProse = (value: unknown, playRecency?: RecencyMeta | null, sessRecency?: RecencyMeta | null): string => {
+  let text = String(value ?? "");
+  if (playRecency?.exists && playRecency.days_since_today !== 1 && playRecency.days_since_today != null) {
+    const label = playRecency.days_since_today === 2
+      ? "předevčerejší Herna"
+      : `poslední Herna z ${formatPragueDateLabel(playRecency.session_date_iso)}, ${playRecency.human_recency_label || ""}`.trim();
+    text = text
+      .replace(/včerejší\s+Hernu/gi, label)
+      .replace(/včerejší\s+Herna/gi, label)
+      .replace(/Včerejší\s+Herna/g, label.charAt(0).toUpperCase() + label.slice(1))
+      .replace(/Včerejší\s+herna/g, label.charAt(0).toUpperCase() + label.slice(1))
+      .replace(/ze\s+včerejší\s+Herny/gi, `z ${label}`)
+      .replace(/ze\s+včerejška/gi, `z ${playRecency.human_recency_label || "dřívějška"}`)
+      .replace(/Symboly\s+z\s+včerejška/gi, `Symboly z ${playRecency.human_recency_label || "dřívějška"}`);
+  }
+  if (sessRecency?.exists && sessRecency.days_since_today !== 1 && sessRecency.days_since_today != null) {
+    const label = sessRecency.days_since_today === 2
+      ? "předevčerejší Sezení"
+      : `poslední Sezení z ${formatPragueDateLabel(sessRecency.session_date_iso)}, ${sessRecency.human_recency_label || ""}`.trim();
+    text = text
+      .replace(/včerejší\s+Sezení/gi, label)
+      .replace(/Včerejší\s+Sezení/g, label.charAt(0).toUpperCase() + label.slice(1))
+      .replace(/ze\s+včerejšího\s+Sezení/gi, `z ${label}`);
+  }
+  return text;
+};
+
+export const ensureKarelOpeningVoice = (value: unknown, playRecency?: RecencyMeta | null, sessRecency?: RecencyMeta | null): string => {
+  const cleaned = humanizeRecencyInProse(cleanVisibleClinicalText(value), playRecency, sessRecency);
   if (!cleaned || FORBIDDEN_VISIBLE_DEBUG_RE.test(cleaned)) {
     return "Dobré ráno, Haničko a Káťo.\n\nVčerejší událost s Timmim/keporkakem vnímám jako silný emoční otisk v psychice kluků. Nechci ji dnes přehnaně vykládat, ale nechci ji ani ztratit. Potřebujeme jemně zjistit, co v nich po včerejšku zůstalo — vlastními slovy, tělem a reakcí kluků.\n\nPokud dnes proběhne Sezení, povede ho Hanička. Budu jí pomáhat držet strukturu, bezpečné otázky a zápis toho, co je klinicky důležité. Herna zůstává nízkoprahová a čeká na schválení terapeutkami.";
   }
@@ -1280,17 +1323,32 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const playroomProposal = p.proposed_playroom?.part_name
     ? p.proposed_playroom
     : createFallbackPlayroomProposal(p);
+  const playRecency = ((p as any).recent_playroom_review ?? p.yesterday_playroom_review) as RecencyMeta | null | undefined;
+  const sessRecency = ((p as any).recent_session_review ?? p.yesterday_session_review) as RecencyMeta | null | undefined;
   const sessionView = toProposedSessionView(p.proposed_session);
   const playroomView = toProposedPlayroomView(playroomProposal);
   const decisions = (p.decisions ?? []).slice(0, 3);
   const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
   const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
   const legacyTechnicalGreeting = /těžk[áa]\s+syntéza|fallback|bezpečn[ýy]\s+režim/i.test(p.greeting || "");
-  const openingMonologueText = ensureKarelOpeningVoice(p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnes držme hlavně klinickou návaznost, opatrnost v závěrech a jeden bezpečný další krok pro kluky. Budu rozlišovat, co víme jistě, co je pracovní hypotéza a co ještě čeká na ověření." : p.greeting) || "");
+  const openingMonologueText = ensureKarelOpeningVoice(p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnes držme hlavně klinickou návaznost, opatrnost v závěrech a jeden bezpečný další krok pro kluky. Budu rozlišovat, co víme jistě, co je pracovní hypotéza a co ještě čeká na ověření." : p.greeting) || "", playRecency, sessRecency);
   const technicalNote = (p.technical_note || p.opening_monologue?.technical_note || "").trim();
   const visibleRealityContext = realityContextText(p);
   const sessionContextSummary = backendContextSummary(p.proposed_session?.backend_context_inputs);
   const playroomContextSummary = backendContextSummary(playroomProposal?.backend_context_inputs);
+  const playroomSectionTitle = playRecency?.exists
+    ? (playRecency.is_yesterday ? "Včerejší herna" : (playRecency.visible_label || `Poslední Herna (${formatPragueDateLabel(playRecency.session_date_iso)})`))
+    : "Včerejší herna";
+  const sessionSectionTitle = sessRecency?.exists
+    ? (sessRecency.is_yesterday ? "Včerejší sezení" : (sessRecency.visible_label || `Poslední Sezení (${formatPragueDateLabel(sessRecency.session_date_iso)})`))
+    : "Včerejší sezení";
+  const playroomRecencyBadge = playRecency?.exists && !playRecency.is_yesterday
+    ? `${playRecency.human_recency_label || "starší"} · ${formatPragueDateLabel(playRecency.session_date_iso)}`
+    : null;
+  const sessionRecencyBadge = sessRecency?.exists && !sessRecency.is_yesterday
+    ? `${sessRecency.human_recency_label || "starší"} · ${formatPragueDateLabel(sessRecency.session_date_iso)}`
+    : null;
+  const sanitizeProse = (v: unknown) => humanizeRecencyInProse(cleanVisibleClinicalText(v), playRecency, sessRecency);
 
   return (
     <div className="space-y-1">
@@ -1380,29 +1438,35 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         <>
           <NarrativeDivider />
           <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary/70" />}>
-            Včerejší herna
+            {playroomSectionTitle}
           </SectionHead>
           <div className="mt-2 rounded-lg border border-border/60 bg-card/40 p-3 space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
               {yesterdayPlayroomReview.part_name && <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">{yesterdayPlayroomReview.part_name}</Badge>}
               <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">vedl Karel</Badge>
+              {playroomRecencyBadge && <Badge className="text-[10px] h-5 px-2 bg-amber-100/50 text-amber-900 border-amber-300/50">{playroomRecencyBadge}</Badge>}
               {yesterdayPlayroomReview.sync_status && <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{yesterdayPlayroomReview.sync_status}</Badge>}
             </div>
+            {playRecency?.exists && !playRecency.is_yesterday && (
+              <p className="text-[12px] leading-relaxed text-amber-900/80 italic">
+                {playRecency.not_yesterday_notice || "Včera Herna neproběhla."} {playRecency.visible_sentence_prefix || ""}
+              </p>
+            )}
             <div>
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Praktický report</p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{yesterdayPlayroomReview.practical_report || yesterdayPlayroomReview.karel_summary}</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{sanitizeProse(yesterdayPlayroomReview.practical_report || yesterdayPlayroomReview.karel_summary)}</p>
             </div>
-            {yesterdayPlayroomReview.key_finding_about_part && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Význam pro část</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{yesterdayPlayroomReview.key_finding_about_part}</p></div>}
-            {(yesterdayPlayroomReview as any).implications_for_system && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Význam pro kluky jako celek</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).implications_for_system}</p></div>}
-            {(yesterdayPlayroomReview as any).recommendations_for_therapists && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro terapeutky</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).recommendations_for_therapists}</p></div>}
-            {yesterdayPlayroomReview.implications_for_plan && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro další hernu</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{yesterdayPlayroomReview.implications_for_plan}</p></div>}
-            {(yesterdayPlayroomReview as any).recommendations_for_next_session && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro další sezení</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).recommendations_for_next_session}</p></div>}
-            {(yesterdayPlayroomReview as any).spiritual_symbolics_safety_frame && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Bezpečné rámování duchovní symboliky</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).spiritual_symbolics_safety_frame}</p></div>}
+            {yesterdayPlayroomReview.key_finding_about_part && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Význam pro část</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{sanitizeProse(yesterdayPlayroomReview.key_finding_about_part)}</p></div>}
+            {(yesterdayPlayroomReview as any).implications_for_system && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Význam pro kluky jako celek</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{sanitizeProse((yesterdayPlayroomReview as any).implications_for_system)}</p></div>}
+            {(yesterdayPlayroomReview as any).recommendations_for_therapists && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro terapeutky</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{sanitizeProse((yesterdayPlayroomReview as any).recommendations_for_therapists)}</p></div>}
+            {yesterdayPlayroomReview.implications_for_plan && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro další hernu</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{sanitizeProse(yesterdayPlayroomReview.implications_for_plan)}</p></div>}
+            {(yesterdayPlayroomReview as any).recommendations_for_next_session && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro další sezení</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{sanitizeProse((yesterdayPlayroomReview as any).recommendations_for_next_session)}</p></div>}
+            {(yesterdayPlayroomReview as any).spiritual_symbolics_safety_frame && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Bezpečné rámování duchovní symboliky</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{sanitizeProse((yesterdayPlayroomReview as any).spiritual_symbolics_safety_frame)}</p></div>}
             {((yesterdayPlayroomReview as any).detail_analysis_drive_url || (yesterdayPlayroomReview as any).practical_report_drive_url) && <p className="text-[11px] text-muted-foreground">Drive: {(yesterdayPlayroomReview as any).detail_analysis_drive_url ? "detailní analýza uložena" : "detail čeká"} · {(yesterdayPlayroomReview as any).practical_report_drive_url ? "praktický report uložen" : "report čeká"}</p>}
             {yesterdayPlayroomReview.detailed_analysis && (
               <details className="rounded-md border border-border/50 bg-background/35 p-2">
-                <summary className="cursor-pointer text-[12px] font-medium text-primary">Přečíst si detailní analýzu ze včerejší herny</summary>
-                <p className="mt-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{yesterdayPlayroomReview.detailed_analysis}</p>
+                <summary className="cursor-pointer text-[12px] font-medium text-primary">Přečíst si detailní analýzu z {playRecency?.exists && !playRecency.is_yesterday ? `Herny ${formatPragueDateLabel(playRecency.session_date_iso)}` : "včerejší herny"}</summary>
+                <p className="mt-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{sanitizeProse(yesterdayPlayroomReview.detailed_analysis)}</p>
               </details>
             )}
           </div>
@@ -1414,7 +1478,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         <>
           <NarrativeDivider />
           <SectionHead icon={<Users className="w-3.5 h-3.5 text-primary/70" />}>
-            {yesterdayReview?.held === false ? "Plánované Sezení, které klinicky neproběhlo" : "Včerejší sezení"}
+            {yesterdayReview?.held === false ? "Plánované Sezení, které klinicky neproběhlo" : sessionSectionTitle}
           </SectionHead>
           <div className="mt-2 p-3 rounded-lg border border-border/60 bg-card/40 space-y-2">
             {yesterdayReview && yesterdayReview.exists ? (
@@ -1451,12 +1515,20 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                         : "Nedokončeno"}
                     </Badge>
                   )}
+                  {sessionRecencyBadge && (
+                    <Badge className="text-[10px] h-5 px-2 bg-amber-100/50 text-amber-900 border-amber-300/50">{sessionRecencyBadge}</Badge>
+                  )}
                 </div>
+                {sessRecency?.exists && !sessRecency.is_yesterday && (
+                  <p className="text-[12px] leading-relaxed text-amber-900/80 italic">
+                    {sessRecency.not_yesterday_notice || "Včera Sezení neproběhlo."} {sessRecency.visible_sentence_prefix || ""}
+                  </p>
+                )}
                 {yesterdayReview.karel_summary ? (
                   <div>
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Karlovo vyhodnocení</p>
                     <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
-                      {cleanVisibleClinicalText(yesterdayReview.karel_summary)}
+                      {sanitizeProse(yesterdayReview.karel_summary)}
                     </p>
                   </div>
                 ) : (

@@ -45,7 +45,19 @@ Deno.test("known debug phrases are not hardcoded into opening visible prose", ()
 Deno.test("opening renderer enforces first-person Karel voice and no rule manual prose", () => {
   const source = Deno.readTextFileSync(new URL("./index.ts", import.meta.url));
   assertStringIncludes(source, "ensureKarelFirstPersonOpening");
-  assertStringIncludes(source, "Včerejší událost s Timmim/keporkakem vnímám");
+  assertStringIncludes(source, "Událost s Timmim/keporkakem vnímám");
   assertStringIncludes(source, "budu ti pomáhat držet otázky krátké a bezpečné");
   assertStringIncludes(source, "FORBIDDEN_OPENING_META_RE");
+});
+
+Deno.test("clinical recency resolver labels older sessions correctly and never as 'včerejší'", () => {
+  const source = Deno.readTextFileSync(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(source, "resolveClinicalRecency");
+  assertStringIncludes(source, "human_recency_label");
+  assertStringIncludes(source, "days_since_today");
+  assertStringIncludes(source, "applyClinicalRecencyGuard");
+  assertStringIncludes(source, "enforceClinicalRecencyText");
+  assertStringIncludes(source, "recent_playroom_review");
+  assertStringIncludes(source, "recent_session_review");
+  assertStringIncludes(source, "Europe/Prague");
 });

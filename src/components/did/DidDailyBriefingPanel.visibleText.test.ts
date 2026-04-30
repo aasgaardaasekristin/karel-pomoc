@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backendContextSummary, cleanVisibleClinicalText, ensureKarelOpeningVoice, realityContextText, toProposedPlayroomView, toProposedSessionView } from "./DidDailyBriefingPanel";
+import { backendContextSummary, cleanVisibleClinicalText, ensureKarelOpeningVoice, humanizeRecencyInProse, realityContextText, toProposedPlayroomView, toProposedSessionView } from "./DidDailyBriefingPanel";
 
 const forbidden = [
   "pending_review",
@@ -146,5 +146,59 @@ describe("DidDailyBriefingPanel visible clinical text helpers", () => {
     expect(visible).toContain("Včerejší událost s Timmim/keporkakem");
     expect(visible).toContain("Budu jí pomáhat");
     expect(visible).toContain("Potřebujeme jemně zjistit");
+  });
+
+  it("never labels a 3-day-old playroom as 'včerejší' in visible prose", () => {
+    const playRecency = {
+      exists: true,
+      session_date_iso: "2026-04-27",
+      days_since_today: 3,
+      human_recency_label: "před 3 dny",
+      is_yesterday: false,
+    };
+    const out = humanizeRecencyInProse(
+      "Symboly z včerejška a navázat na včerejší Hernu, ze včerejší Herny pokračujeme.",
+      playRecency,
+      null,
+    );
+    expect(out).not.toMatch(/včerejší\s+Hernu/i);
+    expect(out).not.toMatch(/ze\s+včerejška/i);
+    expect(out.toLowerCase()).toContain("poslední herna z");
+    expect(out).toContain("před 3 dny");
+  });
+
+  it("never labels a 2-day-old session as 'včerejší' in visible prose", () => {
+    const sessRecency = {
+      exists: true,
+      session_date_iso: "2026-04-28",
+      days_since_today: 2,
+      human_recency_label: "předevčírem",
+      is_yesterday: false,
+    };
+    const out = humanizeRecencyInProse(
+      "Včerejší Sezení s tundrupkem ukázalo posun. Ze včerejšího Sezení vyplývá kontakt.",
+      null,
+      sessRecency,
+    );
+    expect(out).not.toMatch(/Včerejší\s+Sezení/);
+    expect(out).not.toMatch(/ze\s+včerejšího\s+Sezení/i);
+    expect(out).toContain("předevčerejší Sezení");
+  });
+
+  it("opening monologue is sanitized for non-yesterday playroom recency", () => {
+    const playRecency = {
+      exists: true,
+      session_date_iso: "2026-04-27",
+      days_since_today: 3,
+      human_recency_label: "před 3 dny",
+      is_yesterday: false,
+    };
+    const visible = ensureKarelOpeningVoice(
+      "Dnes navážeme na včerejší Hernu s tundrupkem; ze včerejší Herny vyplývá důležitý posun.",
+      playRecency,
+      null,
+    );
+    expect(visible).not.toMatch(/včerejší\s+Hernu/i);
+    expect(visible).not.toMatch(/ze\s+včerejší\s+Herny/i);
   });
 });
