@@ -213,6 +213,14 @@ interface OpeningMonologuePayload {
 
 interface BriefingPayload {
   greeting: string;
+  recent_playroom_review?: RecencyMeta | null;
+  recent_session_review?: RecencyMeta | null;
+  viewer_meta?: {
+    viewer_date_iso?: string | null;
+    briefing_date_iso?: string | null;
+    is_current_briefing?: boolean | null;
+    days_since_briefing?: number | null;
+  } | null;
   opening_monologue?: OpeningMonologuePayload | null;
   opening_monologue_text?: string;
   technical_note?: string;
@@ -357,6 +365,45 @@ export const revalidateRecencyForViewer = (
   };
 };
 
+export const getBriefingFreshnessMeta = (briefingDateIso: string | null | undefined, viewerDateIso: string) => {
+  const briefingDate = String(briefingDateIso ?? "").slice(0, 10);
+  const validBriefingDate = /^\d{4}-\d{2}-\d{2}$/.test(briefingDate);
+  const daysSinceBriefing = validBriefingDate
+    ? Math.round((dateOnlyToUtcMs(viewerDateIso) - dateOnlyToUtcMs(briefingDate)) / 86_400_000)
+    : 0;
+  return {
+    viewer_date: viewerDateIso,
+    briefing_date: validBriefingDate ? briefingDate : null,
+    is_current_briefing: validBriefingDate && briefingDate === viewerDateIso,
+    days_since_briefing: daysSinceBriefing,
+  };
+};
+
+export const briefingFreshnessBannerText = (briefingDateIso: string | null | undefined, viewerDateIso: string): string => {
+  const meta = getBriefingFreshnessMeta(briefingDateIso, viewerDateIso);
+  if (meta.is_current_briefing) return "Tento přehled je pro dnešek aktuální.";
+  const dateText = meta.briefing_date ? formatPragueDateLabel(meta.briefing_date) : "neznámého dne";
+  return `Zobrazuji poslední dostupný přehled ze dne ${dateText}. Dnešní přehled zatím nevznikl.`;
+};
+
+const partInstrumental = (value?: string | null): string => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "doloženou částí";
+  if (raw.toLowerCase() === "tundrupek") return "Tundrupkem";
+  return raw;
+};
+
+export const recencySectionNoticeText = (kind: "playroom" | "session", recency?: RecencyMeta | null, partName?: string | null): string => {
+  if (!recency?.exists || recency.is_yesterday) return "";
+  const source = recency.source_date_iso ?? recency.session_date_iso;
+  const dateLabel = formatPragueDateLabel(source);
+  const human = recency.human_recency_label || "starší";
+  if (kind === "playroom") {
+    return `${recency.not_yesterday_notice || "Včera Herna neproběhla."} Poslední doložená Herna s ${partInstrumental(partName)} proběhla ${dateLabel}, tedy ${human}.`;
+  }
+  return `${recency.not_yesterday_notice || "Včerejší Sezení neproběhlo."} Poslední doložené Sezení proběhlo ${dateLabel}, tedy ${human}.`;
+};
+
 export const humanizeRecencyInProse = (value: unknown, playRecency?: RecencyMeta | null, sessRecency?: RecencyMeta | null): string => {
   let text = String(value ?? "");
   if (playRecency?.exists && playRecency.days_since_today !== 1 && playRecency.days_since_today != null) {
@@ -368,6 +415,8 @@ export const humanizeRecencyInProse = (value: unknown, playRecency?: RecencyMeta
       // datovaná věta "Včerejší Herna proběhla DD. M. YYYY." → absolutní
       .replace(/V[čc]erej[šs][íi]\s+Herna\s+prob[eě]hla\s+\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\.?/giu,
         `Poslední doložená Herna proběhla ${dateLabel}, ${playRecency.human_recency_label || ""}.`.replace(/,\s*\./, "."))
+      .replace(/nav[áa]zat\s+na\s+v[čc]erej[šs][íi]\s+Hernu/giu, `navázat jen opatrně na ${label}`)
+      .replace(/v[čc]erej[šs][íi]\s+hern[íi]\s+materi[áa]l/giu, `materiál z ${label}`)
       .replace(/v[čc]erej[šs][íi]\s+Hernu/giu, label)
       .replace(/v[čc]erej[šs][íi]\s+Herna/giu, label)
       .replace(/V[čc]erej[šs][íi]\s+Herna/gu, label.charAt(0).toUpperCase() + label.slice(1))
@@ -905,12 +954,12 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         .order("generated_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
-        supabase.from("did_daily_briefings").select("briefing_date,generated_at").eq("is_stale", false).order("generated_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("did_daily_briefings").select("*").eq("is_stale", false).order("generated_at", { ascending: false }).limit(1).maybeSingle(),
         (supabase as any).from("did_daily_briefing_attempts").select("status,error_code,error_message,cycle_status,briefing_date,created_at").order("created_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
 
       if (error) throw error;
-      setBriefing((data as unknown as BriefingRow) ?? null);
+      setBriefing((data as unknown as BriefingRow) ?? ((lastBriefing as unknown as BriefingRow) ?? null));
       if (!data) {
         const code = (lastAttempt as any)?.error_code ?? null;
         const status = (lastAttempt as any)?.status ?? null;
@@ -1431,11 +1480,11 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   // přepočítat proti aktuálnímu Europe/Prague datu, jinak text bude tvrdit
   // „Včerejší Herna" i pro herní materiál starý 2+ dny.
   const viewerToday = pragueTodayIso();
-  const briefingDateIso = String(briefing.briefing_date ?? "").slice(0, 10);
-  const isCurrentBriefing = briefingDateIso === viewerToday;
-  const daysSinceBriefing = briefingDateIso && /^\d{4}-\d{2}-\d{2}$/.test(briefingDateIso)
-    ? Math.round((dateOnlyToUtcMs(viewerToday) - dateOnlyToUtcMs(briefingDateIso)) / 86_400_000)
-    : 0;
+  const freshnessMeta = getBriefingFreshnessMeta(briefing.briefing_date, viewerToday);
+  const briefingDateIso = freshnessMeta.briefing_date ?? String(briefing.briefing_date ?? "").slice(0, 10);
+  const isCurrentBriefing = freshnessMeta.is_current_briefing;
+  const daysSinceBriefing = freshnessMeta.days_since_briefing;
+  const staleBannerText = briefingFreshnessBannerText(briefingDateIso, viewerToday);
   const rawPlayRecency = ((p as any).recent_playroom_review ?? p.yesterday_playroom_review) as RecencyMeta | null | undefined;
   const rawSessRecency = ((p as any).recent_session_review ?? p.yesterday_session_review) as RecencyMeta | null | undefined;
   const playRecency = revalidateRecencyForViewer(rawPlayRecency, viewerToday, "playroom");
@@ -1476,7 +1525,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             <p className="text-[11px] text-muted-foreground">
               {formatDate(briefing.briefing_date)}
               {!isCurrentBriefing && briefingDateIso && (
-                <span className="ml-1 text-amber-700">· starý přehled</span>
+                <span className="ml-1 text-muted-foreground">· starý přehled · {daysSinceBriefing} dny</span>
               )}
             </p>
           </div>
@@ -1495,6 +1544,17 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           )}
           Přegenerovat
         </Button>
+      </div>
+
+      <div
+        className="mb-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-[12px] leading-relaxed text-foreground/85"
+        data-testid="briefing-freshness-banner"
+        data-viewer-date={viewerToday}
+        data-briefing-date={briefingDateIso || undefined}
+        data-is-current-briefing={String(isCurrentBriefing)}
+        data-days-since-briefing={String(daysSinceBriefing)}
+      >
+        {staleBannerText}
       </div>
 
       {/* 1. Karlův ranní terapeutický monolog */}
@@ -1567,7 +1627,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             </div>
             {playRecency?.exists && !playRecency.is_yesterday && (
               <p className="text-[12px] leading-relaxed text-amber-900/80 italic">
-                {playRecency.not_yesterday_notice || "Včera Herna neproběhla."} {playRecency.visible_sentence_prefix || ""}
+                {recencySectionNoticeText("playroom", playRecency, yesterdayPlayroomReview.part_name)}
               </p>
             )}
             <div>
