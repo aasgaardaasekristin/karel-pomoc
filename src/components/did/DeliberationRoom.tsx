@@ -34,6 +34,7 @@ import {
   type KarelSynthesis,
   type AgendaBlock,
 } from "@/types/teamDeliberation";
+import { sanitizeRecencyText } from "@/lib/recencySanitizer";
 
 interface Props {
   deliberationId: string | null;
