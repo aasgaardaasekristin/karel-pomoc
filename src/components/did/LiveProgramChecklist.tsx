@@ -65,9 +65,29 @@ const LiveProgramChecklist = ({
 
   // FAILURE STATE PRINCIP: prázdný parsed != akceptovatelný fallback.
   // "Bezformátový program — sleduj plán v chatu" je BUG, ne UX.
-  // Když parser vrátí 0 bodů, vyrobíme jediný "fallback-0" item, ale UI ho
-  // vykreslí jako explicitní error blok s diagnostikou + tlačítkem reload.
+  // Když parser vrátí 0 bodů, UI vykreslí explicitní error panel
+  // s diagnostikou + tlačítkem "Načíst znovu plán".
   const parseFailed = parsed.length === 0;
+
+  const initialItems = useMemo<ProgramItem[]>(
+    () =>
+      parseFailed
+        ? []
+        : parsed.map((text, i) => ({
+            id: `bod-${i + 1}`,
+            text,
+            done: false,
+            observation: "",
+          })),
+    [parsed, parseFailed],
+  );
+
+  const planSignature = useMemo(
+    () => `${planMarkdown.length}:${planMarkdown.slice(0, 120)}`,
+    [planMarkdown],
+  );
+
+  const metaKey = useMemo(() => `${storageKey}:meta`, [storageKey]);
 
   const [items, setItems] = useState<ProgramItem[]>(() => {
     if (typeof window === "undefined") return initialItems;
