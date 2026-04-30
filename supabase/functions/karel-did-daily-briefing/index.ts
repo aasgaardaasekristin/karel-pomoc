@@ -833,10 +833,32 @@ const ensureVisibleClinicalText = (value: unknown): string => {
   return sanitizeKarelClinicalText(text);
 };
 
+/**
+ * Strips standalone "(Včera|Včerejší) (Herna|Sezení) neproběhl[ao]" sentences
+ * from the opening monologue. This information belongs ONLY in the dedicated
+ * "Poslední / Včerejší herna" and "Poslední / Včerejší sezení" sections, and
+ * in the auditable `evidence_limits` block — never as the first clinical line
+ * of Karel's morning monologue.
+ */
+const stripNotHeldNoticeFromOpeningText = (text: string): string => {
+  if (!text) return text;
+  // Match a sentence (up to . ! ? or end) that is just the not-held notice,
+  // possibly followed by a short trailing fragment up to the next sentence boundary.
+  const NOT_HELD_SENTENCE_RE =
+    /(?:^|\s)(?:V[čc]era|V[čc]erej[šs][íi])\s+(?:Herna|Sezen[íi])\s+neprob[eě]hl[ao][^.!?\n]*[.!?]\s*/giu;
+  let next = text.replace(NOT_HELD_SENTENCE_RE, " ");
+  // Collapse any double spaces / orphan whitespace at paragraph starts.
+  next = next.replace(/[ \t]{2,}/g, " ").replace(/\n[ \t]+/g, "\n").trim();
+  return next;
+};
+
 const ensureKarelFirstPersonOpening = (value: unknown, fallback: string): string => {
   const text = ensureVisibleClinicalText(value);
-  if (!text || FORBIDDEN_OPENING_META_RE.test(text)) return fallback;
-  return text;
+  const stripped = stripNotHeldNoticeFromOpeningText(text);
+  if (!stripped || FORBIDDEN_OPENING_META_RE.test(stripped)) {
+    return stripNotHeldNoticeFromOpeningText(fallback);
+  }
+  return stripped;
 };
 
 const isTechnicalStatusText = (value: unknown): boolean =>
