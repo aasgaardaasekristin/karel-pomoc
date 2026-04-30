@@ -31,6 +31,36 @@ import { readUnprocessedPantryB, markPantryBProcessed } from "../_shared/pantryB
 import { summarizeToolboxForPrompt } from "../_shared/therapeuticToolbox.ts";
 import { runGlobalDidEventIngestion } from "../_shared/didEventIngestion.ts";
 import { requireAuth } from "../_shared/auth.ts";
+import { buildSourceCoverageSummary, buildDriveStatus } from "../_shared/sourceCoverage.ts";
+
+/**
+ * SLA generation methods (added 2026-04-30, morning_operational_integrity_e2e):
+ *   - "sla_watchdog"               → SLA watchdog volá briefing po dokončeném cyklu
+ *   - "sla_watchdog_repair"        → SLA watchdog volá briefing v limited režimu
+ *                                    (cycle není completed) — payload.limited=true
+ *   - "auto_repair_after_missed_morning"
+ *   - "auto_sla_test"
+ *
+ * Tyto metody se autorizují stejně jako "auto" (cron secret nebo service role)
+ * a stejně jako "auto" potřebují platný cron-secret/service header.
+ *
+ * Rozdíl proti "auto":
+ *   - SLA metody vždy markují starší dnešní rows jako stale (i bez force=true),
+ *     protože jejich účel je nahradit chybějící non-manual row.
+ *   - "*repair*" varianty BYPASS cycle guard a vyrobí limited briefing.
+ */
+const SLA_METHODS = new Set([
+  "sla_watchdog",
+  "sla_watchdog_repair",
+  "auto_repair_after_missed_morning",
+  "auto_sla_test",
+]);
+const SLA_REPAIR_METHODS = new Set([
+  "sla_watchdog_repair",
+  "auto_repair_after_missed_morning",
+]);
+const isSlaMethod = (m: string | null | undefined) => !!m && SLA_METHODS.has(m);
+const isSlaRepairMethod = (m: string | null | undefined) => !!m && SLA_REPAIR_METHODS.has(m);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -2183,7 +2213,7 @@ Deno.serve(async (req) => {
       }
     }
     const isCronSecretCall = !!effectiveCronSecret && cronSecretHeader === effectiveCronSecret;
-    const wantsAuto = body?.method === "auto" || body?.source === "cron";
+    const wantsAuto = body?.method === "auto" || body?.source === "cron" || isSlaMethod(body?.method);
     const authHeaderPrefix = authHeader.startsWith("Bearer ") ? "Bearer" : authHeader ? "other" : "none";
     console.log("[briefing-auth] sanitized", JSON.stringify({
       has_authorization_header: !!authHeader,
@@ -2257,10 +2287,15 @@ Deno.serve(async (req) => {
     }
     if (!scopedUserId) return jsonResponse({ error: "missing_user_scope" }, 400);
     const generationMethod = body?.method || (wantsAuto ? "auto" : "manual");
-    const forceRegenerate = body?.force === true;
+    const forceRegenerate = body?.force === true || isSlaMethod(generationMethod);
 
     const today = pragueDayISO();
-    const triggerSource = body?.source === "cron" ? "cron" : body?.source === "service" ? "service" : "ui";
+    const triggerSource = body?.source === "cron" ? "cron"
+      : body?.source === "service" ? "service"
+      : body?.source === "sla_watchdog" ? "sla_watchdog"
+      : body?.source === "internal_sla" ? "internal_sla"
+      : isSlaMethod(generationMethod) ? "sla_watchdog"
+      : "ui";
     const authMode = isServiceCall ? "service_role" : isCronSecretCall ? "cron_secret" : "user";
     attemptId = await startBriefingAttempt(supabase, {
       user_id: scopedUserId,
@@ -2290,7 +2325,19 @@ Deno.serve(async (req) => {
     //
     // method="manual" (UI tlačítko `Přegenerovat`) tento guard NEPOUŽÍVÁ —
     // ruční regenerace musí jít vždy, i bez completed cycle.
-    if (generationMethod === "auto") {
+    // limitedMeta gets populated when SLA-repair runs against a non-completed cycle.
+    // It will be merged into payload.limited at insert time so UI can show
+    // "Limitované — denní cyklus nedoběhl, použity dostupné zdroje".
+    let limitedMeta: {
+      limited: true;
+      limited_reason: string;
+      daily_cycle_status: string;
+      daily_cycle_id: string | null;
+      cycle_started_at: string | null;
+      cycle_last_error: string | null;
+    } | null = null;
+
+    if (generationMethod === "auto" || isSlaMethod(generationMethod)) {
       const morningStartUtc = `${today}T00:00:00Z`;
       const morningEndUtc   = `${today}T10:00:00Z`;
       const { data: cycleRow, error: cycleErr } = await supabase
@@ -2330,30 +2377,52 @@ Deno.serve(async (req) => {
           cycleStatus === "failed_stale" ? "cycle_stuck" :
           cycleStatus === "failed"  ? "cycle_failed"  :
           "cycle_missing";
-        console.warn(
-          `[briefing-guard] auto SKIPPED — daily-cycle-morning status='${cycleStatus}' for ${today}. ` +
-          `cycle_id=${cycleRow?.id || "(none)"} started_at=${cycleRow?.started_at || "(none)"}`,
-        );
-        await finishBriefingAttempt(supabase, attemptId, {
-          status: "skipped",
-          error_code: reason,
-          error_message: cycleRow?.last_error || "Denní cyklus není dokončený.",
-          cycle_status: cycleStatus,
-          cycle_id: cycleRow?.id || null,
-        });
-        return jsonResponse({
-            skipped: true,
-            reason,
-            cycle_status: cycleStatus,
-            cycle_id: cycleRow?.id || null,
+
+        if (isSlaRepairMethod(generationMethod)) {
+          // SLA repair: NESKIPUJ — vyrob limited briefing
+          limitedMeta = {
+            limited: true,
+            limited_reason: reason,
+            daily_cycle_status: cycleStatus,
+            daily_cycle_id: cycleRow?.id || null,
             cycle_started_at: cycleRow?.started_at || null,
             cycle_last_error: cycleRow?.last_error || null,
-            briefing_date: today,
-            note: "Auto briefing nebyl vygenerován — dnešní ranní cycle ještě nedoběhl. " +
-                  "Existující briefing dne (manual nebo dřívější auto) zůstává kanonický.",
+          };
+          console.warn(
+            `[briefing-sla] LIMITED — cycle status='${cycleStatus}'; pokračuji s repair pro ${today}.`,
+          );
+          await finishBriefingAttempt(supabase, attemptId, {
+            cycle_status: cycleStatus,
+            cycle_id: cycleRow?.id || null,
           });
+        } else {
+          // auto / sla_watchdog (bez repair): původní skip chování
+          console.warn(
+            `[briefing-guard] ${generationMethod} SKIPPED — daily-cycle-morning status='${cycleStatus}' for ${today}. ` +
+            `cycle_id=${cycleRow?.id || "(none)"} started_at=${cycleRow?.started_at || "(none)"}`,
+          );
+          await finishBriefingAttempt(supabase, attemptId, {
+            status: "skipped",
+            error_code: reason,
+            error_message: cycleRow?.last_error || "Denní cyklus není dokončený.",
+            cycle_status: cycleStatus,
+            cycle_id: cycleRow?.id || null,
+          });
+          return jsonResponse({
+              skipped: true,
+              reason,
+              cycle_status: cycleStatus,
+              cycle_id: cycleRow?.id || null,
+              cycle_started_at: cycleRow?.started_at || null,
+              cycle_last_error: cycleRow?.last_error || null,
+              briefing_date: today,
+              note: "Briefing nebyl vygenerován — dnešní ranní cycle ještě nedoběhl. " +
+                    "SLA-repair watchdog ho nahradí.",
+            });
+        }
+      } else {
+        await finishBriefingAttempt(supabase, attemptId, { cycle_status: cycleStatus, cycle_id: cycleRow?.id || null });
       }
-      await finishBriefingAttempt(supabase, attemptId, { cycle_status: cycleStatus, cycle_id: cycleRow?.id || null });
     }
 
     // Pokud existuje fresh briefing pro dnešek a nechceme force, vrať ho
@@ -2446,6 +2515,51 @@ Deno.serve(async (req) => {
       is_current_briefing: true,
       days_since_briefing: 0,
     };
+
+    // ──────────────────────────────────────────────────────────
+    // SOURCE COVERAGE + DRIVE STATUS + LIMITED metadata
+    // (morning_operational_integrity_e2e — vždy přítomné v payloadu)
+    // ──────────────────────────────────────────────────────────
+    try {
+      const usedSourceIds: string[] = [];
+      // Heuristika: pokud payload obsahuje ne-prázdné sekce, považuj odpovídající zdroj za "used"
+      if ((context.event_ingestion_summary?.processed_count ?? 0) > 0) {
+        usedSourceIds.push("did_threads", "did_live_session_progress");
+      }
+      if ((payload.task_note_implications?.length ?? 0) > 0) usedSourceIds.push("did_therapist_tasks");
+      if ((payload.hana_personal_did_relevant_implications?.length ?? 0) > 0) usedSourceIds.push("karel_hana_conversations");
+      if (payload.yesterday_session_review?.exists || payload.recent_session_review?.exists) usedSourceIds.push("did_session_reviews");
+      if (payload.proposed_session?.id || payload.proposed_playroom?.id) usedSourceIds.push("did_team_deliberations");
+
+      const coverage = await buildSourceCoverageSummary(supabase, scopedUserId, { windowHours: 36, usedSourceIds });
+      const driveStatus = await buildDriveStatus(supabase);
+      payload.source_coverage_summary = coverage;
+      payload.drive_status = driveStatus;
+    } catch (covErr) {
+      console.warn("[briefing] source coverage / drive status failed (non-fatal):", covErr);
+      payload.source_coverage_summary = { error: String((covErr as Error)?.message || covErr) };
+      payload.drive_status = {
+        drive_write_queue: "unknown",
+        drive_flush_to_archive: "unknown",
+        drive_to_pantry_refresh: "not_implemented",
+        drive_is_source_of_truth: false,
+        operational_source: "DB/Pantry/Event ingestion",
+      };
+    }
+
+    if (limitedMeta) {
+      payload.limited = true;
+      payload.limited_reason = limitedMeta.limited_reason;
+      payload.daily_cycle_status = limitedMeta.daily_cycle_status;
+      payload.daily_cycle_id = limitedMeta.daily_cycle_id;
+      payload.cycle_started_at = limitedMeta.cycle_started_at;
+      payload.cycle_last_error = limitedMeta.cycle_last_error;
+      payload.available_sources_used = (payload.source_coverage_summary?.sources ?? [])
+        .filter((s: any) => s.used_in_briefing).map((s: any) => s.source);
+      payload.missing_or_blocked_sources = (payload.source_coverage_summary?.sources ?? [])
+        .filter((s: any) => !s.used_in_briefing && s.raw_count > 0)
+        .map((s: any) => ({ source: s.source, reason: s.reason_if_not_used }));
+    }
 
     // 3b) ── ASK ITEM IDENTITY ──
     // AI vrací ask_hanka/ask_kata jako string[]. Server přidá stabilní `id` na
