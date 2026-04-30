@@ -934,9 +934,10 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   const teamWorkCandidate = sanitizeKarelClinicalText(firstMeaningful(sess?.team_closing_text, sess?.team_acknowledgement, play?.recommendations_for_therapists));
   const teamWork = isTechnicalStatusText(teamWorkCandidate) ? "" : teamWorkCandidate;
   const evidenceKnown: string[] = [];
-  // playNoYesterday byla relevantní pro starý `playroomTruth` v monologu — odstraněno.
-  // Skutečnost, že herna neproběhla / je starší, se zobrazuje výhradně v dedikované
-  // sekci "Poslední / Včerejší herna" a ve `evidence_limits` níže.
+  // POZN.: dřívější pomocná proměnná pro úvodní administrativní oznámení
+  // o tom, že herna neproběhla, byla z monologu odstraněna. Tato informace
+  // patří výhradně do dedikované sekce "Poslední / Včerejší herna" a do
+  // auditovatelného bloku evidence_limits níže.
   if (play) evidenceKnown.push(`${recencyIntro(play, "playroom")} ${activePart} v ní pracoval se symboly bezpečí, světla, domova nebo ochrany.`);
   else evidenceKnown.push("Včera Herna neproběhla.");
   if (sess?.held) evidenceKnown.push(`${recencyIntro(sess, "session")} ${sess.part_name || activePart} má doložený klinický vstup${sess.status ? ` se stavem ${sess.status}` : ""}.`);
