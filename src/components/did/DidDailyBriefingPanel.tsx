@@ -279,7 +279,9 @@ const FORBIDDEN_VISIBLE_DEBUG_RE = /pending_review|evidence_limited|needs_therap
 type RecencyMeta = {
   exists?: boolean;
   session_date_iso?: string | null;
+  source_date_iso?: string | null;
   days_since_today?: number | null;
+  days_since_briefing_date?: number | null;
   human_recency_label?: string | null;
   is_yesterday?: boolean;
   visible_label?: string | null;
@@ -292,29 +294,100 @@ const formatPragueDateLabel = (iso?: string | null): string => {
   return new Intl.DateTimeFormat("cs-CZ", { timeZone: "Europe/Prague", day: "numeric", month: "numeric", year: "numeric" }).format(new Date(`${iso.slice(0, 10)}T12:00:00Z`));
 };
 
+const pragueTodayIso = (): string =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+
+const dateOnlyToUtcMs = (iso: string): number => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return Date.UTC(y, (m || 1) - 1, d || 1);
+};
+
+/**
+ * KALENDÁŘNÍ INTEGRITA — viewer-side revalidace.
+ *
+ * Cached briefing může mít zafrozenou recency z okamžiku generování
+ * (`is_yesterday=true`, `days_since_today=1`). Když uživatel ten stejný
+ * briefing otevře následující den, „včerejší" už neplatí. Tato funkce
+ * přepočítá `is_yesterday`, `days_since_today` a všechny viditelné labely
+ * proti aktuálnímu Europe/Prague datu — bez čekání na backend regeneraci.
+ *
+ * Pravidlo „včerejší smí být použito jen když source_date === viewer_date - 1"
+ * je vynucováno právě tady.
+ */
+export const revalidateRecencyForViewer = (
+  recency: RecencyMeta | null | undefined,
+  viewerDateIso: string,
+  kind: "playroom" | "session",
+): RecencyMeta | null | undefined => {
+  if (!recency || !recency.exists) return recency;
+  const sourceIso = (recency.source_date_iso ?? recency.session_date_iso ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sourceIso)) return recency;
+  const days = Math.round((dateOnlyToUtcMs(viewerDateIso) - dateOnlyToUtcMs(sourceIso)) / 86_400_000);
+  const human =
+    days === 0 ? "dnes" :
+    days === 1 ? "včera" :
+    days === 2 ? "předevčírem" :
+    days === 3 ? "před 3 dny" :
+    days > 3 ? `před ${days} dny` :
+    "budoucí datum";
+  const noun = kind === "playroom" ? "Herna" : "Sezení";
+  const verb = kind === "playroom" ? "proběhla" : "proběhlo";
+  const noYesterday = kind === "playroom" ? "Včera Herna neproběhla." : "Včerejší Sezení neproběhlo.";
+  const visibleLabel =
+    days === 1 ? `Včerejší ${noun}` :
+    days === 2 ? `Předevčerejší ${noun}` :
+    `Poslední ${noun}`;
+  const prefix =
+    days === 1
+      ? `Včerejší ${noun} ${verb} ${formatPragueDateLabel(sourceIso)}.`
+      : days === 2
+        ? `Předevčerejší ${noun} ${verb} ${formatPragueDateLabel(sourceIso)}.`
+        : `Poslední doložená ${noun} ${verb} ${formatPragueDateLabel(sourceIso)}, tedy ${human}.`;
+  return {
+    ...recency,
+    source_date_iso: sourceIso,
+    session_date_iso: sourceIso,
+    days_since_today: days,
+    days_since_briefing_date: days,
+    is_yesterday: days === 1,
+    human_recency_label: human,
+    visible_label: visibleLabel,
+    visible_sentence_prefix: prefix,
+    not_yesterday_notice: days === 1 ? "" : noYesterday,
+  };
+};
+
 export const humanizeRecencyInProse = (value: unknown, playRecency?: RecencyMeta | null, sessRecency?: RecencyMeta | null): string => {
   let text = String(value ?? "");
   if (playRecency?.exists && playRecency.days_since_today !== 1 && playRecency.days_since_today != null) {
+    const dateLabel = formatPragueDateLabel(playRecency.source_date_iso ?? playRecency.session_date_iso);
     const label = playRecency.days_since_today === 2
-      ? "předevčerejší Herna"
-      : `poslední Herna z ${formatPragueDateLabel(playRecency.session_date_iso)}, ${playRecency.human_recency_label || ""}`.trim();
+      ? `předevčerejší Herna z ${dateLabel}`
+      : `poslední Herna z ${dateLabel}, ${playRecency.human_recency_label || ""}`.trim();
     text = text
-      .replace(/včerejší\s+Hernu/gi, label)
-      .replace(/včerejší\s+Herna/gi, label)
-      .replace(/Včerejší\s+Herna/g, label.charAt(0).toUpperCase() + label.slice(1))
-      .replace(/Včerejší\s+herna/g, label.charAt(0).toUpperCase() + label.slice(1))
-      .replace(/ze\s+včerejší\s+Herny/gi, `z ${label}`)
-      .replace(/ze\s+včerejška/gi, `z ${playRecency.human_recency_label || "dřívějška"}`)
-      .replace(/Symboly\s+z\s+včerejška/gi, `Symboly z ${playRecency.human_recency_label || "dřívějška"}`);
+      // datovaná věta "Včerejší Herna proběhla DD. M. YYYY." → absolutní
+      .replace(/V[čc]erej[šs][íi]\s+Herna\s+prob[eě]hla\s+\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\.?/giu,
+        `Poslední doložená Herna proběhla ${dateLabel}, ${playRecency.human_recency_label || ""}.`.replace(/,\s*\./, "."))
+      .replace(/v[čc]erej[šs][íi]\s+Hernu/giu, label)
+      .replace(/v[čc]erej[šs][íi]\s+Herna/giu, label)
+      .replace(/V[čc]erej[šs][íi]\s+Herna/gu, label.charAt(0).toUpperCase() + label.slice(1))
+      .replace(/V[čc]erej[šs][íi]\s+herna/gu, label.charAt(0).toUpperCase() + label.slice(1))
+      .replace(/ze\s+v[čc]erej[šs][íi]\s+Herny/giu, `z ${label}`)
+      .replace(/Symboly\s+z\s+v[čc]erej[šs]ka/giu, `Symboly z ${playRecency.human_recency_label || "dřívějška"}`)
+      .replace(/ze\s+v[čc]erej[šs]ka/giu, `z ${playRecency.human_recency_label || "dřívějška"}`)
+      .replace(/\bv[čc]erej[šs]ka\b/giu, playRecency.human_recency_label || "posledního dne s Hernou");
   }
   if (sessRecency?.exists && sessRecency.days_since_today !== 1 && sessRecency.days_since_today != null) {
+    const dateLabel = formatPragueDateLabel(sessRecency.source_date_iso ?? sessRecency.session_date_iso);
     const label = sessRecency.days_since_today === 2
-      ? "předevčerejší Sezení"
-      : `poslední Sezení z ${formatPragueDateLabel(sessRecency.session_date_iso)}, ${sessRecency.human_recency_label || ""}`.trim();
+      ? `předevčerejší Sezení z ${dateLabel}`
+      : `poslední Sezení z ${dateLabel}, ${sessRecency.human_recency_label || ""}`.trim();
     text = text
-      .replace(/včerejší\s+Sezení/gi, label)
-      .replace(/Včerejší\s+Sezení/g, label.charAt(0).toUpperCase() + label.slice(1))
-      .replace(/ze\s+včerejšího\s+Sezení/gi, `z ${label}`);
+      .replace(/V[čc]erej[šs][íi]\s+Sezen[íi]\s+prob[eě]hlo\s+\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\.?/giu,
+        `Poslední doložené Sezení proběhlo ${dateLabel}, ${sessRecency.human_recency_label || ""}.`.replace(/,\s*\./, "."))
+      .replace(/v[čc]erej[šs][íi]\s+Sezen[íi]/giu, label)
+      .replace(/V[čc]erej[šs][íi]\s+Sezen[íi]/gu, label.charAt(0).toUpperCase() + label.slice(1))
+      .replace(/ze\s+v[čc]erej[šs][íi]ho\s+Sezen[íi]/giu, `z ${label}`);
   }
   return text;
 };
