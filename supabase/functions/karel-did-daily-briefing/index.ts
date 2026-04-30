@@ -2516,6 +2516,51 @@ Deno.serve(async (req) => {
       days_since_briefing: 0,
     };
 
+    // ──────────────────────────────────────────────────────────
+    // SOURCE COVERAGE + DRIVE STATUS + LIMITED metadata
+    // (morning_operational_integrity_e2e — vždy přítomné v payloadu)
+    // ──────────────────────────────────────────────────────────
+    try {
+      const usedSourceIds: string[] = [];
+      // Heuristika: pokud payload obsahuje ne-prázdné sekce, považuj odpovídající zdroj za "used"
+      if ((context.event_ingestion_summary?.processed_count ?? 0) > 0) {
+        usedSourceIds.push("did_threads", "did_live_session_progress");
+      }
+      if ((payload.task_note_implications?.length ?? 0) > 0) usedSourceIds.push("did_therapist_tasks");
+      if ((payload.hana_personal_did_relevant_implications?.length ?? 0) > 0) usedSourceIds.push("karel_hana_conversations");
+      if (payload.yesterday_session_review?.exists || payload.recent_session_review?.exists) usedSourceIds.push("did_session_reviews");
+      if (payload.proposed_session?.id || payload.proposed_playroom?.id) usedSourceIds.push("did_team_deliberations");
+
+      const coverage = await buildSourceCoverageSummary(supabase, scopedUserId, { windowHours: 36, usedSourceIds });
+      const driveStatus = await buildDriveStatus(supabase);
+      payload.source_coverage_summary = coverage;
+      payload.drive_status = driveStatus;
+    } catch (covErr) {
+      console.warn("[briefing] source coverage / drive status failed (non-fatal):", covErr);
+      payload.source_coverage_summary = { error: String((covErr as Error)?.message || covErr) };
+      payload.drive_status = {
+        drive_write_queue: "unknown",
+        drive_flush_to_archive: "unknown",
+        drive_to_pantry_refresh: "not_implemented",
+        drive_is_source_of_truth: false,
+        operational_source: "DB/Pantry/Event ingestion",
+      };
+    }
+
+    if (limitedMeta) {
+      payload.limited = true;
+      payload.limited_reason = limitedMeta.limited_reason;
+      payload.daily_cycle_status = limitedMeta.daily_cycle_status;
+      payload.daily_cycle_id = limitedMeta.daily_cycle_id;
+      payload.cycle_started_at = limitedMeta.cycle_started_at;
+      payload.cycle_last_error = limitedMeta.cycle_last_error;
+      payload.available_sources_used = (payload.source_coverage_summary?.sources ?? [])
+        .filter((s: any) => s.used_in_briefing).map((s: any) => s.source);
+      payload.missing_or_blocked_sources = (payload.source_coverage_summary?.sources ?? [])
+        .filter((s: any) => !s.used_in_briefing && s.raw_count > 0)
+        .map((s: any) => ({ source: s.source, reason: s.reason_if_not_used }));
+    }
+
     // 3b) ── ASK ITEM IDENTITY ──
     // AI vrací ask_hanka/ask_kata jako string[]. Server přidá stabilní `id` na
     // každou položku tak, aby kliknutí v DidDailyBriefingPanel mohlo lazy-otevřít
