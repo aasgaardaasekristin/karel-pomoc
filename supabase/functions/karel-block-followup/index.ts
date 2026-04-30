@@ -256,6 +256,75 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // ─── SERVER-SIDE BLOCK AUTHORITY (SEV-1 fix 2026-04-30) ───
+    // The DB row in did_live_session_progress is the single source of truth
+    // for "which block is current". Client may send a stale block.index.
+    // We override with DB authority and detect if the proposed block doesn't
+    // match what's actually current.
+    const sessionId = typeof body?.session_id === "string" ? body.session_id : null;
+    let authoritativeBlock: ParsedBlock | null = null;
+    let authoritativeIndex: number = typeof block.index === "number" ? block.index : 0;
+    let allBlocksDone = false;
+    let authorityReason = "client_only";
+    let parsedBlocks: ParsedBlock[] = [];
+
+    if (sessionId) {
+      try {
+        const sb = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+        const [{ data: planRow }, { data: progRow }] = await Promise.all([
+          sb.from("did_daily_session_plans").select("plan_markdown").eq("id", sessionId).maybeSingle(),
+          sb.from("did_live_session_progress").select("items").eq("plan_id", sessionId).maybeSingle(),
+        ]);
+        const planMd = String((planRow as any)?.plan_markdown ?? "");
+        parsedBlocks = parseProgramBlocks(planMd);
+        const items = ((progRow as any)?.items ?? null) as ProgressItem[] | null;
+        const resolution = resolveCurrentBlockIndex(parsedBlocks, items, typeof block.index === "number" ? block.index : null);
+        authoritativeIndex = resolution.index;
+        authoritativeBlock = resolution.block;
+        allBlocksDone = resolution.allDone;
+        authorityReason = resolution.reason;
+      } catch (e) {
+        console.warn("[block-followup] authority lookup failed (continuing with client hint):", e);
+      }
+    }
+
+    // If authority disagrees with client, log it. We DO NOT override the
+    // text content (client text is what therapist sees), but we DO use
+    // authoritative isFinal/kind for guardrails.
+    const effectiveBlock: ParsedBlock = authoritativeBlock ?? {
+      index: typeof block.index === "number" ? block.index : 0,
+      title: String(block.text || "").split(" — ")[0] || String(block.text || ""),
+      detail: typeof block.detail === "string" ? block.detail : undefined,
+      kind: "generic",
+      isFinal: false,
+    };
+
+    // ─── THERAPIST INTENT GUARD ───
+    // Short ack ("ano") on a FINAL block must NOT trigger new diagnostic
+    // activity. Return a deterministic stay-in-closure response.
+    const lastTurn = turns.length ? turns[turns.length - 1] : null;
+    const lastFromTherapist = lastTurn && lastTurn.from !== "karel";
+    const lastTherapistText = lastFromTherapist ? String(lastTurn.text || "") : "";
+    const isAck = lastFromTherapist && isTherapistAcknowledgement(lastTherapistText);
+    const isCorrection = lastFromTherapist && isTherapistCorrection(lastTherapistText);
+
+    if (effectiveBlock.isFinal && (isAck || isCorrection || allBlocksDone)) {
+      const therapistAddr = therapistName === "Káťa" ? "Káťo" : "Hani";
+      const text = isCorrection
+        ? `${therapistAddr}, máš pravdu — zůstáváme v závěrečném bloku „${effectiveBlock.title}". Žádnou novou aktivitu nezavádím. Prosím:\n• Krátce shrň, co dnes opravdu společně proběhlo.\n• Zaznamenej poslední reakci kluků verbatim.\n• Měkce uzavři: poděkuj, řekni „uvidíme se příště".`
+        : `${therapistAddr}, jsme v závěrečném bloku „${effectiveBlock.title}". Pokračuj v měkkém uzavření — žádnou novou aktivitu nezavádíme. Prosím zaznamenej poslední reakci kluků verbatim a jemně uzavři.`;
+      return new Response(JSON.stringify({
+        karel_text: text,
+        phase: "closure",
+        state_patch: { phase: "closure" },
+        done: false,
+        missing_artifacts: [],
+        authority: { source: "server_state_machine", reason: authorityReason, block_index: authoritativeIndex, is_final: true, ack_detected: !!isAck, correction_detected: !!isCorrection, all_done: allBlocksDone },
+      }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const blockNum = typeof block.index === "number" ? block.index + 1 : "?";
     const blockText = String(block.text + (block.detail ? ` — ${block.detail}` : ""));
 
