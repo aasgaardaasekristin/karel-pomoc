@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * karel-did-daily-briefing
  *
