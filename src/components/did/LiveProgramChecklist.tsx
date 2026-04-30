@@ -402,6 +402,35 @@ const LiveProgramChecklist = ({
       </div>
 
       <div className="px-2 py-2 space-y-1.5 max-h-[24rem] overflow-y-auto">
+        {parseFailed && (
+          <div
+            data-testid="live-program-error-state"
+            className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-[11px] text-foreground"
+          >
+            <p className="font-medium text-destructive mb-1">
+              Program sezení se nepodařilo načíst z uloženého plánu.
+            </p>
+            <p className="text-muted-foreground">
+              Plán ID / session key: <span className="font-mono">{sessionId ?? storageKey}</span>
+            </p>
+            <p className="text-muted-foreground">
+              Markdown length: <span className="font-mono">{planMarkdown?.length ?? 0}</span>
+            </p>
+            <p className="text-muted-foreground mt-1">
+              Zkus načíst plán znovu nebo se vrať do porady.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 text-[10px] px-2 mt-2"
+              onClick={() => {
+                if (typeof window !== "undefined") window.location.reload();
+              }}
+            >
+              Načíst znovu plán
+            </Button>
+          </div>
+        )}
         {items.map((item, idx) => {
           const isExp = expandedId === item.id;
           const isFallback = item.id.startsWith("fallback");
