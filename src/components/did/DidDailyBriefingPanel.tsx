@@ -253,7 +253,9 @@ export const backendContextSummary = (inputs: Record<string, any> | undefined): 
   const used = inputs.used_recent_operational_context || inputs.used_reality_correction || inputs.reality_correction_used || inputs.used_hana_personal_processed_implication;
   if (!used) return "";
   const limits = Array.isArray(inputs.what_not_to_conclude) ? inputs.what_not_to_conclude.filter(Boolean).slice(0, 2).join(" ") : "nedělat z reálné události automaticky projekci, symbol nebo diagnózu";
-  return cleanVisibleClinicalText(`Používá včerejší důležitý kontext. Čeho se dnes vyvarovat: ${limits}. Nejdřív ověřit vlastní reakci kluků.`);
+  // Recency-safe label: never freeze "včerejší" into the visible text.
+  // The panel viewer may load this on a later day, when "včerejší" would lie.
+  return cleanVisibleClinicalText(`Používá důležitý kontext z posledních dní. Čeho se dnes vyvarovat: ${limits}. Nejdřív ověřit vlastní reakci kluků.`);
 };
 
 export const cleanVisibleClinicalText = (value: unknown): string => String(value ?? "")
