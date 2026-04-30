@@ -1,77 +1,53 @@
-Potvrzuji: nalezená hrana je reálná v aktuální podobě triggeru. `canonical_sync_fulfilled=true` dnes může obejít blokaci `program_status='draft'`, protože draft větev je podmíněná `canonical_sync_fulfilled=false`. Oprava má být úzká: hash sync zůstane nutný, ale nebude stačit bez schváleného statusu a `approved_at`.
+## Problém
 
-## Plán opravy
+Věta „Včera Herna neproběhla." se objevuje jako **první řádek Karlova ranního monologu** (úplně nahoře v Karlově přehledu). Vzniká v `buildOpeningMonologue` v `supabase/functions/karel-did-daily-briefing/index.ts` (řádky ~923–932): proměnná `playroomTruth` se vsadí přímo do `frame`, a `frame` je hned druhý odstavec po pozdravu „Dobré ráno, Haničko a Káťo." → tedy první klinická věta, kterou Karel vysloví.
 
-1. Zpřísnit trigger `guard_unsigned_daily_session_plan_start`
-   - Přidat samostatnou pozitivní podmínku pro plány s `deliberation_id`, např. `canonical_approval_fulfilled`:
+To je **špatné umístění** ze dvou důvodů:
 
-```text
-canonical_sync_fulfilled = true
-AND effective_program_status IN ('approved', 'ready_to_start', 'in_progress', 'completed')
-AND NEW.approved_at IS NOT NULL
-```
+1. Karlův úvodní monolog má začínat klinickým rámcem dne (co je dnes priorita, jak na tom kluci jsou) — ne administrativní stížností „včera nebyla herna".
+2. Ta samá informace už **patří** a **už tam je** ve vyhrazené sekci „Včerejší / Poslední herna" (řádek 1452 panelu zobrazuje `playRecency.not_yesterday_notice`). Takže ji Karel říká dvakrát — jednou v monologu nahoře a podruhé v sekci Herny.
 
-   - `review_fulfilled` pak bude:
+Stejný problém je u Sezení (řádek 1524).
 
-```text
-direct_approval_fulfilled OR canonical_approval_fulfilled
-```
+## Cíl
 
-   - Pro navázané plány bude start povolen jen přes `canonical_approval_fulfilled`, ne přes samotný hash sync.
+Z **opening monologue** kompletně odstranit větu „Včera Herna neproběhla / Včera Sezení neproběhlo". Tato informace patří **výhradně** do vyhrazených sekcí „Včerejší/Poslední herna" a „Včerejší/Poslední sezení", kde už korektně zobrazena je.
 
-2. Blokovat draft/revision stavy vždy
-   - Upravit negativní větev tak, aby tyto statusy blokovaly start bez ohledu na hash:
+Karlův úvodní odstavec musí začínat klinickým rámcem (priorita dne, postoj k materiálu), ne administrativním oznámením o tom, co se nestalo.
 
-```text
-effective_program_status IN (
-  'draft',
-  'in_revision',
-  'awaiting_signatures',
-  'awaiting_signature',
-  'pending_review'
-)
-```
+## Změny
 
-   - Tím bude platit: hash sync sám o sobě neodemkne draft.
+### 1. `supabase/functions/karel-did-daily-briefing/index.ts` — `buildOpeningMonologue` (~ř. 897–996)
 
-3. Zachovat úzkou kanonickou vazbu
-   - Ponechat současné kontroly:
-     - porada existuje,
-     - `linked_live_session_id` odpovídá `did_daily_session_plans.id`,
-     - podpis Hanka existuje,
-     - podpis Káťa existuje,
-     - `deliberation.status='approved'`,
-     - `approval_sync.status='synced'`,
-     - `program_draft_hash` sedí,
-     - `plan_markdown_hash` sedí.
-   - Direct approval cesta zůstane dostupná jen pro plány bez `deliberation_id`.
+- Odstranit konstrukci `playroomTruth` (ř. 924–926) z monologu úplně.
+- Přepracovat `realityOpening` (ř. 927–929) tak, aby **nezačínalo** zprávou o (ne)proběhlé herně. Místo toho začne přímo klinickým rámcem dne — co dnes držet, na čem pracovat opatrně, jaký je postoj k materiálu.
+- Pokud je relevantní událost (Timmi/keporkak), zůstane jako klinický kontext, ale ne navázaný na „včera herna neproběhla".
+- V `evidenceKnown` (ř. 914–921) ponechat větu „Včera Herna neproběhla." jen pro vnitřní seznam evidencí — ten se renderuje v sekci `evidence_limits` (Co víme jistě / pracovní hypotéza / čeká na ověření), ne v hlavním monologu. Tam patří.
 
-4. Přidat migrační opravu
-   - Vytvořit novou databázovou migraci s `CREATE OR REPLACE FUNCTION public.guard_unsigned_daily_session_plan_start()`.
-   - Neměnit široce signoff sync, protože ten už status nastavuje správně; pouze trigger vynutí, že pokud sync někdy selže částečně nebo metadata zůstanou v rozporu, start bude blokován.
+### 2. `supabase/functions/karel-did-daily-briefing/index.ts` — `ensureKarelFirstPersonOpening` (~ř. 836)
 
-5. Ověření / testovací matice
-   - Ověřit tyto scénáře:
+Přidat sanitizaci: pokud LLM nebo legacy generátor vloží do prvního odstavce vzorec „Včera (Herna|Sezení) neproběhl[ao]" / „Včerejší (Herna|Sezení) neproběhl[ao]", odstranit tuto větu z otevíracího odstavce a tichá zůstane jen v dedikované sekci. Toto je guard, aby se to nikdy neopakovalo, ani když se prompt změní.
 
-| Scénář | Očekávání |
-|---|---|
-| Podepsaná porada + hash sync sedí + `program_status='approved'` + `approved_at` vyplněno | start projde |
-| Podepsaná porada + hash sync sedí + `program_status='draft'` | start se zablokuje |
-| Podepsaná porada + hash nesedí + `program_status='approved'` | start se zablokuje |
-| Cizí/nekanonická porada | start se zablokuje |
-| Nepodepsaná porada | start se zablokuje |
-| Safety-net / `evidence_limited` / `planned_not_started` evaluace | zůstává funkční |
+### 3. `src/components/did/DidDailyBriefingPanel.tsx` — `openingMonologueText` (~ř. 1334)
 
-## Akceptační pravidlo po opravě
+Po `ensureKarelOpeningVoice` aplikovat lokální helper `stripNotHeldNoticeFromOpening`, který z prvního odstavce monologu odstraní věty typu „Včera Herna neproběhla.", „Včerejší Herna neproběhla.", „Včera Sezení neproběhlo." atd. Tím získáme defense-in-depth proti starým cache záznamům — uživatel uvidí čistý monolog i bez čekání na regeneraci.
 
-Kanonicky navázaný plán smí startovat jen pokud současně platí:
+### 4. Sekce „Včerejší/Poslední herna" a „Včerejší/Poslední sezení" — beze změny
 
-```text
-podepsaný 2/2
-AND status porady = approved
-AND hash synchronizace sedí
-AND program_status IN ('approved', 'ready_to_start', 'in_progress', 'completed')
-AND approved_at IS NOT NULL
-```
+Tady věta `playRecency.not_yesterday_notice || "Včera Herna neproběhla."` zůstává (ř. 1452, 1524). Tady **patří** — je to dedikovaná sekce o herně/sezení, plus vedlejší recency badge a datum poslední doložené herny.
 
-Krátce: `canonical_sync_fulfilled=true` bude nutná, ale ne postačující podmínka. Draft zůstane blokovaný i při shodných hashech.
+### 5. Tests
+
+- `supabase/functions/karel-did-daily-briefing/index_test.ts`: přidat regresní test — `opening_monologue_text` (a `frame`) **nikdy neobsahuje** vzorec /Včera\s+(Herna|Sezení)\s+neproběhl[ao]/ ani /Včerejší\s+(Herna|Sezení)\s+neproběhl[ao]/.
+- `src/components/did/DidDailyBriefingPanel.visibleText.test.ts`: přidat test, který sestaví fixture s `recent_playroom_review.is_yesterday=false` a ověří, že v textu monologu (první `<p>` v karte „Karlův ranní terapeutický monolog") není věta o tom, že herna neproběhla; a zároveň že **v** sekci „Poslední herna" tato věta **je**.
+
+### 6. Regenerace aktuálního briefingu
+
+Po nasazení označit dnešní `did_daily_briefings` řádek jako `is_stale=true` (nebo vymazat `opening_monologue_text` cache), aby se v UI okamžitě po reloadu vygeneroval nový čistý monolog. Frontend stripper (#3) zajistí korektní zobrazení i okamžitě, bez nutnosti čekat na backend.
+
+## Akceptační kritéria
+
+- V Karlově přehledu, v prvním odstavci „Karlův ranní terapeutický monolog", **NENÍ** věta „Včera Herna neproběhla" ani její varianta. Ověřeno screenshotem nebo DOM excerptem.
+- V sekci „Poslední herna" / „Včerejší herna" **JE** korektní recency notice (např. „Poslední doložená Herna je z 27. 4. 2026 (před 3 dny)").
+- Sekce `evidence_limits` („Jistě víme: …") smí obsahovat „Včera Herna neproběhla." jako jednu položku — to je její role (auditovatelný seznam).
+- Regresní testy backendu i UI panelu projdou.
