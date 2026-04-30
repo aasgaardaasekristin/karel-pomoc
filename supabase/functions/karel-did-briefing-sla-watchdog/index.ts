@@ -148,8 +148,26 @@ Deno.serve(async (req) => {
   let body: any = {};
   try { body = await req.json(); } catch { /* GET / no body */ }
 
-  // Discover scoped user (same logic as briefing fn)
+  // Discover scoped user. Priority:
+  //   1) explicit body.userId
+  //   2) most recent today's briefing (manual or otherwise) — keeps SLA scoped
+  //      to the same user the therapist is actually using
+  //   3) most recent did_update_cycles user
+  //   4) most recent did_threads activity
   let scopedUserId: string | null = body?.userId || null;
+  if (!scopedUserId) {
+    const todayISO = pragueDayISO();
+    const { data: latestBriefing } = await sb
+      .from("did_daily_briefings")
+      .select("user_id")
+      .eq("briefing_date", todayISO)
+      .not("user_id", "is", null)
+      .neq("user_id", ZERO_UUID)
+      .order("generated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    scopedUserId = latestBriefing?.user_id ?? null;
+  }
   if (!scopedUserId) {
     const { data: cycleUser } = await sb
       .from("did_update_cycles")
