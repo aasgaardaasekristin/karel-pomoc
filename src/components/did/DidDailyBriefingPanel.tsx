@@ -1556,6 +1556,11 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     : null;
   const sanitizeProse = (v: unknown) => humanizeRecencyInProse(cleanVisibleClinicalText(v), playRecency, sessRecency);
 
+  const methodBadge = briefingMethodBadge((briefing as any).generation_method);
+  const limitedFlag = (p as any).limited === true;
+  const limitedReason = String((p as any).limited_reason ?? "").trim();
+  const dailyCycleStatusValue = String((p as any).daily_cycle_status ?? "").trim();
+
   return (
     <div className="space-y-1">
       {/* Header — datum + meta + refresh */}
@@ -1571,6 +1576,21 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               )}
             </p>
           </div>
+          <Badge
+            variant="outline"
+            className={
+              "ml-1 text-[10px] font-medium " +
+              (methodBadge.tone === "auto"
+                ? "border-primary/30 text-primary/80"
+                : methodBadge.tone === "sla"
+                ? "border-amber-500/40 text-amber-700 dark:text-amber-400"
+                : "border-border text-muted-foreground")
+            }
+            data-testid="briefing-method-badge"
+            data-method={(briefing as any).generation_method ?? "manual"}
+          >
+            {methodBadge.label}
+          </Badge>
         </div>
         <Button
           size="sm"
@@ -1598,6 +1618,17 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       >
         {staleBannerText}
       </div>
+
+      {limitedFlag && (
+        <div
+          className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[12px] leading-relaxed text-foreground/85"
+          data-testid="briefing-limited-banner"
+          data-limited-reason={limitedReason || undefined}
+          data-cycle-status={dailyCycleStatusValue || undefined}
+        >
+          Limitovaný ranní přehled: denní cyklus nedoběhl, proto používám dostupné DB/Pantry/Event-ingestion zdroje.
+        </div>
+      )}
 
       {/* 1. Karlův ranní terapeutický monolog */}
       <div className="rounded-xl border border-primary/15 bg-card/35 p-3.5 space-y-2">
