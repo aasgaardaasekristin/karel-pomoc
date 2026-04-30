@@ -20,7 +20,7 @@ Deno.test("visible briefing has a debug-language translation guard", () => {
   const source = Deno.readTextFileSync(new URL("./index.ts", import.meta.url));
   assertStringIncludes(source, "FORBIDDEN_VISIBLE_DEBUG_LANGUAGE_RE");
   assertStringIncludes(source, "ensureVisibleClinicalText");
-  assertStringIncludes(source, "opening_monologue_text = ensureVisibleClinicalText");
+  assertStringIncludes(source, "opening_monologue_text = ensureKarelFirstPersonOpening");
   assertStringIncludes(source, "payload.proposed_session[key] = ensureVisibleClinicalText");
   assertStringIncludes(source, "payload.proposed_playroom[key] = ensureVisibleClinicalText");
 });
@@ -46,6 +46,6 @@ Deno.test("opening renderer enforces first-person Karel voice and no rule manual
   const source = Deno.readTextFileSync(new URL("./index.ts", import.meta.url));
   assertStringIncludes(source, "ensureKarelFirstPersonOpening");
   assertStringIncludes(source, "Včerejší událost s Timmim/keporkakem vnímám");
-  assertStringIncludes(source, "Budu ti pomáhat držet otázky krátké a bezpečné");
+  assertStringIncludes(source, "budu ti pomáhat držet otázky krátké a bezpečné");
   assertStringIncludes(source, "FORBIDDEN_OPENING_META_RE");
 });
