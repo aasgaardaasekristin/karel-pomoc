@@ -813,6 +813,7 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     : `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: nepřenášet včerejší symboly automaticky na ostatní části a nepoužít je dřív, než se ukáže, že jsou dnes pro ${partGenitive(activePart)} stále bezpečné.`;
   const what_not_to_do_today = "Dnes bych se vyhnul třem věcem: netlačit do vysvětlování, neotevírat nové trauma téma bez stabilizačního rámce a nepředávat části příliš velkou odpovědnost otázkou typu „co chceš dělat?“. Bezpečnější je nabídnout dvě nebo tři malé možnosti.";
   const priority_of_the_day = buildDailyTherapeuticPriority(payload);
+  const playroom_guidance = "Pokud se tým rozhodne pro Hernu, má být krátká, jemná a nízkoprahová. Nepůjde o výkon ani o výklad, ale o bezpečné zjištění, co dnes Tundrupek unese; Herna zůstává oddělená od terapeutkou vedeného Sezení a čeká na schválení terapeutkami.";
   const evidence_limits = [
     `Jistě víme: ${evidenceKnown.join(" ")}`,
     hasRealityCorrection
@@ -826,16 +827,11 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   const opening_monologue_text = ensureKarelFirstPersonOpening([
     greeting,
     frame,
-    team_recognition,
-    executive_summary,
-    parts_at_helm,
-    yesterday_new_information,
     clinical_formulation,
     recommendations_for_hana,
     recommendations_for_katka,
-    what_not_to_do_today,
     priority_of_the_day,
-    evidence_limits,
+    playroom_guidance,
     team_closing_line,
   ].join("\n\n"), [greeting, frame, clinical_formulation, recommendations_for_hana, recommendations_for_katka, team_closing_line].join("\n\n"));
 
