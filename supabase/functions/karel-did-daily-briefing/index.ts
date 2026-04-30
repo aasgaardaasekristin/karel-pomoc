@@ -2213,7 +2213,7 @@ Deno.serve(async (req) => {
       }
     }
     const isCronSecretCall = !!effectiveCronSecret && cronSecretHeader === effectiveCronSecret;
-    const wantsAuto = body?.method === "auto" || body?.source === "cron";
+    const wantsAuto = body?.method === "auto" || body?.source === "cron" || isSlaMethod(body?.method);
     const authHeaderPrefix = authHeader.startsWith("Bearer ") ? "Bearer" : authHeader ? "other" : "none";
     console.log("[briefing-auth] sanitized", JSON.stringify({
       has_authorization_header: !!authHeader,
@@ -2287,10 +2287,15 @@ Deno.serve(async (req) => {
     }
     if (!scopedUserId) return jsonResponse({ error: "missing_user_scope" }, 400);
     const generationMethod = body?.method || (wantsAuto ? "auto" : "manual");
-    const forceRegenerate = body?.force === true;
+    const forceRegenerate = body?.force === true || isSlaMethod(generationMethod);
 
     const today = pragueDayISO();
-    const triggerSource = body?.source === "cron" ? "cron" : body?.source === "service" ? "service" : "ui";
+    const triggerSource = body?.source === "cron" ? "cron"
+      : body?.source === "service" ? "service"
+      : body?.source === "sla_watchdog" ? "sla_watchdog"
+      : body?.source === "internal_sla" ? "internal_sla"
+      : isSlaMethod(generationMethod) ? "sla_watchdog"
+      : "ui";
     const authMode = isServiceCall ? "service_role" : isCronSecretCall ? "cron_secret" : "user";
     attemptId = await startBriefingAttempt(supabase, {
       user_id: scopedUserId,
