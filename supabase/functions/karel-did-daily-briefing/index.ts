@@ -255,7 +255,7 @@ const recencyIntro = (item: any, kind: "playroom" | "session", briefingDate?: st
  *
  * Volá se rekurzivně přes celý payload v `applyClinicalRecencyGuard`.
  */
-function enforceClinicalRecencyText(value: unknown, payload: any): string {
+export function enforceClinicalRecencyText(value: unknown, payload: any): string {
   let text = String(value ?? "");
   const play = payload?.recent_playroom_review ?? payload?.yesterday_playroom_review;
   const sess = payload?.recent_session_review ?? payload?.yesterday_session_review;
@@ -311,7 +311,7 @@ function enforceClinicalRecencyText(value: unknown, payload: any): string {
  *
  * Mutates the payload in place AND returns it for chaining.
  */
-function revalidateRecencyAgainstViewer(payload: any, viewerDate: string): any {
+export function revalidateRecencyAgainstViewer(payload: any, viewerDate: string): any {
   if (!payload || typeof payload !== "object") return payload;
   const refresh = (review: any, kind: "playroom" | "session") => {
     if (!review || typeof review !== "object" || !review.exists) return;
@@ -356,7 +356,7 @@ function revalidateRecencyAgainstViewer(payload: any, viewerDate: string): any {
  *   - viewer_meta.{viewer_date_iso, briefing_date_iso, is_current_briefing}
  *     so the UI can show a "Zobrazuji starý přehled" banner.
  */
-function revalidateCachedBriefingForViewer(briefing: any, viewerDate: string): any {
+export function revalidateCachedBriefingForViewer(briefing: any, viewerDate: string): any {
   if (!briefing || typeof briefing !== "object") return briefing;
   const cloned = { ...briefing, payload: briefing.payload ? JSON.parse(JSON.stringify(briefing.payload)) : briefing.payload };
   const briefingDate = String(briefing.briefing_date ?? "").slice(0, 10) || viewerDate;
@@ -378,6 +378,7 @@ const jsonResponse = (body: unknown, status = 200) =>
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
 
 async function startBriefingAttempt(sb: any, values: Record<string, unknown>): Promise<string | null> {
   try {
@@ -1235,7 +1236,7 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   };
 }
 
-function applyClinicalRecencyGuard(payload: any): any {
+export function applyClinicalRecencyGuard(payload: any): any {
   const walk = (value: any): any => {
     if (typeof value === "string") return ensureVisibleClinicalText(enforceClinicalRecencyText(value, payload));
     if (Array.isArray(value)) return value.map(walk);
@@ -2133,6 +2134,7 @@ MUSÍŠ vždy navrhnout proposed_playroom. Pokud jsou signály slabé, zvol nejb
 // ───────────────────────────────────────────────────────────
 // MAIN HANDLER
 // ───────────────────────────────────────────────────────────
+if (import.meta.main) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -2419,6 +2421,12 @@ Deno.serve(async (req) => {
     payload.recent_playroom_review = payload.yesterday_playroom_review;
     payload.recent_session_review = payload.yesterday_session_review;
     payload = applyClinicalRecencyGuard(payload);
+    payload.viewer_meta = {
+      viewer_date_iso: today,
+      briefing_date_iso: today,
+      is_current_briefing: true,
+      days_since_briefing: 0,
+    };
 
     // 3b) ── ASK ITEM IDENTITY ──
     // AI vrací ask_hanka/ask_kata jako string[]. Server přidá stabilní `id` na
