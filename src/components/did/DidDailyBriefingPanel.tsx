@@ -1323,17 +1323,32 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const playroomProposal = p.proposed_playroom?.part_name
     ? p.proposed_playroom
     : createFallbackPlayroomProposal(p);
+  const playRecency = ((p as any).recent_playroom_review ?? p.yesterday_playroom_review) as RecencyMeta | null | undefined;
+  const sessRecency = ((p as any).recent_session_review ?? p.yesterday_session_review) as RecencyMeta | null | undefined;
   const sessionView = toProposedSessionView(p.proposed_session);
   const playroomView = toProposedPlayroomView(playroomProposal);
   const decisions = (p.decisions ?? []).slice(0, 3);
   const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
   const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
   const legacyTechnicalGreeting = /těžk[áa]\s+syntéza|fallback|bezpečn[ýy]\s+režim/i.test(p.greeting || "");
-  const openingMonologueText = ensureKarelOpeningVoice(p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnes držme hlavně klinickou návaznost, opatrnost v závěrech a jeden bezpečný další krok pro kluky. Budu rozlišovat, co víme jistě, co je pracovní hypotéza a co ještě čeká na ověření." : p.greeting) || "");
+  const openingMonologueText = ensureKarelOpeningVoice(p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnes držme hlavně klinickou návaznost, opatrnost v závěrech a jeden bezpečný další krok pro kluky. Budu rozlišovat, co víme jistě, co je pracovní hypotéza a co ještě čeká na ověření." : p.greeting) || "", playRecency, sessRecency);
   const technicalNote = (p.technical_note || p.opening_monologue?.technical_note || "").trim();
   const visibleRealityContext = realityContextText(p);
   const sessionContextSummary = backendContextSummary(p.proposed_session?.backend_context_inputs);
   const playroomContextSummary = backendContextSummary(playroomProposal?.backend_context_inputs);
+  const playroomSectionTitle = playRecency?.exists
+    ? (playRecency.is_yesterday ? "Včerejší herna" : (playRecency.visible_label || `Poslední Herna (${formatPragueDateLabel(playRecency.session_date_iso)})`))
+    : "Včerejší herna";
+  const sessionSectionTitle = sessRecency?.exists
+    ? (sessRecency.is_yesterday ? "Včerejší sezení" : (sessRecency.visible_label || `Poslední Sezení (${formatPragueDateLabel(sessRecency.session_date_iso)})`))
+    : "Včerejší sezení";
+  const playroomRecencyBadge = playRecency?.exists && !playRecency.is_yesterday
+    ? `${playRecency.human_recency_label || "starší"} · ${formatPragueDateLabel(playRecency.session_date_iso)}`
+    : null;
+  const sessionRecencyBadge = sessRecency?.exists && !sessRecency.is_yesterday
+    ? `${sessRecency.human_recency_label || "starší"} · ${formatPragueDateLabel(sessRecency.session_date_iso)}`
+    : null;
+  const sanitizeProse = (v: unknown) => humanizeRecencyInProse(cleanVisibleClinicalText(v), playRecency, sessRecency);
 
   return (
     <div className="space-y-1">
