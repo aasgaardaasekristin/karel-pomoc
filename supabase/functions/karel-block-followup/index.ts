@@ -225,35 +225,54 @@ function reconstructResponses(turns: Turn[], plannedSteps: string[]): ProtocolSt
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
+    // Accept either: (a) Bearer user JWT, (b) Bearer service-role, or
+    // (c) X-Karel-Cron-Secret header validated against vault. Path (c) is
+    // used by acceptance tests + cron without exposing service-role.
     const auth = req.headers.get("Authorization") ?? "";
-    if (!auth.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "missing auth" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    // Allow service-role bearer (used by tests and internal cron) to bypass user lookup.
-    const bearerToken = auth.slice("Bearer ".length).trim();
-    const isServiceRole = SERVICE_ROLE && bearerToken === SERVICE_ROLE;
-    if (!isServiceRole) {
-      const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-        global: { headers: { Authorization: auth } },
-      });
-      const { data: userData, error: userErr } = await userClient.auth.getUser();
-      if (userErr || !userData?.user) {
+    const cronSecret = req.headers.get("x-karel-cron-secret") ?? req.headers.get("X-Karel-Cron-Secret") ?? "";
+    let isServiceRole = false;
+    let isCronAuth = false;
+
+    if (cronSecret) {
+      try {
+        const sb = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+        const { data: ok } = await sb.rpc("verify_karel_cron_secret", { p_secret: cronSecret });
+        isCronAuth = ok === true;
+      } catch (e) {
+        console.warn("[block-followup] cron secret verify failed:", e);
+      }
+      if (!isCronAuth) {
         return new Response(JSON.stringify({ error: "unauthorized" }), {
           status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
+      }
+    } else {
+      if (!auth.startsWith("Bearer ")) {
+        return new Response(JSON.stringify({ error: "missing auth" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const bearerToken = auth.slice("Bearer ".length).trim();
+      isServiceRole = !!(SERVICE_ROLE && bearerToken === SERVICE_ROLE);
+      if (!isServiceRole) {
+        const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+          global: { headers: { Authorization: auth } },
+        });
+        const { data: userData, error: userErr } = await userClient.auth.getUser();
+        if (userErr || !userData?.user) {
+          return new Response(JSON.stringify({ error: "unauthorized" }), {
+            status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
       }
     }
 
     const body = await req.json().catch(() => ({}));
 
-    // ─── TEST-ONLY HOOKS (gated by service-role) ───
-    // Allow acceptance tests to force the AI fallback paths without
-    // actually calling the AI gateway. Available ONLY when caller used
-    // the service-role bearer token.
-    const forceAiEmpty = isServiceRole && body?.test_force_ai_empty_body === true;
-    const forceAiInvalid = isServiceRole && body?.test_force_ai_invalid_json === true;
+    // ─── TEST-ONLY HOOKS (gated by service-role or cron secret) ───
+    const allowTestHooks = isServiceRole || isCronAuth;
+    const forceAiEmpty = allowTestHooks && body?.test_force_ai_empty_body === true;
+    const forceAiInvalid = allowTestHooks && body?.test_force_ai_invalid_json === true;
     const partName = String(body?.part_name ?? "").trim();
     const therapistName = String(body?.therapist_name ?? "Hanka").trim();
     const block = body?.program_block ?? null;
