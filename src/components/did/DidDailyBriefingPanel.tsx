@@ -319,8 +319,31 @@ export const humanizeRecencyInProse = (value: unknown, playRecency?: RecencyMeta
   return text;
 };
 
+/**
+ * Defense-in-depth stripper: pokud staré cache (legacy briefing) nebo
+ * zatoulaný LLM výstup obsahují větu typu "Včera Herna neproběhla." /
+ * "Včerejší Sezení neproběhlo." apod. v úvodním Karlově monologu, odstraní ji.
+ *
+ * Tato informace patří VÝHRADNĚ do dedikované sekce "Poslední/Včerejší herna",
+ * "Poslední/Včerejší sezení" a do auditovatelného bloku evidence_limits —
+ * NIKDY ne jako první klinická věta Karlova ranního monologu.
+ */
+export const stripNotHeldNoticeFromOpening = (text: string): string => {
+  if (!text) return text;
+  const NOT_HELD_SENTENCE_RE =
+    /(?:^|\s)(?:V[čc]era|V[čc]erej[šs][íi])\s+(?:Herna|Sezen[íi])\s+neprob[eě]hl[ao][^.!?\n]*[.!?]\s*/giu;
+  return text
+    .replace(NOT_HELD_SENTENCE_RE, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+};
+
 export const ensureKarelOpeningVoice = (value: unknown, playRecency?: RecencyMeta | null, sessRecency?: RecencyMeta | null): string => {
-  const cleaned = humanizeRecencyInProse(cleanVisibleClinicalText(value), playRecency, sessRecency);
+  const cleaned = stripNotHeldNoticeFromOpening(
+    humanizeRecencyInProse(cleanVisibleClinicalText(value), playRecency, sessRecency),
+  );
   if (!cleaned || FORBIDDEN_VISIBLE_DEBUG_RE.test(cleaned)) {
     return "Dobré ráno, Haničko a Káťo.\n\nVčerejší událost s Timmim/keporkakem vnímám jako silný emoční otisk v psychice kluků. Nechci ji dnes přehnaně vykládat, ale nechci ji ani ztratit. Potřebujeme jemně zjistit, co v nich po včerejšku zůstalo — vlastními slovy, tělem a reakcí kluků.\n\nPokud dnes proběhne Sezení, povede ho Hanička. Budu jí pomáhat držet strukturu, bezpečné otázky a zápis toho, co je klinicky důležité. Herna zůstává nízkoprahová a čeká na schválení terapeutkami.";
   }

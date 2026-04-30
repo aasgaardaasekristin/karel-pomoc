@@ -833,10 +833,32 @@ const ensureVisibleClinicalText = (value: unknown): string => {
   return sanitizeKarelClinicalText(text);
 };
 
+/**
+ * Strips standalone "(Včera|Včerejší) (Herna|Sezení) neproběhl[ao]" sentences
+ * from the opening monologue. This information belongs ONLY in the dedicated
+ * "Poslední / Včerejší herna" and "Poslední / Včerejší sezení" sections, and
+ * in the auditable `evidence_limits` block — never as the first clinical line
+ * of Karel's morning monologue.
+ */
+const stripNotHeldNoticeFromOpeningText = (text: string): string => {
+  if (!text) return text;
+  // Match a sentence (up to . ! ? or end) that is just the not-held notice,
+  // possibly followed by a short trailing fragment up to the next sentence boundary.
+  const NOT_HELD_SENTENCE_RE =
+    /(?:^|\s)(?:V[čc]era|V[čc]erej[šs][íi])\s+(?:Herna|Sezen[íi])\s+neprob[eě]hl[ao][^.!?\n]*[.!?]\s*/giu;
+  let next = text.replace(NOT_HELD_SENTENCE_RE, " ");
+  // Collapse any double spaces / orphan whitespace at paragraph starts.
+  next = next.replace(/[ \t]{2,}/g, " ").replace(/\n[ \t]+/g, "\n").trim();
+  return next;
+};
+
 const ensureKarelFirstPersonOpening = (value: unknown, fallback: string): string => {
   const text = ensureVisibleClinicalText(value);
-  if (!text || FORBIDDEN_OPENING_META_RE.test(text)) return fallback;
-  return text;
+  const stripped = stripNotHeldNoticeFromOpeningText(text);
+  if (!stripped || FORBIDDEN_OPENING_META_RE.test(stripped)) {
+    return stripNotHeldNoticeFromOpeningText(fallback);
+  }
+  return stripped;
 };
 
 const isTechnicalStatusText = (value: unknown): boolean =>
@@ -912,7 +934,10 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   const teamWorkCandidate = sanitizeKarelClinicalText(firstMeaningful(sess?.team_closing_text, sess?.team_acknowledgement, play?.recommendations_for_therapists));
   const teamWork = isTechnicalStatusText(teamWorkCandidate) ? "" : teamWorkCandidate;
   const evidenceKnown: string[] = [];
-  const playNoYesterday = !play || play.is_yesterday !== true;
+  // POZN.: dřívější pomocná proměnná pro úvodní administrativní oznámení
+  // o tom, že herna neproběhla, byla z monologu odstraněna. Tato informace
+  // patří výhradně do dedikované sekce "Poslední / Včerejší herna" a do
+  // auditovatelného bloku evidence_limits níže.
   if (play) evidenceKnown.push(`${recencyIntro(play, "playroom")} ${activePart} v ní pracoval se symboly bezpečí, světla, domova nebo ochrany.`);
   else evidenceKnown.push("Včera Herna neproběhla.");
   if (sess?.held) evidenceKnown.push(`${recencyIntro(sess, "session")} ${sess.part_name || activePart} má doložený klinický vstup${sess.status ? ` se stavem ${sess.status}` : ""}.`);
@@ -921,12 +946,16 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   if (!evidenceKnown.length) evidenceKnown.push("V dostupném payloadu zatím nevidím plné review Herny ani Sezení.");
 
   const greeting = "Dobré ráno, Haničko a Káťo.";
-  const playroomTruth = playNoYesterday
-    ? `${play?.not_yesterday_notice || "Včera Herna neproběhla."} ${play ? `Poslední doložená Herna s ${play.part_name || activePart} je z ${formatClinicalDate(play.session_date_iso)}, tedy ${play.human_recency_label}.` : "Dnes proto nenavazuji na nové herní review ze včerejška."}`
-    : `Včerejší Herna s ${play?.part_name || activePart} je skutečně z ${formatClinicalDate(play?.session_date_iso ?? null)}.`;
+  // POZN.: Informace o tom, že "Včera Herna neproběhla" / "Včera Sezení neproběhlo"
+  // do úvodního monologu NEPATŘÍ. Karel nezačíná den administrativním
+  // oznámením o tom, co se nestalo. Tato informace je vyhrazená pro:
+  //   1) sekci "Poslední / Včerejší herna" (recency notice nad reportem)
+  //   2) sekci "Poslední / Včerejší sezení" (recency notice nad reportem)
+  //   3) blok `evidence_limits` ("Jistě víme: …") jako auditovatelná položka
+  // V monologu zde naopak otevíráme klinickým rámcem dne.
   const realityOpening = hasRealityCorrection
-    ? `${playroomTruth} Událost s Timmim/keporkakem vnímám jako silný emoční otisk v psychice kluků. Nechci ji přehnaně vykládat, ale nechci ji ani ztratit. Potřebujeme jemně zjistit, co v klucích zůstává — vlastními slovy, tělem a reakcí kluků.`
-    : `${playroomTruth} Dnes chci navazovat jen na přesně datovaný materiál klidně a bez tlaku. Nechci z něj dělat větší příběh, než jaký kluci sami unesou; potřebujeme nejdřív zjistit, kdo je přítomný, jak je na tom tělo a kde je dnes bezpečný práh.`;
+    ? `Událost s Timmim/keporkakem vnímám jako silný emoční otisk v psychice kluků. Nechci ji přehnaně vykládat, ale nechci ji ani ztratit. Potřebujeme jemně zjistit, co v klucích zůstává — vlastními slovy, tělem a reakcí kluků.`
+    : `Dnes chci navazovat jen na přesně datovaný materiál klidně a bez tlaku. Nechci z něj dělat větší příběh, než jaký kluci sami unesou; potřebujeme nejdřív zjistit, kdo je přítomný, jak je na tom tělo a kde je dnes bezpečný práh.`;
   const frame = hasReview
     ? `${realityOpening} ${openedPartialSession ? `${recencyIntro(sess, "session")} Beru ho jako otevřené nebo částečně rozpracované; dnes ho nebudu uzavírat za kluky, dokud nemáme plné dovyhodnocení.` : "Pokud se téma znovu objeví, budeme ho brát jako reálnou událost a živý prožitek, ne jako hotový klinický závěr."}`
     : `${realityOpening} Tam, kde data chybí, nebudu domýšlet příběh; raději navrhnu bezpečný ověřovací krok.`;

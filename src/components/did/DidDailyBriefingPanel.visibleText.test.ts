@@ -201,4 +201,24 @@ describe("DidDailyBriefingPanel visible clinical text helpers", () => {
     expect(visible).not.toMatch(/včerejší\s+Hernu/i);
     expect(visible).not.toMatch(/ze\s+včerejší\s+Herny/i);
   });
+
+  it("opening monologue NEVER contains the 'Herna/Sezení neproběhla' notice — that belongs only to the dedicated section", () => {
+    const monologWithNotice = [
+      "Dobré ráno, Haničko a Káťo.",
+      "Včera Herna neproběhla. Poslední doložená Herna s Tundrupkem je z 27. 4. 2026, tedy před 3 dny.",
+      "Dnes chci navazovat jen na přesně datovaný materiál klidně a bez tlaku.",
+    ].join("\n\n");
+    const out = ensureKarelOpeningVoice(monologWithNotice, null, null);
+    expect(out).not.toMatch(/V[čc]era\s+Herna\s+neprob[eě]hla/i);
+    expect(out).not.toMatch(/V[čc]erej[šs][íi]\s+Herna\s+neprob[eě]hla/i);
+    expect(out).toContain("Dobré ráno");
+    expect(out).toContain("Dnes chci navazovat");
+  });
+
+  it("opening monologue strips 'Včera Sezení neproběhlo' as well", () => {
+    const monolog = "Dobré ráno, Haničko a Káťo.\n\nVčera Sezení neproběhlo. Pracujeme s tím, co máme z minulého týdne.\n\nDnešní priorita je ověřit dostupnost.";
+    const out = ensureKarelOpeningVoice(monolog, null, null);
+    expect(out).not.toMatch(/V[čc]era\s+Sezen[íi]\s+neprob[eě]hlo/i);
+    expect(out).toContain("Dnešní priorita");
+  });
 });
