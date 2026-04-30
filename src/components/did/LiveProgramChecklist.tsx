@@ -383,6 +383,29 @@ const LiveProgramChecklist = forwardRef<HTMLDivElement, Props>(({
           <Badge variant="outline" className="text-[9px] h-4 border-primary/30 text-primary">
             {doneCount}/{items.length}
           </Badge>
+          {(() => {
+            const currentIdx = items.findIndex((it) => !it.done);
+            const isClosing = currentIdx === items.length - 1 && currentIdx >= 0;
+            if (currentIdx < 0) {
+              return (
+                <Badge data-testid="live-current-block-indicator" variant="outline" className="text-[9px] h-4 border-accent/40 text-accent">
+                  Vše hotové
+                </Badge>
+              );
+            }
+            return (
+              <Badge
+                data-testid="live-current-block-indicator"
+                data-block-index={currentIdx}
+                data-is-final={isClosing ? "true" : "false"}
+                variant="outline"
+                className={`text-[9px] h-4 ${isClosing ? "border-amber-500/50 text-amber-600 dark:text-amber-400" : "border-primary/30 text-primary"}`}
+                title={isClosing ? "Závěrečný blok — žádné nové aktivity" : "Aktuální blok"}
+              >
+                {isClosing ? "Závěrečný blok #" : "Aktuální #"}{currentIdx + 1}
+              </Badge>
+            );
+          })()}
         </div>
         <Button
           size="sm"
