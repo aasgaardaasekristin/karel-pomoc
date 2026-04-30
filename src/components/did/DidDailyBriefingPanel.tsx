@@ -276,8 +276,51 @@ export const cleanVisibleClinicalText = (value: unknown): string => String(value
 
 const FORBIDDEN_VISIBLE_DEBUG_RE = /pending_review|evidence_limited|needs_therapist_input|awaiting_therapist_review|backend_context_inputs|source_ref|therapist_factual_correction|external_fact|evidence discipline|child evidence|real-world context|operational context|faktick[áa]\s+korekce\s+reality|nepředstírat klinické závěry|průběh, který nemá transcript|V ranním přehledu se má objevit|První pracovní návrh:\s*Část|Stav:\s*awaiting|Dnešní přehled drží|Karel je jen navigátor|Karel je zapisovatel|Karel nesmí|Karel může|Karel je\b|Karel bude|Sezení nesmí|Herna může běžet/i;
 
-export const ensureKarelOpeningVoice = (value: unknown): string => {
-  const cleaned = cleanVisibleClinicalText(value);
+type RecencyMeta = {
+  exists?: boolean;
+  session_date_iso?: string | null;
+  days_since_today?: number | null;
+  human_recency_label?: string | null;
+  is_yesterday?: boolean;
+  visible_label?: string | null;
+  visible_sentence_prefix?: string | null;
+  not_yesterday_notice?: string | null;
+};
+
+const formatPragueDateLabel = (iso?: string | null): string => {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso.slice(0, 10))) return "datum není doložené";
+  return new Intl.DateTimeFormat("cs-CZ", { timeZone: "Europe/Prague", day: "numeric", month: "numeric", year: "numeric" }).format(new Date(`${iso.slice(0, 10)}T12:00:00Z`));
+};
+
+export const humanizeRecencyInProse = (value: unknown, playRecency?: RecencyMeta | null, sessRecency?: RecencyMeta | null): string => {
+  let text = String(value ?? "");
+  if (playRecency?.exists && playRecency.days_since_today !== 1 && playRecency.days_since_today != null) {
+    const label = playRecency.days_since_today === 2
+      ? "předevčerejší Herna"
+      : `poslední Herna z ${formatPragueDateLabel(playRecency.session_date_iso)}, ${playRecency.human_recency_label || ""}`.trim();
+    text = text
+      .replace(/včerejší\s+Hernu/gi, label)
+      .replace(/včerejší\s+Herna/gi, label)
+      .replace(/Včerejší\s+Herna/g, label.charAt(0).toUpperCase() + label.slice(1))
+      .replace(/Včerejší\s+herna/g, label.charAt(0).toUpperCase() + label.slice(1))
+      .replace(/ze\s+včerejší\s+Herny/gi, `z ${label}`)
+      .replace(/ze\s+včerejška/gi, `z ${playRecency.human_recency_label || "dřívějška"}`)
+      .replace(/Symboly\s+z\s+včerejška/gi, `Symboly z ${playRecency.human_recency_label || "dřívějška"}`);
+  }
+  if (sessRecency?.exists && sessRecency.days_since_today !== 1 && sessRecency.days_since_today != null) {
+    const label = sessRecency.days_since_today === 2
+      ? "předevčerejší Sezení"
+      : `poslední Sezení z ${formatPragueDateLabel(sessRecency.session_date_iso)}, ${sessRecency.human_recency_label || ""}`.trim();
+    text = text
+      .replace(/včerejší\s+Sezení/gi, label)
+      .replace(/Včerejší\s+Sezení/g, label.charAt(0).toUpperCase() + label.slice(1))
+      .replace(/ze\s+včerejšího\s+Sezení/gi, `z ${label}`);
+  }
+  return text;
+};
+
+export const ensureKarelOpeningVoice = (value: unknown, playRecency?: RecencyMeta | null, sessRecency?: RecencyMeta | null): string => {
+  const cleaned = humanizeRecencyInProse(cleanVisibleClinicalText(value), playRecency, sessRecency);
   if (!cleaned || FORBIDDEN_VISIBLE_DEBUG_RE.test(cleaned)) {
     return "Dobré ráno, Haničko a Káťo.\n\nVčerejší událost s Timmim/keporkakem vnímám jako silný emoční otisk v psychice kluků. Nechci ji dnes přehnaně vykládat, ale nechci ji ani ztratit. Potřebujeme jemně zjistit, co v nich po včerejšku zůstalo — vlastními slovy, tělem a reakcí kluků.\n\nPokud dnes proběhne Sezení, povede ho Hanička. Budu jí pomáhat držet strukturu, bezpečné otázky a zápis toho, co je klinicky důležité. Herna zůstává nízkoprahová a čeká na schválení terapeutkami.";
   }
