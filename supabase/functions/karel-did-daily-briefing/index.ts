@@ -966,7 +966,7 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     ? `Událost s Timmim/keporkakem vnímám jako silný emoční otisk v psychice kluků. Nechci ji přehnaně vykládat, ale nechci ji ani ztratit. Potřebujeme jemně zjistit, co v klucích zůstává — vlastními slovy, tělem a reakcí kluků.`
     : `Dnes chci navazovat jen na přesně datovaný materiál klidně a bez tlaku. Nechci z něj dělat větší příběh, než jaký kluci sami unesou; potřebujeme nejdřív zjistit, kdo je přítomný, jak je na tom tělo a kde je dnes bezpečný práh.`;
   const frame = hasReview
-    ? `${realityOpening} ${openedPartialSession ? `${recencyIntro(sess, "session")} Beru ho jako otevřené nebo částečně rozpracované; dnes ho nebudu uzavírat za kluky, dokud nemáme plné dovyhodnocení.` : "Pokud se téma znovu objeví, budeme ho brát jako reálnou událost a živý prožitek, ne jako hotový klinický závěr."}`
+    ? `${realityOpening} ${openedPartialSession ? "Poslední Sezení beru jako otevřené nebo částečně rozpracované; dnes ho nebudu uzavírat za kluky, dokud nemáme plné dovyhodnocení." : "Pokud se téma znovu objeví, budeme ho brát jako reálnou událost a živý prožitek, ne jako hotový klinický závěr."}`
     : `${realityOpening} Tam, kde data chybí, nebudu domýšlet příběh; raději navrhnu bezpečný ověřovací krok.`;
   const team_recognition = teamWork
     ? `V nedávné práci bylo pro tým důležité toto: ${trimSentence(teamWork, 420)}`
