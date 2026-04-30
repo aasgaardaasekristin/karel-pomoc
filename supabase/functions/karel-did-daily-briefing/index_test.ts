@@ -156,3 +156,43 @@ Deno.test("dated yesterday sentence is rewritten when viewer_date makes it older
   assertStringIncludes(out, "29. 4. 2026");
   assert(/p[řr]edev[čc][íi]rem|Posledn[íi].*Sezen[íi]/u.test(out));
 });
+
+Deno.test("days===1 must NOT emit frozen 'Včerejší X proběhlo DD. M. YYYY' pattern", () => {
+  // briefing for 2026-04-30, source from 2026-04-29 (literally yesterday)
+  const sess = resolveClinicalRecency({
+    source_date_iso: "2026-04-29",
+    briefing_date_iso: "2026-04-30",
+    viewer_date_iso: "2026-04-30",
+    kind: "session",
+    exists: true,
+    held: true,
+  });
+  assertEquals(sess.days_since_reference, 1);
+  assertEquals(sess.human_recency_label, "včera");
+  assert(
+    !/V[čc]erej[šs][íi]\s+Sezen[íi]\s+prob[eě]hlo\s+\d/.test(sess.visible_sentence_prefix || ""),
+    `prefix must not contain frozen "Včerejší Sezení proběhlo …" — got: ${sess.visible_sentence_prefix}`,
+  );
+  assertStringIncludes(sess.visible_sentence_prefix || "", "29. 4. 2026");
+  assertStringIncludes(sess.visible_sentence_prefix || "", "včera");
+
+  const play = resolveClinicalRecency({
+    source_date_iso: "2026-04-29",
+    briefing_date_iso: "2026-04-30",
+    viewer_date_iso: "2026-04-30",
+    kind: "playroom",
+    exists: true,
+    held: true,
+  });
+  assert(
+    !/V[čc]erej[šs][íi]\s+Herna\s+prob[eě]hla\s+\d/.test(play.visible_sentence_prefix || ""),
+    `prefix must not contain frozen "Včerejší Herna proběhla …" — got: ${play.visible_sentence_prefix}`,
+  );
+  assertStringIncludes(play.visible_sentence_prefix || "", "včera");
+});
+
+Deno.test("section heading 'VČEREJŠÍ DŮLEŽITÝ KONTEXT' is rewritten to 'DŮLEŽITÝ KONTEXT Z POSLEDNÍCH DNÍ'", () => {
+  const out = enforceClinicalRecencyText("VČEREJŠÍ DŮLEŽITÝ KONTEXT");
+  assertEquals(out.includes("VČEREJŠÍ DŮLEŽITÝ KONTEXT"), false);
+  assertStringIncludes(out, "DŮLEŽITÝ KONTEXT Z POSLEDNÍCH DNÍ");
+});
