@@ -378,7 +378,6 @@ const jsonResponse = (body: unknown, status = 200) =>
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
 
 async function startBriefingAttempt(sb: any, values: Record<string, unknown>): Promise<string | null> {
   try {
