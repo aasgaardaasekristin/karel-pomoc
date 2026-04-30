@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backendContextSummary, cleanVisibleClinicalText, ensureKarelOpeningVoice, humanizeRecencyInProse, realityContextText, toProposedPlayroomView, toProposedSessionView } from "./DidDailyBriefingPanel";
+import { backendContextSummary, briefingFreshnessBannerText, cleanVisibleClinicalText, ensureKarelOpeningVoice, getBriefingFreshnessMeta, humanizeRecencyInProse, realityContextText, recencySectionNoticeText, revalidateRecencyForViewer, toProposedPlayroomView, toProposedSessionView } from "./DidDailyBriefingPanel";
 
 const forbidden = [
   "pending_review",
@@ -240,5 +240,42 @@ describe("DidDailyBriefingPanel visible clinical text helpers", () => {
     const out = ensureKarelOpeningVoice(monolog, null, null);
     expect(out).not.toMatch(/P[řr]edev[čc]erej[šs][íi]\s+Sezen[íi]\s+prob[eě]hlo\s+\d/i);
     expect(out).toContain("Dnes ověřujeme stav");
+  });
+
+  it("frontend revalidates stale cached session recency and exposes the old-briefing banner text", () => {
+    const recency = revalidateRecencyForViewer({
+      exists: true,
+      source_date_iso: "2026-04-29",
+      is_yesterday: true,
+      human_recency_label: "včera",
+    }, "2026-05-01", "session");
+    const text = humanizeRecencyInProse("Včerejší Sezení proběhlo 29. 4. 2026.", null, recency);
+    const banner = briefingFreshnessBannerText("2026-04-30", "2026-05-01");
+    const meta = getBriefingFreshnessMeta("2026-04-30", "2026-05-01");
+
+    expect(text).not.toMatch(/Včerejší\s+Sezení/);
+    expect(text).toContain("29. 4. 2026");
+    expect(text).toMatch(/předevčírem|Poslední doložené Sezení/);
+    expect(banner).toBe("Zobrazuji poslední dostupný přehled ze dne 30. 4. 2026. Dnešní přehled zatím nevznikl.");
+    expect(meta.is_current_briefing).toBe(false);
+    expect(meta.days_since_briefing).toBe(1);
+  });
+
+  it("frontend renders exact 3-day-old playroom notice without calling it yesterday", () => {
+    const recency = revalidateRecencyForViewer({
+      exists: true,
+      source_date_iso: "2026-04-27",
+      session_date_iso: "2026-04-27",
+      part_name: "Tundrupek",
+    } as any, "2026-04-30", "playroom");
+    const notice = recencySectionNoticeText("playroom", recency, "Tundrupek");
+
+    expect(recency?.visible_label).toBe("Poslední Herna");
+    expect(recency?.is_yesterday).toBe(false);
+    expect(recency?.days_since_today).toBe(3);
+    expect(recency?.human_recency_label).toBe("před 3 dny");
+    expect(notice).toContain("Včera Herna neproběhla.");
+    expect(notice).toContain("Poslední doložená Herna s Tundrupkem proběhla 27. 4. 2026, tedy před 3 dny.");
+    expect(notice).not.toMatch(/Včerejší\s+Herna|včerejší\s+herní\s+materiál|ze\s+včerejší\s+Herny|navázat\s+na\s+včerejší\s+Hernu/i);
   });
 });

@@ -4,6 +4,9 @@ import { corsHeaders } from "../_shared/auth.ts";
 import { loadDriveRegistryEntries, buildAliasMapText } from "../_shared/driveRegistry.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 
+const pragueDayISO = (d: Date = new Date()): string =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(d);
+
 /**
  * Karel DID Context Prime – Dynamická situační cache pro DID režim
  * 
@@ -244,7 +247,7 @@ function gatherThreadsForTherapist(
 ): string {
   const cutoffMs = cutoff.getTime();
   const cutoffLabel = cutoff.toISOString().slice(0, 10);
-  const nowLabel = new Date().toISOString().slice(0, 10);
+  const nowLabel = pragueDayISO();
   const lines: string[] = [`Konverzace od ${cutoffLabel} do ${nowLabel} (${therapist === "hanka" ? "Hanička" : "Káťa"})`];
 
   const subModes = therapist === "hanka" ? ["mamka"] : ["kata"];
@@ -426,7 +429,7 @@ SOUBORY K VYGENEROVÁNÍ (odděl je značkou [[[NÁZEV_SOUBORU]]]):
    NIKDY nepiš surové citáty z rozhovorů – piš Karlovy analytické závěry o vazbách.
    ⚠️ POVINNÁ SEKCE "DNEŠNÍ AKČNÍ INTELIGENCE PRO KARLA":
    Na konci SITUACNI_ANALYZA VŽDY vygeneruj blok s dnešním datem:
-   === AKČNÍ INTELIGENCE ${new Date().toISOString().slice(0, 10)} ===
+   === AKČNÍ INTELIGENCE ${pragueDayISO()} ===
    A) CO OD KARLA DNES POTŘEBUJE: (1-3 body, konkrétní — např. "ujistit ji, že Lobžangův posun je dobrý signál", "neptat se na Jiřího")
    B) JAK MÁ KAREL DNES MLUVIT: (1-2 body — tón, tempo, hloubka — např. "měkčí tón, dnes je unavená", "strukturovaně, potřebuje jistotu")
    C) CO DNES NEDĚLAT: (1-2 body — co by dnes bylo kontraproduktivní — např. "nepřidávat nové úkoly", "neotevírat téma školy")
@@ -436,7 +439,7 @@ SOUBORY K VYGENEROVÁNÍ (odděl je značkou [[[NÁZEV_SOUBORU]]]):
    ⚠️ POVINNÁ SEKCE "Countertransference vzorce": Karlovy analytické poznatky o tom, jak terapeutka emocionálně reaguje na konkrétní části. Ne citáty, ale dedukce.
    ⚠️ POVINNÁ SEKCE "KARLOVY DEDUKCE PRO DNEŠEK":
    Na konci KARLOVY_POZNATKY VŽDY vygeneruj blok:
-   === KARLOVY DEDUKCE ${new Date().toISOString().slice(0, 10)} ===
+   === KARLOVY DEDUKCE ${pragueDayISO()} ===
    - Jaký vzorec dnes Karel vidí? (1-2 věty — ne obecné, ale z dat)
    - Co si Karel myslí, že se děje pod povrchem? (1-2 věty — dedukce, ne popis)
    - Na co by si měl dát pozor? (1 věta — konkrétní riziko nebo příležitost)
@@ -457,7 +460,7 @@ ${motivationDigest || "(nedostupný)"}
 ═══ EPIZODY ═══
 ${episodesDigest.slice(0, 2000) || "(žádné)"}
 
-Datum: ${new Date().toISOString().slice(0, 10)}
+Datum: ${pragueDayISO()}
 
 FORMÁT: Každý soubor začni značkou [[[NÁZEV_SOUBORU.txt]]] na novém řádku. Piš čistý text bez markdown. Zachovej cenné starší poznatky.`;
 
@@ -1548,7 +1551,7 @@ ${operationalMemory.kdoJeKdo || "(prázdný)"}
 
 ${(() => {
   // Extract today's action intelligence from SITUACNI_ANALYZA and KARLOVY_POZNATKY
-  const todayTag = new Date().toISOString().slice(0, 10);
+  const todayTag = pragueDayISO();
   const extractSection = (text: string, marker: string): string => {
     if (!text) return "";
     const idx = text.lastIndexOf(marker);
@@ -1652,7 +1655,7 @@ Karlova analýza: ${sp.karel_master_analysis?.slice(0, 500) || "?"}`;
     // ═══ APPEND DNEŠNÍ VEDENÍ directly to contextBrief (not via AI synthesis) ═══
     if (["mamka", "kata", "general", "hana_personal"].includes(subMode || "")) {
       try {
-        const todayTag = new Date().toISOString().slice(0, 10);
+        const todayTag = pragueDayISO();
         const extractLastSection = (text: string | undefined, marker: string): string => {
           if (!text) return "";
           const idx = text.lastIndexOf(marker);

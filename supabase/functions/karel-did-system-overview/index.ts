@@ -3,6 +3,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 import { normalize as driveNormalize, loadDriveRegistryEntries, buildAliasLookup } from "../_shared/driveRegistry.ts";
 
+const pragueDayISO = (d: Date = new Date()): string =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(d);
+
 // OAuth2 token helper
 async function getAccessToken(): Promise<string> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
@@ -372,7 +375,7 @@ serve(async (req) => {
       .limit(1)
       .single();
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = pragueDayISO();
     const ctxDate = dailyCtx?.context_date?.slice(0, 10) || "none";
     const hasAnalysis = dailyCtx?.analysis_json != null && Object.keys(dailyCtx.analysis_json as any).length > 0;
     console.log(`[OVERVIEW] source_date=${ctxDate}, today=${today}, analysis_json_present=${hasAnalysis}`);
