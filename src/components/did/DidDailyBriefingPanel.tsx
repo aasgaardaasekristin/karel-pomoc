@@ -345,12 +345,13 @@ export const revalidateRecencyForViewer = (
     days === 1 ? `Včerejší ${noun}` :
     days === 2 ? `Předevčerejší ${noun}` :
     `Poslední ${noun}`;
+  // Bezpečný absolute-date-first formát i pro days===1, aby se z věty
+  // nestala zafixovaná lež po půlnoci ("Včerejší X proběhlo DD. M. YYYY"
+  // se po půlnoci stává nepravdou). Vždy: datum + relativní badge.
   const prefix =
-    days === 1
-      ? `Včerejší ${noun} ${verb} ${formatPragueDateLabel(sourceIso)}.`
-      : days === 2
-        ? `Předevčerejší ${noun} ${verb} ${formatPragueDateLabel(sourceIso)}.`
-        : `Poslední doložená ${noun} ${verb} ${formatPragueDateLabel(sourceIso)}, tedy ${human}.`;
+    days <= 2
+      ? `Poslední ${noun} ${verb} ${formatPragueDateLabel(sourceIso)} — ${human}.`
+      : `Poslední doložená ${noun} ${verb} ${formatPragueDateLabel(sourceIso)}, tedy ${human}.`;
   return {
     ...recency,
     source_date_iso: sourceIso,
@@ -406,15 +407,36 @@ export const recencySectionNoticeText = (kind: "playroom" | "session", recency?:
 
 export const humanizeRecencyInProse = (value: unknown, playRecency?: RecencyMeta | null, sessRecency?: RecencyMeta | null): string => {
   let text = String(value ?? "");
+
+  // Vždy zakázaný frozen pattern: "Včerejší X proběhl[ao] DD. M. YYYY."
+  // Přepiš ho na absolute-date-first, i když je dnes opravdu včera —
+  // jinak po půlnoci začne lhát z cache.
+  if (playRecency?.exists && playRecency.source_date_iso) {
+    const dateLabel = formatPragueDateLabel(playRecency.source_date_iso ?? playRecency.session_date_iso);
+    const human = playRecency.human_recency_label || (playRecency.days_since_today === 1 ? "včera" : "");
+    text = text.replace(
+      /V[čc]erej[šs][íi]\s+Herna\s+prob[eě]hla\s+\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\.?/giu,
+      `Poslední Herna proběhla ${dateLabel}${human ? ` — ${human}` : ""}.`,
+    );
+  }
+  if (sessRecency?.exists && sessRecency.source_date_iso) {
+    const dateLabel = formatPragueDateLabel(sessRecency.source_date_iso ?? sessRecency.session_date_iso);
+    const human = sessRecency.human_recency_label || (sessRecency.days_since_today === 1 ? "včera" : "");
+    text = text.replace(
+      /V[čc]erej[šs][íi]\s+Sezen[íi]\s+prob[eě]hlo\s+\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\.?/giu,
+      `Poslední Sezení proběhlo ${dateLabel}${human ? ` — ${human}` : ""}.`,
+    );
+  }
+
+  // Sekční nadpis nesmí obsahovat "Včerejší", protože sekce mixuje dny.
+  text = text.replace(/V[ČC]EREJ[ŠS][ÍI]\s+D[ŮU]LE[ŽZ]IT[ÝY]\s+KONTEXT/giu, "DŮLEŽITÝ KONTEXT Z POSLEDNÍCH DNÍ");
+
   if (playRecency?.exists && playRecency.days_since_today !== 1 && playRecency.days_since_today != null) {
     const dateLabel = formatPragueDateLabel(playRecency.source_date_iso ?? playRecency.session_date_iso);
     const label = playRecency.days_since_today === 2
       ? `předevčerejší Herna z ${dateLabel}`
       : `poslední Herna z ${dateLabel}, ${playRecency.human_recency_label || ""}`.trim();
     text = text
-      // datovaná věta "Včerejší Herna proběhla DD. M. YYYY." → absolutní
-      .replace(/V[čc]erej[šs][íi]\s+Herna\s+prob[eě]hla\s+\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\.?/giu,
-        `Poslední doložená Herna proběhla ${dateLabel}, ${playRecency.human_recency_label || ""}.`.replace(/,\s*\./, "."))
       .replace(/nav[áa]zat\s+na\s+v[čc]erej[šs][íi]\s+Hernu/giu, `navázat jen opatrně na ${label}`)
       .replace(/v[čc]erej[šs][íi]\s+hern[íi]\s+materi[áa]l/giu, `materiál z ${label}`)
       .replace(/v[čc]erej[šs][íi]\s+Hernu/giu, label)
@@ -432,8 +454,6 @@ export const humanizeRecencyInProse = (value: unknown, playRecency?: RecencyMeta
       ? `předevčerejší Sezení z ${dateLabel}`
       : `poslední Sezení z ${dateLabel}, ${sessRecency.human_recency_label || ""}`.trim();
     text = text
-      .replace(/V[čc]erej[šs][íi]\s+Sezen[íi]\s+prob[eě]hlo\s+\d{1,2}\.\s*\d{1,2}\.\s*\d{4}\.?/giu,
-        `Poslední doložené Sezení proběhlo ${dateLabel}, ${sessRecency.human_recency_label || ""}.`.replace(/,\s*\./, "."))
       .replace(/v[čc]erej[šs][íi]\s+Sezen[íi]/giu, label)
       .replace(/V[čc]erej[šs][íi]\s+Sezen[íi]/gu, label.charAt(0).toUpperCase() + label.slice(1))
       .replace(/ze\s+v[čc]erej[šs][íi]ho\s+Sezen[íi]/giu, `z ${label}`);
@@ -1572,7 +1592,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       {visibleRealityContext && (
         <>
           <NarrativeDivider />
-          <SectionHead>Včerejší důležitý kontext</SectionHead>
+          <SectionHead>Důležitý kontext z posledních dní</SectionHead>
           <div className="mt-2 rounded-lg border border-border/60 bg-card/40 p-3">
             <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{visibleRealityContext}</p>
           </div>
