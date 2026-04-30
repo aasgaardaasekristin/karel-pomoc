@@ -221,4 +221,24 @@ describe("DidDailyBriefingPanel visible clinical text helpers", () => {
     expect(out).not.toMatch(/V[čc]era\s+Sezen[íi]\s+neprob[eě]hlo/i);
     expect(out).toContain("Dnešní priorita");
   });
+
+  it("opening monologue strips 'Poslední doložená Herna ... je z DD. M. YYYY, tedy před N dny.' admin sentence", () => {
+    const monolog = [
+      "Dobré ráno, Haničko a Káťo.",
+      "Poslední doložená Herna s Tundrupek je z 27. 4. 2026, tedy před 3 dny. Událost s Timmim/keporkakem vnímám jako silný emoční otisk.",
+      "Moje pracovní formulace pro dnešek je opatrná.",
+    ].join("\n\n");
+    const out = ensureKarelOpeningVoice(monolog, null, null);
+    expect(out).not.toMatch(/Posledn[íi]\s+dolo[žz]en[áa]\s+Herna[^.!?]*\d{1,2}\.\s*\d{1,2}\.\s*\d{4}/i);
+    expect(out).toContain("Dobré ráno");
+    expect(out).toContain("Událost s Timmim");
+    expect(out).toContain("Moje pracovní formulace");
+  });
+
+  it("opening monologue strips 'Předevčerejší Sezení proběhlo DD. M. YYYY.' dated recency sentence", () => {
+    const monolog = "Dobré ráno.\n\nPředevčerejší Sezení proběhlo 28. 4. 2026. Beru ho jako otevřené.\n\nDnes ověřujeme stav.";
+    const out = ensureKarelOpeningVoice(monolog, null, null);
+    expect(out).not.toMatch(/P[řr]edev[čc]erej[šs][íi]\s+Sezen[íi]\s+prob[eě]hlo\s+\d/i);
+    expect(out).toContain("Dnes ověřujeme stav");
+  });
 });

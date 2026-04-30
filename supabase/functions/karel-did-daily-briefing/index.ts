@@ -842,13 +842,22 @@ const ensureVisibleClinicalText = (value: unknown): string => {
  */
 const stripNotHeldNoticeFromOpeningText = (text: string): string => {
   if (!text) return text;
-  // Match a sentence (up to . ! ? or end) that is just the not-held notice,
-  // possibly followed by a short trailing fragment up to the next sentence boundary.
+  // 1) "Včera/Včerejší Herna/Sezení neproběhla/o ..." — administrativní oznámení.
   const NOT_HELD_SENTENCE_RE =
     /(?:^|\s)(?:V[čc]era|V[čc]erej[šs][íi])\s+(?:Herna|Sezen[íi])\s+neprob[eě]hl[ao][^.!?\n]*[.!?]\s*/giu;
-  let next = text.replace(NOT_HELD_SENTENCE_RE, " ");
+  // 2) "Poslední doložená Herna/Sezení (s X) (proběhla/proběhlo) (je) z DD. M. YYYY, tedy ...".
+  //    Patří do dedikované sekce / recency badge, ne do monologu.
+  const RECENCY_PREFIX_RE =
+    /(?:^|\s)Posledn[íi]\s+dolo[žz]en[áaéeoé]?\s+(?:Herna|Sezen[íi])[^.!?\n]*?\d{1,2}\.\s*\d{1,2}\.\s*\d{4}[^.!?\n]*[.!?]\s*/giu;
+  // 3) "Včerejší/Předevčerejší Herna/Sezení proběhla/o DD. M. YYYY."
+  const DATED_RECENCY_RE =
+    /(?:^|\s)(?:V[čc]erej[šs][íi]|P[řr]edev[čc]erej[šs][íi])\s+(?:Herna|Sezen[íi])\s+(?:prob[eě]hl[ao])\s+\d{1,2}\.\s*\d{1,2}\.\s*\d{4}[^.!?\n]*[.!?]\s*/giu;
+  let next = text
+    .replace(NOT_HELD_SENTENCE_RE, " ")
+    .replace(RECENCY_PREFIX_RE, " ")
+    .replace(DATED_RECENCY_RE, " ");
   // Collapse any double spaces / orphan whitespace at paragraph starts.
-  next = next.replace(/[ \t]{2,}/g, " ").replace(/\n[ \t]+/g, "\n").trim();
+  next = next.replace(/[ \t]{2,}/g, " ").replace(/\n[ \t]+/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   return next;
 };
 
@@ -957,7 +966,7 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     ? `Událost s Timmim/keporkakem vnímám jako silný emoční otisk v psychice kluků. Nechci ji přehnaně vykládat, ale nechci ji ani ztratit. Potřebujeme jemně zjistit, co v klucích zůstává — vlastními slovy, tělem a reakcí kluků.`
     : `Dnes chci navazovat jen na přesně datovaný materiál klidně a bez tlaku. Nechci z něj dělat větší příběh, než jaký kluci sami unesou; potřebujeme nejdřív zjistit, kdo je přítomný, jak je na tom tělo a kde je dnes bezpečný práh.`;
   const frame = hasReview
-    ? `${realityOpening} ${openedPartialSession ? `${recencyIntro(sess, "session")} Beru ho jako otevřené nebo částečně rozpracované; dnes ho nebudu uzavírat za kluky, dokud nemáme plné dovyhodnocení.` : "Pokud se téma znovu objeví, budeme ho brát jako reálnou událost a živý prožitek, ne jako hotový klinický závěr."}`
+    ? `${realityOpening} ${openedPartialSession ? "Poslední Sezení beru jako otevřené nebo částečně rozpracované; dnes ho nebudu uzavírat za kluky, dokud nemáme plné dovyhodnocení." : "Pokud se téma znovu objeví, budeme ho brát jako reálnou událost a živý prožitek, ne jako hotový klinický závěr."}`
     : `${realityOpening} Tam, kde data chybí, nebudu domýšlet příběh; raději navrhnu bezpečný ověřovací krok.`;
   const team_recognition = teamWork
     ? `V nedávné práci bylo pro tým důležité toto: ${trimSentence(teamWork, 420)}`
