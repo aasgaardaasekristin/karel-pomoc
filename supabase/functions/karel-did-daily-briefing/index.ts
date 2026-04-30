@@ -2349,7 +2349,12 @@ Deno.serve(async (req) => {
 
       if (existing) {
         await finishBriefingAttempt(supabase, attemptId, { status: "succeeded", created_briefing_id: existing.id, metadata: { cached: true } });
-        return jsonResponse({ briefing: existing, cached: true });
+        // KALENDÁŘNÍ INTEGRITA: i čerstvý cached briefing dostane viewer_meta
+        // a re-validovaná recency, aby UI dostalo konzistentní strukturu
+        // (i když dnes briefing_date === viewer_date, frontend si stále
+        // přepočítává recency proti aktuálnímu času).
+        const revalidatedFresh = revalidateCachedBriefingForViewer(existing, today);
+        return jsonResponse({ briefing: revalidatedFresh, cached: true });
       }
     }
 
