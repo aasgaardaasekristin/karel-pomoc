@@ -1,4 +1,5 @@
-import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assert, assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { enforceClinicalRecencyText, resolveClinicalRecency, revalidateCachedBriefingForViewer } from "./index.ts";
 
 Deno.test("processed operational context remains briefing-relevant without Timmi hardcode", () => {
   const source = Deno.readTextFileSync(new URL("./index.ts", import.meta.url));
@@ -94,4 +95,64 @@ Deno.test("evidence_limits block (auditable) MAY still contain the not-held noti
   // Sanity: the auditable evidenceKnown push for "Včera Herna neproběhla."
   // must remain — that's its correct home.
   assertStringIncludes(source, 'evidenceKnown.push("Včera Herna neproběhla.")');
+});
+
+
+Deno.test("3-date recency: Herna from 2026-04-27 is not yesterday for 2026-04-30 viewer", () => {
+  const recency = resolveClinicalRecency("2026-04-27", { briefing_date: "2026-04-30", viewer_date: "2026-04-30" }, "playroom");
+  assertEquals(recency.days_since_reference, 3);
+  assertEquals(recency.human_recency_label, "před 3 dny");
+  assertEquals(recency.visible_label, "Poslední Herna");
+  assertEquals(recency.is_yesterday, false);
+  assert(!/V[čc]erej[šs][íi]/u.test(recency.visible_sentence_prefix));
+});
+
+Deno.test("3-date recency: truly yesterday playroom may say Včerejší Herna", () => {
+  const recency = resolveClinicalRecency("2026-04-29", { briefing_date: "2026-04-30", viewer_date: "2026-04-30" }, "playroom");
+  assertEquals(recency.days_since_reference, 1);
+  assertEquals(recency.human_recency_label, "včera");
+  assertEquals(recency.is_yesterday, true);
+  assertStringIncludes(recency.visible_label, "Včerejší Herna");
+  assertStringIncludes(recency.visible_sentence_prefix, "Včerejší Herna");
+});
+
+Deno.test("cached briefing after midnight revalidates yesterday labels against viewer_date", () => {
+  const cached = {
+    id: "cached",
+    briefing_date: "2026-04-30",
+    payload: {
+      opening_monologue_text: "Dobré ráno. Včerejší Herna proběhla 29. 4. 2026. Dnes navazujeme opatrně.",
+      recent_playroom_review: {
+        exists: true,
+        source_date_iso: "2026-04-29",
+        session_date_iso: "2026-04-29",
+        is_yesterday: true,
+        human_recency_label: "včera",
+      },
+    },
+  };
+  const out = revalidateCachedBriefingForViewer(cached, "2026-05-01");
+  assertEquals(out.payload.viewer_meta.is_current_briefing, false);
+  assertEquals(out.payload.viewer_meta.days_since_briefing, 1);
+  assertEquals(out.payload.recent_playroom_review.days_since_today, 2);
+  assertEquals(out.payload.recent_playroom_review.human_recency_label, "předevčírem");
+  assert(!/V[čc]erej[šs][íi]/u.test(out.payload.opening_monologue_text));
+});
+
+Deno.test("dated yesterday sentence is rewritten when viewer_date makes it older", () => {
+  const payload = {
+    recent_session_review: {
+      exists: true,
+      source_date_iso: "2026-04-29",
+      session_date_iso: "2026-04-29",
+      days_since_today: 2,
+      days_since_briefing_date: 2,
+      human_recency_label: "předevčírem",
+      is_yesterday: false,
+    },
+  };
+  const out = enforceClinicalRecencyText("Včerejší Sezení proběhlo 29. 4. 2026.", payload);
+  assert(!/V[čc]erej[šs][íi]/u.test(out));
+  assertStringIncludes(out, "29. 4. 2026");
+  assert(/p[řr]edev[čc][íi]rem|Posledn[íi].*Sezen[íi]/u.test(out));
 });
