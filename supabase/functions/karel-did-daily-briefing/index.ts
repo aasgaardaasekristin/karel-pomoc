@@ -50,6 +50,127 @@ const daysAgoISO = (n: number): string => {
   return pragueDayISO(d);
 };
 
+
+
+type ClinicalRecency = {
+  date_iso: string | null;
+  days_since_today: number | null;
+  human_recency_label: string;
+  adjective_label: string;
+  is_yesterday: boolean;
+  is_today: boolean;
+  visible_section_title: string;
+  visible_sentence_prefix: string;
+  visible_label: string;
+  not_yesterday_notice: string;
+};
+
+const dateOnlyToUtcMs = (iso: string): number => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return Date.UTC(y, (m || 1) - 1, d || 1);
+};
+
+const formatClinicalDate = (iso: string | null): string => {
+  if (!iso) return "datum není doložené";
+  return new Intl.DateTimeFormat("cs-CZ", { timeZone: "Europe/Prague", day: "numeric", month: "numeric", year: "numeric" }).format(new Date(`${iso}T12:00:00Z`));
+};
+
+const clinicalKindConfig = (kind: "playroom" | "session") => kind === "playroom"
+  ? { noun: "Herna", noYesterday: "Včera Herna neproběhla." }
+  : { noun: "Sezení", noYesterday: "Včerejší Sezení neproběhlo." };
+
+export function resolveClinicalRecency(dateLike: unknown, todayPrague: string = pragueDayISO(), kind: "playroom" | "session" = "playroom"): ClinicalRecency {
+  let dateIso: string | null = null;
+  if (typeof dateLike === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateLike.slice(0, 10))) {
+    dateIso = dateLike.slice(0, 10);
+  } else if (dateLike) {
+    const parsed = new Date(String(dateLike));
+    if (!Number.isNaN(parsed.getTime())) dateIso = pragueDayISO(parsed);
+  }
+  const cfg = clinicalKindConfig(kind);
+  if (!dateIso) {
+    return {
+      date_iso: null,
+      days_since_today: null,
+      human_recency_label: "datum není doložené",
+      adjective_label: "nedoložené",
+      is_yesterday: false,
+      is_today: false,
+      visible_section_title: `Poslední ${cfg.noun}`,
+      visible_sentence_prefix: `${cfg.noun} nemá doložené datum klinické aktivity.`,
+      visible_label: `Poslední ${cfg.noun}`,
+      not_yesterday_notice: cfg.noYesterday,
+    };
+  }
+  const days = Math.round((dateOnlyToUtcMs(todayPrague) - dateOnlyToUtcMs(dateIso)) / 86_400_000);
+  const human = days === 0 ? "dnes" : days === 1 ? "včera" : days === 2 ? "předevčírem" : days === 3 ? "před 3 dny" : days > 3 ? `před ${days} dny` : "budoucí datum";
+  const adjective = days === 0 ? "dnešní" : days === 1 ? "včerejší" : days === 2 ? "předevčerejší" : "poslední";
+  const visibleLabel = days === 1 ? `Včerejší ${cfg.noun}` : days === 2 ? `Předevčerejší ${cfg.noun}` : `Poslední ${cfg.noun}`;
+  const prefix = days === 1
+    ? `Včerejší ${cfg.noun} proběhla ${formatClinicalDate(dateIso)}.`
+    : days === 2
+      ? `Předevčerejší ${cfg.noun} proběhla ${formatClinicalDate(dateIso)}.`
+      : `Poslední doložená ${cfg.noun} proběhla ${formatClinicalDate(dateIso)}, tedy ${human}.`;
+  return {
+    date_iso: dateIso,
+    days_since_today: days,
+    human_recency_label: human,
+    adjective_label: adjective,
+    is_yesterday: days === 1,
+    is_today: days === 0,
+    visible_section_title: visibleLabel,
+    visible_sentence_prefix: prefix,
+    visible_label: visibleLabel,
+    not_yesterday_notice: days === 1 ? "" : cfg.noYesterday,
+  };
+}
+
+const recencyFields = (dateLike: unknown, kind: "playroom" | "session", todayPrague?: string) => {
+  const recency = resolveClinicalRecency(dateLike, todayPrague ?? pragueDayISO(), kind);
+  return {
+    session_date_iso: recency.date_iso,
+    days_since_today: recency.days_since_today,
+    human_recency_label: recency.human_recency_label,
+    adjective_label: recency.adjective_label,
+    is_yesterday: recency.is_yesterday,
+    is_today: recency.is_today,
+    visible_section_title: recency.visible_section_title,
+    visible_label: recency.visible_label,
+    visible_sentence_prefix: recency.visible_sentence_prefix,
+    not_yesterday_notice: recency.not_yesterday_notice,
+  };
+};
+
+const recencyIntro = (item: any, kind: "playroom" | "session") => {
+  const recency = resolveClinicalRecency(item?.session_date_iso ?? item?.session_date ?? item?.plan_date ?? item?.last_activity_at ?? item?.created_at, pragueDayISO(), kind);
+  return `${recency.not_yesterday_notice ? `${recency.not_yesterday_notice} ` : ""}${recency.visible_sentence_prefix}`.trim();
+};
+
+function enforceClinicalRecencyText(value: unknown, payload: any): string {
+  let text = String(value ?? "");
+  const play = payload?.recent_playroom_review ?? payload?.yesterday_playroom_review;
+  const sess = payload?.recent_session_review ?? payload?.yesterday_session_review;
+  if (play?.exists && play.days_since_today !== 1) {
+    const label = play.days_since_today === 2 ? "předevčerejší Herna" : `poslední Herna z ${formatClinicalDate(play.session_date_iso)}, ${play.human_recency_label}`;
+    text = text
+      .replace(/včerejší\s+Hernu/gi, label)
+      .replace(/včerejší\s+Herna/gi, label)
+      .replace(/Včerejší\s+Herna/g, label.charAt(0).toUpperCase() + label.slice(1))
+      .replace(/včerejší\s+hernu/gi, label.toLowerCase())
+      .replace(/Včerejší\s+herna/g, label.charAt(0).toUpperCase() + label.slice(1))
+      .replace(/ze\s+včerejší\s+Herny/gi, `z ${label}`)
+      .replace(/navázat\s+na\s+včerejší\s+Hernu/gi, `navázat jen opatrně na ${label}`)
+      .replace(/Symboly\s+z\s+včerejška/gi, `Symboly z ${play.human_recency_label}`);
+  }
+  if (sess?.exists && sess.days_since_today !== 1) {
+    const label = sess.days_since_today === 2 ? "předevčerejší Sezení" : `poslední Sezení z ${formatClinicalDate(sess.session_date_iso)}, ${sess.human_recency_label}`;
+    text = text
+      .replace(/včerejší\s+Sezení/gi, label)
+      .replace(/Včerejší\s+Sezení/g, label.charAt(0).toUpperCase() + label.slice(1))
+      .replace(/ze\s+včerejšího\s+Sezení/gi, `z ${label}`);
+  }
+  return text;
+}
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
