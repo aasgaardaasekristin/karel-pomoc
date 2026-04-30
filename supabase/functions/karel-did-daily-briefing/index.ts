@@ -782,9 +782,12 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   if (!evidenceKnown.length) evidenceKnown.push("V dostupném payloadu zatím nevidím plné review včerejší Herny ani Sezení.");
 
   const greeting = "Dobré ráno, Haničko a Káťo.";
+  const realityOpening = hasRealityCorrection
+    ? "Včerejší událost s Timmim/keporkakem vnímám jako silný emoční otisk v psychice kluků. Nechci ji dnes přehnaně vykládat, ale nechci ji ani ztratit. Potřebujeme jemně zjistit, co v nich po včerejšku zůstalo — vlastními slovy, tělem a reakcí kluků."
+    : "Dnes chci navázat na včerejší materiál klidně a bez tlaku. Nechci z něj dělat větší příběh, než jaký kluci sami unesou; potřebujeme nejdřív zjistit, kdo je přítomný, jak je na tom tělo a kde je dnes bezpečný práh.";
   const frame = hasReview
-    ? `Dnes bych chtěl, abychom u kluků drželi hlavně návaznost, klidné tempo a přesnost v tom, co víme a co si zatím jen pracovně myslíme. Včerejší den přinesl výrazný materiál od ${partGenitive(activePart)}${openedPartialSession ? "; Sezení bylo otevřené nebo částečně rozpracované, ale zatím čeká na plné dovyhodnocení" : ", ale zároveň nás vede k opatrnosti: silný zdrojový prožitek z Herny nesmíme zaměnit za hotový závěr ani za proběhlé terapeutické Sezení"}.`
-    : "Dnes bych chtěl, abychom drželi hlavně stabilitu, návaznost a opatrnost v závěrech. Tam, kde data chybí, nebudu domýšlet příběh; raději navrhnu bezpečný ověřovací krok.";
+    ? `${realityOpening} ${openedPartialSession ? "Včerejší Sezení beru jako otevřené nebo částečně rozpracované; dnes ho nebudu uzavírat za kluky, dokud nemáme plné dovyhodnocení." : "Pokud se téma znovu objeví, budeme ho brát jako reálnou událost a živý prožitek, ne jako hotový klinický závěr."}`
+    : `${realityOpening} Tam, kde data chybí, nebudu domýšlet příběh; raději navrhnu bezpečný ověřovací krok.`;
   const team_recognition = teamWork
     ? `Včera bylo pro tým důležité toto: ${trimSentence(teamWork, 420)}`
     : "Včera bylo důležité držet klidný rytmus a nepřetlačit materiál do rychlých odpovědí. Právě taková práce u kluků buduje bezpečí: ne přes výkon, ale přes opakovanou zkušenost, že dospělý zůstává a nespěchá.";
@@ -802,9 +805,9 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     ? `Nové nebo nejpodstatnější z včerejška je toto: ${trimSentence(newInfo, 520).replace(/m[ůu][žz]e\s+pos[íi]lit\s+jeho\s+pocit\s+kontroly\s+a\s+d[ůu]v[eě]ry/i, "může být pracovně významné pro jeho pocit kontroly a důvěry, pokud se to dnes potvrdí")}`
     : "Nové informace z včerejška jsou zatím omezené. To samo o sobě je klinicky důležité: dnešní krok má být ověřovací, ne interpretačně těžký.";
   const clinical_formulation = hasRealityCorrection
-      ? `Moje pracovní formulace pro dnešek je opatrná: doložená informace má být přiznaná jako skutečná událost a faktický stresor. Klinicky smíme pracovat až s tím, co kluci sami řeknou, cítí nebo ukážou; samotný odkaz ani zpráva nejsou projekce části.`
+      ? `Moje pracovní formulace pro dnešek je opatrná: Timmi/keporkak je skutečná událost a může být emočně důležitá. Klinický význam ale smíme dát až tomu, co kluci sami řeknou, ukážou v těle nebo přinesou v chování.`
     : `Moje pracovní formulace pro dnešek je opatrná: ${activePart} včera použil vlastní symbolický jazyk bezpečí. Zatím je bezpečnější chápat ho jako aktuální zdroj této části, ne jako definitivní charakteristiku ani společný jazyk všech kluků. Praktický cíl je pomoci pocit ochrany přenést zpět do přítomného těla, dne a vztahu s bezpečnými dospělými.`;
-  const recommendations_for_hana = `Haničko, u tebe dnes vidím jako hlavní úkol jemně ověřit tělesný stav a dostupnost ${partGenitive(activePart)}, bez tlaku na vysvětlování. Pokud je stabilní, může následovat krátké Sezení nebo nízkoprahová Herna; pokud je zahlcený, stačí kontakt a připomenutí zdrojů.`;
+  const recommendations_for_hana = `Haničko, pokud dnes povedeš Sezení, budu ti pomáhat držet otázky krátké a bezpečné. Nepotřebujeme vysvětlování; potřebujeme vlastní slova, tělesnou reakci a jasné stop signály.`;
   const recommendations_for_katka = hasRealityCorrection
     ? `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: skutečná událost ani Hančino upřesnění samy o sobě ještě nevypovídají o klucích. Nepoužít je jako závěr dřív, než se ukáže jejich vlastní reakce.`
     : `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: nepřenášet včerejší symboly automaticky na ostatní části a nepoužít je dřív, než se ukáže, že jsou dnes pro ${partGenitive(activePart)} stále bezpečné.`;
@@ -820,7 +823,7 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
       : "Nevíme / čeká na ověření: zda jde o stabilní zdroj dostupný i dnes, zda je bezpečné tento jazyk rozšiřovat k ostatním částem, a jaký je aktuální tělesný stav.",
   ].join("\n");
   const team_closing_line = "Včerejší práce nám dává materiál. Dnes ho nemusíme zvětšovat; potřebujeme ho správně podržet a převést do jednoho bezpečného kroku.";
-  const opening_monologue_text = ensureVisibleClinicalText([
+  const opening_monologue_text = ensureKarelFirstPersonOpening([
     greeting,
     frame,
     team_recognition,
@@ -834,7 +837,7 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     priority_of_the_day,
     evidence_limits,
     team_closing_line,
-  ].join("\n\n"));
+  ].join("\n\n"), [greeting, frame, clinical_formulation, recommendations_for_hana, recommendations_for_katka, team_closing_line].join("\n\n"));
 
   return {
     greeting,
