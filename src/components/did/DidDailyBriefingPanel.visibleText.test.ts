@@ -55,7 +55,8 @@ describe("DidDailyBriefingPanel visible clinical text helpers", () => {
     });
 
     expectClean(text);
-    expect(text).toContain("Používá včerejší důležitý kontext");
+    expect(text).toContain("Používá důležitý kontext z posledních dní");
+    expect(text).not.toMatch(/včerejší/i);
     expect(text).toContain("Nejdřív ověřit vlastní reakci kluků");
   });
 

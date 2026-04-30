@@ -253,7 +253,9 @@ export const backendContextSummary = (inputs: Record<string, any> | undefined): 
   const used = inputs.used_recent_operational_context || inputs.used_reality_correction || inputs.reality_correction_used || inputs.used_hana_personal_processed_implication;
   if (!used) return "";
   const limits = Array.isArray(inputs.what_not_to_conclude) ? inputs.what_not_to_conclude.filter(Boolean).slice(0, 2).join(" ") : "nedělat z reálné události automaticky projekci, symbol nebo diagnózu";
-  return cleanVisibleClinicalText(`Používá včerejší důležitý kontext. Čeho se dnes vyvarovat: ${limits}. Nejdřív ověřit vlastní reakci kluků.`);
+  // Recency-safe label: never freeze "včerejší" into the visible text.
+  // The panel viewer may load this on a later day, when "včerejší" would lie.
+  return cleanVisibleClinicalText(`Používá důležitý kontext z posledních dní. Čeho se dnes vyvarovat: ${limits}. Nejdřív ověřit vlastní reakci kluků.`);
 };
 
 export const cleanVisibleClinicalText = (value: unknown): string => String(value ?? "")
@@ -1852,7 +1854,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             )}
             {sessionContextSummary && (
               <p className="rounded-md border border-border/50 bg-background/35 p-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">
-                {sessionContextSummary}
+                {sanitizeProse(sessionContextSummary)}
               </p>
             )}
             <p className="text-[11px] text-primary/70 italic">
@@ -1888,7 +1890,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Proč dnes</p>
               <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomView.rationale}</p>
             </div>
-            {playroomContextSummary && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Použitý včerejší kontext</p><p className="mt-0.5 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{playroomContextSummary}</p></div>}
+            {playroomContextSummary && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">{playRecency?.is_yesterday ? "Použitý včerejší kontext" : "Použitý kontext z posledních dní"}</p><p className="mt-0.5 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{sanitizeProse(playroomContextSummary)}</p></div>}
             {Array.isArray(playroomProposal.goals) && playroomProposal.goals.length > 0 && (
               <div>
                 <ul className="mt-1 space-y-1 text-[13px] leading-relaxed text-foreground/80">
