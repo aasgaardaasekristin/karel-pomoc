@@ -216,7 +216,7 @@ const ACK_PATTERNS = [
   /^ano\.?\s*$/i,
   /^jo\.?\s*$/i,
   /^ok(ay)?\.?\s*$/i,
-  /^dobr[áeě]\.?\s*$/i,
+  /^dobr[řr]?[áeěy]\.?\s*$/i,
   /^rozum[ií]m?\.?\s*$/i,
   /^j[ae]sn[éě]\.?\s*$/i,
   /^v\s*po[řr]ádku\.?\s*$/i,
