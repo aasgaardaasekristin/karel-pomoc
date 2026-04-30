@@ -159,15 +159,18 @@ function listValue(value: unknown) {
 const FORBIDDEN_VISIBLE_DEBUG_RE = /pending_review|evidence_limited|needs_therapist_input|awaiting_therapist_review|backend_context_inputs|source_ref|therapist_factual_correction|external_fact|evidence discipline|child evidence|real-world context|operational context|faktick[áa]\s+korekce\s+reality|nepředstírat klinické závěry|průběh, který nemá transcript|První pracovní návrh:\s*Část|Stav:\s*awaiting/i;
 
 function cleanVisiblePlanText(value: unknown, fallback = "") {
-  const cleaned = String(value ?? "")
-    .replace(/\bpending_review\b/gi, "čeká na klinické dovyhodnocení")
-    .replace(/\bevidence_limited\b/gi, "zatím bez dostatečných podkladů")
-    .replace(/\bneeds_therapist_input\b/gi, "čeká na doplnění od terapeutek")
-    .replace(/\bawaiting_therapist_review\b/gi, "čeká na schválení terapeutkami")
-    .replace(/nepředstírat klinické závěry[^.\n]*/gi, "klinické závěry dělat až po přímé reakci kluků")
-    .replace(/průběh, který nemá transcript/gi, "situaci bez dostatečného přímého materiálu")
-    .replace(/briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log/gi, "podklad")
-    .trim();
+  const cleaned = sanitizeRecencyText(
+    String(value ?? "")
+      .replace(/\bpending_review\b/gi, "čeká na klinické dovyhodnocení")
+      .replace(/\bevidence_limited\b/gi, "zatím bez dostatečných podkladů")
+      .replace(/\bneeds_therapist_input\b/gi, "čeká na doplnění od terapeutek")
+      .replace(/\bawaiting_therapist_review\b/gi, "čeká na schválení terapeutkami")
+      .replace(/nepředstírat klinické závěry[^.\n]*/gi, "klinické závěry dělat až po přímé reakci kluků")
+      .replace(/průběh, který nemá transcript/gi, "situaci bez dostatečného přímého materiálu")
+      .replace(/briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log/gi, "podklad")
+      .trim(),
+    {},
+  );
   if (!cleaned || FORBIDDEN_VISIBLE_DEBUG_RE.test(cleaned)) return fallback;
   return cleaned;
 }
