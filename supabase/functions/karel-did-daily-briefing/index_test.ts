@@ -192,7 +192,7 @@ Deno.test("days===1 must NOT emit frozen 'Včerejší X proběhlo DD. M. YYYY' p
 });
 
 Deno.test("section heading 'VČEREJŠÍ DŮLEŽITÝ KONTEXT' is rewritten to 'DŮLEŽITÝ KONTEXT Z POSLEDNÍCH DNÍ'", () => {
-  const out = enforceClinicalRecencyText("VČEREJŠÍ DŮLEŽITÝ KONTEXT");
+  const out = enforceClinicalRecencyText("VČEREJŠÍ DŮLEŽITÝ KONTEXT", {});
   assertEquals(out.includes("VČEREJŠÍ DŮLEŽITÝ KONTEXT"), false);
   assertStringIncludes(out, "DŮLEŽITÝ KONTEXT Z POSLEDNÍCH DNÍ");
 });
