@@ -1478,7 +1478,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         <>
           <NarrativeDivider />
           <SectionHead icon={<Users className="w-3.5 h-3.5 text-primary/70" />}>
-            {yesterdayReview?.held === false ? "Plánované Sezení, které klinicky neproběhlo" : "Včerejší sezení"}
+            {yesterdayReview?.held === false ? "Plánované Sezení, které klinicky neproběhlo" : sessionSectionTitle}
           </SectionHead>
           <div className="mt-2 p-3 rounded-lg border border-border/60 bg-card/40 space-y-2">
             {yesterdayReview && yesterdayReview.exists ? (
