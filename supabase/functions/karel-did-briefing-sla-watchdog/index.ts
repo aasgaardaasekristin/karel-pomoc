@@ -156,17 +156,20 @@ Deno.serve(async (req) => {
   //   4) most recent did_threads activity
   let scopedUserId: string | null = body?.userId || null;
   if (!scopedUserId) {
+    // Prefer most-recent MANUAL briefing today — manual rows come from a real
+    // therapist UI session, so they reliably identify the correct human user.
     const todayISO = pragueDayISO();
-    const { data: latestBriefing } = await sb
+    const { data: latestManual } = await sb
       .from("did_daily_briefings")
-      .select("user_id")
+      .select("user_id, generation_method, generated_at")
       .eq("briefing_date", todayISO)
       .not("user_id", "is", null)
       .neq("user_id", ZERO_UUID)
+      .or("generation_method.eq.manual,generation_method.like.manual_%")
       .order("generated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    scopedUserId = latestBriefing?.user_id ?? null;
+    scopedUserId = latestManual?.user_id ?? null;
   }
   if (!scopedUserId) {
     const { data: cycleUser } = await sb
