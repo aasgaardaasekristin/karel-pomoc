@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import BlockDiagnosticChat, { type BlockResearch, type DiagTurn, type BlockArtifact } from "./BlockDiagnosticChat";
+import { parseProgramBullets } from "@/lib/liveProgramParser";
 
 /**
  * LiveProgramChecklist
@@ -47,62 +48,6 @@ interface Props {
   onBlockArtifactsChange?: (blockIndex: number, artifacts: BlockArtifact[]) => void;
 }
 
-function parseProgramBullets(md: string): string[] {
-  if (!md) return [];
-
-  const lines = md.split(/\r?\n/);
-  const bullets: string[] = [];
-  let inProgramSection = false;
-  let bulletBlockStarted = false;
-
-  const sectionRe = /^#{1,6}\s+program\s+sezení\s*$/i;
-  const bulletRe = /^\s*(?:[-*•]|\d+[.)])\s+(.+)$/;
-
-  for (const raw of lines) {
-    const line = raw.replace(/\u00A0/g, " ").trimEnd();
-
-    if (sectionRe.test(line)) {
-      inProgramSection = true;
-      bulletBlockStarted = false;
-      continue;
-    }
-
-    if (inProgramSection && /^#{1,6}\s+/.test(line) && !sectionRe.test(line)) {
-      break;
-    }
-
-    if (!inProgramSection) continue;
-
-    const m = bulletRe.exec(line);
-    if (m) {
-      const text = m[1]
-        .replace(/\*\*/g, "")
-        .replace(/__/g, "")
-        .replace(/\s+/g, " ")
-        .trim();
-      if (text.length >= 6) {
-        bullets.push(text);
-        bulletBlockStarted = true;
-      }
-      continue;
-    }
-
-    if (bullets.length > 0 && /^\s{2,}\S/.test(raw)) {
-      bullets[bullets.length - 1] = `${bullets[bullets.length - 1]} — ${line.trim()}`;
-      continue;
-    }
-
-    if (line === "") {
-      if (bulletBlockStarted) break;
-      continue;
-    }
-
-    if (bulletBlockStarted) break;
-  }
-
-  return bullets.slice(0, 12);
-}
-
 const LiveProgramChecklist = ({
   planMarkdown,
   storageKey,
@@ -117,45 +62,12 @@ const LiveProgramChecklist = ({
   onBlockArtifactsChange,
 }: Props) => {
   const parsed = useMemo(() => parseProgramBullets(planMarkdown), [planMarkdown]);
-  // ── STABLE signature ──
-  // Dříve: JSON.stringify(parsed) → drobná změna markdownu (re-fetch, whitespace,
-  // emoji v plánu) měnila podpis a Hany ZTRATILA splněné body. Nově použijeme
-  // jen počet bodů + prvních 40 znaků každého bodu (lower-cased, bez interpunkce).
-  // To přežije drobné re-fetch artefakty, ale zachytí změnu programu.
-  const planSignature = useMemo(
-    () =>
-      JSON.stringify(
-        parsed.map(t =>
-          t
-            .toLowerCase()
-            .replace(/[^a-zá-ž0-9 ]/gi, "")
-            .replace(/\s+/g, " ")
-            .trim()
-            .slice(0, 40),
-        ),
-      ),
-    [parsed],
-  );
-  const metaKey = `${storageKey}::meta`;
 
-  const initialItems: ProgramItem[] = useMemo(() => {
-    if (parsed.length === 0) {
-      return [
-        {
-          id: "fallback-0",
-          text: "Bezformátový program — sleduj plán v chatu",
-          done: false,
-          observation: "",
-        },
-      ];
-    }
-    return parsed.map((text, i) => ({
-      id: `bod-${i + 1}`,
-      text,
-      done: false,
-      observation: "",
-    }));
-  }, [parsed]);
+  // FAILURE STATE PRINCIP: prázdný parsed != akceptovatelný fallback.
+  // "Bezformátový program — sleduj plán v chatu" je BUG, ne UX.
+  // Když parser vrátí 0 bodů, vyrobíme jediný "fallback-0" item, ale UI ho
+  // vykreslí jako explicitní error blok s diagnostikou + tlačítkem reload.
+  const parseFailed = parsed.length === 0;
 
   const [items, setItems] = useState<ProgramItem[]>(() => {
     if (typeof window === "undefined") return initialItems;
