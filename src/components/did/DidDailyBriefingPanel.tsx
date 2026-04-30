@@ -1501,10 +1501,10 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const sessionContextSummary = backendContextSummary(p.proposed_session?.backend_context_inputs);
   const playroomContextSummary = backendContextSummary(playroomProposal?.backend_context_inputs);
   const playroomSectionTitle = playRecency?.exists
-    ? (playRecency.is_yesterday ? "Včerejší herna" : (playRecency.visible_label || `Poslední Herna (${formatPragueDateLabel(playRecency.source_date_iso ?? playRecency.session_date_iso)})`))
+    ? (playRecency.is_yesterday ? "Včerejší herna" : ((playRecency.visible_label || `Poslední Herna (${formatPragueDateLabel(playRecency.source_date_iso ?? playRecency.session_date_iso)})`).replace("Herna", "herna")))
     : "Včerejší herna";
   const sessionSectionTitle = sessRecency?.exists
-    ? (sessRecency.is_yesterday ? "Včerejší sezení" : (sessRecency.visible_label || `Poslední Sezení (${formatPragueDateLabel(sessRecency.source_date_iso ?? sessRecency.session_date_iso)})`))
+    ? (sessRecency.is_yesterday ? "Včerejší sezení" : ((sessRecency.visible_label || `Poslední Sezení (${formatPragueDateLabel(sessRecency.source_date_iso ?? sessRecency.session_date_iso)})`).replace("Sezení", "sezení")))
     : "Včerejší sezení";
   const playroomRecencyBadge = playRecency?.exists && !playRecency.is_yesterday
     ? `${playRecency.human_recency_label || "starší"} · ${formatPragueDateLabel(playRecency.source_date_iso ?? playRecency.session_date_iso)}`
