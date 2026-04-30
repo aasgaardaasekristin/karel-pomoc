@@ -186,12 +186,14 @@ export function resolveClinicalRecency(
     days === 1 ? `Včerejší ${cfg.noun}` :
     days === 2 ? `Předevčerejší ${cfg.noun}` :
     `Poslední ${cfg.noun}`;
+  // Bezpečný absolute-date-first formát i pro days===1, aby se z věty
+  // nestala zafixovaná lež po půlnoci. Místo "Včerejší Sezení proběhlo
+  // 29. 4. 2026." vždy zapíšeme "Poslední Sezení proběhlo 29. 4. 2026 — včera."
+  // → po půlnoci stačí přepočítat human label, datum zůstává správně.
   const prefix =
-    days === 1
-      ? `Včerejší ${cfg.noun} ${cfg.verb} ${formatClinicalDate(sourceIso)}.`
-      : days === 2
-        ? `Předevčerejší ${cfg.noun} ${cfg.verb} ${formatClinicalDate(sourceIso)}.`
-        : `Poslední doložená ${cfg.noun} ${cfg.verb} ${formatClinicalDate(sourceIso)}, tedy ${human}.`;
+    days <= 2
+      ? `Poslední ${cfg.noun} ${cfg.verb} ${formatClinicalDate(sourceIso)} — ${human}.`
+      : `Poslední doložená ${cfg.noun} ${cfg.verb} ${formatClinicalDate(sourceIso)}, tedy ${human}.`;
   return {
     source_date_iso: sourceIso,
     reference_date_iso: referenceDateIso,
@@ -1010,7 +1012,8 @@ const translateInternalStateToClinicalProse = (value: unknown): string =>
     .replace(/\boperational context\b/gi, "důležitý kontext")
     .replace(/operační\s+kontext/gi, "důležitý kontext")
     .replace(/briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log/gi, "podklad")
-    .replace(/RECENT OPERATIONAL CONTEXT\s*—\s*Pantry B/gi, "VČEREJŠÍ DŮLEŽITÝ KONTEXT")
+    .replace(/RECENT OPERATIONAL CONTEXT\s*—\s*Pantry B/gi, "DŮLEŽITÝ KONTEXT Z POSLEDNÍCH DNÍ")
+    .replace(/V[ČC]EREJ[ŠS][ÍI]\s+D[ŮU]LE[ŽZ]IT[ÝY]\s+KONTEXT/giu, "DŮLEŽITÝ KONTEXT Z POSLEDNÍCH DNÍ")
     .replace(/REALITY CORRECTION\s*—\s*not child evidence/gi, "SKUTEČNÁ UDÁLOST — NEVYVOZOVAT BEZ REAKCE KLUCI")
     .trim();
 
