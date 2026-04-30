@@ -231,17 +231,29 @@ Deno.serve(async (req: Request) => {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-      global: { headers: { Authorization: auth } },
-    });
-    const { data: userData, error: userErr } = await userClient.auth.getUser();
-    if (userErr || !userData?.user) {
-      return new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Allow service-role bearer (used by tests and internal cron) to bypass user lookup.
+    const bearerToken = auth.slice("Bearer ".length).trim();
+    const isServiceRole = SERVICE_ROLE && bearerToken === SERVICE_ROLE;
+    if (!isServiceRole) {
+      const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+        global: { headers: { Authorization: auth } },
       });
+      const { data: userData, error: userErr } = await userClient.auth.getUser();
+      if (userErr || !userData?.user) {
+        return new Response(JSON.stringify({ error: "unauthorized" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const body = await req.json().catch(() => ({}));
+
+    // ─── TEST-ONLY HOOKS (gated by service-role) ───
+    // Allow acceptance tests to force the AI fallback paths without
+    // actually calling the AI gateway. Available ONLY when caller used
+    // the service-role bearer token.
+    const forceAiEmpty = isServiceRole && body?.test_force_ai_empty_body === true;
+    const forceAiInvalid = isServiceRole && body?.test_force_ai_invalid_json === true;
     const partName = String(body?.part_name ?? "").trim();
     const therapistName = String(body?.therapist_name ?? "Hanka").trim();
     const block = body?.program_block ?? null;
