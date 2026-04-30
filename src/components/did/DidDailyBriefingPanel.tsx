@@ -332,8 +332,14 @@ export const stripNotHeldNoticeFromOpening = (text: string): string => {
   if (!text) return text;
   const NOT_HELD_SENTENCE_RE =
     /(?:^|\s)(?:V[čc]era|V[čc]erej[šs][íi])\s+(?:Herna|Sezen[íi])\s+neprob[eě]hl[ao][^.!?\n]*[.!?]\s*/giu;
+  const RECENCY_PREFIX_RE =
+    /(?:^|\s)Posledn[íi]\s+dolo[žz]en[áaéeoé]?\s+(?:Herna|Sezen[íi])[^.!?\n]*?\d{1,2}\.\s*\d{1,2}\.\s*\d{4}[^.!?\n]*[.!?]\s*/giu;
+  const DATED_RECENCY_RE =
+    /(?:^|\s)(?:V[čc]erej[šs][íi]|P[řr]edev[čc]erej[šs][íi])\s+(?:Herna|Sezen[íi])\s+(?:prob[eě]hl[ao])\s+\d{1,2}\.\s*\d{1,2}\.\s*\d{4}[^.!?\n]*[.!?]\s*/giu;
   return text
     .replace(NOT_HELD_SENTENCE_RE, " ")
+    .replace(RECENCY_PREFIX_RE, " ")
+    .replace(DATED_RECENCY_RE, " ")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/\n[ \t]+/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
