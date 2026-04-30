@@ -120,10 +120,12 @@ function parseMarkdownProgramSection(md: string): string[] {
     }
 
     if (line === "") {
-      if (bulletBlockStarted) break;
+      // Prázdné řádky uvnitř programové sekce neukončují parsing —
+      // očíslované bloky bývají oddělené prázdným řádkem.
       continue;
     }
 
+    // Neprázdný, ne-bullet, ne-indented řádek po startu = konec sekce.
     if (bulletBlockStarted) break;
   }
 
