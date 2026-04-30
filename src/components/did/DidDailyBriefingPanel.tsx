@@ -1854,7 +1854,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             )}
             {sessionContextSummary && (
               <p className="rounded-md border border-border/50 bg-background/35 p-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">
-                {sessionContextSummary}
+                {sanitizeProse(sessionContextSummary)}
               </p>
             )}
             <p className="text-[11px] text-primary/70 italic">
