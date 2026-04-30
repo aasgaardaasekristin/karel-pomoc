@@ -122,12 +122,12 @@ describe("safeParseJsonString", () => {
   it("returns empty for empty body", () => {
     const r = safeParseJsonString("");
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe("empty");
+    if (r.ok === false) expect(r.reason).toBe("empty");
   });
   it("returns not_json for invalid JSON", () => {
     const r = safeParseJsonString("not-json");
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe("not_json");
+    if (r.ok === false) expect(r.reason).toBe("not_json");
   });
   it("parses valid JSON", () => {
     const r = safeParseJsonString<{ a: number }>('{"a":1}');
