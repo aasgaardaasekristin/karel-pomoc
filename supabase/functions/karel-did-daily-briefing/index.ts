@@ -2325,7 +2325,19 @@ Deno.serve(async (req) => {
     //
     // method="manual" (UI tlačítko `Přegenerovat`) tento guard NEPOUŽÍVÁ —
     // ruční regenerace musí jít vždy, i bez completed cycle.
-    if (generationMethod === "auto") {
+    // limitedMeta gets populated when SLA-repair runs against a non-completed cycle.
+    // It will be merged into payload.limited at insert time so UI can show
+    // "Limitované — denní cyklus nedoběhl, použity dostupné zdroje".
+    let limitedMeta: {
+      limited: true;
+      limited_reason: string;
+      daily_cycle_status: string;
+      daily_cycle_id: string | null;
+      cycle_started_at: string | null;
+      cycle_last_error: string | null;
+    } | null = null;
+
+    if (generationMethod === "auto" || isSlaMethod(generationMethod)) {
       const morningStartUtc = `${today}T00:00:00Z`;
       const morningEndUtc   = `${today}T10:00:00Z`;
       const { data: cycleRow, error: cycleErr } = await supabase
@@ -2365,30 +2377,52 @@ Deno.serve(async (req) => {
           cycleStatus === "failed_stale" ? "cycle_stuck" :
           cycleStatus === "failed"  ? "cycle_failed"  :
           "cycle_missing";
-        console.warn(
-          `[briefing-guard] auto SKIPPED — daily-cycle-morning status='${cycleStatus}' for ${today}. ` +
-          `cycle_id=${cycleRow?.id || "(none)"} started_at=${cycleRow?.started_at || "(none)"}`,
-        );
-        await finishBriefingAttempt(supabase, attemptId, {
-          status: "skipped",
-          error_code: reason,
-          error_message: cycleRow?.last_error || "Denní cyklus není dokončený.",
-          cycle_status: cycleStatus,
-          cycle_id: cycleRow?.id || null,
-        });
-        return jsonResponse({
-            skipped: true,
-            reason,
-            cycle_status: cycleStatus,
-            cycle_id: cycleRow?.id || null,
+
+        if (isSlaRepairMethod(generationMethod)) {
+          // SLA repair: NESKIPUJ — vyrob limited briefing
+          limitedMeta = {
+            limited: true,
+            limited_reason: reason,
+            daily_cycle_status: cycleStatus,
+            daily_cycle_id: cycleRow?.id || null,
             cycle_started_at: cycleRow?.started_at || null,
             cycle_last_error: cycleRow?.last_error || null,
-            briefing_date: today,
-            note: "Auto briefing nebyl vygenerován — dnešní ranní cycle ještě nedoběhl. " +
-                  "Existující briefing dne (manual nebo dřívější auto) zůstává kanonický.",
+          };
+          console.warn(
+            `[briefing-sla] LIMITED — cycle status='${cycleStatus}'; pokračuji s repair pro ${today}.`,
+          );
+          await finishBriefingAttempt(supabase, attemptId, {
+            cycle_status: cycleStatus,
+            cycle_id: cycleRow?.id || null,
           });
+        } else {
+          // auto / sla_watchdog (bez repair): původní skip chování
+          console.warn(
+            `[briefing-guard] ${generationMethod} SKIPPED — daily-cycle-morning status='${cycleStatus}' for ${today}. ` +
+            `cycle_id=${cycleRow?.id || "(none)"} started_at=${cycleRow?.started_at || "(none)"}`,
+          );
+          await finishBriefingAttempt(supabase, attemptId, {
+            status: "skipped",
+            error_code: reason,
+            error_message: cycleRow?.last_error || "Denní cyklus není dokončený.",
+            cycle_status: cycleStatus,
+            cycle_id: cycleRow?.id || null,
+          });
+          return jsonResponse({
+              skipped: true,
+              reason,
+              cycle_status: cycleStatus,
+              cycle_id: cycleRow?.id || null,
+              cycle_started_at: cycleRow?.started_at || null,
+              cycle_last_error: cycleRow?.last_error || null,
+              briefing_date: today,
+              note: "Briefing nebyl vygenerován — dnešní ranní cycle ještě nedoběhl. " +
+                    "SLA-repair watchdog ho nahradí.",
+            });
+        }
+      } else {
+        await finishBriefingAttempt(supabase, attemptId, { cycle_status: cycleStatus, cycle_id: cycleRow?.id || null });
       }
-      await finishBriefingAttempt(supabase, attemptId, { cycle_status: cycleStatus, cycle_id: cycleRow?.id || null });
     }
 
     // Pokud existuje fresh briefing pro dnešek a nechceme force, vrať ho
