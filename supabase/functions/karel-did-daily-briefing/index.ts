@@ -1177,12 +1177,13 @@ async function gatherContext(supabase: any, proofReviewId?: string | null, reque
   const { data: yesterdayPlayroomReviews } = await supabase
     .from("did_session_reviews")
     .select("id, plan_id, mode, review_kind, status, part_name, session_date, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, source_data_summary, analysis_json, implications_for_part, implications_for_whole_system, recommendations_for_therapists, recommendations_for_next_playroom, recommendations_for_next_session, next_session_recommendation, drive_sync_status, detail_analysis_drive_url, practical_report_drive_url, created_at")
-    .eq("session_date", yesterdayISO)
+    .gte("session_date", daysAgoISO(3))
+    .lte("session_date", yesterdayISO)
     .eq("mode", "playroom")
     .eq("review_kind", "karel_direct_playroom")
     .eq("is_current", true)
     .order("created_at", { ascending: false })
-    .limit(3);
+    .limit(6);
   const { data: yesterdayPlayroomThread } = await supabase
     .from("did_threads")
     .select("id,part_name,workspace_id,workspace_type,sub_mode,thread_label,messages,last_activity_at")
