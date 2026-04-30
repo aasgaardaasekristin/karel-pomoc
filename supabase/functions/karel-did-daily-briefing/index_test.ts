@@ -107,13 +107,20 @@ Deno.test("3-date recency: Herna from 2026-04-27 is not yesterday for 2026-04-30
   assert(!/V[čc]erej[šs][íi]/u.test(recency.visible_sentence_prefix));
 });
 
-Deno.test("3-date recency: truly yesterday playroom may say Včerejší Herna", () => {
+Deno.test("3-date recency: truly yesterday playroom uses absolute-date-first label, not frozen 'Včerejší X proběhl date'", () => {
   const recency = resolveClinicalRecency("2026-04-29", { briefing_date: "2026-04-30", viewer_date: "2026-04-30" }, "playroom");
   assertEquals(recency.days_since_reference, 1);
   assertEquals(recency.human_recency_label, "včera");
   assertEquals(recency.is_yesterday, true);
+  // The short visible_label is allowed to say "Včerejší Herna" (it's just a tab/badge label).
   assertStringIncludes(recency.visible_label, "Včerejší Herna");
-  assertStringIncludes(recency.visible_sentence_prefix, "Včerejší Herna");
+  // The visible_sentence_prefix MUST NOT be the frozen "Včerejší Herna proběhla DD. M. YYYY." pattern.
+  assert(
+    !/V[čc]erej[šs][íi]\s+Herna\s+prob[eě]hla\s+\d/.test(recency.visible_sentence_prefix || ""),
+    `prefix must not contain frozen "Včerejší Herna proběhla …" — got: ${recency.visible_sentence_prefix}`,
+  );
+  assertStringIncludes(recency.visible_sentence_prefix, "29. 4. 2026");
+  assertStringIncludes(recency.visible_sentence_prefix, "včera");
 });
 
 Deno.test("cached briefing after midnight revalidates yesterday labels against viewer_date", () => {
