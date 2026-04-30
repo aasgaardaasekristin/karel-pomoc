@@ -20,7 +20,7 @@ Deno.test("visible briefing has a debug-language translation guard", () => {
   const source = Deno.readTextFileSync(new URL("./index.ts", import.meta.url));
   assertStringIncludes(source, "FORBIDDEN_VISIBLE_DEBUG_LANGUAGE_RE");
   assertStringIncludes(source, "ensureVisibleClinicalText");
-  assertStringIncludes(source, "opening_monologue_text = ensureVisibleClinicalText");
+  assertStringIncludes(source, "opening_monologue_text = ensureKarelFirstPersonOpening");
   assertStringIncludes(source, "payload.proposed_session[key] = ensureVisibleClinicalText");
   assertStringIncludes(source, "payload.proposed_playroom[key] = ensureVisibleClinicalText");
 });
@@ -37,7 +37,15 @@ Deno.test("clinical translation layer maps internal states to human prose", () =
 Deno.test("known debug phrases are not hardcoded into opening visible prose", () => {
   const source = Deno.readTextFileSync(new URL("./index.ts", import.meta.url));
   const openingBlock = source.slice(source.indexOf("function buildOpeningMonologue"), source.indexOf("function applyOpeningMonologue"));
-  for (const term of ["pending_review / evidence_limited", "faktická korekce reality", "child evidence", "evidence discipline", "real-world kontext", "operační kontext"]) {
+  for (const term of ["pending_review / evidence_limited", "faktická korekce reality", "child evidence", "evidence discipline", "real-world kontext", "operační kontext", "Dnešní přehled drží", "Karel je jen navigátor", "Herna může běžet"]) {
     assertEquals(openingBlock.includes(term), false, `Forbidden visible term leaked into opening block: ${term}`);
   }
+});
+
+Deno.test("opening renderer enforces first-person Karel voice and no rule manual prose", () => {
+  const source = Deno.readTextFileSync(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(source, "ensureKarelFirstPersonOpening");
+  assertStringIncludes(source, "Včerejší událost s Timmim/keporkakem vnímám");
+  assertStringIncludes(source, "budu ti pomáhat držet otázky krátké a bezpečné");
+  assertStringIncludes(source, "FORBIDDEN_OPENING_META_RE");
 });

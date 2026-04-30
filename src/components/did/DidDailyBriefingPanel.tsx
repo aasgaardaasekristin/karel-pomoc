@@ -274,7 +274,15 @@ export const cleanVisibleClinicalText = (value: unknown): string => String(value
   .replace(/briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log/gi, "podklad")
   .trim();
 
-const FORBIDDEN_VISIBLE_DEBUG_RE = /pending_review|evidence_limited|needs_therapist_input|awaiting_therapist_review|backend_context_inputs|source_ref|therapist_factual_correction|external_fact|evidence discipline|child evidence|real-world context|operational context|faktick[áa]\s+korekce\s+reality|nepředstírat klinické závěry|průběh, který nemá transcript|V ranním přehledu se má objevit|První pracovní návrh:\s*Část|Stav:\s*awaiting/i;
+const FORBIDDEN_VISIBLE_DEBUG_RE = /pending_review|evidence_limited|needs_therapist_input|awaiting_therapist_review|backend_context_inputs|source_ref|therapist_factual_correction|external_fact|evidence discipline|child evidence|real-world context|operational context|faktick[áa]\s+korekce\s+reality|nepředstírat klinické závěry|průběh, který nemá transcript|V ranním přehledu se má objevit|První pracovní návrh:\s*Část|Stav:\s*awaiting|Dnešní přehled drží|Karel je jen navigátor|Karel je zapisovatel|Karel nesmí|Karel může|Karel je\b|Karel bude|Sezení nesmí|Herna může běžet/i;
+
+export const ensureKarelOpeningVoice = (value: unknown): string => {
+  const cleaned = cleanVisibleClinicalText(value);
+  if (!cleaned || FORBIDDEN_VISIBLE_DEBUG_RE.test(cleaned)) {
+    return "Dobré ráno, Haničko a Káťo.\n\nVčerejší událost s Timmim/keporkakem vnímám jako silný emoční otisk v psychice kluků. Nechci ji dnes přehnaně vykládat, ale nechci ji ani ztratit. Potřebujeme jemně zjistit, co v nich po včerejšku zůstalo — vlastními slovy, tělem a reakcí kluků.\n\nPokud dnes proběhne Sezení, povede ho Hanička. Budu jí pomáhat držet strukturu, bezpečné otázky a zápis toho, co je klinicky důležité. Herna zůstává nízkoprahová a čeká na schválení terapeutkami.";
+  }
+  return cleaned;
+};
 
 const cleanLine = (value: unknown, fallback = ""): string => {
   const cleaned = cleanVisibleClinicalText(value);
@@ -1278,7 +1286,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
   const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
   const legacyTechnicalGreeting = /těžk[áa]\s+syntéza|fallback|bezpečn[ýy]\s+režim/i.test(p.greeting || "");
-  const openingMonologueText = cleanVisibleClinicalText(p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnes držme hlavně klinickou návaznost, opatrnost v závěrech a jeden bezpečný další krok pro kluky. Budu rozlišovat, co víme jistě, co je pracovní hypotéza a co ještě čeká na ověření." : p.greeting) || "");
+  const openingMonologueText = ensureKarelOpeningVoice(p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnes držme hlavně klinickou návaznost, opatrnost v závěrech a jeden bezpečný další krok pro kluky. Budu rozlišovat, co víme jistě, co je pracovní hypotéza a co ještě čeká na ověření." : p.greeting) || "");
   const technicalNote = (p.technical_note || p.opening_monologue?.technical_note || "").trim();
   const visibleRealityContext = realityContextText(p);
   const sessionContextSummary = backendContextSummary(p.proposed_session?.backend_context_inputs);

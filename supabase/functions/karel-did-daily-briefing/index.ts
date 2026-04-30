@@ -650,7 +650,8 @@ const trimSentence = (value: unknown, max = 360): string => {
 const partGenitive = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupka" : name;
 const partDative = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupkovi" : name;
 
-const FORBIDDEN_VISIBLE_DEBUG_LANGUAGE_RE = /(pending_review|evidence_limited|child evidence|evidence discipline|therapist_factual_correction|external_fact|real-world context|real-world kontext|operational context|operační kontext|briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log|faktick[áa]\s+korekce\s+reality)/i;
+const FORBIDDEN_VISIBLE_DEBUG_LANGUAGE_RE = /(pending_review|evidence_limited|child evidence|evidence discipline|therapist_factual_correction|external_fact|real-world context|real-world kontext|operational context|operační kontext|briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log|faktick[áa]\s+korekce\s+reality|Dnešní přehled drží|Karel je jen navigátor|Karel je zapisovatel|Karel nesmí|Karel může|Karel je\b|Karel bude|Sezení nesmí|Herna může běžet)/i;
+const FORBIDDEN_OPENING_META_RE = /(Dnešní přehled drží|Karel je jen navigátor|Karel je zapisovatel|Karel nesmí|Karel může|Karel je\b|Karel bude|Sezení nesmí|Herna může běžet|ne jako symbol ani projekci|not child evidence)/i;
 
 const translateInternalStateToClinicalProse = (value: unknown): string =>
   cleanBlockText(value)
@@ -693,6 +694,12 @@ const ensureVisibleClinicalText = (value: unknown): string => {
   const text = sanitizeKarelClinicalText(value);
   if (!FORBIDDEN_VISIBLE_DEBUG_LANGUAGE_RE.test(text)) return text;
   return sanitizeKarelClinicalText(text);
+};
+
+const ensureKarelFirstPersonOpening = (value: unknown, fallback: string): string => {
+  const text = ensureVisibleClinicalText(value);
+  if (!text || FORBIDDEN_OPENING_META_RE.test(text)) return fallback;
+  return text;
 };
 
 const isTechnicalStatusText = (value: unknown): boolean =>
@@ -775,9 +782,12 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   if (!evidenceKnown.length) evidenceKnown.push("V dostupném payloadu zatím nevidím plné review včerejší Herny ani Sezení.");
 
   const greeting = "Dobré ráno, Haničko a Káťo.";
+  const realityOpening = hasRealityCorrection
+    ? "Včerejší událost s Timmim/keporkakem vnímám jako silný emoční otisk v psychice kluků. Nechci ji dnes přehnaně vykládat, ale nechci ji ani ztratit. Potřebujeme jemně zjistit, co v nich po včerejšku zůstalo — vlastními slovy, tělem a reakcí kluků."
+    : "Dnes chci navázat na včerejší materiál klidně a bez tlaku. Nechci z něj dělat větší příběh, než jaký kluci sami unesou; potřebujeme nejdřív zjistit, kdo je přítomný, jak je na tom tělo a kde je dnes bezpečný práh.";
   const frame = hasReview
-    ? `Dnes bych chtěl, abychom u kluků drželi hlavně návaznost, klidné tempo a přesnost v tom, co víme a co si zatím jen pracovně myslíme. Včerejší den přinesl výrazný materiál od ${partGenitive(activePart)}${openedPartialSession ? "; Sezení bylo otevřené nebo částečně rozpracované, ale zatím čeká na plné dovyhodnocení" : ", ale zároveň nás vede k opatrnosti: silný zdrojový prožitek z Herny nesmíme zaměnit za hotový závěr ani za proběhlé terapeutické Sezení"}.`
-    : "Dnes bych chtěl, abychom drželi hlavně stabilitu, návaznost a opatrnost v závěrech. Tam, kde data chybí, nebudu domýšlet příběh; raději navrhnu bezpečný ověřovací krok.";
+    ? `${realityOpening} ${openedPartialSession ? "Včerejší Sezení beru jako otevřené nebo částečně rozpracované; dnes ho nebudu uzavírat za kluky, dokud nemáme plné dovyhodnocení." : "Pokud se téma znovu objeví, budeme ho brát jako reálnou událost a živý prožitek, ne jako hotový klinický závěr."}`
+    : `${realityOpening} Tam, kde data chybí, nebudu domýšlet příběh; raději navrhnu bezpečný ověřovací krok.`;
   const team_recognition = teamWork
     ? `Včera bylo pro tým důležité toto: ${trimSentence(teamWork, 420)}`
     : "Včera bylo důležité držet klidný rytmus a nepřetlačit materiál do rychlých odpovědí. Právě taková práce u kluků buduje bezpečí: ne přes výkon, ale přes opakovanou zkušenost, že dospělý zůstává a nespěchá.";
@@ -795,14 +805,15 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     ? `Nové nebo nejpodstatnější z včerejška je toto: ${trimSentence(newInfo, 520).replace(/m[ůu][žz]e\s+pos[íi]lit\s+jeho\s+pocit\s+kontroly\s+a\s+d[ůu]v[eě]ry/i, "může být pracovně významné pro jeho pocit kontroly a důvěry, pokud se to dnes potvrdí")}`
     : "Nové informace z včerejška jsou zatím omezené. To samo o sobě je klinicky důležité: dnešní krok má být ověřovací, ne interpretačně těžký.";
   const clinical_formulation = hasRealityCorrection
-      ? `Moje pracovní formulace pro dnešek je opatrná: doložená informace má být přiznaná jako skutečná událost a faktický stresor. Klinicky smíme pracovat až s tím, co kluci sami řeknou, cítí nebo ukážou; samotný odkaz ani zpráva nejsou projekce části.`
+      ? `Moje pracovní formulace pro dnešek je opatrná: Timmi/keporkak je skutečná událost a může být emočně důležitá. Klinický význam ale smíme dát až tomu, co kluci sami řeknou, ukážou v těle nebo přinesou v chování.`
     : `Moje pracovní formulace pro dnešek je opatrná: ${activePart} včera použil vlastní symbolický jazyk bezpečí. Zatím je bezpečnější chápat ho jako aktuální zdroj této části, ne jako definitivní charakteristiku ani společný jazyk všech kluků. Praktický cíl je pomoci pocit ochrany přenést zpět do přítomného těla, dne a vztahu s bezpečnými dospělými.`;
-  const recommendations_for_hana = `Haničko, u tebe dnes vidím jako hlavní úkol jemně ověřit tělesný stav a dostupnost ${partGenitive(activePart)}, bez tlaku na vysvětlování. Pokud je stabilní, může následovat krátké Sezení nebo nízkoprahová Herna; pokud je zahlcený, stačí kontakt a připomenutí zdrojů.`;
+  const recommendations_for_hana = `Haničko, pokud dnes povedeš Sezení, budu ti pomáhat držet otázky krátké a bezpečné. Nepotřebujeme vysvětlování; potřebujeme vlastní slova, tělesnou reakci a jasné stop signály.`;
   const recommendations_for_katka = hasRealityCorrection
     ? `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: skutečná událost ani Hančino upřesnění samy o sobě ještě nevypovídají o klucích. Nepoužít je jako závěr dřív, než se ukáže jejich vlastní reakce.`
     : `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: nepřenášet včerejší symboly automaticky na ostatní části a nepoužít je dřív, než se ukáže, že jsou dnes pro ${partGenitive(activePart)} stále bezpečné.`;
   const what_not_to_do_today = "Dnes bych se vyhnul třem věcem: netlačit do vysvětlování, neotevírat nové trauma téma bez stabilizačního rámce a nepředávat části příliš velkou odpovědnost otázkou typu „co chceš dělat?“. Bezpečnější je nabídnout dvě nebo tři malé možnosti.";
   const priority_of_the_day = buildDailyTherapeuticPriority(payload);
+  const playroom_guidance = "Pokud se tým rozhodne pro Hernu, má být krátká, jemná a nízkoprahová. Nepůjde o výkon ani o výklad, ale o bezpečné zjištění, co dnes Tundrupek unese; Herna zůstává oddělená od terapeutkou vedeného Sezení a čeká na schválení terapeutkami.";
   const evidence_limits = [
     `Jistě víme: ${evidenceKnown.join(" ")}`,
     hasRealityCorrection
@@ -813,21 +824,16 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
       : "Nevíme / čeká na ověření: zda jde o stabilní zdroj dostupný i dnes, zda je bezpečné tento jazyk rozšiřovat k ostatním částem, a jaký je aktuální tělesný stav.",
   ].join("\n");
   const team_closing_line = "Včerejší práce nám dává materiál. Dnes ho nemusíme zvětšovat; potřebujeme ho správně podržet a převést do jednoho bezpečného kroku.";
-  const opening_monologue_text = ensureVisibleClinicalText([
+  const opening_monologue_text = ensureKarelFirstPersonOpening([
     greeting,
     frame,
-    team_recognition,
-    executive_summary,
-    parts_at_helm,
-    yesterday_new_information,
     clinical_formulation,
     recommendations_for_hana,
     recommendations_for_katka,
-    what_not_to_do_today,
     priority_of_the_day,
-    evidence_limits,
+    playroom_guidance,
     team_closing_line,
-  ].join("\n\n"));
+  ].join("\n\n"), [greeting, frame, clinical_formulation, recommendations_for_hana, recommendations_for_katka, team_closing_line].join("\n\n"));
 
   return {
     greeting,
@@ -1167,12 +1173,13 @@ async function gatherContext(supabase: any, proofReviewId?: string | null, reque
   const { data: yesterdayPlayroomReviews } = await supabase
     .from("did_session_reviews")
     .select("id, plan_id, mode, review_kind, status, part_name, session_date, clinical_summary, therapeutic_implications, team_implications, evidence_limitations, evidence_items, source_data_summary, analysis_json, implications_for_part, implications_for_whole_system, recommendations_for_therapists, recommendations_for_next_playroom, recommendations_for_next_session, next_session_recommendation, drive_sync_status, detail_analysis_drive_url, practical_report_drive_url, created_at")
-    .eq("session_date", yesterdayISO)
+    .gte("session_date", daysAgoISO(3))
+    .lte("session_date", yesterdayISO)
     .eq("mode", "playroom")
     .eq("review_kind", "karel_direct_playroom")
     .eq("is_current", true)
     .order("created_at", { ascending: false })
-    .limit(3);
+    .limit(6);
   const { data: yesterdayPlayroomThread } = await supabase
     .from("did_threads")
     .select("id,part_name,workspace_id,workspace_type,sub_mode,thread_label,messages,last_activity_at")
@@ -1493,6 +1500,12 @@ TÓN:
 - Žádný pseudo-log styl ("Dnes je nejdůležitější toto: …").
 - Žádná pseudo-poezie, žádný patos.
 - Žádné "Koordinovat strategii", "Synchronizovat úkoly", "Rozdělit si tasks" — to jsou ZAKÁZANÉ formulace.
+
+KARLŮV HLAS V PŘEHLEDU:
+- V úvodním klinickém přehledu mluvíš jako Karel v první osobě: „chci“, „budu“, „pomohu“, „potřebujeme“.
+- NIKDY o sobě v terapeutickém textu nepiš ve třetí osobě: zakázáno je „Karel je“, „Karel bude“, „Karel může“, „Karel nesmí“, „Karel je navigátor“, „Karel je zapisovatel“.
+- Nepiš pravidlový manuál: zakázáno je „Dnešní přehled drží…“, „Sezení nesmí…“, „Herna může běžet jen…“.
+- Pokud mluvíš o Timmim/keporkakovi, piš lidsky: skutečná událost, silná emoční stopa, nejdřív vlastní slova, tělo a reakce kluků; ne auditní fráze ani důkazové značky.
 
 REDUKCE TÝMOVÝCH BODŮ:
 - Maximálně 2 společná rozhodnutí (+1 navíc jen pokud aktivní krize = max 3).
