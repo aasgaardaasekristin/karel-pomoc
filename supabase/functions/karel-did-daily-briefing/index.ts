@@ -943,12 +943,16 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   if (!evidenceKnown.length) evidenceKnown.push("V dostupném payloadu zatím nevidím plné review Herny ani Sezení.");
 
   const greeting = "Dobré ráno, Haničko a Káťo.";
-  const playroomTruth = playNoYesterday
-    ? `${play?.not_yesterday_notice || "Včera Herna neproběhla."} ${play ? `Poslední doložená Herna s ${play.part_name || activePart} je z ${formatClinicalDate(play.session_date_iso)}, tedy ${play.human_recency_label}.` : "Dnes proto nenavazuji na nové herní review ze včerejška."}`
-    : `Včerejší Herna s ${play?.part_name || activePart} je skutečně z ${formatClinicalDate(play?.session_date_iso ?? null)}.`;
+  // POZN.: Informace o tom, že "Včera Herna neproběhla" / "Včera Sezení neproběhlo"
+  // do úvodního monologu NEPATŘÍ. Karel nezačíná den administrativním
+  // oznámením o tom, co se nestalo. Tato informace je vyhrazená pro:
+  //   1) sekci "Poslední / Včerejší herna" (recency notice nad reportem)
+  //   2) sekci "Poslední / Včerejší sezení" (recency notice nad reportem)
+  //   3) blok `evidence_limits` ("Jistě víme: …") jako auditovatelná položka
+  // V monologu zde naopak otevíráme klinickým rámcem dne.
   const realityOpening = hasRealityCorrection
-    ? `${playroomTruth} Událost s Timmim/keporkakem vnímám jako silný emoční otisk v psychice kluků. Nechci ji přehnaně vykládat, ale nechci ji ani ztratit. Potřebujeme jemně zjistit, co v klucích zůstává — vlastními slovy, tělem a reakcí kluků.`
-    : `${playroomTruth} Dnes chci navazovat jen na přesně datovaný materiál klidně a bez tlaku. Nechci z něj dělat větší příběh, než jaký kluci sami unesou; potřebujeme nejdřív zjistit, kdo je přítomný, jak je na tom tělo a kde je dnes bezpečný práh.`;
+    ? `Událost s Timmim/keporkakem vnímám jako silný emoční otisk v psychice kluků. Nechci ji přehnaně vykládat, ale nechci ji ani ztratit. Potřebujeme jemně zjistit, co v klucích zůstává — vlastními slovy, tělem a reakcí kluků.`
+    : `Dnes chci navazovat jen na přesně datovaný materiál klidně a bez tlaku. Nechci z něj dělat větší příběh, než jaký kluci sami unesou; potřebujeme nejdřív zjistit, kdo je přítomný, jak je na tom tělo a kde je dnes bezpečný práh.`;
   const frame = hasReview
     ? `${realityOpening} ${openedPartialSession ? `${recencyIntro(sess, "session")} Beru ho jako otevřené nebo částečně rozpracované; dnes ho nebudu uzavírat za kluky, dokud nemáme plné dovyhodnocení.` : "Pokud se téma znovu objeví, budeme ho brát jako reálnou událost a živý prožitek, ne jako hotový klinický závěr."}`
     : `${realityOpening} Tam, kde data chybí, nebudu domýšlet příběh; raději navrhnu bezpečný ověřovací krok.`;
