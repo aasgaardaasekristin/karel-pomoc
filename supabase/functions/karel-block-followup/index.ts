@@ -48,6 +48,17 @@ import {
   type Playbook,
   type PlaybookPhase,
 } from "../_shared/clinicalPlaybooks.ts";
+import {
+  parseProgramBlocks,
+  resolveCurrentBlockIndex,
+  isTherapistAcknowledgement,
+  isTherapistCorrection,
+  validateAiOutputForBlock,
+  safeParseJsonString,
+  buildEmptyAiFallback,
+  type ParsedBlock,
+  type ProgressItem,
+} from "../_shared/blockStateMachine.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
