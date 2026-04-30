@@ -6318,6 +6318,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      build_approved_plan_markdown: {
+        Args: {
+          p_delib: Database["public"]["Tables"]["did_team_deliberations"]["Row"]
+        }
+        Returns: string
+      }
       sync_and_start_approved_daily_plan: {
         Args: { p_deliberation_id: string; p_user_id: string }
         Returns: Json
