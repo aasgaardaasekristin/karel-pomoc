@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backendContextSummary, cleanVisibleClinicalText, realityContextText, toProposedPlayroomView, toProposedSessionView } from "./DidDailyBriefingPanel";
+import { backendContextSummary, cleanVisibleClinicalText, ensureKarelOpeningVoice, realityContextText, toProposedPlayroomView, toProposedSessionView } from "./DidDailyBriefingPanel";
 
 const forbidden = [
   "pending_review",
@@ -133,5 +133,18 @@ describe("DidDailyBriefingPanel visible clinical text helpers", () => {
     expect(view?.lead_label).toBe("vede Karel");
     expect(view?.approval_label).toContain("schválení terapeutkami");
     expectClean(JSON.stringify(view));
+  });
+
+  it("rewrites rule-like third-person opening into Karel's first-person clinical voice", () => {
+    const visible = ensureKarelOpeningVoice(
+      "Dnešní přehled drží Timmiho jako skutečnou událost. Sezení nesmí vést Karel sám; Karel je jen navigátor a zapisovatel. Herna může běžet jen jako schválený kontakt.",
+    );
+
+    for (const term of ["Karel je", "Karel bude", "Karel nesmí", "Karel může", "Dnešní přehled drží", "Sezení nesmí", "Herna může běžet jen"]) {
+      expect(visible).not.toContain(term);
+    }
+    expect(visible).toContain("Včerejší událost s Timmim/keporkakem");
+    expect(visible).toContain("Budu jí pomáhat");
+    expect(visible).toContain("Potřebujeme jemně zjistit");
   });
 });
