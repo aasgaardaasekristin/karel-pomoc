@@ -1425,8 +1425,21 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const playroomProposal = p.proposed_playroom?.part_name
     ? p.proposed_playroom
     : createFallbackPlayroomProposal(p);
-  const playRecency = ((p as any).recent_playroom_review ?? p.yesterday_playroom_review) as RecencyMeta | null | undefined;
-  const sessRecency = ((p as any).recent_session_review ?? p.yesterday_session_review) as RecencyMeta | null | undefined;
+  // ── KALENDÁŘNÍ INTEGRITA: viewer-side revalidace ──
+  // Cached briefing může být zafrozený z dřívějšího dne (např. user otevřel
+  // dashboard ráno po půlnoci a vidí včerejší briefing). Recency MUSÍME
+  // přepočítat proti aktuálnímu Europe/Prague datu, jinak text bude tvrdit
+  // „Včerejší Herna" i pro herní materiál starý 2+ dny.
+  const viewerToday = pragueTodayIso();
+  const briefingDateIso = String(briefing.briefing_date ?? "").slice(0, 10);
+  const isCurrentBriefing = briefingDateIso === viewerToday;
+  const daysSinceBriefing = briefingDateIso && /^\d{4}-\d{2}-\d{2}$/.test(briefingDateIso)
+    ? Math.round((dateOnlyToUtcMs(viewerToday) - dateOnlyToUtcMs(briefingDateIso)) / 86_400_000)
+    : 0;
+  const rawPlayRecency = ((p as any).recent_playroom_review ?? p.yesterday_playroom_review) as RecencyMeta | null | undefined;
+  const rawSessRecency = ((p as any).recent_session_review ?? p.yesterday_session_review) as RecencyMeta | null | undefined;
+  const playRecency = revalidateRecencyForViewer(rawPlayRecency, viewerToday, "playroom");
+  const sessRecency = revalidateRecencyForViewer(rawSessRecency, viewerToday, "session");
   const sessionView = toProposedSessionView(p.proposed_session);
   const playroomView = toProposedPlayroomView(playroomProposal);
   const decisions = (p.decisions ?? []).slice(0, 3);
@@ -1439,16 +1452,16 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const sessionContextSummary = backendContextSummary(p.proposed_session?.backend_context_inputs);
   const playroomContextSummary = backendContextSummary(playroomProposal?.backend_context_inputs);
   const playroomSectionTitle = playRecency?.exists
-    ? (playRecency.is_yesterday ? "Včerejší herna" : (playRecency.visible_label || `Poslední Herna (${formatPragueDateLabel(playRecency.session_date_iso)})`))
+    ? (playRecency.is_yesterday ? "Včerejší herna" : (playRecency.visible_label || `Poslední Herna (${formatPragueDateLabel(playRecency.source_date_iso ?? playRecency.session_date_iso)})`))
     : "Včerejší herna";
   const sessionSectionTitle = sessRecency?.exists
-    ? (sessRecency.is_yesterday ? "Včerejší sezení" : (sessRecency.visible_label || `Poslední Sezení (${formatPragueDateLabel(sessRecency.session_date_iso)})`))
+    ? (sessRecency.is_yesterday ? "Včerejší sezení" : (sessRecency.visible_label || `Poslední Sezení (${formatPragueDateLabel(sessRecency.source_date_iso ?? sessRecency.session_date_iso)})`))
     : "Včerejší sezení";
   const playroomRecencyBadge = playRecency?.exists && !playRecency.is_yesterday
-    ? `${playRecency.human_recency_label || "starší"} · ${formatPragueDateLabel(playRecency.session_date_iso)}`
+    ? `${playRecency.human_recency_label || "starší"} · ${formatPragueDateLabel(playRecency.source_date_iso ?? playRecency.session_date_iso)}`
     : null;
   const sessionRecencyBadge = sessRecency?.exists && !sessRecency.is_yesterday
-    ? `${sessRecency.human_recency_label || "starší"} · ${formatPragueDateLabel(sessRecency.session_date_iso)}`
+    ? `${sessRecency.human_recency_label || "starší"} · ${formatPragueDateLabel(sessRecency.source_date_iso ?? sessRecency.session_date_iso)}`
     : null;
   const sanitizeProse = (v: unknown) => humanizeRecencyInProse(cleanVisibleClinicalText(v), playRecency, sessRecency);
 
