@@ -1438,29 +1438,35 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         <>
           <NarrativeDivider />
           <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary/70" />}>
-            Včerejší herna
+            {playroomSectionTitle}
           </SectionHead>
           <div className="mt-2 rounded-lg border border-border/60 bg-card/40 p-3 space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
               {yesterdayPlayroomReview.part_name && <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">{yesterdayPlayroomReview.part_name}</Badge>}
               <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">vedl Karel</Badge>
+              {playroomRecencyBadge && <Badge className="text-[10px] h-5 px-2 bg-amber-100/50 text-amber-900 border-amber-300/50">{playroomRecencyBadge}</Badge>}
               {yesterdayPlayroomReview.sync_status && <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{yesterdayPlayroomReview.sync_status}</Badge>}
             </div>
+            {playRecency?.exists && !playRecency.is_yesterday && (
+              <p className="text-[12px] leading-relaxed text-amber-900/80 italic">
+                {playRecency.not_yesterday_notice || "Včera Herna neproběhla."} {playRecency.visible_sentence_prefix || ""}
+              </p>
+            )}
             <div>
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Praktický report</p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{yesterdayPlayroomReview.practical_report || yesterdayPlayroomReview.karel_summary}</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{sanitizeProse(yesterdayPlayroomReview.practical_report || yesterdayPlayroomReview.karel_summary)}</p>
             </div>
-            {yesterdayPlayroomReview.key_finding_about_part && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Význam pro část</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{yesterdayPlayroomReview.key_finding_about_part}</p></div>}
-            {(yesterdayPlayroomReview as any).implications_for_system && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Význam pro kluky jako celek</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).implications_for_system}</p></div>}
-            {(yesterdayPlayroomReview as any).recommendations_for_therapists && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro terapeutky</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).recommendations_for_therapists}</p></div>}
-            {yesterdayPlayroomReview.implications_for_plan && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro další hernu</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{yesterdayPlayroomReview.implications_for_plan}</p></div>}
-            {(yesterdayPlayroomReview as any).recommendations_for_next_session && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro další sezení</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).recommendations_for_next_session}</p></div>}
-            {(yesterdayPlayroomReview as any).spiritual_symbolics_safety_frame && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Bezpečné rámování duchovní symboliky</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{(yesterdayPlayroomReview as any).spiritual_symbolics_safety_frame}</p></div>}
+            {yesterdayPlayroomReview.key_finding_about_part && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Význam pro část</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{sanitizeProse(yesterdayPlayroomReview.key_finding_about_part)}</p></div>}
+            {(yesterdayPlayroomReview as any).implications_for_system && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Význam pro kluky jako celek</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{sanitizeProse((yesterdayPlayroomReview as any).implications_for_system)}</p></div>}
+            {(yesterdayPlayroomReview as any).recommendations_for_therapists && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro terapeutky</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{sanitizeProse((yesterdayPlayroomReview as any).recommendations_for_therapists)}</p></div>}
+            {yesterdayPlayroomReview.implications_for_plan && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro další hernu</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{sanitizeProse(yesterdayPlayroomReview.implications_for_plan)}</p></div>}
+            {(yesterdayPlayroomReview as any).recommendations_for_next_session && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Doporučení pro další sezení</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{sanitizeProse((yesterdayPlayroomReview as any).recommendations_for_next_session)}</p></div>}
+            {(yesterdayPlayroomReview as any).spiritual_symbolics_safety_frame && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Bezpečné rámování duchovní symboliky</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{sanitizeProse((yesterdayPlayroomReview as any).spiritual_symbolics_safety_frame)}</p></div>}
             {((yesterdayPlayroomReview as any).detail_analysis_drive_url || (yesterdayPlayroomReview as any).practical_report_drive_url) && <p className="text-[11px] text-muted-foreground">Drive: {(yesterdayPlayroomReview as any).detail_analysis_drive_url ? "detailní analýza uložena" : "detail čeká"} · {(yesterdayPlayroomReview as any).practical_report_drive_url ? "praktický report uložen" : "report čeká"}</p>}
             {yesterdayPlayroomReview.detailed_analysis && (
               <details className="rounded-md border border-border/50 bg-background/35 p-2">
-                <summary className="cursor-pointer text-[12px] font-medium text-primary">Přečíst si detailní analýzu ze včerejší herny</summary>
-                <p className="mt-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{yesterdayPlayroomReview.detailed_analysis}</p>
+                <summary className="cursor-pointer text-[12px] font-medium text-primary">Přečíst si detailní analýzu z {playRecency?.exists && !playRecency.is_yesterday ? `Herny ${formatPragueDateLabel(playRecency.session_date_iso)}` : "včerejší herny"}</summary>
+                <p className="mt-2 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{sanitizeProse(yesterdayPlayroomReview.detailed_analysis)}</p>
               </details>
             )}
           </div>
