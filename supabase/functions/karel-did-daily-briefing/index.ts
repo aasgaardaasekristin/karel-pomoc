@@ -50,6 +50,127 @@ const daysAgoISO = (n: number): string => {
   return pragueDayISO(d);
 };
 
+
+
+type ClinicalRecency = {
+  date_iso: string | null;
+  days_since_today: number | null;
+  human_recency_label: string;
+  adjective_label: string;
+  is_yesterday: boolean;
+  is_today: boolean;
+  visible_section_title: string;
+  visible_sentence_prefix: string;
+  visible_label: string;
+  not_yesterday_notice: string;
+};
+
+const dateOnlyToUtcMs = (iso: string): number => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return Date.UTC(y, (m || 1) - 1, d || 1);
+};
+
+const formatClinicalDate = (iso: string | null): string => {
+  if (!iso) return "datum není doložené";
+  return new Intl.DateTimeFormat("cs-CZ", { timeZone: "Europe/Prague", day: "numeric", month: "numeric", year: "numeric" }).format(new Date(`${iso}T12:00:00Z`));
+};
+
+const clinicalKindConfig = (kind: "playroom" | "session") => kind === "playroom"
+  ? { noun: "Herna", noYesterday: "Včera Herna neproběhla.", verb: "proběhla" }
+  : { noun: "Sezení", noYesterday: "Včerejší Sezení neproběhlo.", verb: "proběhlo" };
+
+export function resolveClinicalRecency(dateLike: unknown, todayPrague: string = pragueDayISO(), kind: "playroom" | "session" = "playroom"): ClinicalRecency {
+  let dateIso: string | null = null;
+  if (typeof dateLike === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateLike.slice(0, 10))) {
+    dateIso = dateLike.slice(0, 10);
+  } else if (dateLike) {
+    const parsed = new Date(String(dateLike));
+    if (!Number.isNaN(parsed.getTime())) dateIso = pragueDayISO(parsed);
+  }
+  const cfg = clinicalKindConfig(kind);
+  if (!dateIso) {
+    return {
+      date_iso: null,
+      days_since_today: null,
+      human_recency_label: "datum není doložené",
+      adjective_label: "nedoložené",
+      is_yesterday: false,
+      is_today: false,
+      visible_section_title: `Poslední ${cfg.noun}`,
+      visible_sentence_prefix: `${cfg.noun} nemá doložené datum klinické aktivity.`,
+      visible_label: `Poslední ${cfg.noun}`,
+      not_yesterday_notice: cfg.noYesterday,
+    };
+  }
+  const days = Math.round((dateOnlyToUtcMs(todayPrague) - dateOnlyToUtcMs(dateIso)) / 86_400_000);
+  const human = days === 0 ? "dnes" : days === 1 ? "včera" : days === 2 ? "předevčírem" : days === 3 ? "před 3 dny" : days > 3 ? `před ${days} dny` : "budoucí datum";
+  const adjective = days === 0 ? "dnešní" : days === 1 ? "včerejší" : days === 2 ? "předevčerejší" : "poslední";
+  const visibleLabel = days === 1 ? `Včerejší ${cfg.noun}` : days === 2 ? `Předevčerejší ${cfg.noun}` : `Poslední ${cfg.noun}`;
+  const prefix = days === 1
+    ? `Včerejší ${cfg.noun} ${cfg.verb} ${formatClinicalDate(dateIso)}.`
+    : days === 2
+      ? `Předevčerejší ${cfg.noun} ${cfg.verb} ${formatClinicalDate(dateIso)}.`
+      : `Poslední doložená ${cfg.noun} ${cfg.verb} ${formatClinicalDate(dateIso)}, tedy ${human}.`;
+  return {
+    date_iso: dateIso,
+    days_since_today: days,
+    human_recency_label: human,
+    adjective_label: adjective,
+    is_yesterday: days === 1,
+    is_today: days === 0,
+    visible_section_title: visibleLabel,
+    visible_sentence_prefix: prefix,
+    visible_label: visibleLabel,
+    not_yesterday_notice: days === 1 ? "" : cfg.noYesterday,
+  };
+}
+
+const recencyFields = (dateLike: unknown, kind: "playroom" | "session", todayPrague?: string) => {
+  const recency = resolveClinicalRecency(dateLike, todayPrague ?? pragueDayISO(), kind);
+  return {
+    session_date_iso: recency.date_iso,
+    days_since_today: recency.days_since_today,
+    human_recency_label: recency.human_recency_label,
+    adjective_label: recency.adjective_label,
+    is_yesterday: recency.is_yesterday,
+    is_today: recency.is_today,
+    visible_section_title: recency.visible_section_title,
+    visible_label: recency.visible_label,
+    visible_sentence_prefix: recency.visible_sentence_prefix,
+    not_yesterday_notice: recency.not_yesterday_notice,
+  };
+};
+
+const recencyIntro = (item: any, kind: "playroom" | "session") => {
+  const recency = resolveClinicalRecency(item?.session_date_iso ?? item?.session_date ?? item?.plan_date ?? item?.last_activity_at ?? item?.created_at, pragueDayISO(), kind);
+  return `${recency.not_yesterday_notice ? `${recency.not_yesterday_notice} ` : ""}${recency.visible_sentence_prefix}`.trim();
+};
+
+function enforceClinicalRecencyText(value: unknown, payload: any): string {
+  let text = String(value ?? "");
+  const play = payload?.recent_playroom_review ?? payload?.yesterday_playroom_review;
+  const sess = payload?.recent_session_review ?? payload?.yesterday_session_review;
+  if (play?.exists && play.days_since_today !== 1) {
+    const label = play.days_since_today === 2 ? "předevčerejší Herna" : `poslední Herna z ${formatClinicalDate(play.session_date_iso)}, ${play.human_recency_label}`;
+    text = text
+      .replace(/včerejší\s+Hernu/gi, label)
+      .replace(/včerejší\s+Herna/gi, label)
+      .replace(/Včerejší\s+Herna/g, label.charAt(0).toUpperCase() + label.slice(1))
+      .replace(/včerejší\s+hernu/gi, label.toLowerCase())
+      .replace(/Včerejší\s+herna/g, label.charAt(0).toUpperCase() + label.slice(1))
+      .replace(/ze\s+včerejší\s+Herny/gi, `z ${label}`)
+      .replace(/navázat\s+na\s+včerejší\s+Hernu/gi, `navázat jen opatrně na ${label}`)
+      .replace(/Symboly\s+z\s+včerejška/gi, `Symboly z ${play.human_recency_label}`);
+  }
+  if (sess?.exists && sess.days_since_today !== 1) {
+    const label = sess.days_since_today === 2 ? "předevčerejší Sezení" : `poslední Sezení z ${formatClinicalDate(sess.session_date_iso)}, ${sess.human_recency_label}`;
+    text = text
+      .replace(/včerejší\s+Sezení/gi, label)
+      .replace(/Včerejší\s+Sezení/g, label.charAt(0).toUpperCase() + label.slice(1))
+      .replace(/ze\s+včerejšího\s+Sezení/gi, `z ${label}`);
+  }
+  return text;
+}
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -210,7 +331,7 @@ function buildMandatorySessionProposal(payload: any, context: any, candidates: A
   return {
     part_name: selectedPart,
     status: "awaiting_therapist_review",
-    why_today: "Navázat na včerejší aktivitu a skutečnou událost bez předstírání klinického závěru: nejdřív ověřit tělo, emoci, dostupnost a bezpečí.",
+    why_today: "Navázat jen na přesně datovanou nedávnou aktivitu a skutečnou událost bez předstírání klinického závěru: nejdřív ověřit tělo, emoci, dostupnost a bezpečí.",
     led_by: "Hanička",
     duration_min: 20,
     first_draft: "Krátké terapeutkou vedené Sezení: 1) ověřit aktuální stav a únavu, 2) přiznat doložený faktický rámec jako skutečnou událost, 3) ptát se jen na vlastní reakci kluků, neinterpretovat samotnou zprávu jako projekci, 4) ukončit stabilizačně.",
@@ -297,8 +418,11 @@ function buildYesterdaySessionReview(context: any) {
     const analysis = review.analysis_json && typeof review.analysis_json === "object" ? review.analysis_json : {};
     const evidenceBasis = reviewEvidenceBasis(review);
     const technicalTest = isTechnicalTestSessionReview(review) || evidenceBasis === "planned_only";
+    const recency = recencyFields(review.session_date ?? review.plan_date ?? review.completed_at ?? review.created_at, "session", context?.today);
+    const sessionPrefix = recency.visible_sentence_prefix;
     return {
       exists: true,
+      ...recency,
       held: !technicalTest && !["pending_review", "analysis_running"].includes(String(review.status)),
       status: technicalTest ? "technical_test" : review.status,
       review_status: review.status,
@@ -312,14 +436,14 @@ function buildYesterdaySessionReview(context: any) {
       assistant_persons: review.assistant_persons ?? [],
       completion: technicalTest ? "abandoned" : evidenceBasis === "completed" ? "completed" : review.status === "evidence_limited" || review.status === "partially_analyzed" ? "partial" : "abandoned",
       practical_report_text: isOpenedPartialSessionReview(review) && !technicalTest
-        ? `Včerejší Sezení s ${review.part_name || "částí"} bylo otevřené nebo částečně rozpracované, ale zatím nemá plné dovyhodnocení. Máme potvrzený signál, že práce začala, proto ho neoznačuji jako neproběhlé; budu z něj vycházet opatrně a bez plného klinického závěru.`
+        ? `${sessionPrefix} Sezení s ${review.part_name || "částí"} bylo otevřené nebo částečně rozpracované, ale zatím nemá plné dovyhodnocení. Máme potvrzený signál, že práce začala, proto ho neoznačuji jako neproběhlé; budu z něj vycházet opatrně a bez plného klinického závěru.`
         : technicalTest
         ? `Plánované Sezení s ${review.part_name || "částí"} se klinicky neuskutečnilo. Záznam odpovídá technickému testu nebo plánované aktivitě bez klinického průběhu, proto z něj nevyvozujeme nové klinické poznatky. Původní potřeba Sezení — zejména práce s tělesnými potížemi a neverbálním zpracováním — zůstává otevřená.`
         : cleanBlockText(analysis.practical_report_text ?? review.clinical_summary ?? ""),
       detailed_analysis_text: cleanBlockText(analysis.detailed_analysis_text ?? ""),
       team_closing_text: cleanBlockText(analysis.team_closing_text ?? review.team_closing ?? ""),
       karel_summary: isOpenedPartialSessionReview(review) && !technicalTest
-        ? `Včerejší Sezení bylo otevřené nebo částečně rozpracované a čeká na plné dovyhodnocení; není označené jako neproběhlé.`
+        ? `${sessionPrefix} Bylo otevřené nebo částečně rozpracované a čeká na plné dovyhodnocení; není označené jako neproběhlé.`
         : technicalTest
         ? `Plánované Sezení s ${review.part_name || "částí"} se klinicky neuskutečnilo. Z tohoto záznamu nevyvozujeme nové klinické poznatky; původní potřeba Sezení zůstává otevřená.`
         : cleanBlockText(analysis.practical_report_text ?? review.clinical_summary ?? review.evidence_limitations ?? ""),
@@ -342,9 +466,11 @@ function buildYesterdaySessionReview(context: any) {
     };
   }
   const activity = Array.isArray(context?.yesterday_plans) ? context.yesterday_plans.find((p: any) => String(p?.mode ?? "session") !== "playroom") : null;
-  if (!activity) return { exists: false, status: "none" };
+  if (!activity) return { exists: false, status: "none", ...recencyFields(null, "session", context?.today) };
+  const recency = recencyFields(activity.plan_date ?? activity.session_date ?? activity.completed_at ?? activity.created_at, "session", context?.today);
   return {
     exists: true,
+    ...recency,
     held: false,
     status: "pending_review",
     fallback_reason: "session_activity_exists_without_review",
@@ -352,7 +478,7 @@ function buildYesterdaySessionReview(context: any) {
     plan_id: activity.id ?? null,
     thread_id: null,
     evidence_count: 1,
-    practical_report_text: "Včerejší Sezení proběhlo nebo bylo zahájeno, ale čeká na vyhodnocení. Karlův přehled ho proto bere jako otevřený materiál, ne jako hotový klinický závěr.",
+    practical_report_text: `${recency.visible_sentence_prefix} Proběhlo nebo bylo zahájeno, ale čeká na vyhodnocení. Karlův přehled ho proto bere jako otevřený materiál, ne jako hotový klinický závěr.`,
     detailed_analysis_text: "",
     team_closing_text: "",
     drive_sync_status: "not_queued",
@@ -377,14 +503,17 @@ function injectSessionReviewIntoProposals(payload: any) {
       ps.carry_over_reason = openedPartial ? "opened_partial_yesterday_session_pending_review" : "unheld_yesterday_session";
       ps.why_today = openedPartial
         ? `Návaznost na otevřené nebo částečně rozpracované Sezení. Tento návrh navazuje na potvrzený signál, že práce začala, ale nepředstírá plné dovyhodnocení. ${cleanBlockText(ps.why_today)}`.trim()
-        : `Carry-over z neuskutečněného Sezení. Tento návrh nenavazuje na nové klinické poznatky ze včerejšího Sezení, protože to klinicky neproběhlo; navazuje na původní potřebu řešit tělesné potíže a neverbální zpracování tělesného stavu. ${cleanBlockText(ps.why_today)}`.trim();
+        : `Carry-over z neuskutečněného Sezení. ${recencyIntro(y, "session")} Tento návrh nenavazuje na nové klinické poznatky z tohoto Sezení, protože klinicky neproběhlo; navazuje na původní potřebu řešit tělesné potíže a neverbální zpracování tělesného stavu. ${cleanBlockText(ps.why_today)}`.trim();
       ps.first_draft = `Začít krátkým ověřením tělesného a emočního stavu, bez tlaku na vysvětlování. Pokud je část dostupná a stabilní, pokračovat krátkým terapeutkou vedeným Sezením; pokud je unavená nebo zahlcená, zůstat jen u stabilizačního kontaktu. ${cleanBlockText(ps.first_draft)}`.trim();
     }
-    ps.evidence_sources = Array.from(new Set([...(Array.isArray(ps.evidence_sources) ? ps.evidence_sources : []), "VČEREJŠÍ SEZENÍ — PRAKTICKÝ REPORT", "VČEREJŠÍ SEZENÍ — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ"]));
+    ps.evidence_sources = Array.from(new Set([...(Array.isArray(ps.evidence_sources) ? ps.evidence_sources : []), `${y.visible_label ?? "Poslední Sezení"} — PRAKTICKÝ REPORT`, `${y.visible_label ?? "Poslední Sezení"} — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ`]));
     ps.backend_context_inputs = {
       ...(ps.backend_context_inputs ?? {}),
-      used_yesterday_session_review: true,
+      used_yesterday_session_review: y.is_yesterday === true,
+      used_recent_session: y.is_yesterday !== true,
       yesterday_session_review_id: y.review_id,
+      recent_session_days_since_today: y.days_since_today ?? null,
+      recent_session_date: y.session_date_iso ?? null,
       practical_report_excerpt: report.slice(0, 1200),
       next_session_recommendation_excerpt: nextSession.slice(0, 1200),
     };
@@ -393,8 +522,8 @@ function injectSessionReviewIntoProposals(payload: any) {
   const nextPlayroom = cleanBlockText(y.recommendations_for_next_playroom);
   if (nextPlayroom && payload?.proposed_playroom && typeof payload.proposed_playroom === "object") {
     const pp = payload.proposed_playroom;
-    pp.evidence_sources = Array.from(new Set([...(Array.isArray(pp.evidence_sources) ? pp.evidence_sources : []), "VČEREJŠÍ SEZENÍ — PRAKTICKÝ REPORT"]));
-    pp.backend_context_inputs = { ...(pp.backend_context_inputs ?? {}), used_yesterday_session_review: true, yesterday_session_review_id: y.review_id };
+    pp.evidence_sources = Array.from(new Set([...(Array.isArray(pp.evidence_sources) ? pp.evidence_sources : []), `${y.visible_label ?? "Poslední Sezení"} — PRAKTICKÝ REPORT`]));
+    pp.backend_context_inputs = { ...(pp.backend_context_inputs ?? {}), used_yesterday_session_review: y.is_yesterday === true, used_recent_session: y.is_yesterday !== true, yesterday_session_review_id: y.review_id, recent_session_days_since_today: y.days_since_today ?? null, recent_session_date: y.session_date_iso ?? null };
     payload.proposed_playroom = pp;
   }
   return payload;
@@ -416,14 +545,18 @@ function buildYesterdayPlayroomReview(context: any) {
     return 6;
   };
   const review = [...reviews].sort((a: any, b: any) => {
+    const dateDiff = dateOnlyToUtcMs(String(b?.session_date ?? b?.created_at ?? "0001-01-01").slice(0, 10)) - dateOnlyToUtcMs(String(a?.session_date ?? a?.created_at ?? "0001-01-01").slice(0, 10));
+    if (dateDiff !== 0) return dateDiff;
     const rankDiff = rankPlayroomReview(a) - rankPlayroomReview(b);
     if (rankDiff !== 0) return rankDiff;
     return new Date(b?.created_at ?? 0).getTime() - new Date(a?.created_at ?? 0).getTime();
   })[0] ?? null;
   if (review) {
     const analysis = review.analysis_json && typeof review.analysis_json === "object" ? review.analysis_json : {};
+    const recency = recencyFields(review.session_date ?? review.plan_date ?? review.completed_at ?? review.created_at, "playroom", context?.today);
     return {
       exists: true,
+      ...recency,
       status: review.status,
       part_name: review.part_name,
       plan_id: review.plan_id,
@@ -442,17 +575,19 @@ function buildYesterdayPlayroomReview(context: any) {
     };
   }
   const thread = context?.yesterday_playroom_thread;
-  if (!thread) return { exists: false, status: "none" };
+  if (!thread) return { exists: false, status: "none", ...recencyFields(null, "playroom", context?.today) };
   const messages = Array.isArray(thread.messages) ? thread.messages : [];
+  const recency = recencyFields(thread.last_activity_at ?? thread.started_at ?? thread.created_at, "playroom", context?.today);
   return {
     exists: true,
+    ...recency,
     status: "pending_review",
     fallback_reason: "thread_exists_without_review",
     part_name: thread.part_name ?? null,
     plan_id: thread.workspace_id ?? null,
     thread_id: thread.id,
     message_count: messages.length,
-    practical_report_text: "Herna proběhla, ale čeká na review. Karlův přehled ji proto uvádí jako nedokončený vstup, ne jako klinicky uzavřený závěr.",
+    practical_report_text: `${recency.visible_sentence_prefix} Čeká na review. Karlův přehled ji proto uvádí jako nedokončený vstup, ne jako klinicky uzavřený závěr.`,
     detailed_analysis_text: "",
     implications_for_part: "Zatím nelze poctivě uzavřít význam pro část bez playroom review.",
     implications_for_system: "Pro kluky jako celek je teď závazné hlavně to, že Herna nesmí zmizet z návazného plánování.",
@@ -469,12 +604,14 @@ function injectPlayroomReviewIntoProposal(payload: any) {
   const pp = payload.proposed_playroom;
   const report = cleanBlockText(y.practical_report_text);
   const next = cleanBlockText(y.recommendations_for_next_playroom || y.recommendations_for_therapists || y.recommendations_for_next_session);
-  pp.evidence_sources = Array.from(new Set([...(Array.isArray(pp.evidence_sources) ? pp.evidence_sources : []), "VČEREJŠÍ HERNA — PRAKTICKÝ REPORT", "VČEREJŠÍ HERNA — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ"]));
-  pp.why_this_part_today = sanitizeKarelClinicalText(`Nízkoprahová stabilizační návaznost na včerejší Hernu. Symboly z včerejška používat primárně s ${y.part_name || pp.part_name || "touto částí"} a jen tehdy, pokud je část sama přinese nebo na ně klidně reaguje; u ostatních částí je nepřenášet automaticky. ${cleanBlockText(pp.why_this_part_today)}`);
+  const playPrefix = recencyIntro(y, "playroom");
+  const playLabel = y.is_yesterday ? "včerejší Hernu" : y.days_since_today === 2 ? "předevčerejší Hernu" : `poslední Hernu z ${formatClinicalDate(y.session_date_iso)}, ${y.human_recency_label}`;
+  pp.evidence_sources = Array.from(new Set([...(Array.isArray(pp.evidence_sources) ? pp.evidence_sources : []), `${y.visible_label ?? "Poslední Herna"} — PRAKTICKÝ REPORT`, `${y.visible_label ?? "Poslední Herna"} — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ`]));
+  pp.why_this_part_today = sanitizeKarelClinicalText(`${playPrefix} Dnešní návrh nenavazuje automaticky; vychází z ${playLabel} a začíná novým bezpečným check-inem. Symboly z tohoto materiálu používat primárně s ${y.part_name || pp.part_name || "touto částí"} a jen tehdy, pokud je část sama přinese nebo na ně klidně reaguje; u ostatních částí je nepřenášet automaticky. ${cleanBlockText(pp.why_this_part_today)}`);
   pp.main_theme = `Jemný check-in bezpečného místa a dnešního vnitřního počasí, ne automatické pokračování hluboké symbolické práce`;
   pp.goals = Array.from(new Set([
     "ověřit dnešní tělesnou a emoční dostupnost bez tlaku",
-    "připomenout včerejší zdroje jen pokud jsou dnes bezpečné",
+    "připomenout starší zdroje jen pokud jsou dnes bezpečné",
     "držet krátký rámec a měkké zakončení",
     ...(Array.isArray(pp.goals) ? pp.goals : []),
   ])).slice(0, 4);
@@ -604,11 +741,11 @@ function buildDeterministicBriefingPayload(context: any, candidates: SessionCand
   const sessionReview = buildYesterdaySessionReview(context);
   const selectedPart = String(playroomReview?.part_name || candidates?.[0]?.part_name || context?.crises?.[0]?.part_name || context?.recent_threads?.[0]?.part_name || "část vybraná ranním přehledem").trim();
   const payload: any = {
-    greeting: "Dobré ráno, Haničko a Káťo. Dnes držím hlavně návaznost, klidné tempo a práci jen s tím, co máme doložené z včerejších stop.",
+    greeting: "Dobré ráno, Haničko a Káťo. Dnes držím hlavně návaznost, klidné tempo a práci jen s tím, co máme přesně datované.",
     last_3_days: playroomReview?.exists
-      ? `Autoritativní vstup pro dnešek je včerejší Herna části ${playroomReview.part_name || selectedPart}; její praktický report je vložen přímo z DB review, nikoli z dlouhé AI syntézy.`
-      : "Pro dnešek používám deterministický backendový přehled bez závěrů z Herny, protože včerejší playroom review není k dispozici.",
-    lingering: "Důležité je dnes nepřetížit včerejší materiál a převést ho do jednoho malého, ověřitelného kroku.",
+      ? `${recencyIntro(playroomReview, "playroom")} Autoritativní vstup pro dnešek je tento přesně datovaný report části ${playroomReview.part_name || selectedPart}; praktický report je vložen přímo z DB review, nikoli z dlouhé AI syntézy.`
+      : "Včera Herna neproběhla. Pro dnešek používám deterministický přehled bez závěrů z Herny, protože playroom review není k dispozici.",
+    lingering: "Důležité je dnes nepřetížit starší materiál a převést ho do jednoho malého, ověřitelného kroku.",
     technical_note: "Briefing byl sestaven z DB review a dostupných reportů bez dlouhé syntézy.",
     yesterday_session_review: null,
     yesterday_playroom_review: playroomReview,
@@ -618,12 +755,12 @@ function buildDeterministicBriefingPayload(context: any, candidates: SessionCand
       why_today: sessionReview.recommendations_for_next_session || sessionReview.practical_report_text || "Navázat na doložený praktický report ze Sezení.",
       led_by: normalizeTherapistLabel(sessionReview.lead_person) ?? "Hanička",
       duration_min: 20,
-      first_draft: sessionReview.recommendations_for_next_session || "Krátké terapeutkou vedené Sezení navázané na včerejší praktický report.",
+      first_draft: sessionReview.recommendations_for_next_session || "Krátké terapeutkou vedené Sezení navázané pouze na přesně datovaný praktický report.",
       kata_involvement: "Káťa ověří rizika a hranice návaznosti.",
     } : null,
     proposed_playroom: buildMandatoryPlayroomProposal({ proposed_session: { part_name: selectedPart, why_today: playroomReview?.recommendations_for_next_playroom || playroomReview?.practical_report_text || "Herna musí navázat jen na doloženou evidenci." }, last_3_days: "" }, context, candidates),
     ask_hanka: ["Prosím ověř, zda dnešní Herna má navázat na doložený praktický report, nebo má zůstat jen stabilizační."],
-    ask_kata: ["Prosím zkontroluj rizika a stop signály pro dnešní Hernu podle včerejšího review."],
+    ask_kata: ["Prosím zkontroluj rizika a stop signály pro dnešní Hernu podle posledního přesně datovaného review."],
     closing: "Beru to jako bezpečně omezený přehled: závěry z Herny jsou převzaté z DB review a návrh další Herny je na ně výslovně navázaný.",
   };
   injectPlayroomReviewIntoProposal(payload);
@@ -733,8 +870,8 @@ function buildClinicalLast3Days(payload: any, context: any, candidates: SessionC
   if (!play && !sess && recentNames.length === 0) return "Na toto nemám dost dat.";
   return [
     `Za posledních 24–72 hodin máme nejvýraznější doloženou aktivitu u ${partGenitive(activePart)}. V komunikaci se objevuje zejména ${communicated}; u kormidla to ale neznamená celodenní jistotu, jen nejsilnější dostupnou stopu.`,
-    play ? `Včerejší Herna ukázala práci přes symboly bezpečí, domova, světla nebo ochrany; beru je jako aktuální jazyk této části, ne jako hotovou charakteristiku všech kluků.` : "Z Herny za včerejšek nemám dostatečný uzavřený materiál pro klinický závěr.",
-    openedPartialSession ? "Včerejší Sezení bylo otevřené nebo částečně rozpracované a čeká na plné dovyhodnocení; zacházím s ním jako s otevřeným materiálem, ne jako s neproběhlým." : sessionNotHeld ? "Plánované terapeutické Sezení klinicky neproběhlo, případně odpovídá technickému testu; z něj proto nevyvozuji nové klinické poznatky." : sess?.held ? "Včerejší Sezení má doložený klinický vstup a může sloužit jako samostatný zdroj pro dnešní plán." : "O samostatném včerejším Sezení nemám dost dat.",
+    play ? `${recencyIntro(play, "playroom")} Ukázala práci přes symboly bezpečí, domova, světla nebo ochrany; beru je jako jazyk této části z daného dne, ne jako hotovou charakteristiku všech kluků.` : "Včera Herna neproběhla; z Herny za včerejšek nemám uzavřený materiál pro klinický závěr.",
+    openedPartialSession ? `${recencyIntro(sess, "session")} Bylo otevřené nebo částečně rozpracované a čeká na plné dovyhodnocení; zacházím s ním jako s otevřeným materiálem, ne jako s neproběhlým.` : sessionNotHeld ? "Plánované terapeutické Sezení klinicky neproběhlo, případně odpovídá technickému testu; z něj proto nevyvozuji nové klinické poznatky." : sess?.held ? `${recencyIntro(sess, "session")} Má doložený klinický vstup a může sloužit jako samostatný zdroj pro dnešní plán.` : "O samostatném včerejším Sezení nemám dost dat.",
     "Bezpečný závěr pro dnešek: držet se doloženého materiálu, oddělit jisté poznatky od hypotéz a nejprve ověřit aktuální tělesnou i emoční dostupnost části.",
   ].join("\n\n");
 }
@@ -749,7 +886,7 @@ function buildDailyTherapeuticPriority(payload: any): string {
   const sess = payload?.yesterday_session_review?.exists ? payload.yesterday_session_review : null;
   const part = String(play?.part_name || sess?.part_name || payload?.proposed_session?.part_name || payload?.proposed_playroom?.part_name || "části").trim();
   if (sess?.exists && isOpenedPartialSessionReview(sess)) {
-    return `Protože včerejší Sezení bylo otevřené nebo částečně rozpracované, ale zatím nemá plné dovyhodnocení, první krok dne má být krátké ověření aktuálního tělesného a emočního stavu ${partGenitive(part)}. Pracujeme opatrně a nepředstíráme hotový klinický závěr.`;
+    return `Protože ${recencyIntro(sess, "session")} Bylo otevřené nebo částečně rozpracované, ale zatím nemá plné dovyhodnocení, první krok dne má být krátké ověření aktuálního tělesného a emočního stavu ${partGenitive(part)}. Pracujeme opatrně a nepředstíráme hotový klinický závěr.`;
   }
   if (sess?.exists && sess?.held === false) {
     return `Protože plánované Sezení kvůli tělesným nebo neverbálním potížím klinicky neproběhlo, první krok dne má být krátké ověření aktuálního tělesného a emočního stavu ${partGenitive(part)}. Teprve podle toho má tým rozhodnout, zda dnes udělat terapeutkou vedené Sezení, nízkoprahovou stabilizační Hernu, nebo jen bezpečný kontakt bez otevírání nového těžkého materiálu.`;
@@ -775,22 +912,27 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   const teamWorkCandidate = sanitizeKarelClinicalText(firstMeaningful(sess?.team_closing_text, sess?.team_acknowledgement, play?.recommendations_for_therapists));
   const teamWork = isTechnicalStatusText(teamWorkCandidate) ? "" : teamWorkCandidate;
   const evidenceKnown: string[] = [];
-  if (play) evidenceKnown.push(`${activePart} byl včera aktivní v Herně a pracoval se symboly bezpečí, světla, domova nebo ochrany.`);
-  if (sess?.held) evidenceKnown.push(`${sess.part_name || activePart} má doložené včerejší Sezení${sess.status ? ` se stavem ${sess.status}` : ""}.`);
-  if (openedPartialSession) evidenceKnown.push(`Včerejší Sezení s ${sess.part_name || activePart} bylo otevřené nebo částečně rozpracované a čeká na plné dovyhodnocení; neoznačuji ho jako neproběhlé.`);
+  const playNoYesterday = !play || play.is_yesterday !== true;
+  if (play) evidenceKnown.push(`${recencyIntro(play, "playroom")} ${activePart} v ní pracoval se symboly bezpečí, světla, domova nebo ochrany.`);
+  else evidenceKnown.push("Včera Herna neproběhla.");
+  if (sess?.held) evidenceKnown.push(`${recencyIntro(sess, "session")} ${sess.part_name || activePart} má doložený klinický vstup${sess.status ? ` se stavem ${sess.status}` : ""}.`);
+  if (openedPartialSession) evidenceKnown.push(`${recencyIntro(sess, "session")} Sezení s ${sess.part_name || activePart} bylo otevřené nebo částečně rozpracované a čeká na plné dovyhodnocení; neoznačuji ho jako neproběhlé.`);
   else if (sess?.exists && !sess?.held) evidenceKnown.push(`Plánované Sezení s ${sess.part_name || activePart} klinicky neproběhlo; z tohoto záznamu nevyvozujeme nové klinické poznatky.`);
-  if (!evidenceKnown.length) evidenceKnown.push("V dostupném payloadu zatím nevidím plné review včerejší Herny ani Sezení.");
+  if (!evidenceKnown.length) evidenceKnown.push("V dostupném payloadu zatím nevidím plné review Herny ani Sezení.");
 
   const greeting = "Dobré ráno, Haničko a Káťo.";
+  const playroomTruth = playNoYesterday
+    ? `${play?.not_yesterday_notice || "Včera Herna neproběhla."} ${play ? `Poslední doložená Herna s ${play.part_name || activePart} je z ${formatClinicalDate(play.session_date_iso)}, tedy ${play.human_recency_label}.` : "Dnes proto nenavazuji na nové herní review ze včerejška."}`
+    : `Včerejší Herna s ${play?.part_name || activePart} je skutečně z ${formatClinicalDate(play?.session_date_iso ?? null)}.`;
   const realityOpening = hasRealityCorrection
-    ? "Včerejší událost s Timmim/keporkakem vnímám jako silný emoční otisk v psychice kluků. Nechci ji dnes přehnaně vykládat, ale nechci ji ani ztratit. Potřebujeme jemně zjistit, co v nich po včerejšku zůstalo — vlastními slovy, tělem a reakcí kluků."
-    : "Dnes chci navázat na včerejší materiál klidně a bez tlaku. Nechci z něj dělat větší příběh, než jaký kluci sami unesou; potřebujeme nejdřív zjistit, kdo je přítomný, jak je na tom tělo a kde je dnes bezpečný práh.";
+    ? `${playroomTruth} Událost s Timmim/keporkakem vnímám jako silný emoční otisk v psychice kluků. Nechci ji přehnaně vykládat, ale nechci ji ani ztratit. Potřebujeme jemně zjistit, co v klucích zůstává — vlastními slovy, tělem a reakcí kluků.`
+    : `${playroomTruth} Dnes chci navazovat jen na přesně datovaný materiál klidně a bez tlaku. Nechci z něj dělat větší příběh, než jaký kluci sami unesou; potřebujeme nejdřív zjistit, kdo je přítomný, jak je na tom tělo a kde je dnes bezpečný práh.`;
   const frame = hasReview
-    ? `${realityOpening} ${openedPartialSession ? "Včerejší Sezení beru jako otevřené nebo částečně rozpracované; dnes ho nebudu uzavírat za kluky, dokud nemáme plné dovyhodnocení." : "Pokud se téma znovu objeví, budeme ho brát jako reálnou událost a živý prožitek, ne jako hotový klinický závěr."}`
+    ? `${realityOpening} ${openedPartialSession ? `${recencyIntro(sess, "session")} Beru ho jako otevřené nebo částečně rozpracované; dnes ho nebudu uzavírat za kluky, dokud nemáme plné dovyhodnocení.` : "Pokud se téma znovu objeví, budeme ho brát jako reálnou událost a živý prožitek, ne jako hotový klinický závěr."}`
     : `${realityOpening} Tam, kde data chybí, nebudu domýšlet příběh; raději navrhnu bezpečný ověřovací krok.`;
   const team_recognition = teamWork
-    ? `Včera bylo pro tým důležité toto: ${trimSentence(teamWork, 420)}`
-    : "Včera bylo důležité držet klidný rytmus a nepřetlačit materiál do rychlých odpovědí. Právě taková práce u kluků buduje bezpečí: ne přes výkon, ale přes opakovanou zkušenost, že dospělý zůstává a nespěchá.";
+    ? `V nedávné práci bylo pro tým důležité toto: ${trimSentence(teamWork, 420)}`
+    : "Důležité je držet klidný rytmus a nepřetlačit materiál do rychlých odpovědí. Právě taková práce u kluků buduje bezpečí: ne přes výkon, ale přes opakovanou zkušenost, že dospělý zůstává a nespěchá.";
   const executive_summary = [
     `Nejdůležitější pro dnešek jsou tři věci. Zaprvé, ${activePart} je aktuálně nejvýraznější doložená stopa.`,
     hasRealityCorrection
@@ -802,15 +944,15 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     ? `Z hlediska toho, kdo byl nejblíže u kormidla, máme nejjasnější evidenci u části ${activePart}. Neznamená to, že byla u kormidla celý den. Znamená to, že terapeuticky je dnes nejvýraznější částí, ke které se potřebujeme vztahovat. O ostatních částech zatím nemám dost nových dat na silné závěry.`
     : "Z hlediska toho, kdo byl u kormidla, nemám dost dat na jisté pojmenování. Budu tedy rozlišovat jen přítomné stopy a nebudu doplňovat části, které se samy v evidenci neukázaly.";
   const yesterday_new_information = newInfo
-    ? `Nové nebo nejpodstatnější z včerejška je toto: ${trimSentence(newInfo, 520).replace(/m[ůu][žz]e\s+pos[íi]lit\s+jeho\s+pocit\s+kontroly\s+a\s+d[ůu]v[eě]ry/i, "může být pracovně významné pro jeho pocit kontroly a důvěry, pokud se to dnes potvrdí")}`
-    : "Nové informace z včerejška jsou zatím omezené. To samo o sobě je klinicky důležité: dnešní krok má být ověřovací, ne interpretačně těžký.";
+    ? `Nové nebo nejpodstatnější z přesně datovaných nedávných podkladů je toto: ${trimSentence(newInfo, 520).replace(/m[ůu][žz]e\s+pos[íi]lit\s+jeho\s+pocit\s+kontroly\s+a\s+d[ůu]v[eě]ry/i, "může být pracovně významné pro jeho pocit kontroly a důvěry, pokud se to dnes potvrdí")}`
+    : "Nové informace jsou zatím omezené. To samo o sobě je klinicky důležité: dnešní krok má být ověřovací, ne interpretačně těžký.";
   const clinical_formulation = hasRealityCorrection
       ? `Moje pracovní formulace pro dnešek je opatrná: Timmi/keporkak je skutečná událost a může být emočně důležitá. Klinický význam ale smíme dát až tomu, co kluci sami řeknou, ukážou v těle nebo přinesou v chování.`
-    : `Moje pracovní formulace pro dnešek je opatrná: ${activePart} včera použil vlastní symbolický jazyk bezpečí. Zatím je bezpečnější chápat ho jako aktuální zdroj této části, ne jako definitivní charakteristiku ani společný jazyk všech kluků. Praktický cíl je pomoci pocit ochrany přenést zpět do přítomného těla, dne a vztahu s bezpečnými dospělými.`;
+    : `Moje pracovní formulace pro dnešek je opatrná: ${activePart} použil v přesně datované Herně vlastní symbolický jazyk bezpečí. Zatím je bezpečnější chápat ho jako zdroj této části z daného dne, ne jako definitivní charakteristiku ani společný jazyk všech kluků. Praktický cíl je pomoci pocit ochrany přenést zpět do přítomného těla, dne a vztahu s bezpečnými dospělými.`;
   const recommendations_for_hana = `Haničko, pokud dnes povedeš Sezení, budu ti pomáhat držet otázky krátké a bezpečné. Nepotřebujeme vysvětlování; potřebujeme vlastní slova, tělesnou reakci a jasné stop signály.`;
   const recommendations_for_katka = hasRealityCorrection
     ? `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: skutečná událost ani Hančino upřesnění samy o sobě ještě nevypovídají o klucích. Nepoužít je jako závěr dřív, než se ukáže jejich vlastní reakce.`
-    : `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: nepřenášet včerejší symboly automaticky na ostatní části a nepoužít je dřív, než se ukáže, že jsou dnes pro ${partGenitive(activePart)} stále bezpečné.`;
+    : `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: nepřenášet starší symboly automaticky na ostatní části a nepoužít je dřív, než se ukáže, že jsou dnes pro ${partGenitive(activePart)} stále bezpečné.`;
   const what_not_to_do_today = "Dnes bych se vyhnul třem věcem: netlačit do vysvětlování, neotevírat nové trauma téma bez stabilizačního rámce a nepředávat části příliš velkou odpovědnost otázkou typu „co chceš dělat?“. Bezpečnější je nabídnout dvě nebo tři malé možnosti.";
   const priority_of_the_day = buildDailyTherapeuticPriority(payload);
   const playroom_guidance = "Pokud se tým rozhodne pro Hernu, má být krátká, jemná a nízkoprahová. Nepůjde o výkon ani o výklad, ale o bezpečné zjištění, co dnes Tundrupek unese; Herna zůstává oddělená od terapeutkou vedeného Sezení a čeká na schválení terapeutkami.";
@@ -823,7 +965,7 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
       ? "Nevíme / čeká na ověření: co o té události kluci sami vědí, co cítí v těle, co potřebují a zda je bezpečné téma dnes otevírat."
       : "Nevíme / čeká na ověření: zda jde o stabilní zdroj dostupný i dnes, zda je bezpečné tento jazyk rozšiřovat k ostatním částem, a jaký je aktuální tělesný stav.",
   ].join("\n");
-  const team_closing_line = "Včerejší práce nám dává materiál. Dnes ho nemusíme zvětšovat; potřebujeme ho správně podržet a převést do jednoho bezpečného kroku.";
+  const team_closing_line = "Přesně datovaná nedávná práce nám dává materiál. Dnes ho nemusíme zvětšovat; potřebujeme ho správně podržet a převést do jednoho bezpečného kroku.";
   const opening_monologue_text = ensureKarelFirstPersonOpening([
     greeting,
     frame,
@@ -851,6 +993,20 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     opening_monologue_text,
     technical_note: "",
   };
+}
+
+function applyClinicalRecencyGuard(payload: any): any {
+  const walk = (value: any): any => {
+    if (typeof value === "string") return ensureVisibleClinicalText(enforceClinicalRecencyText(value, payload));
+    if (Array.isArray(value)) return value.map(walk);
+    if (value && typeof value === "object") {
+      const out: Record<string, any> = {};
+      for (const [k, v] of Object.entries(value)) out[k] = walk(v);
+      return out;
+    }
+    return value;
+  };
+  return walk(payload);
 }
 
 function applyOpeningMonologue(payload: any, context: any, candidates: SessionCandidate[]) {
@@ -1526,7 +1682,7 @@ DNEŠNÍ NAVRŽENÁ HERNA — POVINNÁ KAŽDÝ DEN:
 - Používej digitálně proveditelné aktivity: „nakresli strom a pošli mi ho sem“, „řekni hlasem jedno slovo“, „popiš vlastními slovy postavu ve fantazii“, symbolická hra, aktivní imaginace, slovní asociace, bezpečné projektivní mikro-úkoly.
 - Zahrň: část, téma, proč dnes, zdroje, cíle, therapeutic_program, child_safe_version, mikro-kroky, očekávané reakce, doporučené reakce Karla, rizika/stop signály a zakázané směry.
 - Dětsky bezpečná verze nesmí obsahovat slova jako diagnostika, klinicky významné, terapeutický plán, schvalování, analýza nebo model.
-- Výběr opři nejvíc o týdenní směr, včerejší aktivitu a reporty ze včerejší Herny/Sezení; středně o 2–3 dny a kartu části; měsíční směr jen strategicky.
+- Výběr opři nejvíc o týdenní směr, přesně datovanou nedávnou aktivitu a reporty z Herny/Sezení; středně o 2–3 dny a kartu části; měsíční směr jen strategicky. Nikdy neříkej „včerejší“, pokud datum zdroje není přesně today-1 v Europe/Prague.
 
 PROGRAM SEZENÍ — HRAVOST JE POVINNÁ:
 - agenda_outline NESMÍ být generická („úvod / práce s emocemi / uzávěr"). MUSÍ obsahovat alespoň 2 KONKRÉTNÍ nástroje z TERAPEUTICKÉHO ARZENÁLU (asociační test, Rorschach lite, aktivní imaginace, mandala, kresba dne, „co kdyby", 3 dveře, atd.).
@@ -1653,19 +1809,23 @@ ${yPlans.length > 0 ? `Plány ze včerejška:\n${yPlans.map((p: any) => `- ${p.s
 
   const yPlayroom = buildYesterdayPlayroomReview(context);
   const yesterdayPlayroomSection = yPlayroom?.exists
-    ? `═══ VČEREJŠÍ HERNA (${context.yesterday}) — AUTORITATIVNÍ VSTUP PRO proposed_playroom ═══
+    ? `═══ ${yPlayroom.visible_label?.toUpperCase?.() ?? "POSLEDNÍ HERNA"} (${yPlayroom.session_date_iso ?? "datum neznámé"}, ${yPlayroom.human_recency_label}) — AUTORITATIVNÍ VSTUP PRO proposed_playroom ═══
+Kalendářní pravda: ${recencyIntro(yPlayroom, "playroom")}
 Stav: ${yPlayroom.status || "?"} | Část: ${yPlayroom.part_name || "?"} | review_id: ${yPlayroom.review_id || "zatím není"}
 
-VČEREJŠÍ HERNA — PRAKTICKÝ REPORT:
+PRAKTICKÝ REPORT:
 ${cleanBlockText(yPlayroom.practical_report_text || yPlayroom.fallback_reason || "Herna existuje, ale review zatím čeká.").slice(0, 1800)}
 
-VČEREJŠÍ HERNA — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ:
+DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ:
 ${cleanBlockText(yPlayroom.recommendations_for_next_playroom || yPlayroom.recommendations_for_therapists || yPlayroom.recommendations_for_next_session || "Navrhni bezpečně navazující nízkoprahovou Hernu a označ omezení evidence.").slice(0, 1800)}
 
-POVINNÉ: proposed_playroom musí tento vstup použít jako evidence source a runtime seed.
+POVINNÉ: proposed_playroom musí tento vstup použít jako evidence source a runtime seed. Pokud is_yesterday=false, NESMÍŠ napsat „včerejší Herna“, „ze včerejší Herny“ ani „navázat na včerejší Hernu“.
 
 `
-    : "";
+    : `═══ HERNA ZA VČEREJŠEK ═══
+Včera Herna neproběhla. Pokud existuje starší Herna, smíš ji označit jen jako poslední/přesně datovanou, ne jako včerejší.
+
+`;
 
 
   const userPrompt = `KONTEXT PRO BRIEFING (${context.today}):
@@ -2008,7 +2168,12 @@ Deno.serve(async (req) => {
     injectSessionReviewIntoProposals(payload);
     injectBriefingAskResolutionsIntoProposals(payload, context);
     injectOperationalContextIntoProposals(payload, context);
+    payload.recent_playroom_review = payload.yesterday_playroom_review;
+    payload.recent_session_review = payload.yesterday_session_review;
     payload = applyOpeningMonologue(payload, context, candidates);
+    payload.recent_playroom_review = payload.yesterday_playroom_review;
+    payload.recent_session_review = payload.yesterday_session_review;
+    payload = applyClinicalRecencyGuard(payload);
 
     // 3b) ── ASK ITEM IDENTITY ──
     // AI vrací ask_hanka/ask_kata jako string[]. Server přidá stabilní `id` na
