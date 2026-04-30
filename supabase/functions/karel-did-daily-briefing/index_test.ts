@@ -61,3 +61,37 @@ Deno.test("clinical recency resolver labels older sessions correctly and never a
   assertStringIncludes(source, "recent_session_review");
   assertStringIncludes(source, "Europe/Prague");
 });
+Deno.test("opening monologue NEVER contains 'Včera Herna/Sezení neproběhla' — that belongs to dedicated section + evidence_limits only", () => {
+  const source = Deno.readTextFileSync(new URL("./index.ts", import.meta.url));
+  const openingBlock = source.slice(
+    source.indexOf("function buildOpeningMonologue"),
+    source.indexOf("function applyClinicalRecencyGuard"),
+  );
+  // The realityOpening / frame composition must NOT inject the not-held notice
+  // into the opening monologue. The variable `playroomTruth` was the source of
+  // the bug and must be gone from the opening section.
+  assertEquals(
+    openingBlock.includes("playroomTruth"),
+    false,
+    "playroomTruth (which used to inject 'Včera Herna neproběhla' into the opening) must not exist in buildOpeningMonologue",
+  );
+  // realityOpening must not interpolate any "Včera Herna/Sezení neproběhla" template.
+  assertEquals(
+    /realityOpening\s*=\s*[^;]*V[čc]era\s+(?:Herna|Sezen[íi])\s+neprob[eě]hl/iu.test(openingBlock),
+    false,
+    "realityOpening must not contain a hardcoded 'Včera Herna/Sezení neproběhla' template",
+  );
+});
+
+Deno.test("ensureKarelFirstPersonOpening strips not-held notice as defense-in-depth", () => {
+  const source = Deno.readTextFileSync(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(source, "stripNotHeldNoticeFromOpeningText");
+  assertStringIncludes(source, "NOT_HELD_SENTENCE_RE");
+});
+
+Deno.test("evidence_limits block (auditable) MAY still contain the not-held notice", () => {
+  const source = Deno.readTextFileSync(new URL("./index.ts", import.meta.url));
+  // Sanity: the auditable evidenceKnown push for "Včera Herna neproběhla."
+  // must remain — that's its correct home.
+  assertStringIncludes(source, 'evidenceKnown.push("Včera Herna neproběhla.")');
+});
