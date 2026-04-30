@@ -2266,14 +2266,21 @@ Deno.serve(async (req) => {
     }
     let scopedUserId = !isServiceCall && !isCronSecretCall ? authenticatedUserId : null;
     if (isServiceCall || isCronSecretCall) {
-      const { data: activeCycleUser } = await supabase.from("did_update_cycles")
-        .select("user_id")
-        .not("user_id", "is", null)
-        .neq("user_id", ZERO_UUID)
-        .order("started_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (activeCycleUser?.user_id) scopedUserId = activeCycleUser.user_id;
+      // Service/cron callers (e.g. SLA watchdog) MAY pass body.userId to scope the briefing
+      // explicitly. Honor it first; only fall back to discovery when not provided.
+      if (body?.userId && typeof body.userId === "string") {
+        scopedUserId = String(body.userId);
+      }
+      if (!scopedUserId) {
+        const { data: activeCycleUser } = await supabase.from("did_update_cycles")
+          .select("user_id")
+          .not("user_id", "is", null)
+          .neq("user_id", ZERO_UUID)
+          .order("started_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (activeCycleUser?.user_id) scopedUserId = activeCycleUser.user_id;
+      }
       if (!scopedUserId) {
         const { data: anyThread } = await supabase.from("did_threads")
           .select("user_id")
