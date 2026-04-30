@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import { forwardRef, useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { CheckCircle2, Circle, ChevronDown, ChevronRight, ListChecks, Sparkles, Mic, Camera, FlagOff, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,7 +48,7 @@ interface Props {
   onBlockArtifactsChange?: (blockIndex: number, artifacts: BlockArtifact[]) => void;
 }
 
-const LiveProgramChecklist = ({
+const LiveProgramChecklist = forwardRef<HTMLDivElement, Props>(({
   planMarkdown,
   storageKey,
   partName = "Tundrupek",
@@ -60,7 +60,7 @@ const LiveProgramChecklist = ({
   onRequestArtefact,
   onBlockTurnsChange,
   onBlockArtifactsChange,
-}: Props) => {
+}, ref) => {
   const parsed = useMemo(() => parseProgramBullets(planMarkdown), [planMarkdown]);
 
   // FAILURE STATE PRINCIP: prázdný parsed != akceptovatelný fallback.
@@ -375,7 +375,7 @@ const LiveProgramChecklist = ({
   }, [doneCount, finalized, finalizing, items, persistProgress, sessionId, storageKey]);
 
   return (
-    <div className="rounded-md border border-primary/25 bg-primary/5">
+    <div ref={ref} className="rounded-md border border-primary/25 bg-primary/5">
       <div className="px-3 py-2 border-b border-primary/15 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <ListChecks className="w-3.5 h-3.5 text-primary shrink-0" />
@@ -556,6 +556,8 @@ const LiveProgramChecklist = ({
       </div>
     </div>
   );
-};
+});
+
+LiveProgramChecklist.displayName = "LiveProgramChecklist";
 
 export default LiveProgramChecklist;
