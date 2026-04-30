@@ -241,8 +241,6 @@ describe("DidDailyBriefingPanel visible clinical text helpers", () => {
     expect(out).not.toMatch(/P[řr]edev[čc]erej[šs][íi]\s+Sezen[íi]\s+prob[eě]hlo\s+\d/i);
     expect(out).toContain("Dnes ověřujeme stav");
   });
-});
-
 
   it("frontend revalidates stale cached session recency and exposes the old-briefing banner text", () => {
     const recency = revalidateRecencyForViewer({
