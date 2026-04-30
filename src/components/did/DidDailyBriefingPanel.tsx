@@ -1286,7 +1286,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
   const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
   const legacyTechnicalGreeting = /těžk[áa]\s+syntéza|fallback|bezpečn[ýy]\s+režim/i.test(p.greeting || "");
-  const openingMonologueText = cleanVisibleClinicalText(p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnes držme hlavně klinickou návaznost, opatrnost v závěrech a jeden bezpečný další krok pro kluky. Budu rozlišovat, co víme jistě, co je pracovní hypotéza a co ještě čeká na ověření." : p.greeting) || "");
+  const openingMonologueText = ensureKarelOpeningVoice(p.opening_monologue_text || p.opening_monologue?.opening_monologue_text || (legacyTechnicalGreeting ? "Dobré ráno, Haničko a Káťo. Dnes držme hlavně klinickou návaznost, opatrnost v závěrech a jeden bezpečný další krok pro kluky. Budu rozlišovat, co víme jistě, co je pracovní hypotéza a co ještě čeká na ověření." : p.greeting) || "");
   const technicalNote = (p.technical_note || p.opening_monologue?.technical_note || "").trim();
   const visibleRealityContext = realityContextText(p);
   const sessionContextSummary = backendContextSummary(p.proposed_session?.backend_context_inputs);
