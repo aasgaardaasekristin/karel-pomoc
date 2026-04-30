@@ -22,6 +22,7 @@ import { useImageUpload } from "@/hooks/useImageUpload";
 import { Progress } from "@/components/ui/progress";
 import { finalizeDidSessionWithJob } from "@/lib/karelFinalizeJobs";
 import { LIVE_REALITY_OVERRIDE_RE } from "@/lib/liveRealityOverrideGuards";
+import { parseProgramBullets } from "@/lib/liveProgramParser";
 
 import DidPostSessionInterrogation, { type InterrogationAnswer } from "./DidPostSessionInterrogation";
 import LiveProgramChecklist from "./LiveProgramChecklist";
@@ -75,37 +76,6 @@ const formatDuration = (seconds: number) => {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
-};
-
-// Lokální parser bodů programu — kopírujeme stejnou logiku jako v LiveProgramChecklist,
-// abychom v hlavním panelu mohli nabídnout dropdown „Připojit k bodu" bez lift-upu state.
-const parseProgramBulletsLocal = (md: string): string[] => {
-  if (!md) return [];
-  const lines = md.split(/\r?\n/);
-  const bullets: string[] = [];
-  let inSection = false;
-  let started = false;
-  const sectionRe = /^#{1,6}\s+program\s+sezení\s*$/i;
-  const bulletRe = /^\s*(?:[-*•]|\d+[.)])\s+(.+)$/;
-  for (const raw of lines) {
-    const line = raw.replace(/\u00A0/g, " ").trimEnd();
-    if (sectionRe.test(line)) { inSection = true; started = false; continue; }
-    if (inSection && /^#{1,6}\s+/.test(line) && !sectionRe.test(line)) break;
-    if (!inSection) continue;
-    const m = bulletRe.exec(line);
-    if (m) {
-      const t = m[1].replace(/\*\*/g, "").replace(/__/g, "").replace(/\s+/g, " ").trim();
-      if (t.length >= 6) { bullets.push(t); started = true; }
-      continue;
-    }
-    if (bullets.length > 0 && /^\s{2,}\S/.test(raw)) {
-      bullets[bullets.length - 1] = `${bullets[bullets.length - 1]} — ${line.trim()}`;
-      continue;
-    }
-    if (line === "") { if (started) break; continue; }
-    if (started) break;
-  }
-  return bullets.slice(0, 12);
 };
 
 interface DidLiveSessionPanelProps {
@@ -404,7 +374,7 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
   const CONTENT_REQUEST_RE = /(napiš|dej|navrhni|vygeneruj|řekni|vyrob)\s+(mi\s+)?(ty\s+)?(slova|asociace|otázky|otazky|nápady|napady|barvy|instrukci|seznam)/i;
 
   // ── Volba bodu programu, ke kterému se další zpráva připojí (dropdown vedle textarey) ──
-  const programBlocks = useMemo(() => parseProgramBulletsLocal(contextBrief ?? ""), [contextBrief]);
+  const programBlocks = useMemo(() => parseProgramBullets(contextBrief ?? ""), [contextBrief]);
   const [attachToBlockIdx, setAttachToBlockIdx] = useState<number | null>(null);
 
   // ── Pomocná funkce: přidá zápis do localStorage diagnostického logu daného bodu ──
