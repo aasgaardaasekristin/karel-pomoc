@@ -3234,6 +3234,51 @@ Deno.serve(async (req) => {
       console.warn("[briefing] freshness audit failed (non-fatal):", e);
     }
 
+    // ── VISIBLE TEXT QUALITY GATE (clinical human prose, no audit/pipeline language) ──
+    try {
+      const currentOpening = String(payload?.opening_monologue_text ?? "");
+      const before = validateVisibleClinicalBriefingText(currentOpening);
+      if (!before.ok) {
+        const repaired = fixKnownPartGrammar(buildHumanClinicalRepairOpening(payload, context));
+        const after = validateVisibleClinicalBriefingText(repaired);
+        payload.opening_monologue_text = repaired;
+        payload.visible_text_quality_audit = {
+          ok: after.ok,
+          violations_before_repair: before.violations,
+          violations_after_repair: after.violations,
+          forbidden_terms_count_before_repair: before.forbidden_terms_count,
+          forbidden_terms_count_after_repair: after.forbidden_terms_count,
+          low_value_implication_count: after.low_value_implication_count,
+          duplicate_sentence_count: after.duplicate_sentence_count,
+          known_part_grammar_violations: after.known_part_grammar_violations,
+          has_concrete_clinical_fact: after.has_concrete_clinical_fact,
+          has_practical_next_step: after.has_practical_next_step,
+          repair_strategy: "human_clinical_rewrite",
+          repair_applied: true,
+          checked_at: new Date().toISOString(),
+        };
+        console.warn(`[briefing] visible-text gate: repaired (forbidden_before=${before.forbidden_terms_count}, after=${after.forbidden_terms_count}, low_value=${before.low_value_implication_count})`);
+      } else {
+        payload.visible_text_quality_audit = {
+          ok: true,
+          violations_before_repair: [],
+          violations_after_repair: [],
+          forbidden_terms_count_before_repair: 0,
+          forbidden_terms_count_after_repair: 0,
+          low_value_implication_count: before.low_value_implication_count,
+          duplicate_sentence_count: before.duplicate_sentence_count,
+          known_part_grammar_violations: before.known_part_grammar_violations,
+          has_concrete_clinical_fact: before.has_concrete_clinical_fact,
+          has_practical_next_step: before.has_practical_next_step,
+          repair_strategy: "primary_builder",
+          repair_applied: false,
+          checked_at: new Date().toISOString(),
+        };
+      }
+    } catch (e) {
+      console.warn("[briefing] visible-text quality gate failed (non-fatal):", e);
+    }
+
     // generation_runtime_audit — strict audit of real edge runtime
     const generationCompletedAt = Date.now();
     payload.generation_runtime_audit = {
