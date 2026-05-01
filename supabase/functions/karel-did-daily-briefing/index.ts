@@ -2555,6 +2555,7 @@ Deno.serve(async (req) => {
     // 3) AI generování; playroom review payload musí vzniknout deterministicky i při selhání těžké syntézy.
     let durationMs = 0;
     let rawPayload: any;
+    const generationStartedAt = Date.now();
     try {
       const playroomSafeDefault = body?.fullAi !== true && buildYesterdayPlayroomReview(context)?.exists === true;
       const generated = body?.skipAi === true || body?.playroomSafeOnly === true || playroomSafeDefault
@@ -2565,7 +2566,7 @@ Deno.serve(async (req) => {
     } catch (e: any) {
       console.error("[briefing] AI generation failed; using deterministic playroom-safe fallback", e);
       rawPayload = buildDeterministicBriefingPayload(context, candidates);
-      durationMs = 0;
+      durationMs = Math.max(1, Date.now() - generationStartedAt);
       rawPayload.generation_warning = String(e?.message ?? e).slice(0, 500);
     }
     let payload = enrichYesterdaySessionReview(rawPayload, context);

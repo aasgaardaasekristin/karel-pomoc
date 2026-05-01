@@ -6363,6 +6363,10 @@ export type Database = {
         }
         Returns: string
       }
+      invoke_briefing_watchdog_acceptance_rebuild: {
+        Args: { p_reason?: string; p_user_id: string }
+        Returns: number
+      }
       sync_and_start_approved_daily_plan: {
         Args: { p_deliberation_id: string; p_user_id: string }
         Returns: Json
