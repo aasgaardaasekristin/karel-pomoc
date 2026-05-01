@@ -98,4 +98,69 @@ describe("deliberationRoomUiHelpers", () => {
     expect(getPlanChangeLabel(deliberation)).toContain("vráceno k úpravě");
     expect(getPlanChangeLabel(deliberation)).not.toContain("beze změny");
   });
+
+  describe("Herna visible-text guard", () => {
+    const legacyBrief = [
+      "🎲 **Plán dnešní herny s Tundrupek**",
+      "",
+      "Otevírám poradu ke schválení samostatného programu Herny. Herna je Karel-led práce s částí; nepoužije se plán terapeutického sezení ani first_draft.",
+    ].join("\n");
+
+    it("sanitizes legacy Karel-led / first_draft phrasing into clinical Czech", () => {
+      const cleaned = sanitizeHernaVisibleText(legacyBrief);
+      expect(cleaned).not.toMatch(/Karel-led/i);
+      expect(cleaned).not.toMatch(/first_draft/i);
+      expect(cleaned).toContain("vedená Karlem");
+      expect(cleaned).toContain("pracovní návrh");
+    });
+
+    it("forbidden term scan returns 0 after sanitization", () => {
+      const cleaned = sanitizeHernaVisibleText(legacyBrief);
+      expect(countHernaForbiddenTerms(cleaned)).toBe(0);
+    });
+
+    it("forbidden term scan flags raw legacy text", () => {
+      expect(countHernaForbiddenTerms(legacyBrief)).toBeGreaterThan(0);
+    });
+
+    it("required clinical phrases compose correctly for Herna replan UI", () => {
+      const replanDeliberation = baseDeliberation({
+        deliberation_type: "playroom" as TeamDeliberation["deliberation_type"],
+        status: "in_revision",
+        session_params: {
+          session_actor: "karel_direct",
+          external_current_event_replan: { active: true, event_label: "Timmy" },
+        },
+      });
+      const composed = [
+        getLiveProgramTitle(replanDeliberation),
+        getPlanChangeLabel(replanDeliberation),
+        "Herna je práce vedená Karlem po schválení terapeutkami.",
+        "Herna má vlastní schválený herní program.",
+      ].join(" | ");
+
+      expect(composed).toContain("Živý program Herny");
+      expect(composed).toContain("čeká na nové schválení");
+      expect(composed).toContain("Herna je práce vedená Karlem po schválení terapeutkami");
+      expect(composed).toContain("Herna má vlastní schválený herní program");
+      expect(countHernaForbiddenTerms(composed)).toBe(0);
+    });
+
+    it("forbidden term list covers required entries", () => {
+      for (const term of [
+        "first_draft",
+        "Karel-led",
+        "program_draft",
+        "session_params",
+        "backend",
+        "Pantry",
+        "karel_pantry_b_entries",
+        "Živý program sezení",
+        "Změna plánu: beze změny",
+        "Vyžaduje terapeutku: Ne",
+      ]) {
+        expect(HERNA_VISIBLE_FORBIDDEN_TERMS).toContain(term as never);
+      }
+    });
+  });
 });
