@@ -1076,10 +1076,157 @@ const capitalizePartName = (name: unknown): string => {
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 };
 
-const partInstrumental = (name: unknown): string => /^gust[íi]k$/i.test(String(name ?? "").trim()) ? "Gustíkem" : String(name ?? "částí").trim();
+type PartForms = { nominative: string; instrumental: string; accusative: string; dative: string; genitive: string };
+const PART_FORMS: Record<string, PartForms> = {
+  gustik: { nominative: "Gustík", instrumental: "Gustíkem", accusative: "Gustíka", dative: "Gustíkovi", genitive: "Gustíka" },
+  tundrupek: { nominative: "Tundrupek", instrumental: "Tundrupkem", accusative: "Tundrupka", dative: "Tundrupkovi", genitive: "Tundrupka" },
+  timmi: { nominative: "Timmi", instrumental: "Timmim", accusative: "Timmiho", dative: "Timmimu", genitive: "Timmiho" },
+};
+const partFormKey = (name: unknown): string => String(name ?? "").trim().toLowerCase().replace(/[íi]/g, "i").replace(/[éě]/g, "e");
+export const partForms = (name: unknown): PartForms | null => {
+  const key = partFormKey(name);
+  return PART_FORMS[key] ?? null;
+};
+const partInstrumental = (name: unknown): string => partForms(name)?.instrumental ?? (String(name ?? "").trim() || "částí");
+const partAccusative = (name: unknown): string => partForms(name)?.accusative ?? (String(name ?? "").trim() || "část");
+const partGenitive = (name: string): string => partForms(name)?.genitive ?? name;
+const partDative = (name: string): string => partForms(name)?.dative ?? name;
 
-const partGenitive = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupka" : name;
-const partDative = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupkovi" : name;
+/**
+ * Fixes Czech grammar for known parts in visible prose.
+ * E.g. "navázat na Gustík" → "navázat na Gustíka"; "s gustik" → "s Gustíkem".
+ */
+export function fixKnownPartGrammar(text: string): string {
+  if (!text) return "";
+  let out = text;
+  for (const key of Object.keys(PART_FORMS)) {
+    const f = PART_FORMS[key];
+    const namePat = new RegExp(`\\b${key}\\b`, "gi");
+    // Accusative after na/pro/o
+    out = out.replace(new RegExp(`\\b(na|pro|o|v)\\s+${key}\\b`, "gi"), (_m, prep) => `${prep} ${f.accusative}`);
+    // Instrumental after s/se/za/před/nad/pod
+    out = out.replace(new RegExp(`\\b(s|se|za|před|nad|pod)\\s+${key}\\b`, "gi"), (_m, prep) => `${prep} ${f.instrumental}`);
+    // Dative after k/ke
+    out = out.replace(new RegExp(`\\b(k|ke)\\s+${key}\\b`, "gi"), (_m, prep) => `${prep} ${f.dative}`);
+    // Genitive after od/u/do/bez
+    out = out.replace(new RegExp(`\\b(od|u|do|bez)\\s+${key}\\b`, "gi"), (_m, prep) => `${prep} ${f.genitive}`);
+    // Bare lowercase nominative → capitalize
+    out = out.replace(namePat, f.nominative);
+  }
+  return out;
+}
+
+/**
+ * Forbidden audit/pipeline vocabulary that must never appear in the visible
+ * Karel morning briefing prose. Source coverage, ingestion, raw/DID privacy
+ * status, follow-up planning instructions etc. belong to the audit panel only.
+ */
+const FORBIDDEN_VISIBLE_AUDIT_TERMS: RegExp[] = [
+  /DID-relevantn[íi]/i,
+  /raw\s+osobn[íi]\s+obsah/i,
+  /\braw\b/i,
+  /\bsource\b/i,
+  /source\s*coverage/i,
+  /source_coverage/i,
+  /event_ingestion/i,
+  /\bingestion\b/i,
+  /\bPantry\b/i,
+  /Pantry\s*B/i,
+  /karel\s+hana\s+conversations/i,
+  /live\s+session\s+progress/i,
+  /therapist\s+tasks/i,
+  /briefing_ask_resolutions?/i,
+  /review\s*\/\s*pr[ůu]b[eě]hov[éeé]\s+evidence/i,
+  /\bpayload\b/i,
+  /\bbackend\b/i,
+  /\bpipeline\b/i,
+  /follow[\s-]*up(?:u|em)?/i,
+  /used_in_briefing/i,
+  /reason_if_not_used/i,
+  /source_ref/i,
+  /source_kind/i,
+  /processed\s+implication/i,
+  /zpracovan[éeé]\s+DID-relevantn[íi]\s+implikace/i,
+  /stopa\s+v\s+datech/i,
+  /\bdata\s+ř[íi]kaj[íi]\b/i,
+  /Dnes\s+m[áa]m\s+nov[éeé]\s+podklady\s+z\s+t[ěe]chto\s+zdroj[ůu]/i,
+  /Souhrn\s+zdroj[ůu]\s+potvrzuje/i,
+  /Zohlednit\s+v\s+nejbli[žz][šs][íi]m\s+pl[áa]nov[áa]n[íi]/i,
+  /Co\s+je\s+jen\s+stopa\s+v\s+datech/i,
+  /Z\s+pracovn[íi]ch\s+implikac[íi]/i,
+  /Co\s+je\s+nov[éeé]\s+od\s+posledn[íi]ho\s+p[řr]ehledu/i,
+];
+
+/** Low-value implication sentences that are pure scheduling boilerplate. */
+function isLowValueImplication(text: string): boolean {
+  const t = String(text ?? "").trim();
+  if (t.length < 20) return true;
+  return /zohlednit\s+v\s+nejbli[žz][šs][íi]m\s+pl[áa]nov[áa]n[íi]|follow[\s-]*up(?:u|em)?|\bbriefingu\b/i.test(t);
+}
+
+function splitSentences(text: string): string[] {
+  return String(text ?? "")
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function dedupeSentences(text: string): { text: string; duplicateCount: number } {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  let dup = 0;
+  for (const s of splitSentences(text)) {
+    const key = s.toLowerCase().replace(/\s+/g, " ").replace(/[.!?,;:]+$/g, "");
+    if (seen.has(key)) { dup++; continue; }
+    seen.add(key);
+    out.push(s);
+  }
+  return { text: out.join(" "), duplicateCount: dup };
+}
+
+export interface VisibleClinicalAudit {
+  ok: boolean;
+  violations: string[];
+  forbidden_terms_count: number;
+  low_value_implication_count: number;
+  duplicate_sentence_count: number;
+  known_part_grammar_violations: number;
+  has_concrete_clinical_fact: boolean;
+  has_practical_next_step: boolean;
+}
+
+const KNOWN_PART_BARE_NOMINATIVE_RE = /\b(na|pro|o|v|s|se|za|p[řr]ed|nad|pod|k|ke|od|u|do|bez)\s+(gustik|tundrupek|timmi)\b/i;
+
+export function validateVisibleClinicalBriefingText(opening: string): VisibleClinicalAudit {
+  const text = String(opening ?? "");
+  const violations: string[] = [];
+  let forbidden = 0;
+  for (const re of FORBIDDEN_VISIBLE_AUDIT_TERMS) {
+    const m = text.match(re);
+    if (m) { forbidden++; violations.push(`forbidden:${m[0]}`); }
+  }
+  const sentences = splitSentences(text);
+  let lowValue = 0;
+  for (const s of sentences) if (isLowValueImplication(s)) { lowValue++; violations.push(`low_value:${s.slice(0, 60)}`); }
+  const { duplicateCount } = dedupeSentences(text);
+  if (duplicateCount > 0) violations.push(`duplicate_sentences:${duplicateCount}`);
+  const grammar = (text.match(new RegExp(KNOWN_PART_BARE_NOMINATIVE_RE.source, "gi")) ?? []).length;
+  if (grammar > 0) violations.push(`grammar:${grammar}`);
+  const hasConcreteFact = /(Gust[íi]k|Tundrupek|Timmi|\d{1,2}\.\s*\d{1,2}\.\s*\d{4}|včerejší|předevčírem)/i.test(text);
+  const hasNextStep = /(prvn[íi]\s+krok|t[ěe]lo|emoci|bezpe[čc][íi]|stabilizac|nezačínat|ověřit|krátk[ýyé])/i.test(text);
+  if (!hasConcreteFact) violations.push("missing_concrete_clinical_fact");
+  if (!hasNextStep) violations.push("missing_practical_next_step");
+  return {
+    ok: forbidden === 0 && lowValue === 0 && duplicateCount === 0 && grammar === 0 && hasConcreteFact && hasNextStep,
+    violations,
+    forbidden_terms_count: forbidden,
+    low_value_implication_count: lowValue,
+    duplicate_sentence_count: duplicateCount,
+    known_part_grammar_violations: grammar,
+    has_concrete_clinical_fact: hasConcreteFact,
+    has_practical_next_step: hasNextStep,
+  };
+}
 
 const FORBIDDEN_VISIBLE_DEBUG_LANGUAGE_RE = /(pending_review|evidence_limited|child evidence|evidence discipline|therapist_factual_correction|external_fact|real-world context|real-world kontext|operational context|operační kontext|briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log|faktick[áa]\s+korekce\s+reality|Dnešní přehled drží|Karel je jen navigátor|Karel je zapisovatel|Karel nesmí|Karel může|Karel je\b|Karel bude|Sezení nesmí|Herna může běžet)/i;
 const FORBIDDEN_OPENING_META_RE = /(Dnešní přehled drží|Karel je jen navigátor|Karel je zapisovatel|Karel nesmí|Karel může|Karel je\b|Karel bude|Sezení nesmí|Herna může běžet|ne jako symbol ani projekci|not child evidence)/i;
