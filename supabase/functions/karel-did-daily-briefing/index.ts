@@ -1331,7 +1331,10 @@ function applyOpeningMonologue(payload: any, context: any, candidates: SessionCa
     for (const key of ["practical_report_text", "detailed_analysis_text", "implications_for_part", "implications_for_system", "recommendations_for_therapists", "recommendations_for_next_playroom", "recommendations_for_next_session"]) {
       payload.yesterday_playroom_review[key] = sanitizeKarelClinicalText(payload.yesterday_playroom_review[key]);
     }
-    payload.yesterday_playroom_review.spiritual_symbolics_safety_frame = "Duchovní symbolika se v této Herně objevila jako zdroj bezpečí a úlevy. Je důležité ji respektovat, nepřerámovat ji příliš racionálně a nebrat ji části. Zároveň ji nesmíme nekriticky posilovat směrem k odpojení od reality nebo k představě, že bezpečí existuje jen mimo současný život. Praktický cíl je pomoci Tundrupkovi přenést pocit ochrany zpět do přítomného těla, dne a vztahu s bezpečnými dospělými.";
+    {
+      const _spiritPart = String(payload.yesterday_playroom_review?.part_name || "této části").trim() || "této části";
+      payload.yesterday_playroom_review.spiritual_symbolics_safety_frame = `Duchovní symbolika se v této Herně objevila jako zdroj bezpečí a úlevy. Je důležité ji respektovat, nepřerámovat ji příliš racionálně a nebrat ji části. Zároveň ji nesmíme nekriticky posilovat směrem k odpojení od reality nebo k představě, že bezpečí existuje jen mimo současný život. Praktický cíl je pomoci ${partGenitive(_spiritPart)} přenést pocit ochrany zpět do přítomného těla, dne a vztahu s bezpečnými dospělými.`;
+    }
   }
   const opening = buildOpeningMonologue(payload, context, candidates);
   return {
