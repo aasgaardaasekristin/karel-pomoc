@@ -530,30 +530,49 @@ export async function runExternalCurrentEventReplan(
     }
   }
 
-  // ── 5.5 Force-rebuild Karlův přehled via SLA watchdog ──────────────────
+  // ── 5.5 Force-rebuild Karlův přehled via SLA watchdog (with retry+RPC fallback)
   let briefingForced = false;
-  try {
-    const watchdogUrl = `${supabaseUrl}/functions/v1/karel-did-briefing-sla-watchdog`;
-    const resp = await fetch(watchdogUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${serviceKey}`,
-      },
-      body: JSON.stringify({
-        userId,
-        force_rebuild: true,
-        reason: "external_current_event_update_in_deliberation",
-        method: "sla_watchdog_repair",
-        fullAi: true,
-      }),
-    });
-    briefingForced = resp.ok;
-    if (!resp.ok) {
-      console.warn("[external-event-replan] watchdog force_rebuild non-ok:", resp.status, await resp.text().catch(() => ""));
+  const watchdogUrl = `${supabaseUrl}/functions/v1/karel-did-briefing-sla-watchdog`;
+  for (let attempt = 0; attempt < 3 && !briefingForced; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 400 * attempt));
+    try {
+      const resp = await fetch(watchdogUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({
+          userId,
+          force_rebuild: true,
+          reason: "external_current_event_update_in_deliberation",
+          method: "sla_watchdog_repair",
+          fullAi: true,
+        }),
+      });
+      if (resp.ok) {
+        briefingForced = true;
+        break;
+      }
+      const body = await resp.text().catch(() => "");
+      console.warn(`[external-event-replan] watchdog attempt ${attempt + 1} non-ok: ${resp.status} ${body.slice(0, 200)}`);
+    } catch (e) {
+      console.warn(`[external-event-replan] watchdog attempt ${attempt + 1} fetch failed:`, (e as Error)?.message);
     }
-  } catch (e) {
-    console.warn("[external-event-replan] watchdog fetch failed:", (e as Error)?.message);
+  }
+  // Fallback: pgnet-based RPC (queues HTTP via vault secret) so morning
+  // SLA polling still picks it up even if direct invoke is throttled.
+  if (!briefingForced) {
+    try {
+      const { error: rpcErr } = await admin.rpc("invoke_briefing_watchdog_acceptance_rebuild", {
+        p_user_id: userId,
+        p_reason: "external_current_event_update_in_deliberation",
+      });
+      if (!rpcErr) briefingForced = true;
+      else console.warn("[external-event-replan] RPC fallback failed:", rpcErr.message);
+    } catch (e) {
+      console.warn("[external-event-replan] RPC fallback exception:", (e as Error)?.message);
+    }
   }
 
   // ── 5.6 Build truthful inline comment ──────────────────────────────────
