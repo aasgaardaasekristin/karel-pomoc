@@ -681,9 +681,21 @@ export async function runExternalCurrentEventReplan(
     }
   }
 
-  // ── 5.5 Force-rebuild Karlův přehled: watchdog first, direct briefing fallback.
-  // briefing_force_rebuild_invoked=true only when a real successful HTTP path exists.
-  const briefingForced = await forceBriefingRebuild({ admin, userId, supabaseUrl, serviceKey });
+  // ── 5.5 Force-rebuild Karlův přehled: defer to background so the
+  // edge function returns to the client immediately (no `context canceled`).
+  // We use EdgeRuntime.waitUntil where available; fall back to a fire-and-forget
+  // promise. Either way, we do NOT await the watchdog HTTP loop here.
+  const briefingPromise = forceBriefingRebuild({ admin, userId, supabaseUrl, serviceKey })
+    .catch((e) => {
+      console.warn("[external-event-replan] deferred briefing rebuild failed:", (e as Error)?.message);
+      return false;
+    });
+  try {
+    const er = (globalThis as any).EdgeRuntime;
+    if (er && typeof er.waitUntil === "function") {
+      er.waitUntil(briefingPromise);
+    }
+  } catch (_e) { /* ignore */ }
 
   // ── 5.6 Build truthful inline comment ──────────────────────────────────
   const inlineComment = buildTruthfulKarelInlineComment({
@@ -707,8 +719,10 @@ export async function runExternalCurrentEventReplan(
     tasks_created: tasksCreated,
     pantry_b_entry_id: pantryEntryId,
     event_log_id: eventLogId,
-    briefing_force_rebuild_invoked: briefingForced,
+    briefing_force_rebuild_invoked: false, // deferred — will run in background
+    briefing_force_rebuild_queued_or_done: true,
     karel_inline_comment: safeComment,
     web_verification_state: webState,
+    idempotent: false,
   };
 }
