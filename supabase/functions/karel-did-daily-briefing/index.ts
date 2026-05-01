@@ -510,10 +510,20 @@ const summarizeRealityCorrections = (entries: any[]): string => {
     .filter(Boolean)
     .slice(0, 2)
     .join(" ");
-  const concrete = /tim+m[iy]|kepork|rybi/i.test(summaries)
-    ? "Hanička popsala reálný kontext kolem Timmiho/keporkaka."
-    : "Hanička popsala reálný externí kontext nebo faktickou korekci reality.";
+  // Generická úvodní věta — žádná hardcoded jména událostí (předtím "Timmi/keporkak"
+  // se reprodukoval den za dnem jako stale šablona).
+  const concrete = "Hanička upřesnila faktický rámec skutečné události nebo externího kontextu.";
   return ensureVisibleClinicalText(`${concrete} Beru to jako skutečnou událost a emoční rámec, ne jako projekci, symbol ani diagnostický signál bez přímé reakce kluků. Dnes je bezpečné nejprve ověřit, co o tom kluci sami říkají, co cítí v těle a co potřebují.${summaries ? ` ${trimSentence(summaries, 360)}` : ""}`);
+};
+
+// Vrátí krátkou, abstraktní formulaci skutečné události pro opening monolog.
+// NIKDY nesmí vracet hardcoded jména (Timmi/keporkak/Tundrupek) — to byl root cause stale templatu.
+const realityCorrectionTopicLabel = (entries: any[]): string => {
+  const relevant = entries.filter((e: any) => REAL_WORLD_CONTEXT_RE.test(`${e?.summary ?? ""} ${JSON.stringify(e?.detail ?? {})}`));
+  if (!relevant.length) return "";
+  const firstSummary = cleanBlockText(relevant[0]?.summary || relevant[0]?.detail?.operational_implication || "");
+  if (firstSummary) return trimSentence(firstSummary, 180);
+  return "skutečná událost upřesněná Hankou";
 };
 
 function isOpenedPartialSessionReview(review: any): boolean {
