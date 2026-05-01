@@ -398,7 +398,7 @@ export async function runExternalCurrentEventReplan(
   let pantryEntryId: string | null = null;
   try {
     const summary = `${authorLabel} hlásí urgentní změnu situace kolem ${eventNoun(eventLabel)}; kluci jsou ovlivnění a program má být přeplánovaný.`;
-    pantryEntryId = await appendPantryB(admin as any, {
+    const pantryRes = await appendPantryB(admin as any, {
       user_id: userId,
       entry_kind: "plan_change",
       source_kind: "team_deliberation_answer",
