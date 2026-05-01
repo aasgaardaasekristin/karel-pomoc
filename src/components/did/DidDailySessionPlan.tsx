@@ -1370,8 +1370,8 @@ const PlanCard = ({
         therapistAddendum ||
         "";
       // C1 SESSION-LEAD TRUTH PASS (2026-04-22):
-      //   `first_draft` / `plan_markdown` (therapist-led program) se sem
-      //   NEPOSÍLÁ — Karel-led child-facing opener nesmí mít hint, který
+      //   pracovní program terapeutek (plan_markdown) se sem NEPOSÍLÁ —
+      //   child-facing opener vedený Karlem nesmí mít hint, který
       //   by mohl reprodukovat therapist-facing obsah.
       const { data, error } = await (supabase as any).functions.invoke(
         "karel-part-session-prepare",

@@ -31,7 +31,7 @@ const KarelPartSessionBanner = ({ partName, dateLabel }: Props) => (
     <div className="flex-1 min-w-0">
       <div className="text-[12px] uppercase tracking-wider text-primary/70 font-medium flex items-center gap-1.5">
         <Sparkles className="w-3 h-3" />
-        Karel-led herna · online přes obrazovku
+        Herna vedená Karlem · online přes obrazovku
       </div>
       <div className="text-[14px] text-foreground/90 font-serif">
         Sezení vede <span className="font-semibold">Karel</span> s{" "}
