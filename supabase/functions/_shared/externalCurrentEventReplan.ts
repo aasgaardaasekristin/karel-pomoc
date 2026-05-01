@@ -250,8 +250,11 @@ export interface OrchestratorResult {
   pantry_b_entry_id: string | null;
   event_log_id: string | null;
   briefing_force_rebuild_invoked: boolean;
+  briefing_force_rebuild_queued_or_done: boolean;
   karel_inline_comment: string;
   web_verification_state: "pending_web_verification" | "unavailable_no_web_tool" | "verified_with_sources";
+  idempotent: boolean;
+  idempotent_reason?: string;
 }
 
 export interface ExternalReplanScopeRow {
