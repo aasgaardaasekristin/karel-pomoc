@@ -2953,26 +2953,21 @@ Deno.serve(async (req) => {
 
       const todayOpening = String(payload?.opening_monologue_text ?? "");
       const yesterdayOpening = String(yesterdayRow?.payload?.opening_monologue_text ?? "");
-      const normalize = (s: string) => s.toLowerCase().replace(/\d+\.\s*\d+\.\s*\d{4}/g, "<DATE>").replace(/\s+/g, " ").trim();
-      const todayNorm = normalize(todayOpening);
-      const yestNorm = normalize(yesterdayOpening);
+      const todayNorm = normalizeOpeningForFreshness(todayOpening);
+      const yestNorm = normalizeOpeningForFreshness(yesterdayOpening);
       const todayHash = await sha256Hex(todayNorm);
       const yesterdayHash = yesterdayOpening ? await sha256Hex(yestNorm) : null;
 
       // Slovní Jaccard similarity (po normalizaci dat)
-      let similarityPct = 0;
-      if (todayNorm && yestNorm) {
-        const setA = new Set(todayNorm.split(/\W+/).filter((w) => w.length > 3));
-        const setB = new Set(yestNorm.split(/\W+/).filter((w) => w.length > 3));
-        const intersection = [...setA].filter((w) => setB.has(w)).length;
-        const union = new Set([...setA, ...setB]).size;
-        similarityPct = union > 0 ? Math.round((intersection / union) * 100) : 0;
-      }
+      let similarityPct = openingSimilarityPct(todayNorm, yestNorm);
 
       const newSourcesCount = (payload.event_ingestion_summary?.processed_count ?? 0)
         + (payload.task_note_implications?.length ?? 0)
         + (payload.hana_personal_did_relevant_implications?.length ?? 0)
-        + (payload.new_observations?.length ?? 0);
+        + (payload.new_observations?.length ?? 0)
+        + (payload.live_replan_patches?.length ?? 0)
+        + (payload.operational_context_used?.length ?? 0)
+        + ((context.pantry_b_entries ?? []).filter((e: any) => e?.source_kind === "briefing_ask_resolution").length ?? 0);
 
       let auditReason: string | null = null;
       if (yesterdayHash && todayHash === yesterdayHash) {
@@ -2983,17 +2978,51 @@ Deno.serve(async (req) => {
         auditReason = "stale_opening_reuse_detected_despite_new_sources";
       }
 
-      payload.opening_freshness_audit = {
+      const audit: any = {
         yesterday_briefing_id: yesterdayRow?.id ?? null,
         yesterday_opening_hash: yesterdayHash,
         today_opening_hash: todayHash,
         normalized_similarity_pct: similarityPct,
         new_sources_count: newSourcesCount,
         reason: auditReason,
+        before_repair_similarity_pct: similarityPct,
+        shared_sentence_count: sharedSentenceCount(todayNorm, yestNorm),
+        new_source_refs_today: [
+          payload.yesterday_session_review?.exists ? "recent_session_review" : null,
+          (payload.live_replan_patches?.length ?? 0) > 0 ? "did_live_session_progress" : null,
+          (payload.event_ingestion_summary?.processed_count ?? 0) > 0 ? "event_ingestion_summary" : null,
+          (payload.operational_context_used?.length ?? 0) > 0 ? "operational_context_used" : null,
+          (payload.hana_personal_did_relevant_implications?.length ?? 0) > 0 ? "hana_personal_did_relevant_implications" : null,
+          (payload.task_note_implications?.length ?? 0) > 0 ? "task_note_implications" : null,
+          (context.pantry_b_entries ?? []).some((e: any) => e?.source_kind === "briefing_ask_resolution") ? "briefing_ask_resolutions" : null,
+        ].filter(Boolean),
         checked_at: new Date().toISOString(),
       };
+      const mustRepair = auditReason === "stale_opening_reuse_detected_despite_new_sources" || (similarityPct >= 80 && newSourcesCount > 0);
+      if (mustRepair) {
+        const repairedOpening = buildSourceGroundedFreshOpening(payload, context);
+        const repairedNorm = normalizeOpeningForFreshness(repairedOpening);
+        const repairedHash = await sha256Hex(repairedNorm);
+        const afterRepairSimilarity = openingSimilarityPct(repairedNorm, yestNorm);
+        payload.opening_monologue_text = repairedOpening;
+        audit.repaired = true;
+        audit.repair_strategy = "source_grounded_fresh_opening";
+        audit.before_repair_reason = auditReason;
+        audit.after_repair_similarity_pct = afterRepairSimilarity;
+        audit.after_repair_opening_hash = repairedHash;
+        audit.shared_sentence_count_after_repair = sharedSentenceCount(repairedNorm, yestNorm);
+        audit.final_reason = afterRepairSimilarity < 80 ? null : "repair_similarity_still_high";
+        audit.reason = afterRepairSimilarity < 80 ? null : audit.final_reason;
+        audit.today_opening_hash = repairedHash;
+        audit.normalized_similarity_pct = afterRepairSimilarity;
+      } else {
+        audit.repaired = false;
+        audit.after_repair_similarity_pct = null;
+        audit.final_reason = auditReason;
+      }
+      payload.opening_freshness_audit = audit;
       if (auditReason) {
-        console.warn(`[briefing] freshness audit: ${auditReason} sim=${similarityPct}% sources=${newSourcesCount}`);
+        console.warn(`[briefing] freshness audit: ${auditReason} sim=${similarityPct}% sources=${newSourcesCount} repaired=${audit.repaired === true}`);
       }
     } catch (e) {
       console.warn("[briefing] freshness audit failed (non-fatal):", e);
