@@ -1165,8 +1165,11 @@ function isLowValueImplication(text: string): boolean {
 }
 
 function splitSentences(text: string): string[] {
+  // Don't split on numeric dots (e.g. "30. 4. 2026"). Only split when a
+  // sentence terminator is followed by whitespace AND the next non-space
+  // character is an uppercase letter (Latin or Czech).
   return String(text ?? "")
-    .split(/(?<=[.!?])\s+|\n+/)
+    .split(/(?<=[.!?])\s+(?=[A-ZÁ-Ž])|\n+/u)
     .map((s) => s.trim())
     .filter(Boolean);
 }
