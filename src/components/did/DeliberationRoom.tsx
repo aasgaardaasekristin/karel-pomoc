@@ -35,6 +35,12 @@ import {
   type AgendaBlock,
 } from "@/types/teamDeliberation";
 import { sanitizeRecencyText } from "@/lib/recencySanitizer";
+import {
+  getLiveProgramTitle,
+  getPlanChangeLabel,
+  hasActiveExternalCurrentEventReplan,
+  isPlayroomDeliberation,
+} from "./deliberationRoomUiHelpers";
 
 interface Props {
   deliberationId: string | null;
@@ -306,21 +312,6 @@ function buildApprovedLivePlanMarkdown(
   return lines.filter(Boolean).join("\n");
 }
 
-function isPlayroomDeliberation(
-  source: LiveDeliberationSource | null | undefined,
-) {
-  const sp =
-    source?.session_params && typeof source.session_params === "object"
-      ? source.session_params
-      : {};
-  return (
-    sp.session_actor === "karel_direct" ||
-    sp.ui_surface === "did_kids_playroom" ||
-    sp.session_format === "playroom" ||
-    !!sp.playroom_plan
-  );
-}
-
 function areAllQuestionsAnswered(questions: DeliberationQuestion[] = []) {
   return questions.length > 0 && questions.every((q) => !!q.answer?.trim());
 }
@@ -427,7 +418,11 @@ function LiveProgramDraftPanel({
   const blocks = draft.length > 0 ? draft : fallback;
   const usingDraft = draft.length > 0;
   const sp = d.session_params && typeof d.session_params === "object" ? d.session_params as Record<string, unknown> : {};
-  const isPlayroom = sp.session_actor === "karel_direct" || sp.ui_surface === "did_kids_playroom" || sp.session_format === "playroom" || !!sp.playroom_plan;
+  const isPlayroom = isPlayroomDeliberation(d);
+  const isExternalReplan = hasActiveExternalCurrentEventReplan(d);
+  const isPlayroomAwaitingApproval =
+    isPlayroom && (d.status !== "approved" || !d.hanka_signed_at || !d.kata_signed_at);
+  const liveProgramTitle = getLiveProgramTitle(d);
   const unsafeExecutable = d.deliberation_type === "session_plan" && !isPlayroom && (blocks.length < 4 || blocks.some((b) => isUnsafeFallbackBlock(b as LiveProgramBlock)));
 
   if (blocks.length === 0 || unsafeExecutable) {
@@ -435,7 +430,7 @@ function LiveProgramDraftPanel({
       <section className="rounded-lg border border-dashed border-border/60 bg-card/30 p-3">
         <h4 className="text-[11px] font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-primary" />
-          Živý program sezení není připravený
+          {liveProgramTitle} není připravený
         </h4>
         <p className="text-[10.5px] text-muted-foreground italic">
           Karel zatím nemá dost podkladů pro vykonatelné terapeutické Sezení.
@@ -451,7 +446,7 @@ function LiveProgramDraftPanel({
       <div className="flex items-center justify-between gap-2">
         <h4 className="text-[11px] font-semibold text-primary flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5" />
-          Živý program sezení {usingDraft ? "" : "(první návrh)"}
+          {liveProgramTitle} {usingDraft ? "" : "(první návrh)"}
         </h4>
         {iterating && (
           <span className="text-[10px] text-primary/70 italic flex items-center gap-1">
@@ -460,6 +455,11 @@ function LiveProgramDraftPanel({
           </span>
         )}
       </div>
+      {isPlayroomAwaitingApproval && (
+        <p className="text-[10.5px] text-foreground/80 rounded-md border border-primary/15 bg-card/45 px-2 py-1.5">
+          Před spuštěním Herny zůstává povinný jemný check: tělo, emoce a bezpečí kluků; Karel vede až po schválení terapeutkami.
+        </p>
+      )}
       <ol className="space-y-2">
         {blocks.map((b, i) => {
           const block = b as LiveProgramBlock;
@@ -514,12 +514,16 @@ function LiveProgramDraftPanel({
                 <div className="flex flex-wrap gap-1.5 pt-0.5">
                   {typeof block.requires_physical_therapist === "boolean" && (
                     <Badge variant="outline" className="text-[10px] h-5">
-                      Vyžaduje terapeutku: {yesNo(isPlayroom ? Boolean(block.requires_physical_therapist) : true)}
+                      {isPlayroom && (isExternalReplan || isPlayroomAwaitingApproval)
+                        ? "Vyžaduje schválení terapeutkami: Ano"
+                        : `Vyžaduje terapeutku: ${yesNo(isPlayroom ? Boolean(block.requires_physical_therapist) : true)}`}
                     </Badge>
                   )}
                   {typeof block.karel_can_do_alone === "boolean" && (
                     <Badge variant="outline" className="text-[10px] h-5">
-                      Karel asistuje: {isPlayroom ? "po schválení" : "Ano"}
+                      {isPlayroom && (isExternalReplan || isPlayroomAwaitingApproval)
+                        ? "Karel vede až po schválení"
+                        : `Karel asistuje: ${isPlayroom ? "po schválení" : "Ano"}`}
                     </Badge>
                   )}
                 </div>
@@ -545,23 +549,13 @@ function ClinicalContractPanel({ d }: { d: TeamDeliberation }) {
     d.session_params && typeof d.session_params === "object"
       ? d.session_params
       : {};
-  const planChangeLabel: Record<string, string> = {
-    unchanged: "beze změny",
-    revised: "upraveno",
-    deferred: "odloženo",
-    needs_followup_question: "potřebuje doplňující otázku",
-  };
-  const lastPlanChange =
-    typeof sp.last_plan_change_state === "string"
-      ? (planChangeLabel[sp.last_plan_change_state] ??
-        sp.last_plan_change_state)
-      : sp.last_plan_change_state;
+  const isPlayroom = isPlayroomDeliberation(d);
   const entries = [
     ["Fáze", sp.treatment_phase],
     ["Připravenost", sp.readiness_today],
-    ["Role", sp.session_actor === "karel_direct" || sp.ui_surface === "did_kids_playroom" || sp.session_format === "playroom" ? "Herna: Karel vede až po schválení terapeutkami" : "Sezení: terapeutka vede, Karel asistuje"],
+    ["Role", isPlayroom ? "Herna: Karel vede až po schválení terapeutkami" : "Sezení: terapeutka vede, Karel asistuje"],
     ["První otázka", sp.first_question],
-    ["Změna plánu", lastPlanChange],
+    ["Změna plánu", getPlanChangeLabel(d)],
   ].filter(
     ([, value]) => typeof value === "string" && value.trim().length > 0,
   ) as Array<[string, string]>;
