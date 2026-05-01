@@ -891,7 +891,13 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
     setIterating(true);
     try {
       const res = await iterateProgram(d.id, input);
-      if (res?.no_op) {
+      if ((res as any)?.replan_completed) {
+        toast.warning(
+          "Externí aktuální událost změnila plán. Starý návrh čeká na přepracování — podpisy jsou pozastavené.",
+        );
+        setLastIterateComment(res.karel_inline_comment ?? null);
+        onChanged?.();
+      } else if (res?.no_op) {
         // Karel nic nezměnil — neukazujeme prázdný komentář.
       } else if (res?.karel_inline_comment) {
         setLastIterateComment(res.karel_inline_comment);

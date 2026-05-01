@@ -27,6 +27,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { summarizeToolboxForPrompt } from "../_shared/therapeuticToolbox.ts";
 import { appendPantryB } from "../_shared/pantryB.ts";
 import { createObservation, routeObservation } from "../_shared/observations.ts";
+import {
+  classifyExternalCurrentEvent,
+  runExternalCurrentEventReplan,
+  inlineCommentHasAuditLanguage,
+} from "../_shared/externalCurrentEventReplan.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -214,6 +219,80 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // ── EXTERNAL CURRENT-EVENT REPLAN BRANCH ─────────────────────────────
+    // Pokud terapeutka v jakékoli poradě napíše urgentní real-world update
+    // (např. „Timmy je ohrožený, kluci jsou ovlivnění, přeplánuj všechno"),
+    // nesmíme jen lokálně přepsat program_draft. Spouštíme globální
+    // orchestrátor, který zneplatní podpisy, přepíše Sezení i Hernu, vytvoří
+    // okamžité úkoly, zapíše do Spíže B / event logu a force-rebuildne
+    // Karlův přehled. Web verification držíme pravdivě (žádné fake citace).
+    const externalClassification = classifyExternalCurrentEvent(text);
+    if (externalClassification.is_external_current_event && externalClassification.requires_replan) {
+      try {
+        const authorLabel = author === "hanka" ? "Hanička" : "Káťa";
+        const orchestrated = await runExternalCurrentEventReplan({
+          admin: admin as any,
+          userId,
+          triggeringDeliberationId: deliberationId,
+          authorLabel,
+          authorRole: author as "hanka" | "kata",
+          rawText: text,
+          classification: externalClassification,
+          // Backend nemá real web-search nástroj → musíme to přiznat.
+          webVerificationAvailable: false,
+          supabaseUrl: SUPABASE_URL,
+          serviceKey: SERVICE_KEY,
+        });
+
+        // Append to discussion_log: terapeutčin vstup + Karlův pravdivý komentář
+        const nowIso = new Date().toISOString();
+        const newLog = [
+          ...log,
+          { author, content: text, created_at: nowIso },
+          {
+            author: "karel",
+            content: orchestrated.karel_inline_comment,
+            created_at: nowIso,
+            is_plan_revision: true,
+            is_external_current_event_replan: true,
+          },
+        ];
+        await admin
+          .from("did_team_deliberations")
+          .update({ discussion_log: newLog })
+          .eq("id", deliberationId);
+
+        // Final inline-comment guard (defensive — buildTruthful... already
+        // produces a clean string, but we never want audit language to leak).
+        const guard = inlineCommentHasAuditLanguage(orchestrated.karel_inline_comment);
+        const safeComment = guard.ok
+          ? orchestrated.karel_inline_comment
+          : `${authorLabel}, beru to jako urgentní změnu reality. Starý návrh pozastavuji a připravuji nový bezpečný plán pro Sezení i Hernu.`;
+
+        return new Response(JSON.stringify({
+          program_draft: [], // Frontend MUSÍ udělat full reload — stará data jsou neplatná.
+          karel_inline_comment: safeComment,
+          requires_full_reload: true,
+          replan_completed: true,
+          external_current_event_replan: {
+            event_label: externalClassification.event_label,
+            web_verification_state: orchestrated.web_verification_state,
+            affected_deliberation_ids: orchestrated.affected_deliberation_ids,
+            invalidated_signatures: orchestrated.invalidated_signatures,
+            session_drafts_rebuilt: orchestrated.session_drafts_rebuilt,
+            playroom_drafts_rebuilt: orchestrated.playroom_drafts_rebuilt,
+            tasks_created: orchestrated.tasks_created,
+            briefing_force_rebuild_invoked: orchestrated.briefing_force_rebuild_invoked,
+          },
+        }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (orchErr) {
+        console.error("[delib-iterate] external_current_event_replan failed:", orchErr);
+        // Fall through to normal AI path so user is not left without any update.
+      }
+    }
+
     // Stávající program (preferuj program_draft, fallback na agenda_outline z prefillu)
     const currentProgram: AgendaBlock[] = Array.isArray(row.program_draft) && row.program_draft.length > 0
       ? row.program_draft
@@ -332,7 +411,13 @@ PRAVIDLA STRUKTURY:
     const programDraft: Array<AgendaBlock & Record<string, any>> = Array.isArray(parsed.program_draft)
       ? parsed.program_draft.slice(0, 8).map((b: any) => normalizeProgramBlock(b, parsedHybrid)).filter((b: AgendaBlock) => b.block.length > 0)
       : currentProgram.map((b: any) => normalizeProgramBlock(b, parsedHybrid)).filter((b: AgendaBlock) => b.block.length > 0);
-    const karelComment = String(parsed.karel_inline_comment ?? "").slice(0, 600);
+    let karelComment = String(parsed.karel_inline_comment ?? "").slice(0, 600);
+    // Anti-audit guard: if AI used backend/audit terms, replace with safe human line.
+    const inlineGuard = inlineCommentHasAuditLanguage(karelComment);
+    if (!inlineGuard.ok) {
+      const safeAuthorLabel = author === "hanka" ? "Hanička" : "Káťa";
+      karelComment = `${safeAuthorLabel}, zapracoval jsem tvůj vstup do programu — držím to v lidském, klinickém tónu, bez technických termínů.`;
+    }
 
     // Append to discussion_log: terapeutčin vstup + Karlova reakce
     const nowIso = new Date().toISOString();
