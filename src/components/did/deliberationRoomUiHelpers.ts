@@ -56,3 +56,60 @@ export function getLiveProgramTitle(
 ): string {
   return isPlayroomDeliberation(deliberation) ? "Živý program Herny" : "Živý program Sezení";
 }
+
+/**
+ * Visible-text guard pro Herna modal a další klinická UI místa.
+ * Tyto výrazy NESMÍ být viditelné terapeutkám ani dětem — jsou interní
+ * technický slovník (DB sloupce, programatické klíče, anglicko-technické hybridy).
+ */
+export const HERNA_VISIBLE_FORBIDDEN_TERMS = [
+  "first_draft",
+  "Karel-led",
+  "karel-led",
+  "Karel_led",
+  "program_draft",
+  "session_params",
+  "backend",
+  "pipeline",
+  "source_ref",
+  "source_kind",
+  "Pantry",
+  "DID-relevantní",
+  "event_ingestion",
+  "karel_pantry_b_entries",
+  "Živý program sezení",
+  "Změna plánu: beze změny",
+  "Vyžaduje terapeutku: Ne",
+] as const;
+
+/**
+ * Sanitize visible plan/brief text — replace any leaked technical tokens
+ * with neutral clinical Czech phrasing. Použij při renderu textu, který
+ * mohl být v minulosti persistován s technickým jazykem.
+ */
+export function sanitizeHernaVisibleText(input: string | null | undefined): string {
+  if (!input) return "";
+  let out = String(input);
+  // Karel-led / karel-led → "vedená Karlem"
+  out = out.replace(/\bKarel[-_ ]led\b/gi, "vedená Karlem");
+  // first_draft → "pracovní návrh"
+  out = out.replace(/\bfirst[_ ]draft\b/gi, "pracovní návrh");
+  // program_draft → "pracovní program"
+  out = out.replace(/\bprogram[_ ]draft\b/gi, "pracovní program");
+  // session_params → "parametry sezení"
+  out = out.replace(/\bsession[_ ]params\b/gi, "parametry sezení");
+  return out;
+}
+
+/**
+ * Returns count of forbidden visible terms in given text.
+ * Used by tests and DOM scans.
+ */
+export function countHernaForbiddenTerms(text: string): number {
+  if (!text) return 0;
+  let n = 0;
+  for (const term of HERNA_VISIBLE_FORBIDDEN_TERMS) {
+    if (text.includes(term)) n += 1;
+  }
+  return n;
+}
