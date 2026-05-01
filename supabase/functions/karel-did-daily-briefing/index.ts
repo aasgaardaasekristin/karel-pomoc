@@ -499,6 +499,12 @@ const jsonItemCount = (value: unknown): number => {
   return 0;
 };
 
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 const REAL_WORLD_CONTEXT_RE = /(therapist_factual_correction|external_fact|skute|re[áa]ln|faktick|odkaz|url|https?:\/\/|aktu[áa]ln|zpr[áa]v|[čc]l[áa]nek|telefon[áa]t|[úu]mrt|ztr[áa]t|zdravotn|po[žz][áa]r|v[áa]lk|[úu]tulek|z[áa]chran|instituc|nen[íi]\s+to\s+(?:symbol|projekce|fiktivn))/i;
 const OPERATIONAL_EVIDENCE_LEVELS = new Set(["therapist_factual_correction", "external_fact", "therapist_observation_D2", "direct_child_evidence", "team_decision", "program_change", "task_note"]);
 
@@ -510,10 +516,20 @@ const summarizeRealityCorrections = (entries: any[]): string => {
     .filter(Boolean)
     .slice(0, 2)
     .join(" ");
-  const concrete = /tim+m[iy]|kepork|rybi/i.test(summaries)
-    ? "Hanička popsala reálný kontext kolem Timmiho/keporkaka."
-    : "Hanička popsala reálný externí kontext nebo faktickou korekci reality.";
+  // Generická úvodní věta — žádná hardcoded jména událostí (předtím "Timmi/keporkak"
+  // se reprodukoval den za dnem jako stale šablona).
+  const concrete = "Hanička upřesnila faktický rámec skutečné události nebo externího kontextu.";
   return ensureVisibleClinicalText(`${concrete} Beru to jako skutečnou událost a emoční rámec, ne jako projekci, symbol ani diagnostický signál bez přímé reakce kluků. Dnes je bezpečné nejprve ověřit, co o tom kluci sami říkají, co cítí v těle a co potřebují.${summaries ? ` ${trimSentence(summaries, 360)}` : ""}`);
+};
+
+// Vrátí krátkou, abstraktní formulaci skutečné události pro opening monolog.
+// NIKDY nesmí vracet hardcoded jména (Timmi/keporkak/Tundrupek) — to byl root cause stale templatu.
+const realityCorrectionTopicLabel = (entries: any[]): string => {
+  const relevant = entries.filter((e: any) => REAL_WORLD_CONTEXT_RE.test(`${e?.summary ?? ""} ${JSON.stringify(e?.detail ?? {})}`));
+  if (!relevant.length) return "";
+  const firstSummary = cleanBlockText(relevant[0]?.summary || relevant[0]?.detail?.operational_implication || "");
+  if (firstSummary) return trimSentence(firstSummary, 180);
+  return "skutečná událost upřesněná Hankou";
 };
 
 function isOpenedPartialSessionReview(review: any): boolean {
@@ -1214,8 +1230,9 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   //   2) sekci "Poslední / Včerejší sezení" (recency notice nad reportem)
   //   3) blok `evidence_limits` ("Jistě víme: …") jako auditovatelná položka
   // V monologu zde naopak otevíráme klinickým rámcem dne.
+  const realityTopic = realityCorrectionTopicLabel(operationalEntries);
   const realityOpening = hasRealityCorrection
-    ? `Událost s Timmim/keporkakem vnímám jako silný emoční otisk v psychice kluků. Nechci ji přehnaně vykládat, ale nechci ji ani ztratit. Potřebujeme jemně zjistit, co v klucích zůstává — vlastními slovy, tělem a reakcí kluků.`
+    ? `Skutečnou událost, kterou Hanička dnes upřesnila${realityTopic ? ` (${realityTopic})` : ""}, vnímám jako možný emoční otisk v psychice kluků. Nechci ji přehnaně vykládat, ale nechci ji ani ztratit. Potřebujeme jemně zjistit, co v klucích zůstává — vlastními slovy, tělem a reakcí kluků.`
     : `Dnes chci navazovat jen na přesně datovaný materiál klidně a bez tlaku. Nechci z něj dělat větší příběh, než jaký kluci sami unesou; potřebujeme nejdřív zjistit, kdo je přítomný, jak je na tom tělo a kde je dnes bezpečný práh.`;
   const frame = hasReview
     ? `${realityOpening} ${openedPartialSession ? "Poslední Sezení beru jako otevřené nebo částečně rozpracované; dnes ho nebudu uzavírat za kluky, dokud nemáme plné dovyhodnocení." : "Pokud se téma znovu objeví, budeme ho brát jako reálnou událost a živý prožitek, ne jako hotový klinický závěr."}`
@@ -1237,7 +1254,7 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     ? `Nové nebo nejpodstatnější z přesně datovaných nedávných podkladů je toto: ${trimSentence(newInfo, 520).replace(/m[ůu][žz]e\s+pos[íi]lit\s+jeho\s+pocit\s+kontroly\s+a\s+d[ůu]v[eě]ry/i, "může být pracovně významné pro jeho pocit kontroly a důvěry, pokud se to dnes potvrdí")}`
     : "Nové informace jsou zatím omezené. To samo o sobě je klinicky důležité: dnešní krok má být ověřovací, ne interpretačně těžký.";
   const clinical_formulation = hasRealityCorrection
-      ? `Moje pracovní formulace pro dnešek je opatrná: Timmi/keporkak je skutečná událost a může být emočně důležitá. Klinický význam ale smíme dát až tomu, co kluci sami řeknou, ukážou v těle nebo přinesou v chování.`
+      ? `Moje pracovní formulace pro dnešek je opatrná: skutečná událost upřesněná Hankou${realityTopic ? ` (${realityTopic})` : ""} může být emočně důležitá. Klinický význam ale smíme dát až tomu, co kluci sami řeknou, ukážou v těle nebo přinesou v chování.`
     : `Moje pracovní formulace pro dnešek je opatrná: ${activePart} použil v přesně datované Herně vlastní symbolický jazyk bezpečí. Zatím je bezpečnější chápat ho jako zdroj této části z daného dne, ne jako definitivní charakteristiku ani společný jazyk všech kluků. Praktický cíl je pomoci pocit ochrany přenést zpět do přítomného těla, dne a vztahu s bezpečnými dospělými.`;
   const recommendations_for_hana = `Haničko, pokud dnes povedeš Sezení, budu ti pomáhat držet otázky krátké a bezpečné. Nepotřebujeme vysvětlování; potřebujeme vlastní slova, tělesnou reakci a jasné stop signály.`;
   const recommendations_for_katka = hasRealityCorrection
@@ -1245,7 +1262,7 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     : `Káťo, u tebe dnes doporučuji hlídat hranice návaznosti: nepřenášet starší symboly automaticky na ostatní části a nepoužít je dřív, než se ukáže, že jsou dnes pro ${partGenitive(activePart)} stále bezpečné.`;
   const what_not_to_do_today = "Dnes bych se vyhnul třem věcem: netlačit do vysvětlování, neotevírat nové trauma téma bez stabilizačního rámce a nepředávat části příliš velkou odpovědnost otázkou typu „co chceš dělat?“. Bezpečnější je nabídnout dvě nebo tři malé možnosti.";
   const priority_of_the_day = buildDailyTherapeuticPriority(payload);
-  const playroom_guidance = "Pokud se tým rozhodne pro Hernu, má být krátká, jemná a nízkoprahová. Nepůjde o výkon ani o výklad, ale o bezpečné zjištění, co dnes Tundrupek unese; Herna zůstává oddělená od terapeutkou vedeného Sezení a čeká na schválení terapeutkami.";
+  const playroom_guidance = `Pokud se tým rozhodne pro Hernu, má být krátká, jemná a nízkoprahová. Nepůjde o výkon ani o výklad, ale o bezpečné zjištění, co dnes ${partGenitive(activePart)} unese; Herna zůstává oddělená od terapeutkou vedeného Sezení a čeká na schválení terapeutkami.`;
   const evidence_limits = [
     `Jistě víme: ${evidenceKnown.join(" ")}`,
     hasRealityCorrection
@@ -1320,7 +1337,10 @@ function applyOpeningMonologue(payload: any, context: any, candidates: SessionCa
     for (const key of ["practical_report_text", "detailed_analysis_text", "implications_for_part", "implications_for_system", "recommendations_for_therapists", "recommendations_for_next_playroom", "recommendations_for_next_session"]) {
       payload.yesterday_playroom_review[key] = sanitizeKarelClinicalText(payload.yesterday_playroom_review[key]);
     }
-    payload.yesterday_playroom_review.spiritual_symbolics_safety_frame = "Duchovní symbolika se v této Herně objevila jako zdroj bezpečí a úlevy. Je důležité ji respektovat, nepřerámovat ji příliš racionálně a nebrat ji části. Zároveň ji nesmíme nekriticky posilovat směrem k odpojení od reality nebo k představě, že bezpečí existuje jen mimo současný život. Praktický cíl je pomoci Tundrupkovi přenést pocit ochrany zpět do přítomného těla, dne a vztahu s bezpečnými dospělými.";
+    {
+      const _spiritPart = String(payload.yesterday_playroom_review?.part_name || "této části").trim() || "této části";
+      payload.yesterday_playroom_review.spiritual_symbolics_safety_frame = `Duchovní symbolika se v této Herně objevila jako zdroj bezpečí a úlevy. Je důležité ji respektovat, nepřerámovat ji příliš racionálně a nebrat ji části. Zároveň ji nesmíme nekriticky posilovat směrem k odpojení od reality nebo k představě, že bezpečí existuje jen mimo současný život. Praktický cíl je pomoci ${partGenitive(_spiritPart)} přenést pocit ochrany zpět do přítomného těla, dne a vztahu s bezpečnými dospělými.`;
+    }
   }
   const opening = buildOpeningMonologue(payload, context, candidates);
   return {
@@ -2843,6 +2863,69 @@ Deno.serve(async (req) => {
         .update({ is_stale: true })
         .eq("briefing_date", today)
         .eq("user_id", scopedUserId);
+    }
+
+    // 5b) FRESHNESS AUDIT — porovnej dnešní opening s včerejším non-stale openingem.
+    // Cíl: zachytit stale-template reuse (root cause: hardcoded šablony reprodukující
+    // identický text bez ohledu na den / nové vstupy).
+    try {
+      const yesterdayDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const { data: yesterdayRow } = await supabase
+        .from("did_daily_briefings")
+        .select("id, payload, generated_at, generation_method")
+        .eq("user_id", scopedUserId)
+        .eq("briefing_date", yesterdayDate)
+        .eq("is_stale", false)
+        .order("generated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const todayOpening = String(payload?.opening_monologue_text ?? "");
+      const yesterdayOpening = String(yesterdayRow?.payload?.opening_monologue_text ?? "");
+      const normalize = (s: string) => s.toLowerCase().replace(/\d+\.\s*\d+\.\s*\d{4}/g, "<DATE>").replace(/\s+/g, " ").trim();
+      const todayNorm = normalize(todayOpening);
+      const yestNorm = normalize(yesterdayOpening);
+      const todayHash = await sha256Hex(todayNorm);
+      const yesterdayHash = yesterdayOpening ? await sha256Hex(yestNorm) : null;
+
+      // Slovní Jaccard similarity (po normalizaci dat)
+      let similarityPct = 0;
+      if (todayNorm && yestNorm) {
+        const setA = new Set(todayNorm.split(/\W+/).filter((w) => w.length > 3));
+        const setB = new Set(yestNorm.split(/\W+/).filter((w) => w.length > 3));
+        const intersection = [...setA].filter((w) => setB.has(w)).length;
+        const union = new Set([...setA, ...setB]).size;
+        similarityPct = union > 0 ? Math.round((intersection / union) * 100) : 0;
+      }
+
+      const newSourcesCount = (payload.event_ingestion_summary?.processed_count ?? 0)
+        + (payload.task_note_implications?.length ?? 0)
+        + (payload.hana_personal_did_relevant_implications?.length ?? 0)
+        + (payload.new_observations?.length ?? 0);
+
+      let auditReason: string | null = null;
+      if (yesterdayHash && todayHash === yesterdayHash) {
+        auditReason = "stale_opening_identical_to_yesterday";
+      } else if (yesterdayHash && similarityPct >= 85 && newSourcesCount === 0) {
+        auditReason = "stale_opening_high_similarity_no_new_sources";
+      } else if (yesterdayHash && similarityPct >= 85 && newSourcesCount > 0) {
+        auditReason = "stale_opening_reuse_detected_despite_new_sources";
+      }
+
+      payload.opening_freshness_audit = {
+        yesterday_briefing_id: yesterdayRow?.id ?? null,
+        yesterday_opening_hash: yesterdayHash,
+        today_opening_hash: todayHash,
+        normalized_similarity_pct: similarityPct,
+        new_sources_count: newSourcesCount,
+        reason: auditReason,
+        checked_at: new Date().toISOString(),
+      };
+      if (auditReason) {
+        console.warn(`[briefing] freshness audit: ${auditReason} sim=${similarityPct}% sources=${newSourcesCount}`);
+      }
+    } catch (e) {
+      console.warn("[briefing] freshness audit failed (non-fatal):", e);
     }
 
     // 6) Insert nový briefing
