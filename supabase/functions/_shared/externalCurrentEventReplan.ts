@@ -387,6 +387,50 @@ export async function runExternalCurrentEventReplan(
       ? "verified_with_sources"
       : (classification.requires_web_verification ? "unavailable_no_web_tool" : "pending_web_verification");
 
+  // ── 5.0 IDEMPOTENCE PRE-CHECK ──────────────────────────────────────────
+  // Pokud už pro tento dedupeKey existuje záznam v Pantry B (=>orchestrator
+  // už proběhl pro stejný external event), vrátíme rychlou no-op odpověď.
+  // Tím zabráníme duplicitním tasks/pantry/event log insertům i spuštění
+  // dalšího briefing rebuildu při opakovaném kliknutí.
+  try {
+    const { data: existingPantry } = await admin
+      .from("karel_pantry_b_entries")
+      .select("id, detail")
+      .eq("user_id", userId)
+      .eq("source_kind", "team_deliberation_answer")
+      .eq("source_ref", dedupeKey)
+      .limit(1)
+      .maybeSingle();
+    if (existingPantry?.id) {
+      const detail = (existingPantry as any).detail ?? {};
+      const inlineComment = buildTruthfulKarelInlineComment({
+        authorLabel,
+        eventLabel,
+        webVerificationAvailable,
+        affectedDeliberationCount: Array.isArray(detail?.affected_deliberation_ids)
+          ? detail.affected_deliberation_ids.length
+          : 1,
+      });
+      return {
+        affected_deliberation_ids: Array.isArray(detail?.affected_deliberation_ids) ? detail.affected_deliberation_ids : [],
+        invalidated_signatures: 0,
+        session_drafts_rebuilt: 0,
+        playroom_drafts_rebuilt: 0,
+        tasks_created: 0,
+        pantry_b_entry_id: (existingPantry as any).id,
+        event_log_id: null,
+        briefing_force_rebuild_invoked: false,
+        briefing_force_rebuild_queued_or_done: true,
+        karel_inline_comment: inlineComment,
+        web_verification_state: webState,
+        idempotent: true,
+        idempotent_reason: "already_replanned_for_same_external_event",
+      };
+    }
+  } catch (e) {
+    console.warn("[external-event-replan] idempotence pre-check failed:", (e as Error)?.message);
+  }
+
   // ── 5.1 Find affected deliberations (session_plan + playroom) ─────────
   // SCOPE GUARD: jen *aktivně rozpracované* dnešní porady. Historické
   // approved porady (např. včerejší podepsaný plán) NESMÍ být zatažené,
