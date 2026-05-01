@@ -1069,6 +1069,15 @@ const trimSentence = (value: unknown, max = 360): string => {
   return `${cut.slice(0, Math.max(cut.lastIndexOf("."), cut.lastIndexOf(";"), cut.lastIndexOf(","), 180)).trim()}…`;
 };
 
+const capitalizePartName = (name: unknown): string => {
+  const raw = String(name ?? "").trim();
+  if (!raw) return "část";
+  if (/^gust[íi]k$/i.test(raw)) return "Gustík";
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+};
+
+const partInstrumental = (name: unknown): string => /^gust[íi]k$/i.test(String(name ?? "").trim()) ? "Gustíkem" : String(name ?? "částí").trim();
+
 const partGenitive = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupka" : name;
 const partDative = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupkovi" : name;
 
