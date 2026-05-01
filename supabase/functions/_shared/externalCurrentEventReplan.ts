@@ -388,18 +388,17 @@ export async function runExternalCurrentEventReplan(
   // SCOPE GUARD: jen *aktivně rozpracované* dnešní porady. Historické
   // approved porady (např. včerejší podepsaný plán) NESMÍ být zatažené,
   // i kdyby spadly do 36h okna. Triggering poradu vždy bereme.
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const sinceTodayIso = today.toISOString();
+  const todayPrague = pragueDateISO(new Date());
+  const sinceWindowIso = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
   const { data: candidates } = await admin
     .from("did_team_deliberations")
     .select("id, deliberation_type, status, session_params, program_draft, hanka_signed_at, kata_signed_at, karel_signed_at, updated_at")
     .eq("user_id", userId)
     .in("deliberation_type", ["session_plan", "playroom"])
-    .in("status", ["draft", "active", "in_revision", "awaiting_signoff"])
-    .gte("updated_at", sinceTodayIso);
+    .gte("updated_at", sinceWindowIso);
 
-  const list = Array.isArray(candidates) ? candidates : [];
+  const list = (Array.isArray(candidates) ? candidates : [])
+    .filter((row: any) => shouldIncludeDeliberationForExternalReplan(row, triggeringDeliberationId, todayPrague));
   // Always include the triggering one (even if filtered out by date)
   if (!list.find((r: any) => r.id === triggeringDeliberationId)) {
     const { data: trig } = await admin
@@ -407,7 +406,7 @@ export async function runExternalCurrentEventReplan(
       .select("id, deliberation_type, status, session_params, program_draft, hanka_signed_at, kata_signed_at, karel_signed_at, updated_at")
       .eq("id", triggeringDeliberationId)
       .maybeSingle();
-    if (trig) list.push(trig);
+    if (trig && shouldIncludeDeliberationForExternalReplan(trig, triggeringDeliberationId, todayPrague)) list.push(trig);
   }
 
   let invalidatedSigs = 0;
@@ -635,50 +634,9 @@ export async function runExternalCurrentEventReplan(
     }
   }
 
-  // ── 5.5 Force-rebuild Karlův přehled via SLA watchdog (with retry+RPC fallback)
-  let briefingForced = false;
-  const watchdogUrl = `${supabaseUrl}/functions/v1/karel-did-briefing-sla-watchdog`;
-  for (let attempt = 0; attempt < 3 && !briefingForced; attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 400 * attempt));
-    try {
-      const resp = await fetch(watchdogUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${serviceKey}`,
-        },
-        body: JSON.stringify({
-          userId,
-          force_rebuild: true,
-          reason: "external_current_event_update_in_deliberation",
-          method: "sla_watchdog_repair",
-          fullAi: true,
-        }),
-      });
-      if (resp.ok) {
-        briefingForced = true;
-        break;
-      }
-      const body = await resp.text().catch(() => "");
-      console.warn(`[external-event-replan] watchdog attempt ${attempt + 1} non-ok: ${resp.status} ${body.slice(0, 200)}`);
-    } catch (e) {
-      console.warn(`[external-event-replan] watchdog attempt ${attempt + 1} fetch failed:`, (e as Error)?.message);
-    }
-  }
-  // Fallback: pgnet-based RPC (queues HTTP via vault secret) so morning
-  // SLA polling still picks it up even if direct invoke is throttled.
-  if (!briefingForced) {
-    try {
-      const { error: rpcErr } = await admin.rpc("invoke_briefing_watchdog_acceptance_rebuild", {
-        p_user_id: userId,
-        p_reason: "external_current_event_update_in_deliberation",
-      });
-      if (!rpcErr) briefingForced = true;
-      else console.warn("[external-event-replan] RPC fallback failed:", rpcErr.message);
-    } catch (e) {
-      console.warn("[external-event-replan] RPC fallback exception:", (e as Error)?.message);
-    }
-  }
+  // ── 5.5 Force-rebuild Karlův přehled: watchdog first, direct briefing fallback.
+  // briefing_force_rebuild_invoked=true only when a real successful HTTP path exists.
+  const briefingForced = await forceBriefingRebuild({ admin, userId, supabaseUrl, serviceKey });
 
   // ── 5.6 Build truthful inline comment ──────────────────────────────────
   const inlineComment = buildTruthfulKarelInlineComment({
