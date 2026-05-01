@@ -455,6 +455,11 @@ function LiveProgramDraftPanel({
           </span>
         )}
       </div>
+      {isPlayroomAwaitingApproval && (
+        <p className="text-[10.5px] text-foreground/80 rounded-md border border-primary/15 bg-card/45 px-2 py-1.5">
+          Před spuštěním Herny zůstává povinný jemný check: tělo, emoce a bezpečí kluků; Karel vede až po schválení terapeutkami.
+        </p>
+      )}
       <ol className="space-y-2">
         {blocks.map((b, i) => {
           const block = b as LiveProgramBlock;
