@@ -40,6 +40,7 @@ import {
   getPlanChangeLabel,
   hasActiveExternalCurrentEventReplan,
   isPlayroomDeliberation,
+  sanitizeHernaVisibleText,
 } from "./deliberationRoomUiHelpers";
 
 interface Props {
@@ -1209,11 +1210,11 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                       Karel svolal poradu
                     </h4>
                     <RichMarkdown compact>
-                      {d.initial_karel_brief ?? "(žádný brief)"}
+                      {sanitizeHernaVisibleText(d.initial_karel_brief) || "(žádný brief)"}
                     </RichMarkdown>
                   </section>
 
-                  {/* Karlův návrh — pro session_plan je to first_draft z briefingu */}
+                  {/* Karlův návrh — pro session_plan je to lidský pracovní návrh z briefingu */}
                   <section className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                     <h4 className="text-[11px] font-semibold text-primary mb-1.5">
                       {d.deliberation_type === "session_plan"

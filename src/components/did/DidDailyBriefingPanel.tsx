@@ -818,7 +818,7 @@ const createFallbackPlayroomProposal = (payload: BriefingPayload): ProposedPlayr
       forbidden_directions: ["nevynucovat vzpomínky", "neinterpretovat kresbu jako diagnózu bez review", "neeskalovat trauma", "nepokračovat přes stop signál"],
       runtime_packet_seed: { source: "ui_fallback_until_next_briefing_regeneration" },
     },
-    questions_for_hanka: ["Je pro tuto část dnes bezpečnější krátká Karel-led Herna, nebo má být Hanička poblíž jako fyzická opora?"],
+    questions_for_hanka: ["Je pro tuto část dnes bezpečnější krátká Herna vedená Karlem po schválení terapeutkami, nebo má být Hanička poblíž jako fyzická opora?"],
     questions_for_kata: ["Vidíš u této části dnes riziko, kvůli kterému má být Herna jen stabilizační a ne hlubinně explorativní?"],
   };
 };
@@ -1329,7 +1329,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           `*Hlavní téma:* ${s.main_theme}`,
           `*Proč právě dnes:* ${s.why_this_part_today}`,
           "",
-          "Otevírám poradu ke schválení samostatného programu Herny. Herna je Karel-led práce s částí; nepoužije se plán terapeutického sezení ani first_draft.",
+          "Otevírám poradu ke schválení samostatného programu Herny. Herna je práce vedená Karlem po schválení terapeutkami; Herna má vlastní schválený herní program a nepřebírá plán terapeutického Sezení.",
         ].join("\n");
         const karelPlan = [
           `Část: ${s.part_name}`,
@@ -1915,7 +1915,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
-      {/* 4.5 Dnešní navržená Herna — samostatný Karel-led program, nikdy ne session first_draft. */}
+      {/* 4.5 Dnešní navržená Herna — samostatný program vedený Karlem po schválení terapeutkami, nikdy ne plán terapeutického Sezení. */}
       {playroomProposal && playroomView && (
         <>
           <NarrativeDivider />
