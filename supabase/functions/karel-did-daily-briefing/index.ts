@@ -1362,7 +1362,7 @@ function buildSourceGroundedFreshOpening(payload: any, context: any): string {
     ? `Pro dnešní Sezení / Hernu to mění první krok: nezačínat výkladem, ale ověřit tělo, emoci a bezpečí kontaktu; teprve potom rozhodnout, jestli navázat na ${sessionPart}, nebo zůstat u stabilizace.`
     : "Pro dnešní Sezení / Hernu to znamená začít nízkoprahovým ověřením stavu, ne hotovou formulací.";
   const teamAsk = "Od Haničky chci krátké ověření těla, emoce a stop signálů. Od Káti chci hlídat, aby žádná skutečná událost ani starší záznam nebyly použité jako závěr dřív, než kluci sami ukážou vlastní reakci.";
-  const sourceIntro = `Dnes mám nové podklady z těchto zdrojů: ${sourceLines.join(" ")}${usedCoverage.length ? ` Pokrytí zdrojů v payloadu potvrzuje zejména: ${usedCoverage.join(", ")}.` : ""}`;
+  const sourceIntro = `Dnes mám nové podklady z těchto zdrojů: ${sourceLines.join(" ")}${usedCoverage.length ? ` Souhrn zdrojů potvrzuje zejména: ${usedCoverage.join(", ")}.` : ""}`;
   return ensureKarelFirstPersonOpening([
     "Dobré ráno, Haničko a Káťo.",
     `Co je nové od posledního přehledu: ${sourceIntro}${operationalExcerpt ? ` Z pracovních implikací beru hlavně toto: ${operationalExcerpt}` : ""}`,
