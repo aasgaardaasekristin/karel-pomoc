@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  countHernaForbiddenTerms,
   getLiveProgramTitle,
   getPlanChangeLabel,
+  HERNA_VISIBLE_FORBIDDEN_TERMS,
   isPlayroomDeliberation,
+  sanitizeHernaVisibleText,
 } from "./deliberationRoomUiHelpers";
 import type { TeamDeliberation } from "@/types/teamDeliberation";
 
