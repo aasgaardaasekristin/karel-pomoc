@@ -1476,48 +1476,92 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   };
 }
 
-function buildSourceGroundedFreshOpening(payload: any, context: any): string {
-  const sess = payload?.recent_session_review?.exists ? payload.recent_session_review : payload?.yesterday_session_review?.exists ? payload.yesterday_session_review : null;
-  const sessionPart = capitalizePartName(sess?.part_name || payload?.proposed_session?.part_name || "část");
-  const sessionDate = formatClinicalDate(sess?.source_date_iso || sess?.session_date_iso || context?.yesterday || null);
+/**
+ * Builds the visible Karel morning opening as **clinical human prose**.
+ * Source-grounded internally, clinically human externally — no source-coverage,
+ * pipeline, DID-relevance, ingestion or follow-up vocabulary in visible text.
+ */
+function buildVisibleClinicalMorningBriefing(payload: any, context: any): string {
+  const sess = payload?.recent_session_review?.exists
+    ? payload.recent_session_review
+    : payload?.yesterday_session_review?.exists
+    ? payload.yesterday_session_review
+    : null;
+  const partRaw = sess?.part_name || payload?.proposed_session?.part_name || "";
+  const part = capitalizePartName(partRaw || "část");
+  const partInst = partInstrumental(partRaw);
+  const partAcc = partAccusative(partRaw);
+  const dateStr = formatClinicalDate(sess?.source_date_iso || sess?.session_date_iso || context?.yesterday || null);
   const openedPartial = sess?.exists && isOpenedPartialSessionReview(sess);
-  const eventCount = Number(payload?.event_ingestion_summary?.processed_count ?? context?.event_ingestion_summary?.processed_count ?? 0);
-  const taskCount = Array.isArray(payload?.task_note_implications) ? payload.task_note_implications.length : 0;
-  const hanaCount = Array.isArray(payload?.hana_personal_did_relevant_implications) ? payload.hana_personal_did_relevant_implications.length : 0;
-  const askCount = (Array.isArray(context?.pantry_b_entries) ? context.pantry_b_entries : []).filter((e: any) => e?.source_kind === "briefing_ask_resolution").length;
-  const operationalCount = Array.isArray(payload?.operational_context_used) ? payload.operational_context_used.length : 0;
-  const coverageSources = Array.isArray(payload?.source_coverage_summary?.sources) ? payload.source_coverage_summary.sources : [];
-  const usedCoverage = coverageSources.filter((s: any) => s?.used_in_briefing && Number(s?.raw_count ?? 0) > 0).map((s: any) => String(s.source).replace(/^did_/, "").replace(/_/g, " ")).slice(0, 5);
-  const sourceLines = [
-    sess?.exists ? `Sezení / průběhové body: ${sessionPart}, ${sessionDate}${openedPartial ? ", otevřené nebo částečně rozpracované" : ""}.` : "Sezení / průběhové body: dnes nemám uzavřené nové review, pracuji opatrně.",
-    eventCount > 0 ? `Dnešní záznamy událostí: zpracováno ${eventCount} položek pro ranní souhrn.` : "Dnešní záznamy událostí: bez nové použitelné klinické položky.",
-    hanaCount > 0 ? `Hana/Osobní: použité jsou jen zpracované DID-relevantní implikace (${hanaCount}), ne raw osobní obsah.` : "Hana/Osobní: raw osobní obsah nevkládám; bez nové bezpečné implikace.",
-    taskCount > 0 || askCount > 0 ? `Úkoly terapeutek / odpovědi na ranní otázky: ${taskCount + askCount} nových pracovních vstupů.` : "Úkoly terapeutek / ranní otázky: bez nové rozhodovací odpovědi.",
-  ];
-  const operationalExcerpt = (Array.isArray(payload?.operational_context_used) ? payload.operational_context_used : [])
-    .map((e: any) => trimSentence(e?.summary, 180))
-    .filter(Boolean)
-    .slice(0, 2)
-    .join(" ");
+  const sessionRecencyLabel = sess?.is_yesterday
+    ? "včerejší"
+    : sess?.days_since_today === 2
+    ? "předevčerejší"
+    : "poslední doložené";
+
+  const greeting = "Dobré ráno, Haničko a Káťo.";
+  const mainAnchor = sess?.exists
+    ? `Dnešní přehled navazuje hlavně na ${sessionRecencyLabel} otevřené Sezení s ${partInst}${dateStr ? ` z ${dateStr}` : ""}. Záznam ukazuje, že práce byla zahájená${openedPartial ? " a částečně rozpracovaná" : ""}, ale ještě z ní nemáme uzavřený klinický závěr. Nedělám z ní víc, než opravdu víme.`
+    : `Pro dnešek nemám čerstvé klinické sezení, ze kterého bych vycházel. Beru to vážně a nebudu předbíhat k závěrům, které kluci sami nepotvrdili.`;
   const certainty = sess?.exists
-    ? `Jisté je, že ${sessionDate} bylo zachycené Sezení s ${partInstrumental(sessionPart)}${openedPartial || sess?.held === false ? " jako otevřené nebo částečně rozpracované" : " jako doložený klinický vstup"}. Zdrojově vycházím z review / průběhové evidence a nepředstírám víc, než záznam unese.`
-    : "Jisté je, že dnešní přehled má oporu jen v dostupných zpracovaných zdrojích; tam, kde review chybí, nesmím doplňovat závěr za kluky.";
-  const unclear = openedPartial
-    ? `Nejasné zůstává, co přesně si ${sessionPart} z otevřené práce odnáší, jak na ni dnes reaguje tělo a zda je bezpečné pokračovat Sezením, Hernou, nebo jen krátkým kontaktem.`
-    : "Nejasné zůstává, které části jsou dnes opravdu dostupné a co je jen stopa v datech bez aktuální odpovědi kluků.";
-  const todayChange = sess?.exists
-    ? `Pro dnešní Sezení / Hernu to mění první krok: nezačínat výkladem, ale ověřit tělo, emoci a bezpečí kontaktu; teprve potom rozhodnout, jestli navázat na ${sessionPart}, nebo zůstat u stabilizace.`
-    : "Pro dnešní Sezení / Hernu to znamená začít nízkoprahovým ověřením stavu, ne hotovou formulací.";
-  const teamAsk = "Od Haničky chci krátké ověření těla, emoce a stop signálů. Od Káti chci hlídat, aby žádná skutečná událost ani starší záznam nebyly použité jako závěr dřív, než kluci sami ukážou vlastní reakci.";
-  const sourceIntro = `Dnes mám nové podklady z těchto zdrojů: ${sourceLines.join(" ")}${usedCoverage.length ? ` Souhrn zdrojů potvrzuje zejména: ${usedCoverage.join(", ")}.` : ""}`;
-  return ensureKarelFirstPersonOpening([
-    "Dobré ráno, Haničko a Káťo.",
-    `Co je nové od posledního přehledu: ${sourceIntro}${operationalExcerpt ? ` Z pracovních implikací beru hlavně toto: ${operationalExcerpt}` : ""}`,
-    `Co je jisté: ${certainty}`,
-    `Co zůstává nejasné: ${unclear}`,
-    `Co to mění pro dnešní Sezení / Hernu: ${todayChange}`,
-    `Co chci od Haničky a Káti: ${teamAsk}`,
-  ].join("\n\n"), "Dobré ráno, Haničko a Káťo. Dnešní přehled je zdrojově omezený; začnu ověřením těla, emoce a bezpečí kontaktu.");
+    ? `Víme jistě, že${dateStr ? ` ${dateStr}` : ""} bylo s ${partInst} zahájené Sezení a že${openedPartial ? " zůstalo otevřené" : " je doložené jako klinický vstup"}. To je opora, ze které dnes můžu vyjít.`
+    : `Víme jistě jen to, co máme přesně datované. Tam, kde nemáme doložený materiál, nedoplňuji závěry za kluky.`;
+  const unknown = openedPartial
+    ? `Zatím nevíme, jak je na tom ${part} dnes v těle a v emoci, jestli je dostupný pro kontakt a co si z otevřené práce odnáší jako pravdu pro dnešek.`
+    : `Zatím nevíme, kdo z kluků je dnes opravdu dostupný a v jaké náladě nám to ukáže až první kontakt.`;
+  const todayMeans = sess?.exists
+    ? `Pro dnešek z toho plyne jednoduchý první krok. Nezačínat výkladem ani novým úkolem, ale nejdřív ověřit, jak je na tom ${part} dnes v těle, v emoci a v ochotě být v kontaktu. Pokud je dostupný, můžeme na ${partAcc} navázat velmi malým krokem. Pokud je unavený nebo stažený, bude správné zůstat u stabilizace.`
+    : `Pro dnešek z toho plyne držet bezpečný práh: krátké ověření těla, emoce a kontaktu, žádné nové téma, dokud kluci sami neukážou, na co je prostor.`;
+  const forHana = `Haničko, pro tebe je dnes hlavní držet otázky krátké a bezpečné a hlídat tělesné a emoční stop signály.`;
+  const forKata = sess?.exists
+    ? `Káťo, prosím hlídej, aby se z otevřeného Sezení nedělal hotový závěr dřív, než kluci sami ukážou, co je pro ně pravda dnes.`
+    : `Káťo, prosím hlídej, aby se starší záznamy nepoužívaly jako dnešní závěr — pravda dnešního dne musí přijít od kluků.`;
+
+  const opening = [greeting, mainAnchor, certainty, unknown, todayMeans, forHana, forKata].join("\n\n");
+  return ensureKarelFirstPersonOpening(opening, opening);
+}
+
+/** Last-resort human clinical repair: filter audit sentences, dedupe, fix grammar. */
+function buildHumanClinicalRepairOpening(payload: any, context: any): string {
+  const draft = buildVisibleClinicalMorningBriefing(payload, context);
+  const filtered = splitSentences(draft).filter((s) => {
+    if (isLowValueImplication(s)) return false;
+    for (const re of FORBIDDEN_VISIBLE_AUDIT_TERMS) if (re.test(s)) return false;
+    return true;
+  });
+  const { text } = dedupeSentences(filtered.join(" "));
+  return fixKnownPartGrammar(text);
+}
+
+/**
+ * BACK-COMPAT WRAPPER used by the freshness-audit repair branch.
+ * Returns the visible clinical opening passed through the quality gate.
+ * Records visible_text_quality_audit on the payload.
+ */
+function buildSourceGroundedFreshOpening(payload: any, context: any): string {
+  let opening = fixKnownPartGrammar(buildVisibleClinicalMorningBriefing(payload, context));
+  let audit = validateVisibleClinicalBriefingText(opening);
+  let repairApplied = false;
+  if (!audit.ok) {
+    opening = fixKnownPartGrammar(buildHumanClinicalRepairOpening(payload, context));
+    audit = validateVisibleClinicalBriefingText(opening);
+    repairApplied = true;
+  }
+  try {
+    (payload as any).visible_text_quality_audit = {
+      ok: audit.ok,
+      violations: audit.violations,
+      forbidden_terms_count_after_repair: audit.forbidden_terms_count,
+      low_value_implication_count: audit.low_value_implication_count,
+      duplicate_sentence_count: audit.duplicate_sentence_count,
+      known_part_grammar_violations: audit.known_part_grammar_violations,
+      has_concrete_clinical_fact: audit.has_concrete_clinical_fact,
+      has_practical_next_step: audit.has_practical_next_step,
+      repair_strategy: repairApplied ? "human_clinical_rewrite" : "primary_builder",
+      checked_at: new Date().toISOString(),
+    };
+  } catch (_e) { /* non-fatal */ }
+  return opening;
 }
 
 export function applyClinicalRecencyGuard(payload: any): any {
