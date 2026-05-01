@@ -3043,6 +3043,16 @@ Deno.serve(async (req) => {
       console.warn("[briefing] freshness audit failed (non-fatal):", e);
     }
 
+    // generation_runtime_audit — strict audit of real edge runtime
+    const generationCompletedAt = Date.now();
+    payload.generation_runtime_audit = {
+      started_at: generationStartedIso,
+      completed_at: new Date(generationCompletedAt).toISOString(),
+      duration_ms: durationMs,
+      source: generationSource === "ai_runtime" ? "edge_runtime" : `edge_runtime:${generationSource}`,
+      method: generationMethod,
+    };
+
     // 6) Insert nový briefing
     const { data: inserted, error: insertErr } = await supabase
       .from("did_daily_briefings")
