@@ -142,9 +142,9 @@ export function buildSafePlayroomDraft(eventLabel: string | null): AgendaBlock[]
       detail: "Karel nabídne volbu: můžeme dnes jen zkontrolovat, jak se má tvoje srdce. Nemusíme řešit všechno.",
     },
     {
-      block: "Počasí uvnitř",
+      block: "Počasí uvnitř — emoce a tělo",
       minutes: 5,
-      detail: "Část vybere jedno slovo, barvu nebo obraz pro dnešní stav. Žádná interpretace.",
+      detail: "Část vybere jedno slovo, barvu nebo obraz pro dnešní emoce a pro to, co cítí v těle. Žádná interpretace.",
     },
     {
       block: `Bezpečný dotyk s tématem ${noun}`,
