@@ -1218,7 +1218,7 @@ export function validateVisibleClinicalBriefingText(opening: string): VisibleCli
   for (const s of sentences) if (isLowValueImplication(s)) { lowValue++; violations.push(`low_value:${s.slice(0, 60)}`); }
   const { duplicateCount } = dedupeSentences(text);
   if (duplicateCount > 0) violations.push(`duplicate_sentences:${duplicateCount}`);
-  const grammar = (text.match(new RegExp(KNOWN_PART_BARE_NOMINATIVE_RE.source, "gi")) ?? []).length;
+  const grammar = (text.match(new RegExp(KNOWN_PART_BARE_NOMINATIVE_RE.source, "giu")) ?? []).length;
   if (grammar > 0) violations.push(`grammar:${grammar}`);
   const hasConcreteFact = /(Gust[íi]k|Tundrupek|Timmi|\d{1,2}\.\s*\d{1,2}\.\s*\d{4}|včerejší|předevčírem)/i.test(text);
   const hasNextStep = /(prvn[íi]\s+krok|t[ěe]lo|emoci|bezpe[čc][íi]|stabilizac|nezačínat|ověřit|krátk[ýyé])/i.test(text);
