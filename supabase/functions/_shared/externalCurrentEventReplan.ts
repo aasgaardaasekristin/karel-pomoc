@@ -403,16 +403,36 @@ export async function runExternalCurrentEventReplan(
       .maybeSingle();
     if (existingPantry?.id) {
       const detail = (existingPantry as any).detail ?? {};
+      // Reconcile with current SQL state: only report deliberations that are
+      // currently in_revision with this exact external event active. This
+      // prevents stale historical ids (e.g. previously-touched approved plans
+      // that were since contained/restored) from leaking into the response.
+      const candidateIds: string[] = Array.isArray(detail?.affected_deliberation_ids)
+        ? detail.affected_deliberation_ids.filter((x: unknown) => typeof x === "string")
+        : [];
+      let currentlyAffected: string[] = candidateIds;
+      try {
+        if (candidateIds.length > 0) {
+          const { data: liveRows } = await admin
+            .from("did_team_deliberations")
+            .select("id, status, session_params")
+            .in("id", candidateIds);
+          currentlyAffected = (liveRows ?? [])
+            .filter((r: any) => String(r?.status ?? "").toLowerCase() === "in_revision"
+              && r?.session_params?.external_current_event_replan?.active === true)
+            .map((r: any) => String(r.id));
+        }
+      } catch (e) {
+        console.warn("[external-event-replan] reconcile affected ids failed:", (e as Error)?.message);
+      }
       const inlineComment = buildTruthfulKarelInlineComment({
         authorLabel,
         eventLabel,
         webVerificationAvailable,
-        affectedDeliberationCount: Array.isArray(detail?.affected_deliberation_ids)
-          ? detail.affected_deliberation_ids.length
-          : 1,
+        affectedDeliberationCount: currentlyAffected.length || 1,
       });
       return {
-        affected_deliberation_ids: Array.isArray(detail?.affected_deliberation_ids) ? detail.affected_deliberation_ids : [],
+        affected_deliberation_ids: currentlyAffected,
         invalidated_signatures: 0,
         session_drafts_rebuilt: 0,
         playroom_drafts_rebuilt: 0,
