@@ -514,7 +514,9 @@ function LiveProgramDraftPanel({
                   )}
                   {typeof block.karel_can_do_alone === "boolean" && (
                     <Badge variant="outline" className="text-[10px] h-5">
-                      Karel asistuje: {isPlayroom ? "po schválení" : "Ano"}
+                      {isPlayroom && isExternalReplan
+                        ? "Karel vede až po schválení"
+                        : `Karel asistuje: ${isPlayroom ? "po schválení" : "Ano"}`}
                     </Badge>
                   )}
                 </div>
