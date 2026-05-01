@@ -7,7 +7,7 @@ function sessionParamsOf(deliberation: Pick<TeamDeliberation, "session_params">)
 }
 
 export function isPlayroomDeliberation(
-  deliberation: Pick<TeamDeliberation, "deliberation_type" | "session_params">,
+  deliberation: Pick<TeamDeliberation, "session_params"> & { deliberation_type?: unknown },
 ): boolean {
   const p = sessionParamsOf(deliberation);
   return (
