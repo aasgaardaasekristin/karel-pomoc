@@ -87,7 +87,18 @@ export function decideAction(input: {
   fresh_manual_exists: boolean;
   cycle_status: "completed" | "running" | "failed" | "failed_stale" | "missing" | null;
   cycle_id?: string | null;
+  force_rebuild?: boolean;
+  force_rebuild_reason?: string;
 }): DecideResult {
+  if (input.fresh_non_manual_exists && input.force_rebuild) {
+    return {
+      action: "invoke_sla_repair",
+      method: "sla_watchdog_repair",
+      reason: input.force_rebuild_reason || "acceptance_force_rebuild",
+      cycle_status: input.cycle_status ?? undefined,
+      cycle_id: input.cycle_id ?? null,
+    };
+  }
   if (input.fresh_non_manual_exists) {
     return { action: "noop", reason: "fresh_non_manual_exists", cycle_status: input.cycle_status ?? undefined };
   }
@@ -147,6 +158,10 @@ Deno.serve(async (req) => {
 
   let body: any = {};
   try { body = await req.json(); } catch { /* GET / no body */ }
+  const forceRebuild = body?.force_rebuild === true && (isServiceCall || isCronSecretCall);
+  const forceRebuildReason = typeof body?.reason === "string" && body.reason.trim()
+    ? body.reason.trim()
+    : "acceptance_force_rebuild";
 
   // Discover scoped user. Priority:
   //   1) explicit body.userId
@@ -246,6 +261,8 @@ Deno.serve(async (req) => {
     fresh_manual_exists: !!freshManual,
     cycle_status: cycleStatus,
     cycle_id: cycleRow?.id ?? null,
+    force_rebuild: forceRebuild,
+    force_rebuild_reason: forceRebuildReason,
   });
 
   // Optional override (used by tests / forced repair)
@@ -295,6 +312,7 @@ Deno.serve(async (req) => {
         method: briefingMethod,
         source: "sla_watchdog",
         force: true,
+        fullAi: body?.fullAi === true || forceRebuild,
         userId: scopedUserId,
       }),
     });
