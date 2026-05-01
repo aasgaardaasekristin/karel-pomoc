@@ -420,6 +420,8 @@ function LiveProgramDraftPanel({
   const sp = d.session_params && typeof d.session_params === "object" ? d.session_params as Record<string, unknown> : {};
   const isPlayroom = isPlayroomDeliberation(d);
   const isExternalReplan = hasActiveExternalCurrentEventReplan(d);
+  const isPlayroomAwaitingApproval =
+    isPlayroom && (d.status !== "approved" || !d.hanka_signed_at || !d.kata_signed_at);
   const liveProgramTitle = getLiveProgramTitle(d);
   const unsafeExecutable = d.deliberation_type === "session_plan" && !isPlayroom && (blocks.length < 4 || blocks.some((b) => isUnsafeFallbackBlock(b as LiveProgramBlock)));
 
@@ -507,14 +509,14 @@ function LiveProgramDraftPanel({
                 <div className="flex flex-wrap gap-1.5 pt-0.5">
                   {typeof block.requires_physical_therapist === "boolean" && (
                     <Badge variant="outline" className="text-[10px] h-5">
-                      {isPlayroom && isExternalReplan
+                      {isPlayroom && (isExternalReplan || isPlayroomAwaitingApproval)
                         ? "Vyžaduje schválení terapeutkami: Ano"
                         : `Vyžaduje terapeutku: ${yesNo(isPlayroom ? Boolean(block.requires_physical_therapist) : true)}`}
                     </Badge>
                   )}
                   {typeof block.karel_can_do_alone === "boolean" && (
                     <Badge variant="outline" className="text-[10px] h-5">
-                      {isPlayroom && isExternalReplan
+                      {isPlayroom && (isExternalReplan || isPlayroomAwaitingApproval)
                         ? "Karel vede až po schválení"
                         : `Karel asistuje: ${isPlayroom ? "po schválení" : "Ano"}`}
                     </Badge>
