@@ -411,7 +411,13 @@ PRAVIDLA STRUKTURY:
     const programDraft: Array<AgendaBlock & Record<string, any>> = Array.isArray(parsed.program_draft)
       ? parsed.program_draft.slice(0, 8).map((b: any) => normalizeProgramBlock(b, parsedHybrid)).filter((b: AgendaBlock) => b.block.length > 0)
       : currentProgram.map((b: any) => normalizeProgramBlock(b, parsedHybrid)).filter((b: AgendaBlock) => b.block.length > 0);
-    const karelComment = String(parsed.karel_inline_comment ?? "").slice(0, 600);
+    let karelComment = String(parsed.karel_inline_comment ?? "").slice(0, 600);
+    // Anti-audit guard: if AI used backend/audit terms, replace with safe human line.
+    const inlineGuard = inlineCommentHasAuditLanguage(karelComment);
+    if (!inlineGuard.ok) {
+      const safeAuthorLabel = author === "hanka" ? "Hanička" : "Káťa";
+      karelComment = `${safeAuthorLabel}, zapracoval jsem tvůj vstup do programu — držím to v lidském, klinickém tónu, bez technických termínů.`;
+    }
 
     // Append to discussion_log: terapeutčin vstup + Karlova reakce
     const nowIso = new Date().toISOString();
