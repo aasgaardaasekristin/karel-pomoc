@@ -35,6 +35,12 @@ import {
   type AgendaBlock,
 } from "@/types/teamDeliberation";
 import { sanitizeRecencyText } from "@/lib/recencySanitizer";
+import {
+  getLiveProgramTitle,
+  getPlanChangeLabel,
+  hasActiveExternalCurrentEventReplan,
+  isPlayroomDeliberation,
+} from "./deliberationRoomUiHelpers";
 
 interface Props {
   deliberationId: string | null;
@@ -427,7 +433,9 @@ function LiveProgramDraftPanel({
   const blocks = draft.length > 0 ? draft : fallback;
   const usingDraft = draft.length > 0;
   const sp = d.session_params && typeof d.session_params === "object" ? d.session_params as Record<string, unknown> : {};
-  const isPlayroom = sp.session_actor === "karel_direct" || sp.ui_surface === "did_kids_playroom" || sp.session_format === "playroom" || !!sp.playroom_plan;
+  const isPlayroom = isPlayroomDeliberation(d);
+  const isExternalReplan = hasActiveExternalCurrentEventReplan(d);
+  const liveProgramTitle = getLiveProgramTitle(d);
   const unsafeExecutable = d.deliberation_type === "session_plan" && !isPlayroom && (blocks.length < 4 || blocks.some((b) => isUnsafeFallbackBlock(b as LiveProgramBlock)));
 
   if (blocks.length === 0 || unsafeExecutable) {
@@ -435,7 +443,7 @@ function LiveProgramDraftPanel({
       <section className="rounded-lg border border-dashed border-border/60 bg-card/30 p-3">
         <h4 className="text-[11px] font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-primary" />
-          Živý program sezení není připravený
+          {liveProgramTitle} není připravený
         </h4>
         <p className="text-[10.5px] text-muted-foreground italic">
           Karel zatím nemá dost podkladů pro vykonatelné terapeutické Sezení.
@@ -451,7 +459,7 @@ function LiveProgramDraftPanel({
       <div className="flex items-center justify-between gap-2">
         <h4 className="text-[11px] font-semibold text-primary flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5" />
-          Živý program sezení {usingDraft ? "" : "(první návrh)"}
+          {liveProgramTitle} {usingDraft ? "" : "(první návrh)"}
         </h4>
         {iterating && (
           <span className="text-[10px] text-primary/70 italic flex items-center gap-1">
@@ -514,7 +522,9 @@ function LiveProgramDraftPanel({
                 <div className="flex flex-wrap gap-1.5 pt-0.5">
                   {typeof block.requires_physical_therapist === "boolean" && (
                     <Badge variant="outline" className="text-[10px] h-5">
-                      Vyžaduje terapeutku: {yesNo(isPlayroom ? Boolean(block.requires_physical_therapist) : true)}
+                      {isPlayroom && isExternalReplan
+                        ? "Vyžaduje schválení terapeutkami: Ano"
+                        : `Vyžaduje terapeutku: ${yesNo(isPlayroom ? Boolean(block.requires_physical_therapist) : true)}`}
                     </Badge>
                   )}
                   {typeof block.karel_can_do_alone === "boolean" && (
