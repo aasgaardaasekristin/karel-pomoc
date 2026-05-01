@@ -270,14 +270,22 @@ Deno.serve(async (req: Request) => {
           : `${authorLabel}, beru to jako urgentní změnu reality. Starý návrh pozastavuji a připravuji nový bezpečný plán pro Sezení i Hernu.`;
 
         return new Response(JSON.stringify({
+          ok: true,
           program_draft: [], // Frontend MUSÍ udělat full reload — stará data jsou neplatná.
           karel_inline_comment: safeComment,
           requires_full_reload: true,
           replan_completed: true,
+          idempotent: orchestrated.idempotent === true,
+          idempotent_reason: orchestrated.idempotent_reason ?? null,
+          affected_deliberation_ids: orchestrated.affected_deliberation_ids,
+          briefing_force_rebuild_queued_or_done: orchestrated.briefing_force_rebuild_queued_or_done === true,
           external_current_event_replan: {
-            event_label: externalClassification.event_label,
+            requires_replan: externalClassification.requires_replan,
+            affects_session: externalClassification.affects_session,
+            affects_playroom: externalClassification.affects_playroom,
+            requires_web_verification: externalClassification.requires_web_verification,
             web_verification_state: orchestrated.web_verification_state,
-            affected_deliberation_ids: orchestrated.affected_deliberation_ids,
+            event_label: externalClassification.event_label,
             invalidated_signatures: orchestrated.invalidated_signatures,
             session_drafts_rebuilt: orchestrated.session_drafts_rebuilt,
             playroom_drafts_rebuilt: orchestrated.playroom_drafts_rebuilt,
