@@ -2859,6 +2859,69 @@ Deno.serve(async (req) => {
         .eq("user_id", scopedUserId);
     }
 
+    // 5b) FRESHNESS AUDIT — porovnej dnešní opening s včerejším non-stale openingem.
+    // Cíl: zachytit stale-template reuse (root cause: hardcoded šablony reprodukující
+    // identický text bez ohledu na den / nové vstupy).
+    try {
+      const yesterdayDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const { data: yesterdayRow } = await supabase
+        .from("did_daily_briefings")
+        .select("id, payload, generated_at, generation_method")
+        .eq("user_id", scopedUserId)
+        .eq("briefing_date", yesterdayDate)
+        .eq("is_stale", false)
+        .order("generated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const todayOpening = String(payload?.opening_monologue_text ?? "");
+      const yesterdayOpening = String(yesterdayRow?.payload?.opening_monologue_text ?? "");
+      const normalize = (s: string) => s.toLowerCase().replace(/\d+\.\s*\d+\.\s*\d{4}/g, "<DATE>").replace(/\s+/g, " ").trim();
+      const todayNorm = normalize(todayOpening);
+      const yestNorm = normalize(yesterdayOpening);
+      const todayHash = await sha256Hex(todayNorm);
+      const yesterdayHash = yesterdayOpening ? await sha256Hex(yestNorm) : null;
+
+      // Slovní Jaccard similarity (po normalizaci dat)
+      let similarityPct = 0;
+      if (todayNorm && yestNorm) {
+        const setA = new Set(todayNorm.split(/\W+/).filter((w) => w.length > 3));
+        const setB = new Set(yestNorm.split(/\W+/).filter((w) => w.length > 3));
+        const intersection = [...setA].filter((w) => setB.has(w)).length;
+        const union = new Set([...setA, ...setB]).size;
+        similarityPct = union > 0 ? Math.round((intersection / union) * 100) : 0;
+      }
+
+      const newSourcesCount = (payload.event_ingestion_summary?.processed_count ?? 0)
+        + (payload.task_note_implications?.length ?? 0)
+        + (payload.hana_personal_did_relevant_implications?.length ?? 0)
+        + (payload.new_observations?.length ?? 0);
+
+      let auditReason: string | null = null;
+      if (yesterdayHash && todayHash === yesterdayHash) {
+        auditReason = "stale_opening_identical_to_yesterday";
+      } else if (yesterdayHash && similarityPct >= 85 && newSourcesCount === 0) {
+        auditReason = "stale_opening_high_similarity_no_new_sources";
+      } else if (yesterdayHash && similarityPct >= 85 && newSourcesCount > 0) {
+        auditReason = "stale_opening_reuse_detected_despite_new_sources";
+      }
+
+      payload.opening_freshness_audit = {
+        yesterday_briefing_id: yesterdayRow?.id ?? null,
+        yesterday_opening_hash: yesterdayHash,
+        today_opening_hash: todayHash,
+        normalized_similarity_pct: similarityPct,
+        new_sources_count: newSourcesCount,
+        reason: auditReason,
+        checked_at: new Date().toISOString(),
+      };
+      if (auditReason) {
+        console.warn(`[briefing] freshness audit: ${auditReason} sim=${similarityPct}% sources=${newSourcesCount}`);
+      }
+    } catch (e) {
+      console.warn("[briefing] freshness audit failed (non-fatal):", e);
+    }
+
     // 6) Insert nový briefing
     const { data: inserted, error: insertErr } = await supabase
       .from("did_daily_briefings")
