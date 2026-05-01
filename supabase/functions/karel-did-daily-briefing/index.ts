@@ -2556,8 +2556,13 @@ Deno.serve(async (req) => {
     let durationMs = 0;
     let rawPayload: any;
     const generationStartedAt = Date.now();
+    const generationStartedIso = new Date(generationStartedAt).toISOString();
+    let generationSource: "ai_runtime" | "deterministic_default" | "skip_ai" | "playroom_safe_only" | "fallback_after_error" = "ai_runtime";
     try {
       const playroomSafeDefault = body?.fullAi !== true && buildYesterdayPlayroomReview(context)?.exists === true;
+      if (body?.skipAi === true) generationSource = "skip_ai";
+      else if (body?.playroomSafeOnly === true) generationSource = "playroom_safe_only";
+      else if (playroomSafeDefault) generationSource = "deterministic_default";
       const generated = body?.skipAi === true || body?.playroomSafeOnly === true || playroomSafeDefault
         ? { payload: buildDeterministicBriefingPayload(context, candidates), durationMs: 0 }
         : await generateBriefing(context, candidates, apiKey);
@@ -2568,6 +2573,15 @@ Deno.serve(async (req) => {
       rawPayload = buildDeterministicBriefingPayload(context, candidates);
       durationMs = Math.max(1, Date.now() - generationStartedAt);
       rawPayload.generation_warning = String(e?.message ?? e).slice(0, 500);
+      generationSource = "fallback_after_error";
+    }
+    // HARD GUARD: real edge runtime briefing musí mít nenulovou duration.
+    // Pokud AI vrátila 0 (rychlý cache hit nebo deterministic default), použijeme
+    // skutečnou wall-clock dobu od startu generace jako auditní minimum.
+    if (!Number.isFinite(durationMs) || durationMs <= 0) {
+      const wallClock = Math.max(1, Date.now() - generationStartedAt);
+      console.warn("[briefing] invalid generation duration — substituting wall clock", { reported: durationMs, wallClock, generationSource });
+      durationMs = wallClock;
     }
     let payload = enrichYesterdaySessionReview(rawPayload, context);
     payload.event_ingestion_summary = {
@@ -3028,6 +3042,16 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.warn("[briefing] freshness audit failed (non-fatal):", e);
     }
+
+    // generation_runtime_audit — strict audit of real edge runtime
+    const generationCompletedAt = Date.now();
+    payload.generation_runtime_audit = {
+      started_at: generationStartedIso,
+      completed_at: new Date(generationCompletedAt).toISOString(),
+      duration_ms: durationMs,
+      source: generationSource === "ai_runtime" ? "edge_runtime" : `edge_runtime:${generationSource}`,
+      method: generationMethod,
+    };
 
     // 6) Insert nový briefing
     const { data: inserted, error: insertErr } = await supabase
