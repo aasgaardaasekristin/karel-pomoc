@@ -131,11 +131,19 @@ export function useTeamDeliberations(refreshTrigger = 0) {
         { body: { deliberation_id: deliberationId, latest_input: latestInput } },
       );
       if (error) throw error;
-      await reload();
+      // External current-event replan returns requires_full_reload — refresh
+      // the deliberation list immediately so old (now invalidated) signatures
+      // and drafts disappear from UI.
+      if ((data as any)?.requires_full_reload) {
+        await reload();
+      }
       return data as {
         program_draft: Array<{ block: string; minutes?: number | null; detail?: string | null }>;
         karel_inline_comment: string;
         no_op?: boolean;
+        requires_full_reload?: boolean;
+        replan_completed?: boolean;
+        external_current_event_replan?: Record<string, unknown>;
       };
     },
     [reload],
