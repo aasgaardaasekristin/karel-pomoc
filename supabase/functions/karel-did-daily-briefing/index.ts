@@ -1572,6 +1572,36 @@ function buildSourceGroundedFreshOpening(payload: any, context: any): string {
   return opening;
 }
 
+function applyExternalCurrentEventBriefingPatch(payload: any, context: any): any {
+  const entries = Array.isArray(context?.pantry_b_entries) ? context.pantry_b_entries : [];
+  const entry = entries.find((e: any) => {
+    const d = e?.detail && typeof e.detail === "object" ? e.detail : {};
+    return d?.requires_replan === true && d?.affects_session === true && d?.affects_playroom === true;
+  });
+  if (!entry) return payload;
+  const detail = entry.detail ?? {};
+  const label = String(detail.event_label || "Timmy").toLowerCase().includes("velry") ? "velryby Timmyho" : String(detail.event_label || "Timmyho");
+  payload.external_current_event_update = {
+    active: true,
+    event_label: detail.event_label || "Timmy",
+    affects_session: true,
+    affects_playroom: true,
+    requires_web_verification: detail.requires_web_verification === true,
+    web_verification_state: detail.web_verification_state || "unavailable_no_web_tool",
+    do_not_symbolize: true,
+    source: "therapist_report",
+  };
+  payload.opening_monologue_text = ensureKarelFirstPersonOpening([
+    "Dobré ráno, Haničko a Káťo.",
+    `Dnes musím nejdřív reagovat na urgentní změnu reality kolem ${label}. Beru ji jako skutečnou vnější událost, která může kluky zatížit, ne jako symbol ani jako důkaz o nich.`,
+    "Nemám v aplikaci ověřené odkazy k aktuálním zprávám, takže nepředstírám, že jsem je ověřil. Do programu započítávám Hančino hlášení a dokud nepřijdou odkazy, držím nejistotu otevřeně.",
+    "Sezení i Herna mají dnes začít bezpečným zjištěním: co kluci sami vědí, co se děje v těle, jaká emoce je nejblíž a jestli téma není zahlcující.",
+    "Nikdo z kluků nenese odpovědnost za záchranu zvenčí. Praktický rámec je tělo, emoce, bezpečí, stop pravidlo a jedna malá podpora pro dnešek.",
+    "Haničko, prosím drž krátké otázky a nepřidávej neověřené detaily. Káťo, hlídej, aby se z události nedělal výklad dřív, než kluci sami ukážou vlastní reakci.",
+  ].join("\n\n"), "Dobré ráno, Haničko a Káťo. Dnes držím hlavně bezpečí, tělo a vlastní slova kluků.");
+  return payload;
+}
+
 export function applyClinicalRecencyGuard(payload: any): any {
   const walk = (value: any): any => {
     if (typeof value === "string") return ensureVisibleClinicalText(enforceClinicalRecencyText(value, payload));
