@@ -45,7 +45,7 @@ export function getPlanChangeLabel(
   if (status === "in_revision") return "vráceno k úpravě";
 
   if (deliberation.hanka_signed_at == null || deliberation.kata_signed_at == null) {
-    return "čeká na schválení terapeutkami";
+    return "čeká na nové schválení terapeutkami";
   }
 
   return "beze změny";
