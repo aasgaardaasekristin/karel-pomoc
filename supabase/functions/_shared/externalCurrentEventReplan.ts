@@ -323,7 +323,7 @@ async function forceBriefingRebuild(args: {
           force_rebuild: true,
           reason: "external_current_event_update_in_deliberation",
           method: "sla_watchdog_repair",
-          fullAi: true,
+          fullAi: false,
         }),
       });
       const bodyText = await resp.text().catch(() => "");
@@ -351,7 +351,7 @@ async function forceBriefingRebuild(args: {
         userId,
         force_rebuild: true,
         reason: "external_current_event_update_in_deliberation",
-        fullAi: true,
+        fullAi: false,
       }),
     });
     const directText = await directResp.text().catch(() => "");
