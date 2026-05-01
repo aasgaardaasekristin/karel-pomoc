@@ -1096,22 +1096,27 @@ const partDative = (name: string): string => partForms(name)?.dative ?? name;
  * Fixes Czech grammar for known parts in visible prose.
  * E.g. "navázat na Gustík" → "navázat na Gustíka"; "s gustik" → "s Gustíkem".
  */
+const PART_NOMINATIVE_VARIANTS: Record<string, string> = {
+  gustik: "(?:gust[íi]k)",
+  tundrupek: "(?:tundrupek)",
+  timmi: "(?:timmi)",
+};
 export function fixKnownPartGrammar(text: string): string {
   if (!text) return "";
   let out = text;
   for (const key of Object.keys(PART_FORMS)) {
     const f = PART_FORMS[key];
-    const namePat = new RegExp(`\\b${key}\\b`, "gi");
-    // Accusative after na/pro/o
-    out = out.replace(new RegExp(`\\b(na|pro|o|v)\\s+${key}\\b`, "gi"), (_m, prep) => `${prep} ${f.accusative}`);
+    const variant = PART_NOMINATIVE_VARIANTS[key] ?? key;
+    // Accusative after na/pro/o/v
+    out = out.replace(new RegExp(`(^|[^\\p{L}])(na|pro|o|v)\\s+${variant}(?![\\p{L}])`, "giu"), (_m, pre, prep) => `${pre}${prep} ${f.accusative}`);
     // Instrumental after s/se/za/před/nad/pod
-    out = out.replace(new RegExp(`\\b(s|se|za|před|nad|pod)\\s+${key}\\b`, "gi"), (_m, prep) => `${prep} ${f.instrumental}`);
+    out = out.replace(new RegExp(`(^|[^\\p{L}])(s|se|za|před|nad|pod)\\s+${variant}(?![\\p{L}])`, "giu"), (_m, pre, prep) => `${pre}${prep} ${f.instrumental}`);
     // Dative after k/ke
-    out = out.replace(new RegExp(`\\b(k|ke)\\s+${key}\\b`, "gi"), (_m, prep) => `${prep} ${f.dative}`);
+    out = out.replace(new RegExp(`(^|[^\\p{L}])(k|ke)\\s+${variant}(?![\\p{L}])`, "giu"), (_m, pre, prep) => `${pre}${prep} ${f.dative}`);
     // Genitive after od/u/do/bez
-    out = out.replace(new RegExp(`\\b(od|u|do|bez)\\s+${key}\\b`, "gi"), (_m, prep) => `${prep} ${f.genitive}`);
-    // Bare lowercase nominative → capitalize
-    out = out.replace(namePat, f.nominative);
+    out = out.replace(new RegExp(`(^|[^\\p{L}])(od|u|do|bez)\\s+${variant}(?![\\p{L}])`, "giu"), (_m, pre, prep) => `${pre}${prep} ${f.genitive}`);
+    // Bare lowercase nominative → capitalize (only when not preceded/followed by another letter)
+    out = out.replace(new RegExp(`(^|[^\\p{L}])${variant}(?![\\p{L}])`, "giu"), (_m, pre) => `${pre}${f.nominative}`);
   }
   return out;
 }
