@@ -142,9 +142,9 @@ export function buildSafePlayroomDraft(eventLabel: string | null): AgendaBlock[]
       detail: "Karel nabídne volbu: můžeme dnes jen zkontrolovat, jak se má tvoje srdce. Nemusíme řešit všechno.",
     },
     {
-      block: "Počasí uvnitř",
+      block: "Počasí uvnitř — emoce a tělo",
       minutes: 5,
-      detail: "Část vybere jedno slovo, barvu nebo obraz pro dnešní stav. Žádná interpretace.",
+      detail: "Část vybere jedno slovo, barvu nebo obraz pro dnešní emoce a pro to, co cítí v těle. Žádná interpretace.",
     },
     {
       block: `Bezpečný dotyk s tématem ${noun}`,
@@ -250,8 +250,11 @@ export interface OrchestratorResult {
   pantry_b_entry_id: string | null;
   event_log_id: string | null;
   briefing_force_rebuild_invoked: boolean;
+  briefing_force_rebuild_queued_or_done: boolean;
   karel_inline_comment: string;
   web_verification_state: "pending_web_verification" | "unavailable_no_web_tool" | "verified_with_sources";
+  idempotent: boolean;
+  idempotent_reason?: string;
 }
 
 export interface ExternalReplanScopeRow {
@@ -383,6 +386,70 @@ export async function runExternalCurrentEventReplan(
     webVerificationAvailable
       ? "verified_with_sources"
       : (classification.requires_web_verification ? "unavailable_no_web_tool" : "pending_web_verification");
+
+  // ── 5.0 IDEMPOTENCE PRE-CHECK ──────────────────────────────────────────
+  // Pokud už pro tento dedupeKey existuje záznam v Pantry B (=>orchestrator
+  // už proběhl pro stejný external event), vrátíme rychlou no-op odpověď.
+  // Tím zabráníme duplicitním tasks/pantry/event log insertům i spuštění
+  // dalšího briefing rebuildu při opakovaném kliknutí.
+  try {
+    const { data: existingPantry } = await admin
+      .from("karel_pantry_b_entries")
+      .select("id, detail")
+      .eq("user_id", userId)
+      .eq("source_kind", "team_deliberation_answer")
+      .eq("source_ref", dedupeKey)
+      .limit(1)
+      .maybeSingle();
+    if (existingPantry?.id) {
+      const detail = (existingPantry as any).detail ?? {};
+      // Reconcile with current SQL state: only report deliberations that are
+      // currently in_revision with this exact external event active. This
+      // prevents stale historical ids (e.g. previously-touched approved plans
+      // that were since contained/restored) from leaking into the response.
+      const candidateIds: string[] = Array.isArray(detail?.affected_deliberation_ids)
+        ? detail.affected_deliberation_ids.filter((x: unknown) => typeof x === "string")
+        : [];
+      let currentlyAffected: string[] = candidateIds;
+      try {
+        if (candidateIds.length > 0) {
+          const { data: liveRows } = await admin
+            .from("did_team_deliberations")
+            .select("id, status, session_params")
+            .in("id", candidateIds);
+          currentlyAffected = (liveRows ?? [])
+            .filter((r: any) => String(r?.status ?? "").toLowerCase() === "in_revision"
+              && r?.session_params?.external_current_event_replan?.active === true)
+            .map((r: any) => String(r.id));
+        }
+      } catch (e) {
+        console.warn("[external-event-replan] reconcile affected ids failed:", (e as Error)?.message);
+      }
+      const inlineComment = buildTruthfulKarelInlineComment({
+        authorLabel,
+        eventLabel,
+        webVerificationAvailable,
+        affectedDeliberationCount: currentlyAffected.length || 1,
+      });
+      return {
+        affected_deliberation_ids: currentlyAffected,
+        invalidated_signatures: 0,
+        session_drafts_rebuilt: 0,
+        playroom_drafts_rebuilt: 0,
+        tasks_created: 0,
+        pantry_b_entry_id: (existingPantry as any).id,
+        event_log_id: null,
+        briefing_force_rebuild_invoked: false,
+        briefing_force_rebuild_queued_or_done: true,
+        karel_inline_comment: inlineComment,
+        web_verification_state: webState,
+        idempotent: true,
+        idempotent_reason: "already_replanned_for_same_external_event",
+      };
+    }
+  } catch (e) {
+    console.warn("[external-event-replan] idempotence pre-check failed:", (e as Error)?.message);
+  }
 
   // ── 5.1 Find affected deliberations (session_plan + playroom) ─────────
   // SCOPE GUARD: jen *aktivně rozpracované* dnešní porady. Historické
@@ -634,9 +701,21 @@ export async function runExternalCurrentEventReplan(
     }
   }
 
-  // ── 5.5 Force-rebuild Karlův přehled: watchdog first, direct briefing fallback.
-  // briefing_force_rebuild_invoked=true only when a real successful HTTP path exists.
-  const briefingForced = await forceBriefingRebuild({ admin, userId, supabaseUrl, serviceKey });
+  // ── 5.5 Force-rebuild Karlův přehled: defer to background so the
+  // edge function returns to the client immediately (no `context canceled`).
+  // We use EdgeRuntime.waitUntil where available; fall back to a fire-and-forget
+  // promise. Either way, we do NOT await the watchdog HTTP loop here.
+  const briefingPromise = forceBriefingRebuild({ admin, userId, supabaseUrl, serviceKey })
+    .catch((e) => {
+      console.warn("[external-event-replan] deferred briefing rebuild failed:", (e as Error)?.message);
+      return false;
+    });
+  try {
+    const er = (globalThis as any).EdgeRuntime;
+    if (er && typeof er.waitUntil === "function") {
+      er.waitUntil(briefingPromise);
+    }
+  } catch (_e) { /* ignore */ }
 
   // ── 5.6 Build truthful inline comment ──────────────────────────────────
   const inlineComment = buildTruthfulKarelInlineComment({
@@ -660,8 +739,10 @@ export async function runExternalCurrentEventReplan(
     tasks_created: tasksCreated,
     pantry_b_entry_id: pantryEntryId,
     event_log_id: eventLogId,
-    briefing_force_rebuild_invoked: briefingForced,
+    briefing_force_rebuild_invoked: false, // deferred — will run in background
+    briefing_force_rebuild_queued_or_done: true,
     karel_inline_comment: safeComment,
     web_verification_state: webState,
+    idempotent: false,
   };
 }
