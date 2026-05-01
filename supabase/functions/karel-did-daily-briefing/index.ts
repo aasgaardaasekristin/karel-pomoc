@@ -2848,6 +2848,7 @@ Deno.serve(async (req) => {
     payload.recent_playroom_review = payload.yesterday_playroom_review;
     payload.recent_session_review = payload.yesterday_session_review;
     payload = applyOpeningMonologue(payload, context, candidates);
+    payload = applyExternalCurrentEventBriefingPatch(payload, context);
     payload.recent_playroom_review = payload.yesterday_playroom_review;
     payload.recent_session_review = payload.yesterday_session_review;
     payload = applyClinicalRecencyGuard(payload);
