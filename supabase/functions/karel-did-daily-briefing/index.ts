@@ -499,6 +499,12 @@ const jsonItemCount = (value: unknown): number => {
   return 0;
 };
 
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 const REAL_WORLD_CONTEXT_RE = /(therapist_factual_correction|external_fact|skute|re[áa]ln|faktick|odkaz|url|https?:\/\/|aktu[áa]ln|zpr[áa]v|[čc]l[áa]nek|telefon[áa]t|[úu]mrt|ztr[áa]t|zdravotn|po[žz][áa]r|v[áa]lk|[úu]tulek|z[áa]chran|instituc|nen[íi]\s+to\s+(?:symbol|projekce|fiktivn))/i;
 const OPERATIONAL_EVIDENCE_LEVELS = new Set(["therapist_factual_correction", "external_fact", "therapist_observation_D2", "direct_child_evidence", "team_decision", "program_change", "task_note"]);
 
