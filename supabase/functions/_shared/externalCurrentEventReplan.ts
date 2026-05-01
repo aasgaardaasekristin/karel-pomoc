@@ -420,6 +420,7 @@ export async function runExternalCurrentEventReplan(
       intended_destinations: ["briefing_input", "did_implications", "did_therapist_tasks"],
       related_therapist: authorRole,
     });
+    pantryEntryId = pantryRes ? (pantryRes as any).id ?? null : null;
   } catch (e) {
     console.warn("[external-event-replan] pantry B append failed:", (e as Error)?.message);
   }
