@@ -312,21 +312,6 @@ function buildApprovedLivePlanMarkdown(
   return lines.filter(Boolean).join("\n");
 }
 
-function isPlayroomDeliberation(
-  source: LiveDeliberationSource | null | undefined,
-) {
-  const sp =
-    source?.session_params && typeof source.session_params === "object"
-      ? source.session_params
-      : {};
-  return (
-    sp.session_actor === "karel_direct" ||
-    sp.ui_surface === "did_kids_playroom" ||
-    sp.session_format === "playroom" ||
-    !!sp.playroom_plan
-  );
-}
-
 function areAllQuestionsAnswered(questions: DeliberationQuestion[] = []) {
   return questions.length > 0 && questions.every((q) => !!q.answer?.trim());
 }
