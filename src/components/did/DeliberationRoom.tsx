@@ -540,23 +540,13 @@ function ClinicalContractPanel({ d }: { d: TeamDeliberation }) {
     d.session_params && typeof d.session_params === "object"
       ? d.session_params
       : {};
-  const planChangeLabel: Record<string, string> = {
-    unchanged: "beze změny",
-    revised: "upraveno",
-    deferred: "odloženo",
-    needs_followup_question: "potřebuje doplňující otázku",
-  };
-  const lastPlanChange =
-    typeof sp.last_plan_change_state === "string"
-      ? (planChangeLabel[sp.last_plan_change_state] ??
-        sp.last_plan_change_state)
-      : sp.last_plan_change_state;
+  const isPlayroom = isPlayroomDeliberation(d);
   const entries = [
     ["Fáze", sp.treatment_phase],
     ["Připravenost", sp.readiness_today],
-    ["Role", sp.session_actor === "karel_direct" || sp.ui_surface === "did_kids_playroom" || sp.session_format === "playroom" ? "Herna: Karel vede až po schválení terapeutkami" : "Sezení: terapeutka vede, Karel asistuje"],
+    ["Role", isPlayroom ? "Herna: Karel vede až po schválení terapeutkami" : "Sezení: terapeutka vede, Karel asistuje"],
     ["První otázka", sp.first_question],
-    ["Změna plánu", lastPlanChange],
+    ["Změna plánu", getPlanChangeLabel(d)],
   ].filter(
     ([, value]) => typeof value === "string" && value.trim().length > 0,
   ) as Array<[string, string]>;
