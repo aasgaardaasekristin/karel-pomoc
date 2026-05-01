@@ -505,6 +505,24 @@ async function sha256Hex(input: string): Promise<string> {
   return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+const normalizeOpeningForFreshness = (s: string) =>
+  s.toLowerCase().replace(/\d+\.\s*\d+\.\s*\d{4}/g, "<DATE>").replace(/\s+/g, " ").trim();
+
+const openingSimilarityPct = (a: string, b: string): number => {
+  if (!a || !b) return 0;
+  const setA = new Set(a.split(/\W+/).filter((w) => w.length > 3));
+  const setB = new Set(b.split(/\W+/).filter((w) => w.length > 3));
+  const intersection = [...setA].filter((w) => setB.has(w)).length;
+  const union = new Set([...setA, ...setB]).size;
+  return union > 0 ? Math.round((intersection / union) * 100) : 0;
+};
+
+const sharedSentenceCount = (a: string, b: string): number => {
+  const split = (s: string) => new Set(s.split(/[.!?]\s+/).map((x) => x.trim().toLowerCase()).filter((x) => x.length > 24));
+  const setB = split(b);
+  return [...split(a)].filter((x) => setB.has(x)).length;
+};
+
 const REAL_WORLD_CONTEXT_RE = /(therapist_factual_correction|external_fact|skute|re[áa]ln|faktick|odkaz|url|https?:\/\/|aktu[áa]ln|zpr[áa]v|[čc]l[áa]nek|telefon[áa]t|[úu]mrt|ztr[áa]t|zdravotn|po[žz][áa]r|v[áa]lk|[úu]tulek|z[áa]chran|instituc|nen[íi]\s+to\s+(?:symbol|projekce|fiktivn))/i;
 const OPERATIONAL_EVIDENCE_LEVELS = new Set(["therapist_factual_correction", "external_fact", "therapist_observation_D2", "direct_child_evidence", "team_decision", "program_change", "task_note"]);
 
@@ -1051,6 +1069,15 @@ const trimSentence = (value: unknown, max = 360): string => {
   return `${cut.slice(0, Math.max(cut.lastIndexOf("."), cut.lastIndexOf(";"), cut.lastIndexOf(","), 180)).trim()}…`;
 };
 
+const capitalizePartName = (name: unknown): string => {
+  const raw = String(name ?? "").trim();
+  if (!raw) return "část";
+  if (/^gust[íi]k$/i.test(raw)) return "Gustík";
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+};
+
+const partInstrumental = (name: unknown): string => /^gust[íi]k$/i.test(String(name ?? "").trim()) ? "Gustíkem" : String(name ?? "částí").trim();
+
 const partGenitive = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupka" : name;
 const partDative = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupkovi" : name;
 
@@ -1300,6 +1327,50 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
     opening_monologue_text,
     technical_note: "",
   };
+}
+
+function buildSourceGroundedFreshOpening(payload: any, context: any): string {
+  const sess = payload?.recent_session_review?.exists ? payload.recent_session_review : payload?.yesterday_session_review?.exists ? payload.yesterday_session_review : null;
+  const sessionPart = capitalizePartName(sess?.part_name || payload?.proposed_session?.part_name || "část");
+  const sessionDate = formatClinicalDate(sess?.source_date_iso || sess?.session_date_iso || context?.yesterday || null);
+  const openedPartial = sess?.exists && isOpenedPartialSessionReview(sess);
+  const eventCount = Number(payload?.event_ingestion_summary?.processed_count ?? context?.event_ingestion_summary?.processed_count ?? 0);
+  const taskCount = Array.isArray(payload?.task_note_implications) ? payload.task_note_implications.length : 0;
+  const hanaCount = Array.isArray(payload?.hana_personal_did_relevant_implications) ? payload.hana_personal_did_relevant_implications.length : 0;
+  const askCount = (Array.isArray(context?.pantry_b_entries) ? context.pantry_b_entries : []).filter((e: any) => e?.source_kind === "briefing_ask_resolution").length;
+  const operationalCount = Array.isArray(payload?.operational_context_used) ? payload.operational_context_used.length : 0;
+  const coverageSources = Array.isArray(payload?.source_coverage_summary?.sources) ? payload.source_coverage_summary.sources : [];
+  const usedCoverage = coverageSources.filter((s: any) => s?.used_in_briefing && Number(s?.raw_count ?? 0) > 0).map((s: any) => String(s.source).replace(/^did_/, "").replace(/_/g, " ")).slice(0, 5);
+  const sourceLines = [
+    sess?.exists ? `Sezení / průběhové body: ${sessionPart}, ${sessionDate}${openedPartial ? ", otevřené nebo částečně rozpracované" : ""}.` : "Sezení / průběhové body: dnes nemám uzavřené nové review, pracuji opatrně.",
+    eventCount > 0 ? `Dnešní záznamy událostí: zpracováno ${eventCount} položek pro ranní souhrn.` : "Dnešní záznamy událostí: bez nové použitelné klinické položky.",
+    hanaCount > 0 ? `Hana/Osobní: použité jsou jen zpracované DID-relevantní implikace (${hanaCount}), ne raw osobní obsah.` : "Hana/Osobní: raw osobní obsah nevkládám; bez nové bezpečné implikace.",
+    taskCount > 0 || askCount > 0 ? `Úkoly terapeutek / odpovědi na ranní otázky: ${taskCount + askCount} nových pracovních vstupů.` : "Úkoly terapeutek / ranní otázky: bez nové rozhodovací odpovědi.",
+  ];
+  const operationalExcerpt = (Array.isArray(payload?.operational_context_used) ? payload.operational_context_used : [])
+    .map((e: any) => trimSentence(e?.summary, 180))
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(" ");
+  const certainty = sess?.exists
+    ? `Jisté je, že ${sessionDate} bylo zachycené Sezení s ${partInstrumental(sessionPart)}${openedPartial || sess?.held === false ? " jako otevřené nebo částečně rozpracované" : " jako doložený klinický vstup"}. Zdrojově vycházím z review / průběhové evidence a nepředstírám víc, než záznam unese.`
+    : "Jisté je, že dnešní přehled má oporu jen v dostupných zpracovaných zdrojích; tam, kde review chybí, nesmím doplňovat závěr za kluky.";
+  const unclear = openedPartial
+    ? `Nejasné zůstává, co přesně si ${sessionPart} z otevřené práce odnáší, jak na ni dnes reaguje tělo a zda je bezpečné pokračovat Sezením, Hernou, nebo jen krátkým kontaktem.`
+    : "Nejasné zůstává, které části jsou dnes opravdu dostupné a co je jen stopa v datech bez aktuální odpovědi kluků.";
+  const todayChange = sess?.exists
+    ? `Pro dnešní Sezení / Hernu to mění první krok: nezačínat výkladem, ale ověřit tělo, emoci a bezpečí kontaktu; teprve potom rozhodnout, jestli navázat na ${sessionPart}, nebo zůstat u stabilizace.`
+    : "Pro dnešní Sezení / Hernu to znamená začít nízkoprahovým ověřením stavu, ne hotovou formulací.";
+  const teamAsk = "Od Haničky chci krátké ověření těla, emoce a stop signálů. Od Káti chci hlídat, aby žádná skutečná událost ani starší záznam nebyly použité jako závěr dřív, než kluci sami ukážou vlastní reakci.";
+  const sourceIntro = `Dnes mám nové podklady z těchto zdrojů: ${sourceLines.join(" ")}${usedCoverage.length ? ` Souhrn zdrojů potvrzuje zejména: ${usedCoverage.join(", ")}.` : ""}`;
+  return ensureKarelFirstPersonOpening([
+    "Dobré ráno, Haničko a Káťo.",
+    `Co je nové od posledního přehledu: ${sourceIntro}${operationalExcerpt ? ` Z pracovních implikací beru hlavně toto: ${operationalExcerpt}` : ""}`,
+    `Co je jisté: ${certainty}`,
+    `Co zůstává nejasné: ${unclear}`,
+    `Co to mění pro dnešní Sezení / Hernu: ${todayChange}`,
+    `Co chci od Haničky a Káti: ${teamAsk}`,
+  ].join("\n\n"), "Dobré ráno, Haničko a Káťo. Dnešní přehled je zdrojově omezený; začnu ověřením těla, emoce a bezpečí kontaktu.");
 }
 
 export function applyClinicalRecencyGuard(payload: any): any {
@@ -2882,26 +2953,21 @@ Deno.serve(async (req) => {
 
       const todayOpening = String(payload?.opening_monologue_text ?? "");
       const yesterdayOpening = String(yesterdayRow?.payload?.opening_monologue_text ?? "");
-      const normalize = (s: string) => s.toLowerCase().replace(/\d+\.\s*\d+\.\s*\d{4}/g, "<DATE>").replace(/\s+/g, " ").trim();
-      const todayNorm = normalize(todayOpening);
-      const yestNorm = normalize(yesterdayOpening);
+      const todayNorm = normalizeOpeningForFreshness(todayOpening);
+      const yestNorm = normalizeOpeningForFreshness(yesterdayOpening);
       const todayHash = await sha256Hex(todayNorm);
       const yesterdayHash = yesterdayOpening ? await sha256Hex(yestNorm) : null;
 
       // Slovní Jaccard similarity (po normalizaci dat)
-      let similarityPct = 0;
-      if (todayNorm && yestNorm) {
-        const setA = new Set(todayNorm.split(/\W+/).filter((w) => w.length > 3));
-        const setB = new Set(yestNorm.split(/\W+/).filter((w) => w.length > 3));
-        const intersection = [...setA].filter((w) => setB.has(w)).length;
-        const union = new Set([...setA, ...setB]).size;
-        similarityPct = union > 0 ? Math.round((intersection / union) * 100) : 0;
-      }
+      let similarityPct = openingSimilarityPct(todayNorm, yestNorm);
 
       const newSourcesCount = (payload.event_ingestion_summary?.processed_count ?? 0)
         + (payload.task_note_implications?.length ?? 0)
         + (payload.hana_personal_did_relevant_implications?.length ?? 0)
-        + (payload.new_observations?.length ?? 0);
+        + (payload.new_observations?.length ?? 0)
+        + (payload.live_replan_patches?.length ?? 0)
+        + (payload.operational_context_used?.length ?? 0)
+        + ((context.pantry_b_entries ?? []).filter((e: any) => e?.source_kind === "briefing_ask_resolution").length ?? 0);
 
       let auditReason: string | null = null;
       if (yesterdayHash && todayHash === yesterdayHash) {
@@ -2912,17 +2978,51 @@ Deno.serve(async (req) => {
         auditReason = "stale_opening_reuse_detected_despite_new_sources";
       }
 
-      payload.opening_freshness_audit = {
+      const audit: any = {
         yesterday_briefing_id: yesterdayRow?.id ?? null,
         yesterday_opening_hash: yesterdayHash,
         today_opening_hash: todayHash,
         normalized_similarity_pct: similarityPct,
         new_sources_count: newSourcesCount,
         reason: auditReason,
+        before_repair_similarity_pct: similarityPct,
+        shared_sentence_count: sharedSentenceCount(todayNorm, yestNorm),
+        new_source_refs_today: [
+          payload.yesterday_session_review?.exists ? "recent_session_review" : null,
+          (payload.live_replan_patches?.length ?? 0) > 0 ? "did_live_session_progress" : null,
+          (payload.event_ingestion_summary?.processed_count ?? 0) > 0 ? "event_ingestion_summary" : null,
+          (payload.operational_context_used?.length ?? 0) > 0 ? "operational_context_used" : null,
+          (payload.hana_personal_did_relevant_implications?.length ?? 0) > 0 ? "hana_personal_did_relevant_implications" : null,
+          (payload.task_note_implications?.length ?? 0) > 0 ? "task_note_implications" : null,
+          (context.pantry_b_entries ?? []).some((e: any) => e?.source_kind === "briefing_ask_resolution") ? "briefing_ask_resolutions" : null,
+        ].filter(Boolean),
         checked_at: new Date().toISOString(),
       };
+      const mustRepair = auditReason === "stale_opening_reuse_detected_despite_new_sources" || (similarityPct >= 80 && newSourcesCount > 0);
+      if (mustRepair) {
+        const repairedOpening = buildSourceGroundedFreshOpening(payload, context);
+        const repairedNorm = normalizeOpeningForFreshness(repairedOpening);
+        const repairedHash = await sha256Hex(repairedNorm);
+        const afterRepairSimilarity = openingSimilarityPct(repairedNorm, yestNorm);
+        payload.opening_monologue_text = repairedOpening;
+        audit.repaired = true;
+        audit.repair_strategy = "source_grounded_fresh_opening";
+        audit.before_repair_reason = auditReason;
+        audit.after_repair_similarity_pct = afterRepairSimilarity;
+        audit.after_repair_opening_hash = repairedHash;
+        audit.shared_sentence_count_after_repair = sharedSentenceCount(repairedNorm, yestNorm);
+        audit.final_reason = afterRepairSimilarity < 80 ? null : "repair_similarity_still_high";
+        audit.reason = afterRepairSimilarity < 80 ? null : audit.final_reason;
+        audit.today_opening_hash = repairedHash;
+        audit.normalized_similarity_pct = afterRepairSimilarity;
+      } else {
+        audit.repaired = false;
+        audit.after_repair_similarity_pct = null;
+        audit.final_reason = auditReason;
+      }
+      payload.opening_freshness_audit = audit;
       if (auditReason) {
-        console.warn(`[briefing] freshness audit: ${auditReason} sim=${similarityPct}% sources=${newSourcesCount}`);
+        console.warn(`[briefing] freshness audit: ${auditReason} sim=${similarityPct}% sources=${newSourcesCount} repaired=${audit.repaired === true}`);
       }
     } catch (e) {
       console.warn("[briefing] freshness audit failed (non-fatal):", e);
