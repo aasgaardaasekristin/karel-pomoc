@@ -140,7 +140,8 @@ describe("deliberationRoomUiHelpers", () => {
       ].join(" | ");
 
       expect(composed).toContain("Živý program Herny");
-      expect(composed).toContain("čeká na nové schválení");
+      expect(composed).toContain("vráceno k úpravě po urgentní externí události");
+      expect(composed).toContain("Timmy");
       expect(composed).toContain("Herna je práce vedená Karlem po schválení terapeutkami");
       expect(composed).toContain("Herna má vlastní schválený herní program");
       expect(countHernaForbiddenTerms(composed)).toBe(0);
