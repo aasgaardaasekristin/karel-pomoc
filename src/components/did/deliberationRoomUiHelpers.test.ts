@@ -100,27 +100,45 @@ describe("deliberationRoomUiHelpers", () => {
   });
 
   describe("Herna visible-text guard", () => {
-    const legacyBrief = [
+    const legacyKarelLedBrief = [
       "🎲 **Plán dnešní herny s Tundrupek**",
       "",
       "Otevírám poradu ke schválení samostatného programu Herny. Herna je Karel-led práce s částí; nepoužije se plán terapeutického sezení ani first_draft.",
     ].join("\n");
 
-    it("sanitizes legacy Karel-led / first_draft phrasing into clinical Czech", () => {
-      const cleaned = sanitizeHernaVisibleText(legacyBrief);
+    const legacyAwkwardCzechBrief = [
+      "🎲 **Plán dnešní herny s Tundrupek**",
+      "",
+      "Otevírám poradu ke schválení samostatného programu Herny. Herna je vedená Karlem práce s částí; nepoužije se plán terapeutického sezení ani pracovní návrh.",
+    ].join("\n");
+
+    it("sanitizes legacy Karel-led / first_draft phrasing into natural clinical Czech", () => {
+      const cleaned = sanitizeHernaVisibleText(legacyKarelLedBrief);
       expect(cleaned).not.toMatch(/Karel-led/i);
       expect(cleaned).not.toMatch(/first_draft/i);
-      expect(cleaned).toContain("vedená Karlem");
-      expect(cleaned).toContain("pracovní návrh");
+      expect(cleaned).not.toMatch(/vedená Karlem práce/i);
+      expect(cleaned).not.toMatch(/pracovní návrh/i);
+      expect(cleaned).toContain("Herna má svůj vlastní bezpečný herní program");
+      expect(cleaned).toContain("Karel ji může vést až po schválení Haničkou a Káťou");
+    });
+
+    it("sanitizes the awkward Czech sentence into a natural one", () => {
+      const cleaned = sanitizeHernaVisibleText(legacyAwkwardCzechBrief);
+      expect(cleaned).not.toContain("vedená Karlem práce");
+      expect(cleaned).not.toContain("nepoužije se plán terapeutického sezení");
+      expect(cleaned).not.toContain("pracovní návrh");
+      expect(cleaned).toContain("Herna má svůj vlastní bezpečný herní program");
+      expect(cleaned).toContain("Karel ji může vést až po schválení Haničkou a Káťou");
     });
 
     it("forbidden term scan returns 0 after sanitization", () => {
-      const cleaned = sanitizeHernaVisibleText(legacyBrief);
-      expect(countHernaForbiddenTerms(cleaned)).toBe(0);
+      expect(countHernaForbiddenTerms(sanitizeHernaVisibleText(legacyKarelLedBrief))).toBe(0);
+      expect(countHernaForbiddenTerms(sanitizeHernaVisibleText(legacyAwkwardCzechBrief))).toBe(0);
     });
 
-    it("forbidden term scan flags raw legacy text", () => {
-      expect(countHernaForbiddenTerms(legacyBrief)).toBeGreaterThan(0);
+    it("forbidden term scan flags raw legacy texts", () => {
+      expect(countHernaForbiddenTerms(legacyKarelLedBrief)).toBeGreaterThan(0);
+      expect(countHernaForbiddenTerms(legacyAwkwardCzechBrief)).toBeGreaterThan(0);
     });
 
     it("required clinical phrases compose correctly for Herna replan UI", () => {
@@ -135,15 +153,15 @@ describe("deliberationRoomUiHelpers", () => {
       const composed = [
         getLiveProgramTitle(replanDeliberation),
         getPlanChangeLabel(replanDeliberation),
-        "Herna je práce vedená Karlem po schválení terapeutkami.",
-        "Herna má vlastní schválený herní program.",
+        "Herna má svůj vlastní bezpečný herní program.",
+        "Karel ji může vést až po schválení Haničkou a Káťou.",
       ].join(" | ");
 
       expect(composed).toContain("Živý program Herny");
       expect(composed).toContain("vráceno k úpravě po urgentní externí události");
       expect(composed).toContain("Timmy");
-      expect(composed).toContain("Herna je práce vedená Karlem po schválení terapeutkami");
-      expect(composed).toContain("Herna má vlastní schválený herní program");
+      expect(composed).toContain("Herna má svůj vlastní bezpečný herní program");
+      expect(composed).toContain("Karel ji může vést až po schválení Haničkou a Káťou");
       expect(countHernaForbiddenTerms(composed)).toBe(0);
     });
 
@@ -159,6 +177,10 @@ describe("deliberationRoomUiHelpers", () => {
         "Živý program sezení",
         "Změna plánu: beze změny",
         "Vyžaduje terapeutku: Ne",
+        "Herna je vedená Karlem práce",
+        "vedená Karlem práce s částí",
+        "nepoužije se plán terapeutického sezení ani pracovní návrh",
+        "pracovní návrh",
       ]) {
         expect(HERNA_VISIBLE_FORBIDDEN_TERMS).toContain(term as never);
       }

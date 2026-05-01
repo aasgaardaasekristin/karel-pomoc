@@ -80,24 +80,50 @@ export const HERNA_VISIBLE_FORBIDDEN_TERMS = [
   "Živý program sezení",
   "Změna plánu: beze změny",
   "Vyžaduje terapeutku: Ne",
+  // Kostrbaté / neklinické české fráze (jazyková akceptace, ne jen regex):
+  "Herna je vedená Karlem práce",
+  "vedená Karlem práce s částí",
+  "vedená Karlem práce",
+  "nepoužije se plán terapeutického sezení ani pracovní návrh",
+  "nepoužije se plán terapeutického sezení",
+  "nepřebírá pracovní návrh",
+  "ani pracovní návrh",
+  "pracovní návrh",
 ] as const;
+
+const HERNA_GOOD_SENTENCE_A =
+  "Herna má svůj vlastní bezpečný herní program. Karel ji může vést až po schválení Haničkou a Káťou.";
 
 /**
  * Sanitize visible plan/brief text — replace any leaked technical tokens
- * with neutral clinical Czech phrasing. Použij při renderu textu, který
- * mohl být v minulosti persistován s technickým jazykem.
+ * AND kostrbaté české fráze za přirozenou klinickou češtinu.
  */
 export function sanitizeHernaVisibleText(input: string | null | undefined): string {
   if (!input) return "";
   let out = String(input);
-  // Karel-led / karel-led → "vedená Karlem"
+
+  // 1) Celé špatné věty → jedna dobrá náhradní věta.
+  // Varianty se "Karel-led" i "vedená Karlem".
+  const badSentencePatterns: RegExp[] = [
+    /Herna je (?:Karel[-_ ]led|vedená Karlem) práce s částí[^.]*?(?:first[_ ]draft|pracovní návrh)\s*\./gi,
+    /Herna je (?:Karel[-_ ]led|vedená Karlem) práce s částí[^.]*\./gi,
+    /Herna je (?:Karel[-_ ]led|vedená Karlem) práce[^.]*\./gi,
+    /Herna je práce vedená Karlem po schválení terapeutkami;[^.]*nepřebírá plán terapeutického Sezení\s*\./gi,
+  ];
+  for (const rx of badSentencePatterns) {
+    out = out.replace(rx, HERNA_GOOD_SENTENCE_A);
+  }
+
+  // 2) Tvrdé technické tokeny → klinický jazyk (defense-in-depth).
   out = out.replace(/\bKarel[-_ ]led\b/gi, "vedená Karlem");
-  // first_draft → "pracovní návrh"
-  out = out.replace(/\bfirst[_ ]draft\b/gi, "pracovní návrh");
-  // program_draft → "pracovní program"
+  out = out.replace(/\bfirst[_ ]draft\b/gi, "pracovní podklad");
   out = out.replace(/\bprogram[_ ]draft\b/gi, "pracovní program");
-  // session_params → "parametry sezení"
   out = out.replace(/\bsession[_ ]params\b/gi, "parametry sezení");
+
+  // 3) Reziduální "pracovní návrh" v Herna kontextu → odstranit jako mrtvou frázi.
+  out = out.replace(/\s*ani pracovní návrh\b/gi, "");
+  out = out.replace(/\bpracovní návrh\b/gi, "pracovní podklad");
+
   return out;
 }
 
@@ -113,3 +139,4 @@ export function countHernaForbiddenTerms(text: string): number {
   }
   return n;
 }
+

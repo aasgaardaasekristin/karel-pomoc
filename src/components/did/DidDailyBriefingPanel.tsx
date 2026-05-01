@@ -1329,7 +1329,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           `*Hlavní téma:* ${s.main_theme}`,
           `*Proč právě dnes:* ${s.why_this_part_today}`,
           "",
-          "Otevírám poradu ke schválení samostatného programu Herny. Herna je práce vedená Karlem po schválení terapeutkami; Herna má vlastní schválený herní program a nepřebírá plán terapeutického Sezení.",
+          "Otevírám poradu ke schválení samostatného programu Herny. Herna má svůj vlastní bezpečný herní program. Karel ji může vést až po schválení Haničkou a Káťou.",
         ].join("\n");
         const karelPlan = [
           `Část: ${s.part_name}`,
