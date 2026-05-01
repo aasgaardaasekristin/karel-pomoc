@@ -8,6 +8,19 @@ Deno.test("noop when fresh non-manual exists", () => {
   assertEquals(r.reason, "fresh_non_manual_exists");
 });
 
+Deno.test("force rebuild invokes real sla repair even when fresh non-manual exists", () => {
+  const r = decideAction({
+    fresh_non_manual_exists: true,
+    fresh_manual_exists: false,
+    cycle_status: "completed",
+    force_rebuild: true,
+    force_rebuild_reason: "acceptance_force_rebuild",
+  });
+  assertEquals(r.action, "invoke_sla_repair");
+  assertEquals(r.method, "sla_watchdog_repair");
+  assertEquals(r.reason, "acceptance_force_rebuild");
+});
+
 Deno.test("noop when fresh non-manual exists even with running cycle", () => {
   const r = decideAction({ fresh_non_manual_exists: true, fresh_manual_exists: true, cycle_status: "running" });
   assertEquals(r.action, "noop");
