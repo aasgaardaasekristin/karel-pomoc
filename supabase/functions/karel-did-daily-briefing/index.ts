@@ -1203,7 +1203,7 @@ export interface VisibleClinicalAudit {
   has_practical_next_step: boolean;
 }
 
-const KNOWN_PART_BARE_NOMINATIVE_RE = /\b(na|pro|o|v|s|se|za|p[řr]ed|nad|pod|k|ke|od|u|do|bez)\s+(gustik|tundrupek|timmi)\b/i;
+const KNOWN_PART_BARE_NOMINATIVE_RE = /(?:^|[^\p{L}])(na|pro|o|v|s|se|za|před|nad|pod|k|ke|od|u|do|bez)\s+(gust[íi]k|tundrupek|timmi)(?![\p{L}])/iu;
 
 export function validateVisibleClinicalBriefingText(opening: string): VisibleClinicalAudit {
   const text = String(opening ?? "");
