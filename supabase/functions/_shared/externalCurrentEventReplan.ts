@@ -280,23 +280,26 @@ export async function runExternalCurrentEventReplan(
       : (classification.requires_web_verification ? "unavailable_no_web_tool" : "pending_web_verification");
 
   // ── 5.1 Find affected deliberations (session_plan + playroom) ─────────
-  // We always include the triggering one. Then add any other dnešní/aktivní
-  // sessions of types session_plan / playroom for this user.
-  const since = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString();
+  // SCOPE GUARD: jen *aktivně rozpracované* dnešní porady. Historické
+  // approved porady (např. včerejší podepsaný plán) NESMÍ být zatažené,
+  // i kdyby spadly do 36h okna. Triggering poradu vždy bereme.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const sinceTodayIso = today.toISOString();
   const { data: candidates } = await admin
     .from("did_team_deliberations")
-    .select("id, deliberation_type, status, session_params, program_draft, hanka_signed_at, kata_signed_at, karel_signed_at")
+    .select("id, deliberation_type, status, session_params, program_draft, hanka_signed_at, kata_signed_at, karel_signed_at, updated_at")
     .eq("user_id", userId)
     .in("deliberation_type", ["session_plan", "playroom"])
-    .not("status", "in", "(closed,archived,cancelled,completed)")
-    .gte("updated_at", since);
+    .in("status", ["draft", "active", "in_revision", "awaiting_signoff"])
+    .gte("updated_at", sinceTodayIso);
 
   const list = Array.isArray(candidates) ? candidates : [];
   // Always include the triggering one (even if filtered out by date)
   if (!list.find((r: any) => r.id === triggeringDeliberationId)) {
     const { data: trig } = await admin
       .from("did_team_deliberations")
-      .select("id, deliberation_type, status, session_params, program_draft, hanka_signed_at, kata_signed_at, karel_signed_at")
+      .select("id, deliberation_type, status, session_params, program_draft, hanka_signed_at, kata_signed_at, karel_signed_at, updated_at")
       .eq("id", triggeringDeliberationId)
       .maybeSingle();
     if (trig) list.push(trig);
@@ -527,30 +530,49 @@ export async function runExternalCurrentEventReplan(
     }
   }
 
-  // ── 5.5 Force-rebuild Karlův přehled via SLA watchdog ──────────────────
+  // ── 5.5 Force-rebuild Karlův přehled via SLA watchdog (with retry+RPC fallback)
   let briefingForced = false;
-  try {
-    const watchdogUrl = `${supabaseUrl}/functions/v1/karel-did-briefing-sla-watchdog`;
-    const resp = await fetch(watchdogUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${serviceKey}`,
-      },
-      body: JSON.stringify({
-        userId,
-        force_rebuild: true,
-        reason: "external_current_event_update_in_deliberation",
-        method: "sla_watchdog_repair",
-        fullAi: true,
-      }),
-    });
-    briefingForced = resp.ok;
-    if (!resp.ok) {
-      console.warn("[external-event-replan] watchdog force_rebuild non-ok:", resp.status, await resp.text().catch(() => ""));
+  const watchdogUrl = `${supabaseUrl}/functions/v1/karel-did-briefing-sla-watchdog`;
+  for (let attempt = 0; attempt < 3 && !briefingForced; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 400 * attempt));
+    try {
+      const resp = await fetch(watchdogUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({
+          userId,
+          force_rebuild: true,
+          reason: "external_current_event_update_in_deliberation",
+          method: "sla_watchdog_repair",
+          fullAi: true,
+        }),
+      });
+      if (resp.ok) {
+        briefingForced = true;
+        break;
+      }
+      const body = await resp.text().catch(() => "");
+      console.warn(`[external-event-replan] watchdog attempt ${attempt + 1} non-ok: ${resp.status} ${body.slice(0, 200)}`);
+    } catch (e) {
+      console.warn(`[external-event-replan] watchdog attempt ${attempt + 1} fetch failed:`, (e as Error)?.message);
     }
-  } catch (e) {
-    console.warn("[external-event-replan] watchdog fetch failed:", (e as Error)?.message);
+  }
+  // Fallback: pgnet-based RPC (queues HTTP via vault secret) so morning
+  // SLA polling still picks it up even if direct invoke is throttled.
+  if (!briefingForced) {
+    try {
+      const { error: rpcErr } = await admin.rpc("invoke_briefing_watchdog_acceptance_rebuild", {
+        p_user_id: userId,
+        p_reason: "external_current_event_update_in_deliberation",
+      });
+      if (!rpcErr) briefingForced = true;
+      else console.warn("[external-event-replan] RPC fallback failed:", rpcErr.message);
+    } catch (e) {
+      console.warn("[external-event-replan] RPC fallback exception:", (e as Error)?.message);
+    }
   }
 
   // ── 5.6 Build truthful inline comment ──────────────────────────────────
