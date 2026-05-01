@@ -1,17 +1,17 @@
 import type { TeamDeliberation } from "@/types/teamDeliberation";
 
-function sessionParamsOf(deliberation: Pick<TeamDeliberation, "session_params">) {
+function sessionParamsOf(deliberation: Pick<TeamDeliberation, "session_params"> | null | undefined) {
   return deliberation.session_params && typeof deliberation.session_params === "object"
     ? (deliberation.session_params as Record<string, unknown>)
     : {};
 }
 
 export function isPlayroomDeliberation(
-  deliberation: Pick<TeamDeliberation, "session_params"> & { deliberation_type?: unknown },
+  deliberation: (Pick<TeamDeliberation, "session_params"> & { deliberation_type?: unknown }) | null | undefined,
 ): boolean {
   const p = sessionParamsOf(deliberation);
   return (
-    String(deliberation.deliberation_type) === "playroom" ||
+    String(deliberation?.deliberation_type) === "playroom" ||
     p.session_actor === "karel_direct" ||
     p.ui_surface === "did_kids_playroom" ||
     p.session_format === "playroom" ||
@@ -20,7 +20,7 @@ export function isPlayroomDeliberation(
 }
 
 export function hasActiveExternalCurrentEventReplan(
-  deliberation: Pick<TeamDeliberation, "session_params">,
+  deliberation: Pick<TeamDeliberation, "session_params"> | null | undefined,
 ): boolean {
   const p = sessionParamsOf(deliberation);
   const replan = p.external_current_event_replan;
