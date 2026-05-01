@@ -299,7 +299,7 @@ export async function runExternalCurrentEventReplan(
   if (!list.find((r: any) => r.id === triggeringDeliberationId)) {
     const { data: trig } = await admin
       .from("did_team_deliberations")
-      .select("id, deliberation_type, status, session_params, program_draft, hanka_signed_at, kata_signed_at, karel_signed_at")
+      .select("id, deliberation_type, status, session_params, program_draft, hanka_signed_at, kata_signed_at, karel_signed_at, updated_at")
       .eq("id", triggeringDeliberationId)
       .maybeSingle();
     if (trig) list.push(trig);
