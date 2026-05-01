@@ -1,7 +1,7 @@
 import type { TeamDeliberation } from "@/types/teamDeliberation";
 
 function sessionParamsOf(deliberation: Pick<TeamDeliberation, "session_params"> | null | undefined) {
-  return deliberation.session_params && typeof deliberation.session_params === "object"
+  return deliberation?.session_params && typeof deliberation.session_params === "object"
     ? (deliberation.session_params as Record<string, unknown>)
     : {};
 }
