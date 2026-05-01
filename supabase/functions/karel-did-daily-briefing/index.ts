@@ -1076,10 +1076,165 @@ const capitalizePartName = (name: unknown): string => {
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 };
 
-const partInstrumental = (name: unknown): string => /^gust[íi]k$/i.test(String(name ?? "").trim()) ? "Gustíkem" : String(name ?? "částí").trim();
+type PartForms = { nominative: string; instrumental: string; accusative: string; dative: string; genitive: string };
+const PART_FORMS: Record<string, PartForms> = {
+  gustik: { nominative: "Gustík", instrumental: "Gustíkem", accusative: "Gustíka", dative: "Gustíkovi", genitive: "Gustíka" },
+  tundrupek: { nominative: "Tundrupek", instrumental: "Tundrupkem", accusative: "Tundrupka", dative: "Tundrupkovi", genitive: "Tundrupka" },
+  timmi: { nominative: "Timmi", instrumental: "Timmim", accusative: "Timmiho", dative: "Timmimu", genitive: "Timmiho" },
+};
+const partFormKey = (name: unknown): string => String(name ?? "").trim().toLowerCase().replace(/[íi]/g, "i").replace(/[éě]/g, "e");
+export const partForms = (name: unknown): PartForms | null => {
+  const key = partFormKey(name);
+  return PART_FORMS[key] ?? null;
+};
+const partInstrumental = (name: unknown): string => partForms(name)?.instrumental ?? (String(name ?? "").trim() || "částí");
+const partAccusative = (name: unknown): string => partForms(name)?.accusative ?? (String(name ?? "").trim() || "část");
+const partGenitive = (name: string): string => partForms(name)?.genitive ?? name;
+const partDative = (name: string): string => partForms(name)?.dative ?? name;
 
-const partGenitive = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupka" : name;
-const partDative = (name: string): string => name.trim().toLowerCase() === "tundrupek" ? "Tundrupkovi" : name;
+/**
+ * Fixes Czech grammar for known parts in visible prose.
+ * E.g. "navázat na Gustík" → "navázat na Gustíka"; "s gustik" → "s Gustíkem".
+ */
+const PART_NOMINATIVE_VARIANTS: Record<string, string> = {
+  gustik: "(?:gust[íi]k)",
+  tundrupek: "(?:tundrupek)",
+  timmi: "(?:timmi)",
+};
+export function fixKnownPartGrammar(text: string): string {
+  if (!text) return "";
+  let out = text;
+  for (const key of Object.keys(PART_FORMS)) {
+    const f = PART_FORMS[key];
+    const variant = PART_NOMINATIVE_VARIANTS[key] ?? key;
+    // Accusative after na/pro/o/v
+    out = out.replace(new RegExp(`(^|[^\\p{L}])(na|pro|o|v)\\s+${variant}(?![\\p{L}])`, "giu"), (_m, pre, prep) => `${pre}${prep} ${f.accusative}`);
+    // Instrumental after s/se/za/před/nad/pod
+    out = out.replace(new RegExp(`(^|[^\\p{L}])(s|se|za|před|nad|pod)\\s+${variant}(?![\\p{L}])`, "giu"), (_m, pre, prep) => `${pre}${prep} ${f.instrumental}`);
+    // Dative after k/ke
+    out = out.replace(new RegExp(`(^|[^\\p{L}])(k|ke)\\s+${variant}(?![\\p{L}])`, "giu"), (_m, pre, prep) => `${pre}${prep} ${f.dative}`);
+    // Genitive after od/u/do/bez
+    out = out.replace(new RegExp(`(^|[^\\p{L}])(od|u|do|bez)\\s+${variant}(?![\\p{L}])`, "giu"), (_m, pre, prep) => `${pre}${prep} ${f.genitive}`);
+    // Bare lowercase nominative → capitalize (only when not preceded/followed by another letter)
+    out = out.replace(new RegExp(`(^|[^\\p{L}])${variant}(?![\\p{L}])`, "giu"), (_m, pre) => `${pre}${f.nominative}`);
+  }
+  return out;
+}
+
+/**
+ * Forbidden audit/pipeline vocabulary that must never appear in the visible
+ * Karel morning briefing prose. Source coverage, ingestion, raw/DID privacy
+ * status, follow-up planning instructions etc. belong to the audit panel only.
+ */
+const FORBIDDEN_VISIBLE_AUDIT_TERMS: RegExp[] = [
+  /DID-relevantn[íi]/i,
+  /raw\s+osobn[íi]\s+obsah/i,
+  /\braw\b/i,
+  /\bsource\b/i,
+  /source\s*coverage/i,
+  /source_coverage/i,
+  /event_ingestion/i,
+  /\bingestion\b/i,
+  /\bPantry\b/i,
+  /Pantry\s*B/i,
+  /karel\s+hana\s+conversations/i,
+  /live\s+session\s+progress/i,
+  /therapist\s+tasks/i,
+  /briefing_ask_resolutions?/i,
+  /review\s*\/\s*pr[ůu]b[eě]hov[éeé]\s+evidence/i,
+  /\bpayload\b/i,
+  /\bbackend\b/i,
+  /\bpipeline\b/i,
+  /follow[\s-]*up(?:u|em)?/i,
+  /used_in_briefing/i,
+  /reason_if_not_used/i,
+  /source_ref/i,
+  /source_kind/i,
+  /processed\s+implication/i,
+  /zpracovan[éeé]\s+DID-relevantn[íi]\s+implikace/i,
+  /stopa\s+v\s+datech/i,
+  /\bdata\s+ř[íi]kaj[íi]\b/i,
+  /Dnes\s+m[áa]m\s+nov[éeé]\s+podklady\s+z\s+t[ěe]chto\s+zdroj[ůu]/i,
+  /Souhrn\s+zdroj[ůu]\s+potvrzuje/i,
+  /Zohlednit\s+v\s+nejbli[žz][šs][íi]m\s+pl[áa]nov[áa]n[íi]/i,
+  /Co\s+je\s+jen\s+stopa\s+v\s+datech/i,
+  /Z\s+pracovn[íi]ch\s+implikac[íi]/i,
+  /Co\s+je\s+nov[éeé]\s+od\s+posledn[íi]ho\s+p[řr]ehledu/i,
+];
+
+/** Low-value implication sentences that are pure scheduling boilerplate. */
+function isLowValueImplication(text: string): boolean {
+  const t = String(text ?? "").trim();
+  if (t.length < 20) return true;
+  return /zohlednit\s+v\s+nejbli[žz][šs][íi]m\s+pl[áa]nov[áa]n[íi]|follow[\s-]*up(?:u|em)?|\bbriefingu\b/i.test(t);
+}
+
+function splitSentences(text: string): string[] {
+  // Don't split on numeric dots (e.g. "30. 4. 2026"). Only split when a
+  // sentence terminator is followed by whitespace AND the next non-space
+  // character is an uppercase letter (Latin or Czech).
+  return String(text ?? "")
+    .split(/(?<=[.!?])\s+(?=[A-ZÁ-Ž])|\n+/u)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function dedupeSentences(text: string): { text: string; duplicateCount: number } {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  let dup = 0;
+  for (const s of splitSentences(text)) {
+    const key = s.toLowerCase().replace(/\s+/g, " ").replace(/[.!?,;:]+$/g, "");
+    if (seen.has(key)) { dup++; continue; }
+    seen.add(key);
+    out.push(s);
+  }
+  return { text: out.join(" "), duplicateCount: dup };
+}
+
+export interface VisibleClinicalAudit {
+  ok: boolean;
+  violations: string[];
+  forbidden_terms_count: number;
+  low_value_implication_count: number;
+  duplicate_sentence_count: number;
+  known_part_grammar_violations: number;
+  has_concrete_clinical_fact: boolean;
+  has_practical_next_step: boolean;
+}
+
+const KNOWN_PART_BARE_NOMINATIVE_RE = /(?:^|[^\p{L}])(na|pro|o|v|s|se|za|před|nad|pod|k|ke|od|u|do|bez)\s+(gust[íi]k|tundrupek|timmi)(?![\p{L}])/iu;
+
+export function validateVisibleClinicalBriefingText(opening: string): VisibleClinicalAudit {
+  const text = String(opening ?? "");
+  const violations: string[] = [];
+  let forbidden = 0;
+  for (const re of FORBIDDEN_VISIBLE_AUDIT_TERMS) {
+    const m = text.match(re);
+    if (m) { forbidden++; violations.push(`forbidden:${m[0]}`); }
+  }
+  const sentences = splitSentences(text);
+  let lowValue = 0;
+  for (const s of sentences) if (isLowValueImplication(s)) { lowValue++; violations.push(`low_value:${s.slice(0, 60)}`); }
+  const { duplicateCount } = dedupeSentences(text);
+  if (duplicateCount > 0) violations.push(`duplicate_sentences:${duplicateCount}`);
+  const grammar = (text.match(new RegExp(KNOWN_PART_BARE_NOMINATIVE_RE.source, "giu")) ?? []).length;
+  if (grammar > 0) violations.push(`grammar:${grammar}`);
+  const hasConcreteFact = /(Gust[íi]k|Tundrupek|Timmi|\d{1,2}\.\s*\d{1,2}\.\s*\d{4}|včerejší|předevčírem)/i.test(text);
+  const hasNextStep = /(prvn[íi]\s+krok|t[ěe]lo|emoci|bezpe[čc][íi]|stabilizac|nezačínat|ověřit|krátk[ýyé])/i.test(text);
+  if (!hasConcreteFact) violations.push("missing_concrete_clinical_fact");
+  if (!hasNextStep) violations.push("missing_practical_next_step");
+  return {
+    ok: forbidden === 0 && lowValue === 0 && duplicateCount === 0 && grammar === 0 && hasConcreteFact && hasNextStep,
+    violations,
+    forbidden_terms_count: forbidden,
+    low_value_implication_count: lowValue,
+    duplicate_sentence_count: duplicateCount,
+    known_part_grammar_violations: grammar,
+    has_concrete_clinical_fact: hasConcreteFact,
+    has_practical_next_step: hasNextStep,
+  };
+}
 
 const FORBIDDEN_VISIBLE_DEBUG_LANGUAGE_RE = /(pending_review|evidence_limited|child evidence|evidence discipline|therapist_factual_correction|external_fact|real-world context|real-world kontext|operational context|operační kontext|briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log|faktick[áa]\s+korekce\s+reality|Dnešní přehled drží|Karel je jen navigátor|Karel je zapisovatel|Karel nesmí|Karel může|Karel je\b|Karel bude|Sezení nesmí|Herna může běžet)/i;
 const FORBIDDEN_OPENING_META_RE = /(Dnešní přehled drží|Karel je jen navigátor|Karel je zapisovatel|Karel nesmí|Karel může|Karel je\b|Karel bude|Sezení nesmí|Herna může běžet|ne jako symbol ani projekci|not child evidence)/i;
@@ -1329,48 +1484,92 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   };
 }
 
-function buildSourceGroundedFreshOpening(payload: any, context: any): string {
-  const sess = payload?.recent_session_review?.exists ? payload.recent_session_review : payload?.yesterday_session_review?.exists ? payload.yesterday_session_review : null;
-  const sessionPart = capitalizePartName(sess?.part_name || payload?.proposed_session?.part_name || "část");
-  const sessionDate = formatClinicalDate(sess?.source_date_iso || sess?.session_date_iso || context?.yesterday || null);
+/**
+ * Builds the visible Karel morning opening as **clinical human prose**.
+ * Source-grounded internally, clinically human externally — no source-coverage,
+ * pipeline, DID-relevance, ingestion or follow-up vocabulary in visible text.
+ */
+function buildVisibleClinicalMorningBriefing(payload: any, context: any): string {
+  const sess = payload?.recent_session_review?.exists
+    ? payload.recent_session_review
+    : payload?.yesterday_session_review?.exists
+    ? payload.yesterday_session_review
+    : null;
+  const partRaw = sess?.part_name || payload?.proposed_session?.part_name || "";
+  const part = capitalizePartName(partRaw || "část");
+  const partInst = partInstrumental(partRaw);
+  const partAcc = partAccusative(partRaw);
+  const dateStr = formatClinicalDate(sess?.source_date_iso || sess?.session_date_iso || context?.yesterday || null);
   const openedPartial = sess?.exists && isOpenedPartialSessionReview(sess);
-  const eventCount = Number(payload?.event_ingestion_summary?.processed_count ?? context?.event_ingestion_summary?.processed_count ?? 0);
-  const taskCount = Array.isArray(payload?.task_note_implications) ? payload.task_note_implications.length : 0;
-  const hanaCount = Array.isArray(payload?.hana_personal_did_relevant_implications) ? payload.hana_personal_did_relevant_implications.length : 0;
-  const askCount = (Array.isArray(context?.pantry_b_entries) ? context.pantry_b_entries : []).filter((e: any) => e?.source_kind === "briefing_ask_resolution").length;
-  const operationalCount = Array.isArray(payload?.operational_context_used) ? payload.operational_context_used.length : 0;
-  const coverageSources = Array.isArray(payload?.source_coverage_summary?.sources) ? payload.source_coverage_summary.sources : [];
-  const usedCoverage = coverageSources.filter((s: any) => s?.used_in_briefing && Number(s?.raw_count ?? 0) > 0).map((s: any) => String(s.source).replace(/^did_/, "").replace(/_/g, " ")).slice(0, 5);
-  const sourceLines = [
-    sess?.exists ? `Sezení / průběhové body: ${sessionPart}, ${sessionDate}${openedPartial ? ", otevřené nebo částečně rozpracované" : ""}.` : "Sezení / průběhové body: dnes nemám uzavřené nové review, pracuji opatrně.",
-    eventCount > 0 ? `Dnešní záznamy událostí: zpracováno ${eventCount} položek pro ranní souhrn.` : "Dnešní záznamy událostí: bez nové použitelné klinické položky.",
-    hanaCount > 0 ? `Hana/Osobní: použité jsou jen zpracované DID-relevantní implikace (${hanaCount}), ne raw osobní obsah.` : "Hana/Osobní: raw osobní obsah nevkládám; bez nové bezpečné implikace.",
-    taskCount > 0 || askCount > 0 ? `Úkoly terapeutek / odpovědi na ranní otázky: ${taskCount + askCount} nových pracovních vstupů.` : "Úkoly terapeutek / ranní otázky: bez nové rozhodovací odpovědi.",
-  ];
-  const operationalExcerpt = (Array.isArray(payload?.operational_context_used) ? payload.operational_context_used : [])
-    .map((e: any) => trimSentence(e?.summary, 180))
-    .filter(Boolean)
-    .slice(0, 2)
-    .join(" ");
+  const sessionRecencyLabel = sess?.is_yesterday
+    ? "včerejší"
+    : sess?.days_since_today === 2
+    ? "předevčerejší"
+    : "poslední doložené";
+
+  const greeting = "Dobré ráno, Haničko a Káťo.";
+  const mainAnchor = sess?.exists
+    ? `Dnešní přehled navazuje hlavně na ${sessionRecencyLabel} otevřené Sezení s ${partInst}${dateStr ? ` z ${dateStr}` : ""}. Záznam ukazuje, že práce byla zahájená${openedPartial ? " a částečně rozpracovaná" : ""}, ale ještě z ní nemáme uzavřený klinický závěr. Nedělám z ní víc, než opravdu víme.`
+    : `Pro dnešek nemám čerstvé klinické sezení, ze kterého bych vycházel. Beru to vážně a nebudu předbíhat k závěrům, které kluci sami nepotvrdili.`;
   const certainty = sess?.exists
-    ? `Jisté je, že ${sessionDate} bylo zachycené Sezení s ${partInstrumental(sessionPart)}${openedPartial || sess?.held === false ? " jako otevřené nebo částečně rozpracované" : " jako doložený klinický vstup"}. Zdrojově vycházím z review / průběhové evidence a nepředstírám víc, než záznam unese.`
-    : "Jisté je, že dnešní přehled má oporu jen v dostupných zpracovaných zdrojích; tam, kde review chybí, nesmím doplňovat závěr za kluky.";
-  const unclear = openedPartial
-    ? `Nejasné zůstává, co přesně si ${sessionPart} z otevřené práce odnáší, jak na ni dnes reaguje tělo a zda je bezpečné pokračovat Sezením, Hernou, nebo jen krátkým kontaktem.`
-    : "Nejasné zůstává, které části jsou dnes opravdu dostupné a co je jen stopa v datech bez aktuální odpovědi kluků.";
-  const todayChange = sess?.exists
-    ? `Pro dnešní Sezení / Hernu to mění první krok: nezačínat výkladem, ale ověřit tělo, emoci a bezpečí kontaktu; teprve potom rozhodnout, jestli navázat na ${sessionPart}, nebo zůstat u stabilizace.`
-    : "Pro dnešní Sezení / Hernu to znamená začít nízkoprahovým ověřením stavu, ne hotovou formulací.";
-  const teamAsk = "Od Haničky chci krátké ověření těla, emoce a stop signálů. Od Káti chci hlídat, aby žádná skutečná událost ani starší záznam nebyly použité jako závěr dřív, než kluci sami ukážou vlastní reakci.";
-  const sourceIntro = `Dnes mám nové podklady z těchto zdrojů: ${sourceLines.join(" ")}${usedCoverage.length ? ` Souhrn zdrojů potvrzuje zejména: ${usedCoverage.join(", ")}.` : ""}`;
-  return ensureKarelFirstPersonOpening([
-    "Dobré ráno, Haničko a Káťo.",
-    `Co je nové od posledního přehledu: ${sourceIntro}${operationalExcerpt ? ` Z pracovních implikací beru hlavně toto: ${operationalExcerpt}` : ""}`,
-    `Co je jisté: ${certainty}`,
-    `Co zůstává nejasné: ${unclear}`,
-    `Co to mění pro dnešní Sezení / Hernu: ${todayChange}`,
-    `Co chci od Haničky a Káti: ${teamAsk}`,
-  ].join("\n\n"), "Dobré ráno, Haničko a Káťo. Dnešní přehled je zdrojově omezený; začnu ověřením těla, emoce a bezpečí kontaktu.");
+    ? `Víme jistě, že${dateStr ? ` ${dateStr}` : ""} bylo s ${partInst} zahájené Sezení a že${openedPartial ? " zůstalo otevřené" : " je doložené jako klinický vstup"}. To je opora, ze které dnes můžu vyjít.`
+    : `Víme jistě jen to, co máme přesně datované. Tam, kde nemáme doložený materiál, nedoplňuji závěry za kluky.`;
+  const unknown = openedPartial
+    ? `Zatím nevíme, jak je na tom ${part} dnes v těle a v emoci, jestli je dostupný pro kontakt a co si z otevřené práce odnáší jako pravdu pro dnešek.`
+    : `Zatím nevíme, kdo z kluků je dnes opravdu dostupný a v jaké náladě nám to ukáže až první kontakt.`;
+  const todayMeans = sess?.exists
+    ? `Pro dnešek z toho plyne jednoduchý první krok. Nezačínat výkladem ani novým úkolem, ale nejdřív ověřit, jak je na tom ${part} dnes v těle, v emoci a v ochotě být v kontaktu. Pokud je dostupný, můžeme na ${partAcc} navázat velmi malým krokem. Pokud je unavený nebo stažený, bude správné zůstat u stabilizace.`
+    : `Pro dnešek z toho plyne držet bezpečný práh: krátké ověření těla, emoce a kontaktu, žádné nové téma, dokud kluci sami neukážou, na co je prostor.`;
+  const forHana = `Haničko, pro tebe je dnes hlavní držet otázky krátké a bezpečné a hlídat tělesné a emoční stop signály.`;
+  const forKata = sess?.exists
+    ? `Káťo, prosím hlídej, aby se z otevřeného Sezení nedělal hotový závěr dřív, než kluci sami ukážou, co je pro ně pravda dnes.`
+    : `Káťo, prosím hlídej, aby se starší záznamy nepoužívaly jako dnešní závěr — pravda dnešního dne musí přijít od kluků.`;
+
+  const opening = [greeting, mainAnchor, certainty, unknown, todayMeans, forHana, forKata].join("\n\n");
+  return ensureKarelFirstPersonOpening(opening, opening);
+}
+
+/** Last-resort human clinical repair: filter audit sentences, dedupe, fix grammar. */
+function buildHumanClinicalRepairOpening(payload: any, context: any): string {
+  const draft = buildVisibleClinicalMorningBriefing(payload, context);
+  const filtered = splitSentences(draft).filter((s) => {
+    if (isLowValueImplication(s)) return false;
+    for (const re of FORBIDDEN_VISIBLE_AUDIT_TERMS) if (re.test(s)) return false;
+    return true;
+  });
+  const { text } = dedupeSentences(filtered.join(" "));
+  return fixKnownPartGrammar(text);
+}
+
+/**
+ * BACK-COMPAT WRAPPER used by the freshness-audit repair branch.
+ * Returns the visible clinical opening passed through the quality gate.
+ * Records visible_text_quality_audit on the payload.
+ */
+function buildSourceGroundedFreshOpening(payload: any, context: any): string {
+  let opening = fixKnownPartGrammar(buildVisibleClinicalMorningBriefing(payload, context));
+  let audit = validateVisibleClinicalBriefingText(opening);
+  let repairApplied = false;
+  if (!audit.ok) {
+    opening = fixKnownPartGrammar(buildHumanClinicalRepairOpening(payload, context));
+    audit = validateVisibleClinicalBriefingText(opening);
+    repairApplied = true;
+  }
+  try {
+    (payload as any).visible_text_quality_audit = {
+      ok: audit.ok,
+      violations: audit.violations,
+      forbidden_terms_count_after_repair: audit.forbidden_terms_count,
+      low_value_implication_count: audit.low_value_implication_count,
+      duplicate_sentence_count: audit.duplicate_sentence_count,
+      known_part_grammar_violations: audit.known_part_grammar_violations,
+      has_concrete_clinical_fact: audit.has_concrete_clinical_fact,
+      has_practical_next_step: audit.has_practical_next_step,
+      repair_strategy: repairApplied ? "human_clinical_rewrite" : "primary_builder",
+      checked_at: new Date().toISOString(),
+    };
+  } catch (_e) { /* non-fatal */ }
+  return opening;
 }
 
 export function applyClinicalRecencyGuard(payload: any): any {
@@ -3041,6 +3240,51 @@ Deno.serve(async (req) => {
       }
     } catch (e) {
       console.warn("[briefing] freshness audit failed (non-fatal):", e);
+    }
+
+    // ── VISIBLE TEXT QUALITY GATE (clinical human prose, no audit/pipeline language) ──
+    try {
+      const currentOpening = String(payload?.opening_monologue_text ?? "");
+      const before = validateVisibleClinicalBriefingText(currentOpening);
+      if (!before.ok) {
+        const repaired = fixKnownPartGrammar(buildHumanClinicalRepairOpening(payload, context));
+        const after = validateVisibleClinicalBriefingText(repaired);
+        payload.opening_monologue_text = repaired;
+        payload.visible_text_quality_audit = {
+          ok: after.ok,
+          violations_before_repair: before.violations,
+          violations_after_repair: after.violations,
+          forbidden_terms_count_before_repair: before.forbidden_terms_count,
+          forbidden_terms_count_after_repair: after.forbidden_terms_count,
+          low_value_implication_count: after.low_value_implication_count,
+          duplicate_sentence_count: after.duplicate_sentence_count,
+          known_part_grammar_violations: after.known_part_grammar_violations,
+          has_concrete_clinical_fact: after.has_concrete_clinical_fact,
+          has_practical_next_step: after.has_practical_next_step,
+          repair_strategy: "human_clinical_rewrite",
+          repair_applied: true,
+          checked_at: new Date().toISOString(),
+        };
+        console.warn(`[briefing] visible-text gate: repaired (forbidden_before=${before.forbidden_terms_count}, after=${after.forbidden_terms_count}, low_value=${before.low_value_implication_count})`);
+      } else {
+        payload.visible_text_quality_audit = {
+          ok: true,
+          violations_before_repair: [],
+          violations_after_repair: [],
+          forbidden_terms_count_before_repair: 0,
+          forbidden_terms_count_after_repair: 0,
+          low_value_implication_count: before.low_value_implication_count,
+          duplicate_sentence_count: before.duplicate_sentence_count,
+          known_part_grammar_violations: before.known_part_grammar_violations,
+          has_concrete_clinical_fact: before.has_concrete_clinical_fact,
+          has_practical_next_step: before.has_practical_next_step,
+          repair_strategy: "primary_builder",
+          repair_applied: false,
+          checked_at: new Date().toISOString(),
+        };
+      }
+    } catch (e) {
+      console.warn("[briefing] visible-text quality gate failed (non-fatal):", e);
     }
 
     // generation_runtime_audit — strict audit of real edge runtime
