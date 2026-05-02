@@ -338,8 +338,9 @@ async function evaluateAll(
     const r = await safeCount(admin, "did_acceptance_runs", "generated_at", 14 * 24);
     out.push({
       pipeline_name: "professional_acceptance_runner",
-      status: r.count > 0 ? "ok" : "degraded",
+      status: evidenceStatus(r.count),
       evidence: { runs_14d: r.count, latest: r.latest_at },
+      evidence_ref: r.count > 0 ? `did_acceptance_runs:${r.latest_at}` : undefined,
     });
   }
 
