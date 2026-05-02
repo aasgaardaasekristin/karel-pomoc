@@ -70,3 +70,31 @@ export function buildRun(
     app_version,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Canonical check ID catalog — MUST stay in sync with frontend registry
+// (src/lib/professionalAcceptanceRegistry.ts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const P1_CHECK_IDS = {
+  briefing_dom: "p1_briefing_dom_forbidden_count",
+  herna_dom: "p1_herna_modal_dom_forbidden_count",
+  team_delib_dom: "p1_team_deliberation_modal_forbidden_count",
+  live_session_dom: "p1_live_session_dom_forbidden_count",
+  visible_fields_dirty: "p1_visible_fields_dirty_count",
+  required_all_true: "p1_required_all_true",
+  tests_passed: "p1_tests_passed",
+} as const;
+
+export const P2P3_CHECK_IDS = {
+  canonical_active_count: "p2_canonical_active_count",
+  canonical_user_resolves: "p2_canonical_user_resolves",
+  team_delib_orphan_fresh_7d: "p2_team_delib_orphan_fresh_7d",
+  daily_plans_orphan_fresh_7d: "p2_daily_plans_orphan_fresh_7d",
+  snapshot_rpc_exists: "p3_snapshot_rpc_exists",
+  rollback_rpc_exists: "p3_rollback_rpc_exists",
+  snapshots_table_exists: "p3_snapshots_table_exists",
+  snapshots_total: "p3_snapshots_total",
+  edge_helpers_present: "p2p3_edge_helpers_present",
+  tests_passed: "p2p3_tests_passed",
+} as const;
