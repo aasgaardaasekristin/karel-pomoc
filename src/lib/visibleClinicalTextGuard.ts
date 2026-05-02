@@ -175,22 +175,32 @@ export const FORBIDDEN_KOSTRBATE_PHRASES: string[] = [
 ];
 
 /**
+ * Unicode-aware "word boundary" alternative. JavaScript's `\b` is ASCII-only
+ * and breaks for Czech (Ž, í, á, etc.) when used together with the `u` flag,
+ * so we use Unicode property escape lookarounds instead.
+ */
+function wb(literalSource: string, flags = "giu"): RegExp {
+  const escaped = literalSource.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, flags);
+}
+
+/**
  * Soft replacements applied during sanitize() — they fix kostrbatá fráze
  * and the most common "robotic-Karel" leakages so that the visible string
  * is human and auditable.
  */
 const HUMAN_REPLACEMENTS: Array<{ from: RegExp; to: string }> = [
   // P1 explicit replacements
-  { from: /\bHerna je vedená Karlem práce\b/giu, to: "Hernu vede Karel" },
-  { from: /\bPoužívá důležitý kontext z posledních dní\b/giu, to: "Vychází z toho, co se v posledních dnech opravdu stalo" },
-  { from: /\bCo je jen stopa v datech\b/giu, to: "Co se zatím jen mihlo a chce ověřit" },
-  { from: /\bZohlednit v nejbližším plánování\b/giu, to: "Vrátit se k tomu při nejbližším plánu" },
-  { from: /\bZohlednit ve follow-upu\b/giu, to: "Vrátit se k tomu při dalším kontaktu" },
+  { from: wb("Herna je vedená Karlem práce"), to: "Hernu vede Karel" },
+  { from: wb("Používá důležitý kontext z posledních dní"), to: "Vychází z toho, co se v posledních dnech opravdu stalo" },
+  { from: wb("Co je jen stopa v datech"), to: "Co se zatím jen mihlo a chce ověřit" },
+  { from: wb("Zohlednit v nejbližším plánování"), to: "Vrátit se k tomu při nejbližším plánu" },
+  { from: wb("Zohlednit ve follow-upu"), to: "Vrátit se k tomu při dalším kontaktu" },
   {
-    from: /\bnepoužije se plán terapeutického sezení ani pracovní návrh\b/giu,
+    from: wb("nepoužije se plán terapeutického sezení ani pracovní návrh"),
     to: "dnes Sezení ani jeho návrh nebudeme používat",
   },
-  { from: /\bBezformátový program\b/giu, to: "Program zatím nemá pevnou strukturu" },
+  { from: wb("Bezformátový program"), to: "Program zatím nemá pevnou strukturu" },
   // Internal/system labels that sometimes leak into prose
   { from: /\bprogram_draft\b/giu, to: "návrh programu" },
   { from: /\bfirst_draft\b/giu, to: "první návrh" },
