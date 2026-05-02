@@ -75,7 +75,7 @@ const PATTERNS: Array<{
 }> = [
   // Animal suffering / rescue
   { re: /velryb/i, event_type: "animal_suffering", graphic: "medium", child: "high", term: "velryba" },
-  { re: /\bTimmy\b/i, event_type: "animal_suffering", graphic: "medium", child: "high", term: "Timmy" },
+  { re: /\bTimm[yi](?:[a-z\u00E0-\u017E]{0,3})?\b/i, event_type: "animal_suffering", graphic: "medium", child: "high", term: "Timmy" },
   { re: /t[\u00FDy]r[\u00E1a]n[\u00ED] zv[\u00ED]\u0159at/i, event_type: "animal_suffering", graphic: "high", child: "high", term: "t\u00FDr\u00E1n\u00ED zv\u00ED\u0159at" },
   { re: /rescue/i, event_type: "rescue_failure", graphic: "low", child: "medium", term: "rescue" },
   // Child abuse

@@ -47,6 +47,7 @@ import { toast } from "sonner";
 import { useDidThreads } from "@/hooks/useDidThreads";
 import type { DeliberationType } from "@/types/teamDeliberation";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
+import ExternalLoadWarning from "@/components/did/ExternalLoadWarning";
 
 interface BriefingDecision {
   /** SLICE 3 — stabilní serverové UUID briefing itemu (linked_briefing_item_id). */
@@ -1563,6 +1564,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
 
   return (
     <div className="space-y-1">
+      <ExternalLoadWarning />
       {/* Header — datum + meta + refresh */}
       <div className="flex items-start justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
