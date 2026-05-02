@@ -470,8 +470,9 @@ Deno.serve(async (req) => {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
   // Canonical user enforcement (P2 wiring of the runner itself)
+  let canonicalUserId: string;
   try {
-    await assertCanonicalDidScopeOrThrow(admin as never, auth.user.id);
+    canonicalUserId = await assertCanonicalDidScopeOrThrow(admin as never, auth.user.id);
   } catch (err) {
     if (err instanceof CanonicalUserScopeError) {
       return json({ ok: false, error_code: err.code, message: err.message }, 403);
