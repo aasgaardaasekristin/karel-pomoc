@@ -32,6 +32,15 @@ import {
   runExternalCurrentEventReplan,
   inlineCommentHasAuditLanguage,
 } from "../_shared/externalCurrentEventReplan.ts";
+import {
+  assertCanonicalDidScopeOrThrow,
+  CanonicalUserScopeError,
+  canonicalScopeErrorResponse,
+} from "../_shared/canonicalUserScopeGuard.ts";
+import {
+  createSnapshot,
+  MutationSnapshotError,
+} from "../_shared/mutationSnapshotGuard.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
