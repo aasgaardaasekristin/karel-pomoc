@@ -264,11 +264,22 @@ Deno.serve(async (req) => {
     return json({ ok: false, error_code: "scope_check_failed", message: String(err) }, 500);
   }
 
-  let body: { pass_name?: string; client_evidence?: ClientEvidence; app_version?: string };
+  let body: { action?: string; pass_name?: string; client_evidence?: ClientEvidence; app_version?: string };
   try {
     body = await req.json();
   } catch {
     return json({ ok: false, message: "Invalid JSON body" }, 400);
+  }
+
+  // Read-only listing of latest persisted runs (canonical scope already enforced above)
+  if (body.action === "list_latest") {
+    const { data, error } = await admin
+      .from("did_acceptance_runs")
+      .select("id, pass_name, status, generated_at, checks, failed_checks, evidence, app_version")
+      .order("generated_at", { ascending: false })
+      .limit(20);
+    if (error) return json({ ok: false, message: error.message }, 500);
+    return json({ ok: true, runs: data ?? [] });
   }
 
   const passName = body.pass_name;
