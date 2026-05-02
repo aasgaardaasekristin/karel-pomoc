@@ -2962,27 +2962,6 @@ export type Database = {
         }
         Relationships: []
       }
-      did_p2p3_acceptance_audit: {
-        Row: {
-          created_at: string
-          id: number
-          kind: string
-          payload: Json
-        }
-        Insert: {
-          created_at?: string
-          id?: number
-          kind: string
-          payload: Json
-        }
-        Update: {
-          created_at?: string
-          id?: number
-          kind?: string
-          payload?: Json
-        }
-        Relationships: []
-      }
       did_pantry_packages: {
         Row: {
           content_md: string
@@ -6455,10 +6434,6 @@ export type Database = {
           p_delib: Database["public"]["Tables"]["did_team_deliberations"]["Row"]
         }
         Returns: string
-      }
-      did_acceptance_run_p2p3_roundtrip: {
-        Args: { p_fixture_id: string }
-        Returns: Json
       }
       did_rollback_protected_mutation: {
         Args: { p_snapshot_id: string }
