@@ -134,6 +134,8 @@ export default function ProfessionalAcceptancePanel() {
   const [running, setRunning] = useState<string | null>(null);
   const [latestP1, setLatestP1] = useState<StoredRun | null>(null);
   const [latestP2P3, setLatestP2P3] = useState<StoredRun | null>(null);
+  const [latestP6, setLatestP6] = useState<StoredRun | null>(null);
+  const [latestP7, setLatestP7] = useState<StoredRun | null>(null);
 
   const fetchLatest = useCallback(async () => {
     setLoading(true);
@@ -144,6 +146,8 @@ export default function ProfessionalAcceptancePanel() {
       const rows = ((result as { runs?: StoredRun[] })?.runs ?? []) as StoredRun[];
       setLatestP1(rows.find((r) => r.pass_name === "P1") ?? null);
       setLatestP2P3(rows.find((r) => r.pass_name === "P2_P3") ?? null);
+      setLatestP6(rows.find((r) => r.pass_name === "P6") ?? null);
+      setLatestP7(rows.find((r) => r.pass_name === "P7") ?? null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Načtení selhalo");
     } finally {
@@ -153,7 +157,7 @@ export default function ProfessionalAcceptancePanel() {
 
   useEffect(() => { void fetchLatest(); }, [fetchLatest]);
 
-  const runPass = useCallback(async (passName: "P1" | "P2_P3") => {
+  const runPass = useCallback(async (passName: "P1" | "P2_P3" | "P6" | "P7") => {
     setRunning(passName);
     try {
       // Client evidence — UI panel cannot itself execute Vitest/DOM proofs;
@@ -200,6 +204,14 @@ export default function ProfessionalAcceptancePanel() {
           {summary && <p className="text-sm text-muted-foreground">{summary}</p>}
           <RunCard run={latestP1} onRerun={() => runPass("P1")} isRunning={running === "P1"} />
           <RunCard run={latestP2P3} onRerun={() => runPass("P2_P3")} isRunning={running === "P2_P3"} />
+          <div className="pt-2">
+            <h2 className="font-serif text-xl mb-2">Operational Coverage &amp; External Reality</h2>
+            <p className="text-xs text-muted-foreground mb-2">
+              P6 sleduje stav 20 provozních pipeline. P7 sleduje vnější realitu, která může emočně zatížit části (Arthur, Tundrupek, Timmy).
+            </p>
+          </div>
+          <RunCard run={latestP6} onRerun={() => runPass("P6")} isRunning={running === "P6"} />
+          <RunCard run={latestP7} onRerun={() => runPass("P7")} isRunning={running === "P7"} />
         </>
       )}
     </div>
