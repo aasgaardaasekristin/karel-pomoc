@@ -862,6 +862,26 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
     };
   }, [bridgedPlanId, d?.linked_live_session_id, startingLive]);
 
+  // P1 visibleClinicalTextGuard — post-mount DOM audit safety net.
+  // MUST be declared BEFORE any early return so React's hook order is stable
+  // across renders where `deliberationId` toggles open/close.
+  // Surface tag flips to "herna-modal" for playroom deliberations so that
+  // the herna-only forbidden labels ("Živý program sezení",
+  // "Vyžaduje terapeutku: Ne" when unapproved) are enforced.
+  const auditRootRef = useRef<HTMLDivElement>(null);
+  const isPlayroomPlanForAudit = isPlayroomDeliberation(d as any);
+  const auditSurface: "herna-modal" | "team-deliberation" = isPlayroomPlanForAudit
+    ? "herna-modal"
+    : "team-deliberation";
+  const hernaUnapprovedForAudit =
+    isPlayroomPlanForAudit && d?.status !== "closed" && d?.status !== "archived";
+  useVisibleClinicalTextAudit(auditSurface, auditRootRef, {
+    failInTest: false,
+    logInProduction: true,
+    status: d?.status ?? undefined,
+    hernaUnapproved: hernaUnapprovedForAudit,
+  });
+
   if (!deliberationId) return null;
 
   /**
@@ -1120,27 +1140,17 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
   const kataLocked = !!d?.kata_signed_at;
   const isPlayroomPlan = isPlayroomDeliberation(d as any);
 
-  // P1 visibleClinicalTextGuard — post-mount DOM audit safety net.
-  // Surface tag flips to "herna-modal" for playroom deliberations so that
-  // the herna-only forbidden labels ("Živý program sezení",
-  // "Vyžaduje terapeutku: Ne" when unapproved) are enforced.
-  const auditRootRef = useRef<HTMLDivElement>(null);
-  const auditSurface: "herna-modal" | "team-deliberation" = isPlayroomPlan
-    ? "herna-modal"
-    : "team-deliberation";
-  const hernaUnapproved =
-    isPlayroomPlan && d?.status !== "closed" && d?.status !== "archived";
-  useVisibleClinicalTextAudit(auditSurface, auditRootRef, {
-    failInTest: false, // dialog mounts in real app — never block tests with stray legacy text
-    logInProduction: true,
-    status: d?.status ?? undefined,
-    hernaUnapproved,
-  });
+  // NOTE: auditRootRef + useVisibleClinicalTextAudit are declared earlier
+  // (above the `if (!deliberationId) return null` early return) so that
+  // hook order remains stable across renders. Do NOT re-declare them here.
 
   return (
     <Dialog open={!!deliberationId} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-3xl w-[calc(100vw-2rem)] h-[90vh] sm:h-auto sm:max-h-[90vh] p-0 gap-0 overflow-hidden !grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] sm:!flex sm:!flex-col">
-        <div ref={auditRootRef} data-visible-clinical-panel={auditSurface} className="contents">
+      <DialogContent
+        ref={auditRootRef}
+        data-visible-clinical-panel={auditSurface}
+        className="max-w-3xl w-[calc(100vw-2rem)] h-[90vh] sm:h-auto sm:max-h-[90vh] p-0 gap-0 overflow-hidden !grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] sm:!flex sm:!flex-col"
+      >
         {livePlan ? (
           <div className="relative h-full min-h-0 overflow-hidden">
             <DidLiveSessionPanel
@@ -1574,7 +1584,6 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
             )}
           </>
         )}
-        </div>
       </DialogContent>
     </Dialog>
   );
