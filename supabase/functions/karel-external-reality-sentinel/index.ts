@@ -506,22 +506,30 @@ Deno.serve(async (req) => {
   try {
     if (action === "ingest_text") {
       const result = await ingestText(admin, canonicalUserId, body);
-      return json({ ok: true, ...result });
+      // P9 self-healing: opportunistic relink (non-fatal)
+      const heal = await repairDanglingTaskLinkages(admin, canonicalUserId);
+      return json({ ok: true, ...result, self_healing: heal });
     }
     if (action === "internet_watch") {
       const result = await internetWatchSlice(admin, canonicalUserId);
       return json({ ok: true, ...result });
     }
+    if (action === "relink_dangling_tasks") {
+      const heal = await repairDanglingTaskLinkages(admin, canonicalUserId);
+      return json({ ok: true, ...heal });
+    }
     if (action === "list_impacts") {
+      // P9 self-healing before listing, so consumers never see dangling links
+      const heal = await repairDanglingTaskLinkages(admin, canonicalUserId);
       const { data, error } = await admin
         .from("external_event_impacts")
-        .select("id, event_id, part_name, risk_level, reason, recommended_action, created_at, acknowledged_at, resolved_at, external_reality_events(event_title, event_type, source_type, verification_status, graphic_content_risk, summary_for_therapists)")
+        .select("id, event_id, part_name, risk_level, reason, recommended_action, created_task_id, created_at, acknowledged_at, resolved_at, external_reality_events(event_title, event_type, source_type, verification_status, graphic_content_risk, summary_for_therapists)")
         .eq("user_id", canonicalUserId)
         .is("resolved_at", null)
         .order("created_at", { ascending: false })
         .limit(50);
       if (error) return json({ ok: false, message: error.message }, 500);
-      return json({ ok: true, impacts: data ?? [] });
+      return json({ ok: true, impacts: data ?? [], self_healing: heal });
     }
     return json({ ok: false, message: `Unknown action: ${action}` }, 400);
   } catch (e) {
