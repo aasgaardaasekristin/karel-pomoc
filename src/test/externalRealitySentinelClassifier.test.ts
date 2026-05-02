@@ -22,7 +22,7 @@ const REAL_EVENT_HINTS = [
 
 const PATTERNS: Array<{ re: RegExp; event_type: string; term: string }> = [
   { re: /velryb/i, event_type: "animal_suffering", term: "velryba" },
-  { re: /\bTimmy\b/i, event_type: "animal_suffering", term: "Timmy" },
+  { re: /\bTimm[yi](?:[a-z\u00E0-\u017E]{0,3})?\b/i, event_type: "animal_suffering", term: "Timmy" },
   { re: /t[\u00FDy]r[\u00E1a]n[\u00ED] zv[\u00ED]\u0159at/i, event_type: "animal_suffering", term: "tyrání zvířat" },
   { re: /Arthur Labinjo-Hughes/i, event_type: "child_abuse", term: "Arthur Labinjo-Hughes" },
   { re: /t[\u00FDy]r[\u00E1a]n[\u00ED] d[\u00ED]t[\u011Be]/i, event_type: "child_abuse", term: "týrání dítěte" },
@@ -83,8 +83,8 @@ describe("P7 classifier — no false positives", () => {
     expect(r.eventTypes).toHaveLength(0);
   });
 
-  it("does not match 'Tim' as Timmy (word boundary)", () => {
-    const r = classify("Mluvili jsme o Timovi (kamarád).");
+  it("does not match 'Timotej' as Timmy (different stem)", () => {
+    const r = classify("Mluvili jsme o Timotejovi (kamarád).");
     expect(r.terms).not.toContain("Timmy");
   });
 });
