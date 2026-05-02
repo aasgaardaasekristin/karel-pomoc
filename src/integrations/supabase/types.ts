@@ -2962,6 +2962,27 @@ export type Database = {
         }
         Relationships: []
       }
+      did_p2p3_acceptance_audit: {
+        Row: {
+          created_at: string
+          id: number
+          kind: string
+          payload: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          kind: string
+          payload: Json
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          kind?: string
+          payload?: Json
+        }
+        Relationships: []
+      }
       did_pantry_packages: {
         Row: {
           content_md: string
