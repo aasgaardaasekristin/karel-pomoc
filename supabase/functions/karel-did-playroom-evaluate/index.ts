@@ -146,7 +146,7 @@ function buildPrompt(ctx: any, input: any, transcript: { clinical: any[]; exclud
 - thread_id: ${ctx.thread.id}
 - část: ${p.selected_part}
 - datum: ${p.plan_date}
-- typ: Karel-led Herna, NE terapeutkou vedené Sezení
+- typ: Hernu vede Karel po schválení terapeutkami, NE terapeutkou vedené Sezení
 - completed_blocks: ${input.completedBlocks ?? ctx.liveProgress?.completed_blocks ?? "?"}/${input.totalBlocks ?? ctx.liveProgress?.total_blocks ?? "?"}
 - ended_reason: ${input.endedReason || "manual_end"}
 
