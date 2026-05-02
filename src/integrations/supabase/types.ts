@@ -6435,6 +6435,10 @@ export type Database = {
         }
         Returns: string
       }
+      did_acceptance_run_p2p3_roundtrip: {
+        Args: { p_fixture_id: string }
+        Returns: Json
+      }
       did_rollback_protected_mutation: {
         Args: { p_snapshot_id: string }
         Returns: Json
