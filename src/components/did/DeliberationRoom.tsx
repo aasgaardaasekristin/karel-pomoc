@@ -1570,6 +1570,7 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
             )}
           </>
         )}
+        </div>
       </DialogContent>
     </Dialog>
   );
