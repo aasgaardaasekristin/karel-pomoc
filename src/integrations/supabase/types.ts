@@ -3001,6 +3001,63 @@ export type Database = {
         }
         Relationships: []
       }
+      did_operational_slo_checks: {
+        Row: {
+          category: string
+          created_at: string
+          description: string | null
+          evidence: Json
+          evidence_ref: string | null
+          expected_max_staleness_minutes: number
+          id: string
+          last_failure_at: string | null
+          last_run_at: string | null
+          last_success_at: string | null
+          next_action: string | null
+          notes: string | null
+          pipeline_name: string
+          staleness_minutes: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          evidence?: Json
+          evidence_ref?: string | null
+          expected_max_staleness_minutes?: number
+          id?: string
+          last_failure_at?: string | null
+          last_run_at?: string | null
+          last_success_at?: string | null
+          next_action?: string | null
+          notes?: string | null
+          pipeline_name: string
+          staleness_minutes?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          evidence?: Json
+          evidence_ref?: string | null
+          expected_max_staleness_minutes?: number
+          id?: string
+          last_failure_at?: string | null
+          last_run_at?: string | null
+          last_success_at?: string | null
+          next_action?: string | null
+          notes?: string | null
+          pipeline_name?: string
+          staleness_minutes?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       did_pantry_packages: {
         Row: {
           content_md: string
@@ -4587,6 +4644,182 @@ export type Database = {
         }
         Relationships: []
       }
+      external_event_impacts: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          created_at: string
+          created_briefing_id: string | null
+          created_plan_patch_id: string | null
+          created_task_id: string | null
+          event_id: string
+          id: string
+          part_name: string
+          reason: string | null
+          recommended_action: string | null
+          resolved_at: string | null
+          risk_level: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          created_at?: string
+          created_briefing_id?: string | null
+          created_plan_patch_id?: string | null
+          created_task_id?: string | null
+          event_id: string
+          id?: string
+          part_name: string
+          reason?: string | null
+          recommended_action?: string | null
+          resolved_at?: string | null
+          risk_level?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          created_at?: string
+          created_briefing_id?: string | null
+          created_plan_patch_id?: string | null
+          created_task_id?: string | null
+          event_id?: string
+          id?: string
+          part_name?: string
+          reason?: string | null
+          recommended_action?: string | null
+          resolved_at?: string | null
+          risk_level?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "external_event_impacts_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "external_reality_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      external_event_watch_runs: {
+        Row: {
+          created_at: string
+          failures: number
+          id: string
+          internet_watch_status: string
+          matched_events: number
+          new_events: number
+          notes: string | null
+          payload: Json
+          ran_at: string
+          source_type: string
+          sources_checked: number
+          user_id: string
+          warnings_created: number
+        }
+        Insert: {
+          created_at?: string
+          failures?: number
+          id?: string
+          internet_watch_status?: string
+          matched_events?: number
+          new_events?: number
+          notes?: string | null
+          payload?: Json
+          ran_at?: string
+          source_type: string
+          sources_checked?: number
+          user_id: string
+          warnings_created?: number
+        }
+        Update: {
+          created_at?: string
+          failures?: number
+          id?: string
+          internet_watch_status?: string
+          matched_events?: number
+          new_events?: number
+          notes?: string | null
+          payload?: Json
+          ran_at?: string
+          source_type?: string
+          sources_checked?: number
+          user_id?: string
+          warnings_created?: number
+        }
+        Relationships: []
+      }
+      external_reality_events: {
+        Row: {
+          child_exposure_risk: string
+          created_at: string
+          do_not_show_child_text: boolean
+          event_date: string | null
+          event_title: string
+          event_type: string
+          first_seen_at: string
+          graphic_content_risk: string
+          id: string
+          last_seen_at: string
+          raw_payload: Json
+          source_domain: string | null
+          source_reliability: string | null
+          source_type: string
+          source_url: string | null
+          summary_for_therapists: string | null
+          updated_at: string
+          user_id: string
+          verification_status: string
+        }
+        Insert: {
+          child_exposure_risk?: string
+          created_at?: string
+          do_not_show_child_text?: boolean
+          event_date?: string | null
+          event_title: string
+          event_type?: string
+          first_seen_at?: string
+          graphic_content_risk?: string
+          id?: string
+          last_seen_at?: string
+          raw_payload?: Json
+          source_domain?: string | null
+          source_reliability?: string | null
+          source_type: string
+          source_url?: string | null
+          summary_for_therapists?: string | null
+          updated_at?: string
+          user_id: string
+          verification_status?: string
+        }
+        Update: {
+          child_exposure_risk?: string
+          created_at?: string
+          do_not_show_child_text?: boolean
+          event_date?: string | null
+          event_title?: string
+          event_type?: string
+          first_seen_at?: string
+          graphic_content_risk?: string
+          id?: string
+          last_seen_at?: string
+          raw_payload?: Json
+          source_domain?: string | null
+          source_reliability?: string | null
+          source_type?: string
+          source_url?: string | null
+          summary_for_therapists?: string | null
+          updated_at?: string
+          user_id?: string
+          verification_status?: string
+        }
+        Relationships: []
+      }
       goal_evaluations: {
         Row: {
           created_at: string | null
@@ -5489,6 +5722,57 @@ export type Database = {
           snapshot_key?: string
           source_meta_json?: Json
           sync_state_json?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      part_external_event_sensitivities: {
+        Row: {
+          active: boolean
+          contraindications: string | null
+          created_at: string
+          event_pattern: string
+          expected_reaction: string | null
+          id: string
+          last_reviewed_at: string | null
+          last_reviewed_by: string | null
+          part_name: string
+          recommended_guard: string | null
+          safe_opening_style: string | null
+          sensitivity_types: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          contraindications?: string | null
+          created_at?: string
+          event_pattern: string
+          expected_reaction?: string | null
+          id?: string
+          last_reviewed_at?: string | null
+          last_reviewed_by?: string | null
+          part_name: string
+          recommended_guard?: string | null
+          safe_opening_style?: string | null
+          sensitivity_types?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          contraindications?: string | null
+          created_at?: string
+          event_pattern?: string
+          expected_reaction?: string | null
+          id?: string
+          last_reviewed_at?: string | null
+          last_reviewed_by?: string | null
+          part_name?: string
+          recommended_guard?: string | null
+          safe_opening_style?: string | null
+          sensitivity_types?: string[]
           updated_at?: string
           user_id?: string
         }
@@ -6476,6 +6760,17 @@ export type Database = {
       }
       did_count_visible_dirty_fields: { Args: never; Returns: number }
       did_p4_acceptance_inventory: { Args: never; Returns: Json }
+      did_record_slo_run: {
+        Args: {
+          p_evidence?: Json
+          p_evidence_ref?: string
+          p_next_action?: string
+          p_pipeline_name: string
+          p_status: string
+        }
+        Returns: string
+      }
+      did_refresh_slo_staleness: { Args: never; Returns: number }
       did_rollback_protected_mutation: {
         Args: { p_snapshot_id: string }
         Returns: Json
