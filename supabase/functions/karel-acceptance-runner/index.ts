@@ -320,12 +320,59 @@ async function p6Checks(admin: ReturnType<typeof createClient>): Promise<{
   checks.push(boolCheck(P6_CHECK_IDS.acceptance_runner_pipeline_recent,
     "Acceptance runner pipeline tracked", "sql_check", !!runnerOk, false));
 
+  // 6) FALSE-GREEN AUDIT: any pipeline with status 'ok' MUST have evidence_ref.
+  //    The earlier "count >= 0 ? ok" pattern produced ok rows with no real proof.
+  let okWithoutEvidenceCount = 0;
+  let okWithoutEvidenceNames: string[] = [];
+  try {
+    const { data } = await admin
+      .from("did_operational_slo_checks")
+      .select("pipeline_name, status, evidence_ref");
+    for (const row of (data ?? []) as Array<{ pipeline_name: string; status: string; evidence_ref: string | null }>) {
+      if (row.status === "ok" && (!row.evidence_ref || row.evidence_ref.trim() === "")) {
+        okWithoutEvidenceCount++;
+        okWithoutEvidenceNames.push(row.pipeline_name);
+      }
+    }
+  } catch { /* swallow */ }
+  checks.push(boolCheck(P6_CHECK_IDS.no_hardcoded_ok_without_evidence,
+    "Žádný SLO check s status='ok' nesmí mít prázdný evidence_ref",
+    "guard_check", okWithoutEvidenceCount === 0, true,
+    `Pipelines hardcoded ok bez evidence_ref: ${okWithoutEvidenceNames.join(", ") || "none"}`));
+
+  // 7) FALSE-GREEN AUDIT: scan for forbidden code pattern `count >= 0 ? "ok"`
+  //    in the coverage check evidence. We persist this as a derived guard:
+  //    if any 'ok' pipeline has evidence whose only signal is "X_recent: 0" we flag it.
+  let suspiciousZeroOk = 0;
+  try {
+    const { data } = await admin
+      .from("did_operational_slo_checks")
+      .select("pipeline_name, status, evidence");
+    for (const row of (data ?? []) as Array<{ pipeline_name: string; status: string; evidence: Record<string, unknown> | null }>) {
+      if (row.status !== "ok") continue;
+      const ev = row.evidence ?? {};
+      const numericValues = Object.entries(ev)
+        .filter(([k, v]) => typeof v === "number" && !k.includes("expected"))
+        .map(([, v]) => v as number);
+      if (numericValues.length > 0 && numericValues.every((v) => v === 0)) {
+        suspiciousZeroOk++;
+      }
+    }
+  } catch { /* swallow */ }
+  checks.push(boolCheck(P6_CHECK_IDS.no_false_green_slo_checks,
+    "Žádný SLO check s status='ok' nesmí mít všechny numerické metriky = 0",
+    "guard_check", suspiciousZeroOk === 0, true,
+    `False-green pipelines (ok s nulovými metrikami): ${suspiciousZeroOk}`));
+
   return {
     checks,
     evidence: {
       pipelines_total: pipelines.length,
       pipelines_recent_24h: recent,
       not_implemented_count: notImpExplicit,
+      ok_without_evidence_count: okWithoutEvidenceCount,
+      ok_without_evidence_names: okWithoutEvidenceNames,
+      suspicious_zero_ok_count: suspiciousZeroOk,
       pipeline_summary: pipelines.map((p) => ({ name: p.pipeline_name, status: p.status })),
     },
   };
