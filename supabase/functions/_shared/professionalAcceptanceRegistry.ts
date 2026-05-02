@@ -107,6 +107,8 @@ export const P6_CHECK_IDS = {
   no_silent_failures: "p6_no_silent_failures",
   drive_to_pantry_honest: "p6_drive_to_pantry_honest",
   acceptance_runner_pipeline_recent: "p6_acceptance_runner_pipeline_recent",
+  no_false_green_slo_checks: "p6_no_false_green_slo_checks",
+  no_hardcoded_ok_without_evidence: "p6_no_hardcoded_ok_without_evidence",
 } as const;
 
 export const P7_CHECK_IDS = {
