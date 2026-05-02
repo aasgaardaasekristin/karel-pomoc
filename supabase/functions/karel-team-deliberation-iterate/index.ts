@@ -503,6 +503,25 @@ PRAVIDLA STRUKTURY:
       sessionParams.session_mode = String(sessionParams.session_mode ?? hybridContract.session_mode ?? hybridContract.therapist_led_vs_karel_only ?? "standard").trim() || "standard";
     }
 
+    // P3: snapshot pre-mutation (program_draft + session_params + log + synthesis reset).
+    // Fail-closed: pokud snapshot selže, mutaci neprovedeme.
+    try {
+      await createSnapshot(
+        admin as any,
+        "did_team_deliberations",
+        deliberationId,
+        `iterate: program_draft+session_params rewrite by ${author}`,
+        "edge:karel-team-deliberation-iterate",
+      );
+    } catch (snapErr) {
+      if (snapErr instanceof MutationSnapshotError) {
+        return new Response(JSON.stringify({ ok: false, error_code: "mutation_snapshot_failed", message: snapErr.message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw snapErr;
+    }
+
     // Save program_draft + log; invalidovat starou syntézu (vstup změnil situaci)
     const { error: updErr } = await admin
       .from("did_team_deliberations")
