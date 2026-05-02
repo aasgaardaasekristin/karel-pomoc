@@ -272,25 +272,68 @@ const CONTEXT_FORBIDDEN_LABELS: Array<{
 const POSITIVE_ASSERTION_PATTERNS: Array<{
   positive: RegExp;
   match: string;
-  /** allowed if any of these negation cues precede it within ~40 chars */
+  /**
+   * Sentence-level negation cues: if any of these appears anywhere in the
+   * SAME sentence as the match, the match is treated as a safe negated /
+   * instructional formulation and is NOT counted as a violation.
+   */
   negationAllowed: RegExp[];
 }> = [
   {
     positive: /\bje to projekce\b/iu,
     match: "je to projekce",
-    negationAllowed: [/\bne jako projekce\b/iu, /\bnení to projekce\b/iu],
+    negationAllowed: [
+      /\bne jako projekce\b/iu,
+      /\bnení to projekce\b/iu,
+      /\bnedělat\b[^.!?]*\bprojekc/iu,
+      /\bneuzavírat\b[^.!?]*\bprojekc/iu,
+      /\bnesmí\b[^.!?]*\bprojekc/iu,
+    ],
   },
   {
     positive: /\bsymbolizuje\b/iu,
     match: "symbolizuje",
-    negationAllowed: [/\bne jako symbol\b/iu, /\bnesymbolizuje\b/iu],
+    negationAllowed: [
+      /\bne jako symbol\b/iu,
+      /\bnesymbolizuje\b/iu,
+      /\bnedělat\b[^.!?]*\bsymbol/iu,
+      /\bnesmí\b[^.!?]*\bsymbolick/iu,
+    ],
   },
   {
-    positive: /\bdiagnostick[ýé]\s+sign[áa]l\b/iu,
+    positive: /\bdiagnostick[ýéaáíé]+\s+(sign[áa]l|z[áa]věr)\b/iu,
     match: "diagnostický signál",
-    negationAllowed: [/\bne jako diagnostick[ýé]\s+sign[áa]l\b/iu],
+    negationAllowed: [
+      /\bne jako\b[^.!?]*\bdiagnostick/iu,
+      /\bnesmí\b[^.!?]*\bdiagnostick/iu,
+      /\bnedělat\b[^.!?]*\bdiagnostick/iu,
+      /\bneuzavírat\b[^.!?]*\bdiagnostick/iu,
+      /\bnení to diagnostick/iu,
+      /\bnejde o diagnostick/iu,
+      /\bbez přímé reakce\b/iu,
+      /\bbez vlastních slov kluků\b/iu,
+      /\bnepoužívat jako\b/iu,
+      /\bsymbolick[ýé]\s+nebo\s+diagnostick/iu,
+    ],
   },
 ];
+
+/**
+ * Returns the sentence containing the match `index` (walks back to the
+ * previous .!?/newline and forward to the next). Used to evaluate negation
+ * cues at sentence scope rather than a fixed 40-char window.
+ */
+function sentenceWindowAround(text: string, index: number, matchLen: number): string {
+  let start = 0;
+  for (let i = index - 1; i >= 0; i--) {
+    if (/[.!?\n]/.test(text[i] ?? "")) { start = i + 1; break; }
+  }
+  let end = text.length;
+  for (let i = index + matchLen; i < text.length; i++) {
+    if (/[.!?\n]/.test(text[i] ?? "")) { end = i + 1; break; }
+  }
+  return text.slice(start, end);
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -359,19 +402,21 @@ export function detectClinicalTextViolations(
     }
   }
   for (const rule of POSITIVE_ASSERTION_PATTERNS) {
-    const m = rule.positive.exec(text);
-    if (!m) continue;
-    const idx = m.index ?? 0;
-    const window = text.slice(Math.max(0, idx - 40), idx + rule.match.length + 4);
-    const negated = rule.negationAllowed.some((nr) => nr.test(window));
-    if (negated) continue;
-    violations.push({
-      kind: "ungrounded_clinical_assertion",
-      match: rule.match,
-      index: idx,
-      surface: String(ctx.surface),
-      field: ctx.field,
-    });
+    const globalRe = new RegExp(rule.positive.source, rule.positive.flags.includes("g") ? rule.positive.flags : rule.positive.flags + "g");
+    let m: RegExpExecArray | null;
+    while ((m = globalRe.exec(text)) !== null) {
+      const idx = m.index ?? 0;
+      const sentence = sentenceWindowAround(text, idx, rule.match.length);
+      const negated = rule.negationAllowed.some((nr) => nr.test(sentence));
+      if (negated) continue;
+      violations.push({
+        kind: "ungrounded_clinical_assertion",
+        match: rule.match,
+        index: idx,
+        surface: String(ctx.surface),
+        field: ctx.field,
+      });
+    }
   }
   return violations;
 }

@@ -145,7 +145,7 @@ const PROGRAM_TEXT_FIELDS: Array<[keyof LiveProgramBlock, string]> = [
   ["clinical_intent", "Záměr"],
   ["playful_form", "Hravá forma"],
   ["script", "Věta"],
-  ["fallback", "Fallback"],
+  ["fallback", "Když to nejde"],
 ];
 
 const PROGRAM_LIST_FIELDS: Array<[keyof LiveProgramBlock, string]> = [

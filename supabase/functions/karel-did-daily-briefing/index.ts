@@ -601,7 +601,7 @@ const buildMandatoryPlayroomProposal = (payload: any, context: any, candidates: 
       forbidden_directions: ["nevynucovat vzpomínky", "neinterpretovat externí real-world událost jako symbol/projekci/diagnostický signál bez reakce části", "neinterpretovat kresbu jako diagnózu bez review", "neeskalovat trauma", "nepokračovat přes stop signál"],
       runtime_packet_seed: { source: "mandatory_backend_fallback" },
     },
-    questions_for_hanka: ["Je dnes pro tuto část bezpečnější krátká Karel-led Herna, nebo má být Hanička fyzicky poblíž?"],
+    questions_for_hanka: ["Je dnes pro tuto část bezpečnější krátká Herna vedená Karlem, nebo má být Hanička fyzicky poblíž?"],
     questions_for_kata: ["Vidíš dnes riziko, kvůli kterému má Herna zůstat pouze stabilizační a ne hlubinně explorativní?"],
   };
 };
@@ -2178,7 +2178,7 @@ const BRIEFING_TOOL = {
         },
         proposed_playroom: {
           type: "object",
-          description: "POVINNÝ samostatný návrh dnešní Herny. Herna je Karel-led terapeutická práce s konkrétní částí; NESMÍ kopírovat proposed_session.first_draft ani plan_markdown. Musí obsahovat vlastní playroom_plan.",
+          description: "POVINNÝ samostatný návrh dnešní Herny. Hernu vede Karel jako terapeutickou práci s konkrétní částí (až po schválení Haničkou a Káťou); NESMÍ kopírovat proposed_session.first_draft ani plan_markdown. Musí obsahovat vlastní playroom_plan.",
           properties: {
             part_name: { type: "string" },
             status: { type: "string", enum: ["draft", "awaiting_therapist_review", "in_revision", "approved", "ready_to_start", "in_progress", "completed", "evaluated", "archived"] },
@@ -2284,7 +2284,7 @@ DNEŠNÍ NAVRŽENÉ SEZENÍ:
 - Uveď: koho, proč právě dnes, kdo povede, první pracovní verze, kdy přizvat Káťu.
 
 DNEŠNÍ NAVRŽENÁ HERNA — POVINNÁ KAŽDÝ DEN:
-- VŽDY vytvoř proposed_playroom jako samostatný Karel-led program pro jednu konkrétní část. Nikdy ho nenechávej null.
+- VŽDY vytvoř proposed_playroom jako samostatný program, který vede Karel po schválení terapeutkami, pro jednu konkrétní část. Nikdy ho nenechávej null.
 - Herna není běžný chat a není terapeutkou vedené Sezení. Vede ji Karel přímo s částí; terapeutka nemusí být fyzicky přítomná.
 - proposed_playroom.playroom_plan je jediný povolený program Herny. Nesmí být kopií proposed_session.first_draft, plan_markdown ani interního terapeutického programu pro Haničku/Káťu.
 - status nastav primárně na awaiting_therapist_review. Vstup do Herny bude možný až po schválení terapeutkami.
