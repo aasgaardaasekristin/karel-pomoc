@@ -387,7 +387,7 @@ async function p6Checks(admin: ReturnType<typeof createClient>): Promise<{
 // P7: External reality sentinel acceptance
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function p7Checks(admin: ReturnType<typeof createClient>, canonicalUserId: string): Promise<{
+async function p7Checks(admin: ReturnType<typeof createClient>, canonicalUserId: string, ev: ClientEvidence): Promise<{
   checks: AcceptanceCheck[];
   evidence: Record<string, unknown>;
 }> {
@@ -422,20 +422,19 @@ async function p7Checks(admin: ReturnType<typeof createClient>, canonicalUserId:
   checks.push(boolCheck(P7_CHECK_IDS.sensitivities_seeded_tundrupek,
     "Sensitivity for Tundrupek seeded", "sql_check", tundOk, true));
 
-  // 3) Identity confirmation guard: Arthur sensitivity must include explicit "NESMÍ" / "no-confirm" guard
+  // 3) Identity confirmation guard
   const arthurGuard = String(arthurSens?.[0]?.recommended_guard ?? "");
   const guardOk = /NESM[\u00CD\u00ED]|nepotvr/i.test(arthurGuard);
   checks.push(boolCheck(P7_CHECK_IDS.no_identity_confirmation_in_impacts,
     "Arthur recommended_guard explicitly forbids identity confirmation",
-    "guard_check", guardOk, true,
-    "Arthur sensitivity must contain 'NESMÍ potvrdit identitu' or equivalent."));
+    "guard_check", guardOk, true));
 
-  // 4) Graphic content guard: do_not_show_child_text default true; no high-graphic event has do_not_show_child_text=false
+  // 4) Graphic content guard
   let graphicGuardOk = true;
   try {
     const { data, error } = await admin
       .from("external_reality_events")
-      .select("id, graphic_content_risk, do_not_show_child_text")
+      .select("id")
       .eq("user_id", canonicalUserId)
       .eq("graphic_content_risk", "high")
       .eq("do_not_show_child_text", false);
@@ -444,63 +443,89 @@ async function p7Checks(admin: ReturnType<typeof createClient>, canonicalUserId:
   checks.push(boolCheck(P7_CHECK_IDS.graphic_content_guarded,
     "No high-graphic events expose raw text to child UI", "guard_check", graphicGuardOk, true));
 
-  // 5) No fake internet verification: any internet_news event must NOT be 'verified_multi_source' without source_url
+  // 5) No fake internet verification
   let noFakeOk = true;
   try {
     const { data } = await admin
       .from("external_reality_events")
-      .select("id, source_type, verification_status, source_url")
+      .select("id, source_url")
       .eq("source_type", "internet_news")
       .in("verification_status", ["verified_multi_source", "single_source"]);
-    if (data) {
-      noFakeOk = data.every((r: { source_url: string | null }) => !!r.source_url);
-    }
+    if (data) noFakeOk = data.every((r: { source_url: string | null }) => !!r.source_url);
   } catch { /* swallow */ }
   checks.push(boolCheck(P7_CHECK_IDS.no_fake_internet_verification,
     "No internet_news event marked verified without source_url",
     "guard_check", noFakeOk, true));
 
-  // 6) Ingestion path works: at least one watch_run exists
-  let ingestionOk = false;
+  // 6) Ingestion path: at least one watch_run row exists
+  let watchRuns = 0;
   try {
     const { count } = await admin
       .from("external_event_watch_runs")
       .select("id", { count: "exact", head: true })
       .eq("user_id", canonicalUserId);
-    ingestionOk = (count ?? 0) >= 0; // table exists at minimum
+    watchRuns = count ?? 0;
   } catch { /* swallow */ }
   checks.push(boolCheck(P7_CHECK_IDS.ingestion_path_works,
-    "external_event_watch_runs table reachable",
-    "sql_check", ingestionOk, true));
+    "external_event_watch_runs has rows for canonical user",
+    "sql_check", watchRuns > 0, true,
+    "Spustit karel-external-reality-sentinel ingest_text alespoň jednou."));
 
-  // 7) Briefing warning integration — informational (UI surface check)
+  // 7) Briefing/Herna DOM proof from client_evidence — REQUIRED
+  const briefingOk =
+    ev.briefing_external_load_visible === true &&
+    typeof ev.briefing_external_load_forbidden_count === "number" &&
+    ev.briefing_external_load_forbidden_count === 0;
+  const hernaOk =
+    ev.herna_external_load_or_prevention_visible === true &&
+    typeof ev.herna_external_load_forbidden_count === "number" &&
+    ev.herna_external_load_forbidden_count === 0;
+  const uiOk = briefingOk && hernaOk;
   checks.push({
     id: P7_CHECK_IDS.briefing_warning_integrated,
-    label: "Briefing 'Možné vnější zatížení' sekce přítomna",
-    type: "dom_check", required: false,
-    status: "skipped",
-    expected: "true",
-    message: "DOM proof se ověřuje z UI panelu nebo CLI runneru.",
+    label: "Briefing + Herna DOM: 'Možné vnější zatížení' viditelné, forbidden=0",
+    type: "dom_check", required: true,
+    observed: { briefingOk, hernaOk },
+    expected: "both true with forbidden_count=0",
+    status: uiOk ? "passed" : (ev.briefing_external_load_visible === undefined ? "skipped" : "failed"),
+    message: uiOk ? undefined : "Chybí DOM proof briefingu nebo Herny.",
   });
 
-  // 8) Tasks created for amber/red
-  let tasksOk = true;
+  // 8) P7 task linkage — REQUIRED, 100% when amber/red impacts exist
+  let amberRedTotal = 0;
+  let amberRedWithTask = 0;
+  let linkedTaskExists = true;
   try {
     const { data } = await admin
       .from("external_event_impacts")
       .select("id, risk_level, created_task_id")
       .eq("user_id", canonicalUserId)
       .in("risk_level", ["amber", "red"]);
-    // informational only — no impacts is fine for fresh DB
-    if (data && data.length > 0) {
-      // require at least 50% to have created_task_id when amber/red exist
-      const withTask = data.filter((d: { created_task_id: string | null }) => d.created_task_id).length;
-      tasksOk = withTask / data.length >= 0.5 || data.length === 0;
+    const rows = (data ?? []) as Array<{ id: string; risk_level: string; created_task_id: string | null }>;
+    amberRedTotal = rows.length;
+    amberRedWithTask = rows.filter((r) => !!r.created_task_id).length;
+    // Verify each linked task exists
+    const taskIds = rows.map((r) => r.created_task_id).filter((x): x is string => !!x);
+    if (taskIds.length > 0) {
+      const { data: tasks } = await admin
+        .from("did_therapist_tasks")
+        .select("id")
+        .in("id", taskIds);
+      linkedTaskExists = (tasks?.length ?? 0) === taskIds.length;
     }
   } catch { /* swallow */ }
-  checks.push(boolCheck(P7_CHECK_IDS.tasks_created_for_amber_red,
-    "Amber/red impacts have therapist tasks (when present)",
-    "guard_check", tasksOk, false));
+  const tasksOk = amberRedTotal === 0
+    ? false  // can't prove sentinel works without amber/red impacts
+    : amberRedWithTask === amberRedTotal && linkedTaskExists;
+  checks.push({
+    id: P7_CHECK_IDS.tasks_created_for_amber_red,
+    label: "Každý amber/red impact má created_task_id propojený na existující task",
+    type: "guard_check", required: true,
+    observed: { amber_red_total: amberRedTotal, with_task: amberRedWithTask, linked_task_exists: linkedTaskExists },
+    expected: "100% linkage; tasks resolvable",
+    status: tasksOk ? "passed" : "failed",
+    message: tasksOk ? undefined : `Linkage neúplná (${amberRedWithTask}/${amberRedTotal}) nebo task neexistuje.`,
+  });
 
   return {
     checks,
@@ -508,6 +533,11 @@ async function p7Checks(admin: ReturnType<typeof createClient>, canonicalUserId:
       arthur_sensitivity_count: arthurSens?.length ?? 0,
       tundrupek_sensitivity_count: tundSens?.length ?? 0,
       arthur_guard_excerpt: arthurGuard.slice(0, 200),
+      watch_runs_total: watchRuns,
+      amber_red_total: amberRedTotal,
+      amber_red_with_task: amberRedWithTask,
+      linked_task_exists: linkedTaskExists,
+      client_evidence: ev,
     },
   };
 }
