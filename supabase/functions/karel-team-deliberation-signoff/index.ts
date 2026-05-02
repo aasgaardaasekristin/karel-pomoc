@@ -15,6 +15,11 @@ const corsHeaders = {
 };
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { appendPantryB } from "../_shared/pantryB.ts";
+import {
+  assertCanonicalDidScopeOrThrow,
+  CanonicalUserScopeError,
+  canonicalScopeErrorResponse,
+} from "../_shared/canonicalUserScopeGuard.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -142,6 +147,21 @@ Deno.serve(async (req: Request) => {
     }
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+
+    // P2: fail-closed canonical DID scope guard. Signoff musí blokovat
+    // jakéhokoli ne-kanonického usera předtím, než se zavolá RPC sync.
+    try {
+      await assertCanonicalDidScopeOrThrow(admin as any, userId);
+    } catch (err) {
+      if (err instanceof CanonicalUserScopeError) {
+        const { status, body } = canonicalScopeErrorResponse(err);
+        return new Response(JSON.stringify(body), {
+          status,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw err;
+    }
 
     // Fetch row
     const { data: row, error: fetchErr } = await admin

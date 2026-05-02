@@ -32,6 +32,15 @@ import {
   runExternalCurrentEventReplan,
   inlineCommentHasAuditLanguage,
 } from "../_shared/externalCurrentEventReplan.ts";
+import {
+  assertCanonicalDidScopeOrThrow,
+  CanonicalUserScopeError,
+  canonicalScopeErrorResponse,
+} from "../_shared/canonicalUserScopeGuard.ts";
+import {
+  createSnapshot,
+  MutationSnapshotError,
+} from "../_shared/mutationSnapshotGuard.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -183,6 +192,23 @@ Deno.serve(async (req: Request) => {
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 
+    // P2: fail-closed canonical DID scope guard.
+    // Iterate je destruktivní vůči podepisovaným polím (program_draft, session_params,
+    // discussion_log, karel_synthesis) — calling user musí být kanonický DID user,
+    // jinak by mohl orphan/test user přepsat reálnou Hančinu poradu.
+    try {
+      await assertCanonicalDidScopeOrThrow(admin as any, userId);
+    } catch (err) {
+      if (err instanceof CanonicalUserScopeError) {
+        const { status, body } = canonicalScopeErrorResponse(err);
+        return new Response(JSON.stringify(body), {
+          status,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw err;
+    }
+
     const { data: row, error: fetchErr } = await admin
       .from("did_team_deliberations")
       .select("*")
@@ -257,6 +283,23 @@ Deno.serve(async (req: Request) => {
             is_external_current_event_replan: true,
           },
         ];
+        // P3: snapshot pre-mutation (external-event replan log append).
+        try {
+          await createSnapshot(
+            admin as any,
+            "did_team_deliberations",
+            deliberationId,
+            "iterate: external_current_event_replan log append",
+            "edge:karel-team-deliberation-iterate",
+          );
+        } catch (snapErr) {
+          if (snapErr instanceof MutationSnapshotError) {
+            return new Response(JSON.stringify({ ok: false, error_code: "mutation_snapshot_failed", message: snapErr.message }), {
+              status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          throw snapErr;
+        }
         await admin
           .from("did_team_deliberations")
           .update({ discussion_log: newLog })
@@ -458,6 +501,25 @@ PRAVIDLA STRUKTURY:
         ? sessionParams.stop_rules
         : (Array.isArray(hybridContract.stop_rules) ? hybridContract.stop_rules.map((x: any) => String(x)).slice(0, 8) : []);
       sessionParams.session_mode = String(sessionParams.session_mode ?? hybridContract.session_mode ?? hybridContract.therapist_led_vs_karel_only ?? "standard").trim() || "standard";
+    }
+
+    // P3: snapshot pre-mutation (program_draft + session_params + log + synthesis reset).
+    // Fail-closed: pokud snapshot selže, mutaci neprovedeme.
+    try {
+      await createSnapshot(
+        admin as any,
+        "did_team_deliberations",
+        deliberationId,
+        `iterate: program_draft+session_params rewrite by ${author}`,
+        "edge:karel-team-deliberation-iterate",
+      );
+    } catch (snapErr) {
+      if (snapErr instanceof MutationSnapshotError) {
+        return new Response(JSON.stringify({ ok: false, error_code: "mutation_snapshot_failed", message: snapErr.message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw snapErr;
     }
 
     // Save program_draft + log; invalidovat starou syntézu (vstup změnil situaci)
