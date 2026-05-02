@@ -38,13 +38,37 @@ describe("visibleClinicalTextGuard — helper", () => {
     expect(out).toContain("Hernu vede Karel");
   });
 
-  it("allows negated clinical assertions but blocks positive ones", () => {
+  it("allows negated clinical assertions but blocks positive ones (sentence-level)", () => {
     const negated = "Beru to ne jako projekce, jen jako tělesnou reakci.";
     expect(detectClinicalTextViolations(negated, { surface: "briefing" })).toHaveLength(0);
 
     const positive = "Tato reakce je to projekce ze strany kluků.";
     const v = detectClinicalTextViolations(positive, { surface: "briefing" });
     expect(v.some((x) => x.kind === "ungrounded_clinical_assertion")).toBe(true);
+  });
+
+  it("sentence-level negation: 'nesmí z toho dělat symbolický nebo diagnostický závěr' → 0 violations", () => {
+    const t = "Karel z toho nesmí dělat symbolický nebo diagnostický závěr bez přímé reakce kluků.";
+    const v = detectClinicalTextViolations(t, { surface: "herna-modal" });
+    expect(v.filter((x) => x.kind === "ungrounded_clinical_assertion")).toHaveLength(0);
+  });
+
+  it("sentence-level negation: 'ne jako projekce, symbol ani diagnostický signál' → 0 violations", () => {
+    const t = "Vnímáme to ne jako projekce, symbol ani diagnostický signál.";
+    const v = detectClinicalTextViolations(t, { surface: "herna-modal" });
+    expect(v.filter((x) => x.kind === "ungrounded_clinical_assertion")).toHaveLength(0);
+  });
+
+  it("positive 'je to diagnostický signál' is flagged", () => {
+    const t = "Podle Karla je to diagnostický signál pro nový směr.";
+    const v = detectClinicalTextViolations(t, { surface: "briefing" });
+    expect(v.some((x) => /diagnostick/.test(x.match))).toBe(true);
+  });
+
+  it("positive 'Timmy symbolizuje opuštění' is flagged", () => {
+    const t = "Timmy symbolizuje opuštění a strach.";
+    const v = detectClinicalTextViolations(t, { surface: "briefing" });
+    expect(v.some((x) => x.match === "symbolizuje")).toBe(true);
   });
 
   it("flags 'Živý program sezení' only inside herna-modal surface", () => {
