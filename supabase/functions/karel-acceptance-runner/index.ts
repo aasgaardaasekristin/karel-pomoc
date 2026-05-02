@@ -23,6 +23,8 @@ import {
   buildRun,
   P1_CHECK_IDS,
   P2P3_CHECK_IDS,
+  P6_CHECK_IDS,
+  P7_CHECK_IDS,
 } from "../_shared/professionalAcceptanceRegistry.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
