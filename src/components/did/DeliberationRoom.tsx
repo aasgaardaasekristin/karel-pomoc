@@ -348,7 +348,7 @@ function QuestionList({
           className="rounded-md border border-border/60 bg-card/40 p-2.5 space-y-1.5"
         >
           <p className="text-[12px] font-medium text-foreground">
-            {q.question}
+            {sanitizeHernaVisibleText(q.question)}
           </p>
           {q.answer ? (
             <div className="rounded bg-muted/40 p-2 text-[11px] text-foreground/90">
