@@ -1734,6 +1734,48 @@ export type Database = {
         }
         Relationships: []
       }
+      did_canonical_scope: {
+        Row: {
+          active: boolean
+          canonical_user_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          reason: string | null
+          scope_name: string
+          seed_email: string | null
+          seed_status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          active?: boolean
+          canonical_user_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          reason?: string | null
+          scope_name: string
+          seed_email?: string | null
+          seed_status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          active?: boolean
+          canonical_user_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          reason?: string | null
+          scope_name?: string
+          seed_email?: string | null
+          seed_status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       did_conversations: {
         Row: {
           created_at: string
@@ -2824,6 +2866,36 @@ export type Database = {
           therapist?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      did_mutation_snapshots: {
+        Row: {
+          actor: string
+          created_at: string
+          id: string
+          reason: string
+          row_id: string
+          snapshot: Json
+          table_name: string
+        }
+        Insert: {
+          actor: string
+          created_at?: string
+          id?: string
+          reason: string
+          row_id: string
+          snapshot: Json
+          table_name: string
+        }
+        Update: {
+          actor?: string
+          created_at?: string
+          id?: string
+          reason?: string
+          row_id?: string
+          snapshot?: Json
+          table_name?: string
         }
         Relationships: []
       }
@@ -6363,9 +6435,27 @@ export type Database = {
         }
         Returns: string
       }
+      did_rollback_protected_mutation: {
+        Args: { p_snapshot_id: string }
+        Returns: Json
+      }
+      did_snapshot_protected_mutation: {
+        Args: {
+          p_actor: string
+          p_reason: string
+          p_row_id: string
+          p_table_name: string
+        }
+        Returns: string
+      }
+      get_canonical_did_user_id: { Args: never; Returns: string }
       invoke_briefing_watchdog_acceptance_rebuild: {
         Args: { p_reason?: string; p_user_id: string }
         Returns: number
+      }
+      set_canonical_did_user: {
+        Args: { p_reason: string; p_user_id: string }
+        Returns: Json
       }
       sync_and_start_approved_daily_plan: {
         Args: { p_deliberation_id: string; p_user_id: string }
