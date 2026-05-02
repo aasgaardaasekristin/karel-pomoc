@@ -590,7 +590,7 @@ Deno.serve(async (req) => {
   if (passName === "P1") result = await p1Checks(admin, ev);
   else if (passName === "P2_P3") result = await p2p3Checks(admin, ev);
   else if (passName === "P6") result = await p6Checks(admin);
-  else result = await p7Checks(admin, canonicalUserId);
+  else result = await p7Checks(admin, canonicalUserId, ev);
   const { checks, evidence } = result;
 
   const run = buildRun(passName, checks, evidence, body.app_version);
