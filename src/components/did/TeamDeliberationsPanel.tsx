@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Users, AlertTriangle, ChevronDown, ChevronUp, Plus, CheckCircle2, Clock, Loader2, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import {
   type TeamDeliberation,
   type DeliberationType,
 } from "@/types/teamDeliberation";
+import { useVisibleClinicalTextAudit } from "@/lib/visibleClinicalTextGuard";
 
 interface Props {
   refreshTrigger?: number;
@@ -109,6 +110,15 @@ const TeamDeliberationsPanel = ({ refreshTrigger, onOpenRoom }: Props) => {
   const { items, loading, creating, create } = useTeamDeliberations(refreshTrigger ?? 0);
   const [showOverflow, setShowOverflow] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // P1 visibleClinicalTextGuard — post-mount DOM audit safety net.
+  // Forbidden technical jargon, kostrbaté Czech, and ungrounded clinical
+  // assertions are flagged. Raw therapist-authored quotes are excluded.
+  useVisibleClinicalTextAudit("team-deliberation", rootRef, {
+    failInTest: true,
+    logInProduction: true,
+  });
 
   const { primary, overflow } = partitionDashboardDeliberations(items);
 
@@ -125,7 +135,7 @@ const TeamDeliberationsPanel = ({ refreshTrigger, onOpenRoom }: Props) => {
   };
 
   return (
-    <div className="space-y-3">
+    <div ref={rootRef} data-visible-clinical-panel="team-deliberation" className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-medium flex items-center gap-1.5">
           <Users className="w-3.5 h-3.5 text-primary" />
