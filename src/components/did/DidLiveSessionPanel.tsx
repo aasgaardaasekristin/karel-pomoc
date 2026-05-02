@@ -1659,7 +1659,7 @@ ${report}${interrogationBlock}${reflectionText}`;
   }
 
   return (
-    <div className="h-full w-full flex flex-col min-h-0 overflow-hidden bg-background">
+    <div ref={liveAuditRef} data-visible-clinical-panel="live-session" className="h-full w-full flex flex-col min-h-0 overflow-hidden bg-background">
       {/* Header — shrink-0; vlastní vnitřní scroll, aby nikdy nevytlačil input mimo viewport */}
       <div className={`shrink-0 px-4 py-3 border-b border-border bg-card/50 transition-colors duration-500 max-h-[45vh] overflow-y-auto ${switchFlash ? "bg-amber-500/10" : ""}`}>
         <div className="flex items-center justify-between gap-3">
