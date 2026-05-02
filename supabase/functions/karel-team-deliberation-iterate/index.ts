@@ -283,6 +283,23 @@ Deno.serve(async (req: Request) => {
             is_external_current_event_replan: true,
           },
         ];
+        // P3: snapshot pre-mutation (external-event replan log append).
+        try {
+          await createSnapshot(
+            admin as any,
+            "did_team_deliberations",
+            deliberationId,
+            "iterate: external_current_event_replan log append",
+            "edge:karel-team-deliberation-iterate",
+          );
+        } catch (snapErr) {
+          if (snapErr instanceof MutationSnapshotError) {
+            return new Response(JSON.stringify({ ok: false, error_code: "mutation_snapshot_failed", message: snapErr.message }), {
+              status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          throw snapErr;
+        }
         await admin
           .from("did_team_deliberations")
           .update({ discussion_log: newLog })
