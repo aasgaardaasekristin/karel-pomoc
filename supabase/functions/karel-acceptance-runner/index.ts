@@ -499,14 +499,17 @@ Deno.serve(async (req) => {
   }
 
   const passName = body.pass_name;
-  if (passName !== "P1" && passName !== "P2_P3") {
-    return json({ ok: false, message: "pass_name must be 'P1' or 'P2_P3'" }, 400);
+  if (passName !== "P1" && passName !== "P2_P3" && passName !== "P6" && passName !== "P7") {
+    return json({ ok: false, message: "pass_name must be 'P1', 'P2_P3', 'P6' or 'P7'" }, 400);
   }
   const ev: ClientEvidence = body.client_evidence ?? {};
 
-  const { checks, evidence } = passName === "P1"
-    ? await p1Checks(admin, ev)
-    : await p2p3Checks(admin, ev);
+  let result: { checks: AcceptanceCheck[]; evidence: Record<string, unknown> };
+  if (passName === "P1") result = await p1Checks(admin, ev);
+  else if (passName === "P2_P3") result = await p2p3Checks(admin, ev);
+  else if (passName === "P6") result = await p6Checks(admin);
+  else result = await p7Checks(admin, canonicalUserId);
+  const { checks, evidence } = result;
 
   const run = buildRun(passName, checks, evidence, body.app_version);
 
