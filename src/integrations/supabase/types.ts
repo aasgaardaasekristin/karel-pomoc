@@ -6474,6 +6474,8 @@ export type Database = {
         }
         Returns: string
       }
+      did_count_visible_dirty_fields: { Args: never; Returns: number }
+      did_p4_acceptance_inventory: { Args: never; Returns: Json }
       did_rollback_protected_mutation: {
         Args: { p_snapshot_id: string }
         Returns: Json
