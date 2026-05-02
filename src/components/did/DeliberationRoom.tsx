@@ -1129,7 +1129,7 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
     ? "herna-modal"
     : "team-deliberation";
   const hernaUnapproved =
-    isPlayroomPlan && d?.status !== "approved" && d?.status !== "signed_off";
+    isPlayroomPlan && d?.status !== "closed" && d?.status !== "archived";
   useVisibleClinicalTextAudit(auditSurface, auditRootRef, {
     failInTest: false, // dialog mounts in real app — never block tests with stray legacy text
     logInProduction: true,
