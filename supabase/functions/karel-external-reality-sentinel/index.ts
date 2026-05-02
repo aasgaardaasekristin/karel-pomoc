@@ -252,21 +252,42 @@ async function ingestText(
       });
       impacts_created++;
 
-      // Create therapist task for amber/red
+      // Create therapist task for amber/red and LINK it back to the impact row
       if (risk === "amber" || risk === "red") {
         try {
-          const taskTitle = `Ověřit expozici části ${sens.part_name} k tématu "${hit.matched_terms[0]}"`;
-          await admin.from("did_therapist_tasks").insert({
-            user_id: userId,
-            title: taskTitle,
-            description: `Externí realita (${sourceType}, ${reporter}): možný emoční dopad na část ${sens.part_name}. Ověřit expozici, somatickou reakci, neukazovat grafický materiál.${sens.recommended_guard ? " Pravidlo: " + sens.recommended_guard : ""}`,
-            assigned_to: reporter === "kata" ? "kata" : "hanka",
-            priority: risk === "red" ? "high" : "medium",
-            status: "open",
-            source: "external_reality_sentinel",
-            metadata: { event_id: eventId, part_name: sens.part_name, risk_level: risk },
-          });
-          tasks_created++;
+          const taskText = `Ověřit expozici části ${sens.part_name} k tématu "${hit.matched_terms[0]}"`;
+          const noteText = `Externí realita (${sourceType}, ${reporter}): možný emoční dopad na část ${sens.part_name}. Ověřit expozici, somatickou reakci, neukazovat grafický materiál.${sens.recommended_guard ? " Pravidlo: " + sens.recommended_guard : ""}`;
+          const { data: taskRow, error: taskErr } = await admin
+            .from("did_therapist_tasks")
+            .insert({
+              user_id: userId,
+              task: taskText,
+              note: noteText,
+              assigned_to: reporter === "kata" ? "kata" : "hanka",
+              priority: risk === "red" ? "high" : "normal",
+              status: "pending",
+              source: "external_reality_sentinel",
+              category: "external_reality",
+              task_tier: "operative",
+            })
+            .select("id")
+            .single();
+          if (taskErr) {
+            warnings.push(`task_insert_failed:${taskErr.message}`);
+          } else if (taskRow?.id) {
+            tasks_created++;
+            // P7 LINKAGE — write created_task_id back into the impact row
+            const { error: linkErr } = await admin
+              .from("external_event_impacts")
+              .update({ created_task_id: taskRow.id })
+              .eq("event_id", eventId)
+              .eq("part_name", sens.part_name)
+              .eq("risk_level", risk)
+              .is("created_task_id", null);
+            if (linkErr) {
+              warnings.push(`task_linkage_failed:${linkErr.message}`);
+            }
+          }
         } catch (e) {
           warnings.push(`task_insert_skipped:${String((e as Error).message)}`);
         }
@@ -324,13 +345,14 @@ async function internetWatchSlice(
   try {
     await admin.from("did_therapist_tasks").insert({
       user_id: userId,
-      title: "Doplnit ověřené odkazy ke sledovaným externím tématům",
-      description: "Internet sentinel zatím není napojen na ověřený zdroj. Pokud máte odkaz na článek/zprávu, který se týká částí (Arthur, Tundrupek, Timmy), přidejte ho ručně.",
+      task: "Doplnit ověřené odkazy ke sledovaným externím tématům",
+      note: "Internet sentinel zatím není napojen na ověřený zdroj. Pokud máte odkaz na článek/zprávu, který se týká částí (Arthur, Tundrupek, Timmy), přidejte ho ručně.",
       assigned_to: "hanka",
       priority: "low",
-      status: "open",
+      status: "pending",
       source: "external_reality_sentinel",
-      metadata: { reason: "internet_watch_not_implemented" },
+      category: "external_reality",
+      task_tier: "operative",
     });
   } catch { /* tabulka může mít jiné schéma */ }
 
