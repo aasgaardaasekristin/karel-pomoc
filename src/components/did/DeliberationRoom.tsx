@@ -862,6 +862,26 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
     };
   }, [bridgedPlanId, d?.linked_live_session_id, startingLive]);
 
+  // P1 visibleClinicalTextGuard — post-mount DOM audit safety net.
+  // MUST be declared BEFORE any early return so React's hook order is stable
+  // across renders where `deliberationId` toggles open/close.
+  // Surface tag flips to "herna-modal" for playroom deliberations so that
+  // the herna-only forbidden labels ("Živý program sezení",
+  // "Vyžaduje terapeutku: Ne" when unapproved) are enforced.
+  const auditRootRef = useRef<HTMLDivElement>(null);
+  const isPlayroomPlanForAudit = isPlayroomDeliberation(d as any);
+  const auditSurface: "herna-modal" | "team-deliberation" = isPlayroomPlanForAudit
+    ? "herna-modal"
+    : "team-deliberation";
+  const hernaUnapprovedForAudit =
+    isPlayroomPlanForAudit && d?.status !== "closed" && d?.status !== "archived";
+  useVisibleClinicalTextAudit(auditSurface, auditRootRef, {
+    failInTest: false,
+    logInProduction: true,
+    status: d?.status ?? undefined,
+    hernaUnapproved: hernaUnapprovedForAudit,
+  });
+
   if (!deliberationId) return null;
 
   /**
