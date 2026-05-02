@@ -304,7 +304,7 @@ const POSITIVE_ASSERTION_PATTERNS: Array<{
     positive: /\bdiagnostick[ýéaáíé]+\s+(sign[áa]l|z[áa]věr)\b/iu,
     match: "diagnostický signál",
     negationAllowed: [
-      /\bne jako diagnostick/iu,
+      /\bne jako\b[^.!?]*\bdiagnostick/iu,
       /\bnesmí\b[^.!?]*\bdiagnostick/iu,
       /\bnedělat\b[^.!?]*\bdiagnostick/iu,
       /\bneuzavírat\b[^.!?]*\bdiagnostick/iu,
@@ -313,7 +313,7 @@ const POSITIVE_ASSERTION_PATTERNS: Array<{
       /\bbez přímé reakce\b/iu,
       /\bbez vlastních slov kluků\b/iu,
       /\bnepoužívat jako\b/iu,
-      /\bsymbolick[ýé]\s+nebo\s+diagnostick/iu, // "symbolický nebo diagnostický závěr" almost always negated
+      /\bsymbolick[ýé]\s+nebo\s+diagnostick/iu,
     ],
   },
 ];
