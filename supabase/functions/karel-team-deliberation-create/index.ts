@@ -180,7 +180,7 @@ Vrať VÝHRADNĚ JSON v tomto tvaru (žádný markdown, žádné komentáře):
   "title": "krátký, výstižný název porady (max 80 znaků)",
   "reason": "1-2 věty, proč to teď řešíme",
   "initial_karel_brief": "3-5 vět: pozdrav týmu, proč svoláváš poradu, co se změnilo za poslední 3 dny, co ti zůstává významné z dřívějška, co potřebuješ rozhodnout",
-  "karel_proposed_plan": "konkrétní pracovní návrh:\\n- pokud je typ session_plan: koho přizvat, kdo vede, zda se připojí Káťa, navržená metoda, pomůcky, úvodní věty, co sledovat, fallbacky\\n- jinak: konkrétní kroky / rozhodovací body",
+  "karel_proposed_plan": "konkrétní pracovní návrh:\\n- pokud je typ session_plan: koho přizvat, kdo vede, zda se připojí Káťa, navržená metoda, pomůcky, úvodní věty, co sledovat, záložní postupy (když to nejde — co dělat místo toho)\\n- jinak: konkrétní kroky / rozhodovací body",
   "questions_for_hanka": [
     "konkrétní otázka, kterou se ptáš JEN Haničky (její perspektiva: matka, primární terapeutka)"
   ],

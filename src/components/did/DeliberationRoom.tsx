@@ -1256,7 +1256,7 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                       </p>
                     ) : (
                       <RichMarkdown compact>
-                        {cleanVisiblePlanText(d.karel_proposed_plan, "(zatím bez návrhu)")}
+                        {sanitizeHernaVisibleText(cleanVisiblePlanText(d.karel_proposed_plan, "(zatím bez návrhu)"))}
                       </RichMarkdown>
                     )}
                   </section>

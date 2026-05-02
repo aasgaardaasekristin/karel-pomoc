@@ -213,6 +213,13 @@ const HUMAN_REPLACEMENTS: Array<{ from: RegExp; to: string }> = [
   { from: wb("child evidence"), to: "vlastní reakce kluků" },
   { from: wb("Karel-led"), to: "vede Karel" },
   { from: wb("DID-relevantní"), to: "důležité pro kluky" },
+  // Soft-replace technical "Fallback" labels into human Czech.
+  // Order: more specific multi-word forms first, then standalone term.
+  { from: /\bFallbacky\s*:/giu, to: "Když to nejde:" },
+  { from: /\bFallback\s*:/giu, to: "Když to nejde:" },
+  { from: /\bFallbackem je\b/giu, to: "Záložní postup je" },
+  { from: /\bfallback(?:em|u|y|ů)?\b/giu, to: "záložní postup" },
+  { from: wb("Fallback"), to: "záložní postup" },
   // Existing kostrbaté
   { from: wb("operace selhala"), to: "nepovedlo se to" },
   { from: wb("operace proběhla úspěšně"), to: "podařilo se to" },
