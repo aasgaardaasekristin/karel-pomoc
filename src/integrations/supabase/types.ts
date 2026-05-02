@@ -1695,6 +1695,45 @@ export type Database = {
         }
         Relationships: []
       }
+      did_acceptance_runs: {
+        Row: {
+          app_version: string | null
+          checks: Json
+          created_at: string
+          created_by: string | null
+          evidence: Json
+          failed_checks: Json
+          generated_at: string
+          id: string
+          pass_name: string
+          status: string
+        }
+        Insert: {
+          app_version?: string | null
+          checks?: Json
+          created_at?: string
+          created_by?: string | null
+          evidence?: Json
+          failed_checks?: Json
+          generated_at?: string
+          id?: string
+          pass_name: string
+          status: string
+        }
+        Update: {
+          app_version?: string | null
+          checks?: Json
+          created_at?: string
+          created_by?: string | null
+          evidence?: Json
+          failed_checks?: Json
+          generated_at?: string
+          id?: string
+          pass_name?: string
+          status?: string
+        }
+        Relationships: []
+      }
       did_briefing_sla_runs: {
         Row: {
           action: string
