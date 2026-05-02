@@ -192,6 +192,23 @@ Deno.serve(async (req: Request) => {
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 
+    // P2: fail-closed canonical DID scope guard.
+    // Iterate je destruktivní vůči podepisovaným polím (program_draft, session_params,
+    // discussion_log, karel_synthesis) — calling user musí být kanonický DID user,
+    // jinak by mohl orphan/test user přepsat reálnou Hančinu poradu.
+    try {
+      await assertCanonicalDidScopeOrThrow(admin as any, userId);
+    } catch (err) {
+      if (err instanceof CanonicalUserScopeError) {
+        const { status, body } = canonicalScopeErrorResponse(err);
+        return new Response(JSON.stringify(body), {
+          status,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw err;
+    }
+
     const { data: row, error: fetchErr } = await admin
       .from("did_team_deliberations")
       .select("*")
