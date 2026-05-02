@@ -20,6 +20,7 @@ import Kartoteka from "./pages/Kartoteka";
 import Zklidneni from "./pages/Zklidneni";
 import Pomoc from "./pages/Pomoc";
 import NotFound from "./pages/NotFound";
+import ProfessionalAcceptancePanel from "@/components/admin/ProfessionalAcceptancePanel";
 import { useAuthReady } from "@/hooks/useAuthReady";
 import { isExplicitLogoutActive } from "@/lib/chatHelpers";
 
@@ -76,6 +77,7 @@ const App = () => (
                 <Route path="/calm" element={<ProtectedRoute><CalmMode /></ProtectedRoute>} />
                 <Route path="/zklidneni" element={<Zklidneni />} />
                 <Route path="/pomoc" element={<Pomoc />} />
+                <Route path="/admin/acceptance" element={<ProtectedRoute><ProfessionalAcceptancePanel /></ProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />
               </>
             )}
