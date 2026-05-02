@@ -137,20 +137,18 @@ export default function ProfessionalAcceptancePanel() {
 
   const fetchLatest = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("did_acceptance_runs")
-      .select("*")
-      .order("generated_at", { ascending: false })
-      .limit(20);
-    if (error) {
-      toast.error(`Nepodařilo se načíst acceptance runs: ${error.message}`);
+    try {
+      const result = await callEdgeFunction("karel-acceptance-runner", {
+        action: "list_latest",
+      });
+      const rows = ((result as { runs?: StoredRun[] })?.runs ?? []) as StoredRun[];
+      setLatestP1(rows.find((r) => r.pass_name === "P1") ?? null);
+      setLatestP2P3(rows.find((r) => r.pass_name === "P2_P3") ?? null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Načtení selhalo");
+    } finally {
       setLoading(false);
-      return;
     }
-    const rows = (data ?? []) as unknown as StoredRun[];
-    setLatestP1(rows.find((r) => r.pass_name === "P1") ?? null);
-    setLatestP2P3(rows.find((r) => r.pass_name === "P2_P3") ?? null);
-    setLoading(false);
   }, []);
 
   useEffect(() => { void fetchLatest(); }, [fetchLatest]);
