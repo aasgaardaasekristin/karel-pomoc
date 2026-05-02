@@ -28,6 +28,7 @@ import DidPostSessionInterrogation, { type InterrogationAnswer } from "./DidPost
 import LiveProgramChecklist from "./LiveProgramChecklist";
 import KarelInSessionCards, { type KarelHintTrigger } from "./KarelInSessionCards";
 import BlockDiagnosticChat, { type BlockResearch } from "./BlockDiagnosticChat";
+import { useVisibleClinicalTextAudit } from "@/lib/visibleClinicalTextGuard";
 
 type Message = {
   role: "user" | "assistant";
@@ -104,12 +105,22 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, planId, on
   const [isFinishing, setIsFinishing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const liveAuditRef = useRef<HTMLDivElement>(null);
   const recorder = useSessionAudioRecorder();
   const imageUpload = useImageUpload();
   const [isAudioAnalyzing, setIsAudioAnalyzing] = useState(false);
   const [isImageAnalyzing, setIsImageAnalyzing] = useState(false);
   const audioSegmentCountRef = useRef(0);
   const imageSegmentCountRef = useRef(0);
+
+  // P1 visibleClinicalTextGuard — post-mount DOM audit safety net for Live
+  // session render (covers all return paths: workspace, completed, normal).
+  // Therapist-typed messages are excluded via [data-clinical-raw-source].
+  useVisibleClinicalTextAudit("live-session", liveAuditRef, {
+    failInTest: false,
+    logInProduction: true,
+  });
+
 
   // Switch detection state
   const [activePart, setActivePart] = useState(partName);
