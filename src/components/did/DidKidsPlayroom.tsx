@@ -10,6 +10,7 @@ import tundrupekPlayroomBg from "@/assets/tundrupek-playroom-bg.jpg";
 import { buildAttachmentContent, useUniversalUpload, type PendingAttachment } from "@/hooks/useUniversalUpload";
 import { handleApiError, parseSSEStream } from "@/lib/chatHelpers";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
+import ExternalLoadWarning from "@/components/did/ExternalLoadWarning";
 
 interface PlayroomPlanRow {
   id: string;
@@ -620,6 +621,8 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
           <header className="space-y-1 text-center drop-shadow-sm">
             <h1 className="text-3xl font-serif text-foreground">Herna</h1>
           </header>
+
+          <ExternalLoadWarning />
 
           <div className="flex flex-1 items-center justify-center pb-8 pt-3">
             <div className="w-full max-w-lg space-y-4 rounded-lg border border-border/35 bg-background/38 p-5 text-center shadow-sm backdrop-blur-[3px]">
