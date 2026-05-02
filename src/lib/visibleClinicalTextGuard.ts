@@ -402,19 +402,21 @@ export function detectClinicalTextViolations(
     }
   }
   for (const rule of POSITIVE_ASSERTION_PATTERNS) {
-    const m = rule.positive.exec(text);
-    if (!m) continue;
-    const idx = m.index ?? 0;
-    const sentence = sentenceWindowAround(text, idx, rule.match.length);
-    const negated = rule.negationAllowed.some((nr) => nr.test(sentence));
-    if (negated) continue;
-    violations.push({
-      kind: "ungrounded_clinical_assertion",
-      match: rule.match,
-      index: idx,
-      surface: String(ctx.surface),
-      field: ctx.field,
-    });
+    const globalRe = new RegExp(rule.positive.source, rule.positive.flags.includes("g") ? rule.positive.flags : rule.positive.flags + "g");
+    let m: RegExpExecArray | null;
+    while ((m = globalRe.exec(text)) !== null) {
+      const idx = m.index ?? 0;
+      const sentence = sentenceWindowAround(text, idx, rule.match.length);
+      const negated = rule.negationAllowed.some((nr) => nr.test(sentence));
+      if (negated) continue;
+      violations.push({
+        kind: "ungrounded_clinical_assertion",
+        match: rule.match,
+        index: idx,
+        surface: String(ctx.surface),
+        field: ctx.field,
+      });
+    }
   }
   return violations;
 }
