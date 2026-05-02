@@ -98,3 +98,25 @@ export const P2P3_CHECK_IDS = {
   edge_helpers_present: "p2p3_edge_helpers_present",
   tests_passed: "p2p3_tests_passed",
 } as const;
+
+export const P6_CHECK_IDS = {
+  slo_table_exists: "p6_slo_table_exists",
+  pipelines_seeded_count: "p6_pipelines_seeded_count",
+  pipelines_evaluated_recent: "p6_pipelines_evaluated_recent",
+  not_implemented_explicit: "p6_not_implemented_explicit",
+  no_silent_failures: "p6_no_silent_failures",
+  drive_to_pantry_honest: "p6_drive_to_pantry_honest",
+  acceptance_runner_pipeline_recent: "p6_acceptance_runner_pipeline_recent",
+} as const;
+
+export const P7_CHECK_IDS = {
+  events_table_exists: "p7_events_table_exists",
+  sensitivities_seeded_arthur: "p7_sensitivities_seeded_arthur",
+  sensitivities_seeded_tundrupek: "p7_sensitivities_seeded_tundrupek",
+  ingestion_path_works: "p7_ingestion_path_works",
+  no_fake_internet_verification: "p7_no_fake_internet_verification",
+  no_identity_confirmation_in_impacts: "p7_no_identity_confirmation_in_impacts",
+  graphic_content_guarded: "p7_graphic_content_guarded",
+  briefing_warning_integrated: "p7_briefing_warning_integrated",
+  tasks_created_for_amber_red: "p7_tasks_created_for_amber_red",
+} as const;
