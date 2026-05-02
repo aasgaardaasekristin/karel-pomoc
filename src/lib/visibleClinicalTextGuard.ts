@@ -405,8 +405,8 @@ export function detectClinicalTextViolations(
     const m = rule.positive.exec(text);
     if (!m) continue;
     const idx = m.index ?? 0;
-    const window = text.slice(Math.max(0, idx - 40), idx + rule.match.length + 4);
-    const negated = rule.negationAllowed.some((nr) => nr.test(window));
+    const sentence = sentenceWindowAround(text, idx, rule.match.length);
+    const negated = rule.negationAllowed.some((nr) => nr.test(sentence));
     if (negated) continue;
     violations.push({
       kind: "ungrounded_clinical_assertion",
