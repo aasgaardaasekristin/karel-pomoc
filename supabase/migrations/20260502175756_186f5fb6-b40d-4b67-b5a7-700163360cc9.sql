@@ -1,0 +1,1 @@
+GRANT EXECUTE ON FUNCTION public.did_acceptance_run_p2p3_roundtrip(uuid) TO authenticated, anon;
