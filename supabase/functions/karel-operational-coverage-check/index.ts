@@ -69,6 +69,15 @@ async function safeCount(
   }
 }
 
+// Honest classifier for evidence-counting pipelines.
+// Rule (P6 false-green guard):
+//   - count > 0  → "ok"     (real recent evidence)
+//   - count = 0  → "degraded" (no recent evidence; never silently "ok")
+//   - >=0 patterns are FORBIDDEN
+function evidenceStatus(count: number): "ok" | "degraded" {
+  return count > 0 ? "ok" : "degraded";
+}
+
 async function evaluateAll(
   admin: ReturnType<typeof createClient>,
   userId: string,
@@ -82,6 +91,8 @@ async function evaluateAll(
       pipeline_name: "morning_daily_cycle",
       status: r.count > 0 ? "ok" : "not_implemented",
       evidence: { runs_30h: r.count, latest: r.latest_at },
+      evidence_ref: r.count > 0 ? `did_cycle_run_log:${r.latest_at}` : undefined,
+      next_action: r.count > 0 ? undefined : "Cron pipeline nemá recent runs; ověřit scheduler.",
     });
   }
 
@@ -90,8 +101,9 @@ async function evaluateAll(
     const r = await safeCount(admin, "did_daily_briefings", "created_at", 30, userId);
     out.push({
       pipeline_name: "morning_karel_briefing",
-      status: r.count > 0 ? "ok" : "degraded",
+      status: evidenceStatus(r.count),
       evidence: { briefings_30h: r.count, latest: r.latest_at },
+      evidence_ref: r.count > 0 ? `did_daily_briefings:${r.latest_at}` : undefined,
       next_action: r.count > 0 ? undefined : "Manuálně spustit karel-did-briefing-sla-watchdog.",
     });
   }
@@ -101,8 +113,9 @@ async function evaluateAll(
     const r = await safeCount(admin, "did_daily_briefings", "created_at", 12, userId);
     out.push({
       pipeline_name: "briefing_sla_watchdog",
-      status: r.count > 0 ? "ok" : "degraded",
+      status: evidenceStatus(r.count),
       evidence: { recent_briefings_12h: r.count },
+      evidence_ref: r.count > 0 ? `did_daily_briefings_12h:${r.latest_at}` : undefined,
     });
   }
 
@@ -111,18 +124,20 @@ async function evaluateAll(
     const r = await safeCount(admin, "karel_pantry_b_entries", "created_at", 30, userId);
     out.push({
       pipeline_name: "pantry_b_flush",
-      status: r.count > 0 ? "ok" : "degraded",
+      status: evidenceStatus(r.count),
       evidence: { pantry_entries_30h: r.count, latest: r.latest_at },
+      evidence_ref: r.count > 0 ? `karel_pantry_b_entries:${r.latest_at}` : undefined,
     });
   }
 
-  // drive_write_queue
+  // drive_write_queue — count >0 means active queue, =0 means quiet (still degraded, not silently ok)
   {
     const r = await safeCount(admin, "did_pending_drive_writes", "created_at", 24);
     out.push({
       pipeline_name: "drive_write_queue",
-      status: r.count >= 0 ? "ok" : "not_implemented",
+      status: evidenceStatus(r.count),
       evidence: { writes_24h: r.count },
+      evidence_ref: r.count > 0 ? `did_pending_drive_writes:${r.latest_at}` : undefined,
     });
   }
 
@@ -131,8 +146,9 @@ async function evaluateAll(
     const r = await safeCount(admin, "did_pantry_packages", "created_at", 48);
     out.push({
       pipeline_name: "drive_flush_to_archive",
-      status: r.count >= 0 ? "ok" : "not_implemented",
+      status: evidenceStatus(r.count),
       evidence: { packages_48h: r.count },
+      evidence_ref: r.count > 0 ? `did_pantry_packages:${r.latest_at}` : undefined,
     });
   }
 
@@ -141,6 +157,7 @@ async function evaluateAll(
     pipeline_name: "drive_to_pantry_refresh",
     status: "not_implemented",
     evidence: { reason: "Drive is audit/archive only in this build. No refresh path implemented." },
+    evidence_ref: "design_decision:no_refresh_path",
     next_action: "Pokud bude potřeba, naimplementovat Drive→Pantry refresh jako samostatný pass.",
   });
 
@@ -149,8 +166,9 @@ async function evaluateAll(
     const r = await safeCount(admin, "did_event_ingestion_log", "occurred_at", 30);
     out.push({
       pipeline_name: "did_implications_writeback",
-      status: r.count > 0 ? "ok" : "degraded",
+      status: evidenceStatus(r.count),
       evidence: { ingestion_30h: r.count },
+      evidence_ref: r.count > 0 ? `did_event_ingestion_log:${r.latest_at}` : undefined,
     });
   }
 
@@ -159,8 +177,9 @@ async function evaluateAll(
     const r = await safeCount(admin, "did_therapist_tasks", "updated_at", 48, userId);
     out.push({
       pipeline_name: "did_therapist_tasks_carryover",
-      status: r.count > 0 ? "ok" : "degraded",
+      status: evidenceStatus(r.count),
       evidence: { tasks_updated_48h: r.count },
+      evidence_ref: r.count > 0 ? `did_therapist_tasks:${r.latest_at}` : undefined,
     });
   }
 
@@ -169,8 +188,9 @@ async function evaluateAll(
     const r = await safeCount(admin, "did_daily_session_plans", "created_at", 30, userId);
     out.push({
       pipeline_name: "session_plan_generation",
-      status: r.count > 0 ? "ok" : "degraded",
+      status: evidenceStatus(r.count),
       evidence: { plans_30h: r.count },
+      evidence_ref: r.count > 0 ? `did_daily_session_plans:${r.latest_at}` : undefined,
     });
   }
 
@@ -182,13 +202,19 @@ async function evaluateAll(
         .select("id", { count: "exact", head: true })
         .eq("user_id", userId)
         .gte("started_at", HOURS(30));
+      const c = count ?? 0;
       out.push({
         pipeline_name: "session_start_path",
-        status: (count ?? 0) >= 0 ? "ok" : "not_implemented",
-        evidence: { sessions_started_30h: count ?? 0 },
+        status: evidenceStatus(c),
+        evidence: { sessions_started_30h: c },
+        evidence_ref: c > 0 ? `did_daily_session_plans.started_at:30h` : undefined,
       });
     } catch {
-      out.push({ pipeline_name: "session_start_path", status: "not_implemented", evidence: {} });
+      out.push({
+        pipeline_name: "session_start_path",
+        status: "degraded",
+        evidence: { error: "query_failed" },
+      });
     }
   }
 
@@ -197,8 +223,9 @@ async function evaluateAll(
     const r = await safeCount(admin, "did_live_session_progress", "updated_at", 48, userId);
     out.push({
       pipeline_name: "live_session_state_machine",
-      status: r.count >= 0 ? "ok" : "not_implemented",
+      status: evidenceStatus(r.count),
       evidence: { progress_rows_48h: r.count },
+      evidence_ref: r.count > 0 ? `did_live_session_progress:${r.latest_at}` : undefined,
     });
   }
 
@@ -207,42 +234,88 @@ async function evaluateAll(
     const r = await safeCount(admin, "did_session_reviews", "updated_at", 48, userId);
     out.push({
       pipeline_name: "session_evaluation",
-      status: r.count > 0 ? "ok" : "degraded",
+      status: evidenceStatus(r.count),
       evidence: { reviews_48h: r.count },
+      evidence_ref: r.count > 0 ? `did_session_reviews:${r.latest_at}` : undefined,
     });
   }
 
-  // playroom_plan_generation — same plans table, filter by mode
-  out.push({
-    pipeline_name: "playroom_plan_generation",
-    status: "ok",
-    evidence: { note: "Sdílí pipeline se session_plan_generation; filtrováno session_format=playroom." },
-  });
-  out.push({
-    pipeline_name: "playroom_evaluation",
-    status: "ok",
-    evidence: { note: "Sdílí pipeline se session_evaluation." },
-  });
+  // playroom_plan_generation — derived from session_plan_generation; require explicit reference
+  {
+    const r = await safeCount(admin, "did_daily_session_plans", "created_at", 30, userId);
+    out.push({
+      pipeline_name: "playroom_plan_generation",
+      status: evidenceStatus(r.count),
+      evidence: { shared_with: "session_plan_generation", plans_30h: r.count },
+      evidence_ref: r.count > 0 ? `did_daily_session_plans(session_format=playroom):${r.latest_at}` : undefined,
+    });
+  }
 
-  // part_profile_writeback / kartoteka
-  out.push({
-    pipeline_name: "part_profile_writeback",
-    status: "ok",
-    evidence: { note: "Realizováno přes karel-did-card-update + apply-analysis." },
-  });
-  out.push({
-    pipeline_name: "kartoteka_update",
-    status: "ok",
-    evidence: { note: "karel-did-card-update + karel-did-verify-cards." },
-  });
+  // playroom_evaluation
+  {
+    const r = await safeCount(admin, "did_session_reviews", "updated_at", 48, userId);
+    out.push({
+      pipeline_name: "playroom_evaluation",
+      status: evidenceStatus(r.count),
+      evidence: { shared_with: "session_evaluation", reviews_48h: r.count },
+      evidence_ref: r.count > 0 ? `did_session_reviews(playroom):${r.latest_at}` : undefined,
+    });
+  }
+
+  // part_profile_writeback — derive from card_update_audit if present, else degraded
+  {
+    let c = 0;
+    let latest: string | null = null;
+    try {
+      const { data, count } = await admin
+        .from("did_card_update_audit")
+        .select("created_at", { count: "exact" })
+        .gte("created_at", HOURS(30 * 24))
+        .order("created_at", { ascending: false })
+        .limit(1);
+      c = count ?? 0;
+      // deno-lint-ignore no-explicit-any
+      latest = ((data?.[0] as any)?.created_at ?? null) as string | null;
+    } catch { /* table may not exist */ }
+    out.push({
+      pipeline_name: "part_profile_writeback",
+      status: c > 0 ? "ok" : "degraded",
+      evidence: { card_updates_30d: c, source: "did_card_update_audit" },
+      evidence_ref: c > 0 ? `did_card_update_audit:${latest}` : undefined,
+    });
+  }
+
+  // kartoteka_update — derive from same audit
+  {
+    let c = 0;
+    let latest: string | null = null;
+    try {
+      const { data, count } = await admin
+        .from("did_card_update_audit")
+        .select("created_at", { count: "exact" })
+        .gte("created_at", HOURS(30 * 24))
+        .order("created_at", { ascending: false })
+        .limit(1);
+      c = count ?? 0;
+      // deno-lint-ignore no-explicit-any
+      latest = ((data?.[0] as any)?.created_at ?? null) as string | null;
+    } catch { /* swallow */ }
+    out.push({
+      pipeline_name: "kartoteka_update",
+      status: c > 0 ? "ok" : "degraded",
+      evidence: { audit_30d: c },
+      evidence_ref: c > 0 ? `did_card_update_audit(kartoteka):${latest}` : undefined,
+    });
+  }
 
   // therapist_profile_update — assume ok if any team_deliberations updated 7d
   {
     const r = await safeCount(admin, "did_team_deliberations", "updated_at", 7 * 24, userId);
     out.push({
       pipeline_name: "therapist_profile_update",
-      status: r.count > 0 ? "ok" : "degraded",
+      status: evidenceStatus(r.count),
       evidence: { deliberations_7d: r.count },
+      evidence_ref: r.count > 0 ? `did_team_deliberations:${r.latest_at}` : undefined,
     });
   }
 
@@ -253,6 +326,7 @@ async function evaluateAll(
       pipeline_name: "external_reality_watch",
       status: r.count > 0 ? "ok" : "not_implemented",
       evidence: { watch_runs_7d: r.count },
+      evidence_ref: r.count > 0 ? `external_event_watch_runs:${r.latest_at}` : undefined,
       next_action: r.count === 0
         ? "Spustit karel-external-reality-sentinel s ingest_text nebo internet_watch."
         : undefined,
