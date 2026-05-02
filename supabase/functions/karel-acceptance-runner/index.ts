@@ -498,8 +498,9 @@ async function p7Checks(admin: ReturnType<typeof createClient>, canonicalUserId:
   try {
     const { data } = await admin
       .from("external_event_impacts")
-      .select("id, risk_level, created_task_id")
+      .select("id, risk_level, created_task_id, resolved_at")
       .eq("user_id", canonicalUserId)
+      .is("resolved_at", null)
       .in("risk_level", ["amber", "red"]);
     const rows = (data ?? []) as Array<{ id: string; risk_level: string; created_task_id: string | null }>;
     amberRedTotal = rows.length;
