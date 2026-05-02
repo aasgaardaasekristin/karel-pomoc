@@ -1140,22 +1140,9 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
   const kataLocked = !!d?.kata_signed_at;
   const isPlayroomPlan = isPlayroomDeliberation(d as any);
 
-  // P1 visibleClinicalTextGuard — post-mount DOM audit safety net.
-  // Surface tag flips to "herna-modal" for playroom deliberations so that
-  // the herna-only forbidden labels ("Živý program sezení",
-  // "Vyžaduje terapeutku: Ne" when unapproved) are enforced.
-  const auditRootRef = useRef<HTMLDivElement>(null);
-  const auditSurface: "herna-modal" | "team-deliberation" = isPlayroomPlan
-    ? "herna-modal"
-    : "team-deliberation";
-  const hernaUnapproved =
-    isPlayroomPlan && d?.status !== "closed" && d?.status !== "archived";
-  useVisibleClinicalTextAudit(auditSurface, auditRootRef, {
-    failInTest: false, // dialog mounts in real app — never block tests with stray legacy text
-    logInProduction: true,
-    status: d?.status ?? undefined,
-    hernaUnapproved,
-  });
+  // NOTE: auditRootRef + useVisibleClinicalTextAudit are declared earlier
+  // (above the `if (!deliberationId) return null` early return) so that
+  // hook order remains stable across renders. Do NOT re-declare them here.
 
   return (
     <Dialog open={!!deliberationId} onOpenChange={(open) => !open && onClose()}>
