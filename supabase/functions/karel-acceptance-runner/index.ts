@@ -45,6 +45,11 @@ type ClientEvidence = {
   required_all_true?: boolean;
   tests_passed?: boolean;
   edge_helpers_present?: boolean;
+  // P7 DOM proof
+  briefing_external_load_visible?: boolean;
+  briefing_external_load_forbidden_count?: number;
+  herna_external_load_or_prevention_visible?: boolean;
+  herna_external_load_forbidden_count?: number;
   notes?: string;
 };
 
