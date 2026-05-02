@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useVisibleClinicalTextAudit } from "@/lib/visibleClinicalTextGuard";
 import {
   Dialog,
   DialogContent,
@@ -1119,9 +1120,27 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
   const kataLocked = !!d?.kata_signed_at;
   const isPlayroomPlan = isPlayroomDeliberation(d as any);
 
+  // P1 visibleClinicalTextGuard — post-mount DOM audit safety net.
+  // Surface tag flips to "herna-modal" for playroom deliberations so that
+  // the herna-only forbidden labels ("Živý program sezení",
+  // "Vyžaduje terapeutku: Ne" when unapproved) are enforced.
+  const auditRootRef = useRef<HTMLDivElement>(null);
+  const auditSurface: "herna-modal" | "team-deliberation" = isPlayroomPlan
+    ? "herna-modal"
+    : "team-deliberation";
+  const hernaUnapproved =
+    isPlayroomPlan && d?.status !== "closed" && d?.status !== "archived";
+  useVisibleClinicalTextAudit(auditSurface, auditRootRef, {
+    failInTest: false, // dialog mounts in real app — never block tests with stray legacy text
+    logInProduction: true,
+    status: d?.status ?? undefined,
+    hernaUnapproved,
+  });
+
   return (
     <Dialog open={!!deliberationId} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-3xl w-[calc(100vw-2rem)] h-[90vh] sm:h-auto sm:max-h-[90vh] p-0 gap-0 overflow-hidden !grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] sm:!flex sm:!flex-col">
+        <div ref={auditRootRef} data-visible-clinical-panel={auditSurface} className="contents">
         {livePlan ? (
           <div className="relative h-full min-h-0 overflow-hidden">
             <DidLiveSessionPanel
@@ -1334,7 +1353,11 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                         Diskuse
                       </h4>
                       {d.discussion_log.map((m, i) => (
-                        <div key={i} className="text-[11px]">
+                        <div
+                          key={i}
+                          className="text-[11px]"
+                          data-clinical-raw-source={m.author === "karel" ? undefined : "therapist"}
+                        >
                           <span className="font-semibold mr-1">
                             {m.author === "karel"
                               ? "Karel"
@@ -1551,6 +1574,7 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
             )}
           </>
         )}
+        </div>
       </DialogContent>
     </Dialog>
   );
