@@ -360,6 +360,112 @@ async function internetWatchSlice(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// P9: Self-healing guard — repair dangling created_task_id on active amber/red
+// impacts. Only touches active impacts, never resolves them, never invents data.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DanglingRepairResult {
+  dangling_detected: number;
+  tasks_recreated: number;
+  relinked_impact_ids: string[];
+  warnings: string[];
+}
+
+async function repairDanglingTaskLinkages(
+  admin: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<DanglingRepairResult> {
+  const result: DanglingRepairResult = {
+    dangling_detected: 0,
+    tasks_recreated: 0,
+    relinked_impact_ids: [],
+    warnings: [],
+  };
+
+  // 1) Load active amber/red impacts with a created_task_id
+  const { data: impacts, error: impactsErr } = await admin
+    .from("external_event_impacts")
+    .select("id, event_id, part_name, risk_level, recommended_action, created_task_id")
+    .eq("user_id", userId)
+    .is("resolved_at", null)
+    .in("risk_level", ["amber", "red"])
+    .not("created_task_id", "is", null);
+  if (impactsErr) {
+    result.warnings.push(`load_impacts_failed:${impactsErr.message}`);
+    return result;
+  }
+  const linked = (impacts ?? []) as Array<{
+    id: string; event_id: string; part_name: string; risk_level: string;
+    recommended_action: string | null; created_task_id: string;
+  }>;
+  if (linked.length === 0) return result;
+
+  // 2) Check which task ids actually exist
+  const taskIds = Array.from(new Set(linked.map((r) => r.created_task_id)));
+  const { data: existingTasks } = await admin
+    .from("did_therapist_tasks")
+    .select("id")
+    .in("id", taskIds);
+  const existing = new Set((existingTasks ?? []).map((t: { id: string }) => t.id));
+  const dangling = linked.filter((r) => !existing.has(r.created_task_id));
+  result.dangling_detected = dangling.length;
+  if (dangling.length === 0) return result;
+
+  // 3) Load event titles in one batch (no graphic raw text used)
+  const eventIds = Array.from(new Set(dangling.map((d) => d.event_id)));
+  const { data: events } = await admin
+    .from("external_reality_events")
+    .select("id, event_title")
+    .in("id", eventIds);
+  const titleMap = new Map(((events ?? []) as Array<{ id: string; event_title: string }>).map((e) => [e.id, e.event_title]));
+
+  // 4) Recreate task + relink, idempotently per impact
+  for (const d of dangling) {
+    const title = titleMap.get(d.event_id) ?? "(neuvedené téma)";
+    const taskText = `Ověřit expozici části ${d.part_name} k tématu "${title}" (tělo / emoce / bezpečí)`;
+    const noteText = [
+      `[P9_p7_relink_repair_self_healing] original_missing_task_id=${d.created_task_id}`,
+      `impact_id=${d.id} | event_id=${d.event_id} | repaired_at=${new Date().toISOString()}`,
+      "",
+      "Klinický pokyn: ověřit somatickou reakci a pocit bezpečí. Nepředkládat grafické detaily. Nepotvrzovat identitu části jako fakt o reálné osobě.",
+      d.recommended_action ?? "",
+    ].filter(Boolean).join("\n");
+
+    const { data: newTask, error: insertErr } = await admin
+      .from("did_therapist_tasks")
+      .insert({
+        user_id: userId,
+        task: taskText,
+        note: noteText,
+        assigned_to: "hanka",
+        status: "pending",
+        priority: d.risk_level === "red" ? "high" : "normal",
+        category: "external_reality",
+        task_tier: "operative",
+        source: "external_reality_sentinel",
+      })
+      .select("id")
+      .single();
+    if (insertErr || !newTask?.id) {
+      result.warnings.push(`recreate_failed:${d.id}:${insertErr?.message ?? "no_id"}`);
+      continue;
+    }
+
+    const { error: relinkErr } = await admin
+      .from("external_event_impacts")
+      .update({ created_task_id: newTask.id })
+      .eq("id", d.id);
+    if (relinkErr) {
+      result.warnings.push(`relink_failed:${d.id}:${relinkErr.message}`);
+      continue;
+    }
+    result.tasks_recreated++;
+    result.relinked_impact_ids.push(d.id);
+  }
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // HTTP entry
 // ─────────────────────────────────────────────────────────────────────────────
 
