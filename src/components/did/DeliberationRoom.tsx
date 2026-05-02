@@ -1353,7 +1353,11 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                         Diskuse
                       </h4>
                       {d.discussion_log.map((m, i) => (
-                        <div key={i} className="text-[11px]">
+                        <div
+                          key={i}
+                          className="text-[11px]"
+                          data-clinical-raw-source={m.author === "karel" ? undefined : "therapist"}
+                        >
                           <span className="font-semibold mr-1">
                             {m.author === "karel"
                               ? "Karel"
