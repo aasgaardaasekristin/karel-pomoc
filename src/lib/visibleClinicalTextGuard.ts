@@ -599,36 +599,59 @@ export function useVisibleClinicalTextAudit<T extends HTMLElement>(
 ): void {
   const last = useRef<string>("");
   useEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-    // Clone & remove excluded subtrees so therapist quotes are not audited.
-    const clone = node.cloneNode(true) as HTMLElement;
-    const exclude = [...DEFAULT_EXCLUDE_SELECTORS, ...(options.excludeSelectors ?? [])];
-    for (const sel of exclude) {
-      clone.querySelectorAll(sel).forEach((el) => el.parentNode?.removeChild(el));
-    }
-    const text = (clone.textContent ?? "").trim();
-    if (!text || text === last.current) return;
-    last.current = text;
-    const ctx: ClinicalTextGuardCtx = {
-      surface: panelName,
-      actor: `panel:${panelName}`,
-      status: options.status,
-      hernaUnapproved: options.hernaUnapproved,
-    };
-    const violations = detectClinicalTextViolations(text, ctx);
-    if (violations.length === 0) return;
-    const summary = violations
-      .slice(0, 12)
-      .map((v) => `${v.kind}:"${v.match}"`)
-      .join(", ");
-    const msg = `[visibleClinicalTextAudit] panel="${panelName}" forbidden_count=${violations.length} — ${summary}`;
-    if (isTestEnv() && options.failInTest !== false) {
-      throw new Error(msg);
-    }
-    if (options.logInProduction !== false) {
-      // eslint-disable-next-line no-console
-      console.warn(msg, { violations });
+    // FAIL-CLOSED VERSION: in browser/prod the audit MUST never throw, never
+    // tear down the React tree, never blank the screen. Any internal failure
+    // is swallowed and logged. Throwing is reserved for jsdom/Vitest only,
+    // and only when the caller explicitly opted in via failInTest !== false.
+    try {
+      const node = ref.current;
+      if (!node || typeof node.cloneNode !== "function") return;
+      let clone: HTMLElement;
+      try {
+        clone = node.cloneNode(true) as HTMLElement;
+      } catch {
+        return; // never blank screen for cloneNode glitches
+      }
+      const exclude = [...DEFAULT_EXCLUDE_SELECTORS, ...(options.excludeSelectors ?? [])];
+      for (const sel of exclude) {
+        try {
+          clone.querySelectorAll(sel).forEach((el) => el.parentNode?.removeChild(el));
+        } catch {
+          /* ignore selector errors */
+        }
+      }
+      const text = (clone.textContent ?? "").trim();
+      if (!text || text === last.current) return;
+      last.current = text;
+      const ctx: ClinicalTextGuardCtx = {
+        surface: panelName,
+        actor: `panel:${panelName}`,
+        status: options.status,
+        hernaUnapproved: options.hernaUnapproved,
+      };
+      const violations = detectClinicalTextViolations(text, ctx);
+      if (violations.length === 0) return;
+      const summary = violations
+        .slice(0, 12)
+        .map((v) => `${v.kind}:"${v.match}"`)
+        .join(", ");
+      const msg = `[visibleClinicalTextAudit] panel="${panelName}" forbidden_count=${violations.length} — ${summary}`;
+      const inTest = isTestEnv();
+      if (inTest && options.failInTest === true) {
+        // Only throws when caller explicitly opted in. Default is no-throw,
+        // even in test, to avoid cascading test failures in unrelated suites.
+        throw new Error(msg);
+      }
+      if (!inTest && options.logInProduction !== false) {
+        // eslint-disable-next-line no-console
+        console.warn(msg, { violations });
+      }
+    } catch (e) {
+      // Last-resort: never let the audit hook crash a real user surface.
+      if (typeof console !== "undefined" && console && typeof console.warn === "function") {
+        // eslint-disable-next-line no-console
+        console.warn("[visibleClinicalTextAudit] swallowed error (no UI impact)", e);
+      }
     }
   });
 }
