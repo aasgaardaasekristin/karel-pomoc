@@ -29,13 +29,18 @@ describe("P6 false-green audit (static)", () => {
   });
 
   it("never marks a pipeline status: \"ok\" without an evidence_ref or design rationale", () => {
-    // crude: any line containing `status: "ok"` (not inside the evidenceStatus helper)
+    // crude: any line containing `status: "ok"` (not inside the evidenceStatus helper,
+    // and not a TypeScript type-union annotation like `"ok" | "degraded"`)
     // must be paired with an `evidence_ref` within the next 6 lines.
     const lines = src.split("\n");
     const offenders: number[] = [];
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (/status:\s*"ok"/.test(line) && !/evidenceStatus/.test(line)) {
+      if (
+        /status:\s*"ok"/.test(line) &&
+        !/evidenceStatus/.test(line) &&
+        !/"ok"\s*\|/.test(line)
+      ) {
         const window = lines.slice(i, Math.min(i + 8, lines.length)).join("\n");
         if (!/evidence_ref/.test(window)) offenders.push(i + 1);
       }
