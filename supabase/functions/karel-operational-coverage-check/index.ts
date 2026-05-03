@@ -236,6 +236,9 @@ async function evaluateAll(
         limited,
         daily_cycle_status: cycleStatus || null,
         is_manual: isManual,
+        is_watchdog: isWatchdog, // P15
+        is_primary: isPrimary,   // P15
+        generation_method: method || null,
         is_stale: isStaleRow,
         generation_duration_ms: durationMs,
         visible_text_ok: visibleTextOk,
@@ -247,10 +250,14 @@ async function evaluateAll(
           ? undefined
           : reason === "stale_previous_only"
           ? "Spustit dnešní ranní cyklus + briefing (cron / manual force)."
+          : reason === "watchdog_fallback_only_p15"
+          ? "Watchdog vyrobil náhradní výstup. Opravit primary morning pipeline (cron 62: did-daily-briefing method=auto)."
           : reason === "limited_repair_only"
           ? "Opravit ranní daily cycle, aby briefing nebyl jen náhradní omezený."
           : reason === "manual_only"
           ? "Spustit auto/cron briefing — manuální nepokrývá pravdivost UI."
+          : reason === "non_primary_method"
+          ? "Briefing vznikl neznámou cestou. Vyrobit ho cestou primary morning pipeline."
           : "Manuálně spustit karel-did-briefing-sla-watchdog a ověřit audit.",
     });
   }
