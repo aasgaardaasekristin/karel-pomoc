@@ -230,7 +230,7 @@ export function getBriefingTruthStatus(
       level: "fresh_limited",
       badgeLabel: "Náhradní omezený přehled",
       bannerText:
-        "Tento přehled vznikl jen jako náhradní oprava. Plný ranní cyklus dnes nedoběhl, proto Karel pracuje jen s bezpečně dostupnými podklady.",
+        "Tento přehled je náhradní a omezený — vznikl jen jako záložní oprava. Plný ranní cyklus dnes nedoběhl, proto Karel pracuje jen s bezpečně dostupnými podklady.",
       canShowCurrent: false,
       technicalLabelForbidden: true,
       detail: {
