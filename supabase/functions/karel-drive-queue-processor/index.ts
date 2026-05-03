@@ -213,7 +213,21 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const authHeader = req.headers.get("Authorization") || "";
     const isServiceCall = authHeader === `Bearer ${serviceKey}`;
-    if (!isServiceCall) {
+    // P14: Accept X-Karel-Cron-Secret (Supabase JWT signing-keys system rejects
+    // the legacy service-role bearer at the platform gateway with 401 before
+    // our code runs, so cron must use an in-code-verified shared secret).
+    const cronSecretHeader = req.headers.get("X-Karel-Cron-Secret") || "";
+    let isCronSecretCall = false;
+    if (cronSecretHeader) {
+      try {
+        const cronSb = createClient(supabaseUrl, serviceKey);
+        const { data: ok } = await cronSb.rpc("verify_karel_cron_secret", { p_secret: cronSecretHeader });
+        isCronSecretCall = ok === true;
+      } catch (e) {
+        console.warn("[drive-queue] cron secret rpc failed:", (e as Error)?.message);
+      }
+    }
+    if (!isServiceCall && !isCronSecretCall) {
       if (!scoped) {
         return new Response(JSON.stringify({ error: "Unauthorized", log }), {
           status: 401,

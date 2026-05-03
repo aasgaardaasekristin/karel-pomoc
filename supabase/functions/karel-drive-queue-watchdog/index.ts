@@ -29,7 +29,19 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const authHeader = req.headers.get("Authorization") || "";
-  if (authHeader !== `Bearer ${serviceKey}`) {
+  // P14: Accept X-Karel-Cron-Secret in addition to legacy bearer.
+  const cronSecretHeader = req.headers.get("X-Karel-Cron-Secret") || "";
+  let isCronSecretCall = false;
+  if (cronSecretHeader) {
+    try {
+      const cronSb = createClient(supabaseUrl, serviceKey);
+      const { data: ok } = await cronSb.rpc("verify_karel_cron_secret", { p_secret: cronSecretHeader });
+      isCronSecretCall = ok === true;
+    } catch (e) {
+      console.warn("[drive-queue-watchdog] cron secret rpc failed:", (e as Error)?.message);
+    }
+  }
+  if (authHeader !== `Bearer ${serviceKey}` && !isCronSecretCall) {
     const auth = await requireAuth(req);
     if (auth instanceof Response) return auth;
   }

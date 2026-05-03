@@ -2426,7 +2426,23 @@ serve(async (req) => {
   try { requestBody = await req.clone().json(); } catch {}
   const isCronSource = requestBody?.source === "cron";
   const isPgNetCaller = userAgent.includes("pg_net");
-  const isCronCall = !!serviceRoleKey && authHeaderTrimmed === `Bearer ${serviceRoleKey}` && (isCronSource || isPgNetCaller || req.headers.get("x-detached") === "1");
+  // P14: Accept X-Karel-Cron-Secret header (same pattern as briefing SLA watchdog).
+  // The Supabase JWT signing-keys system rejects the legacy service-role bearer at
+  // the platform gateway with 401 before our code runs, so cron commands must
+  // authenticate with an in-code-verified shared secret instead of a JWT bearer.
+  const cronSecretHeader = req.headers.get("X-Karel-Cron-Secret") || "";
+  let isCronSecretCall = false;
+  if (cronSecretHeader) {
+    try {
+      const cronSb = createClient(Deno.env.get("SUPABASE_URL")!, serviceRoleKey);
+      const { data: ok } = await cronSb.rpc("verify_karel_cron_secret", { p_secret: cronSecretHeader });
+      isCronSecretCall = ok === true;
+    } catch (e) {
+      console.warn("[daily-cycle] cron secret rpc failed:", (e as Error)?.message);
+    }
+  }
+  const isLegacyBearerCron = !!serviceRoleKey && authHeaderTrimmed === `Bearer ${serviceRoleKey}` && (isCronSource || isPgNetCaller || req.headers.get("x-detached") === "1");
+  const isCronCall = isCronSecretCall || isLegacyBearerCron;
 
   let resolvedUserId: string | null = requestBody?.userId || null;
   if (!resolvedUserId && !isCronCall) {
