@@ -125,7 +125,8 @@ async function evaluateAll(
       !!latest && isToday && !limited && !isManual && !isStaleRow &&
       cycleCompleted && durationMs > 0 && visibleTextOk;
 
-    let status: "ok" | "degraded" | "not_implemented" = "not_implemented";
+    type _BriefingStatus = "ok" | "degraded" | "not_implemented";
+    let status: _BriefingStatus = "not_implemented";
     let reason: string | null = null;
     if (!latest) {
       status = "not_implemented";
