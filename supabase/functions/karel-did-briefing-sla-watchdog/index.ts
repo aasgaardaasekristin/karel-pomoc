@@ -165,11 +165,24 @@ Deno.serve(async (req) => {
 
   // Discover scoped user. Priority:
   //   1) explicit body.userId
-  //   2) most recent today's briefing (manual or otherwise) — keeps SLA scoped
-  //      to the same user the therapist is actually using
-  //   3) most recent did_update_cycles user
-  //   4) most recent did_threads activity
+  //   2) ⭐ P13: canonical DID user from did_canonical_scope (single source of truth)
+  //   3) most recent today's briefing (manual or otherwise)
+  //   4) most recent did_update_cycles user
+  //   5) most recent did_threads activity
   let scopedUserId: string | null = body?.userId || null;
+  if (!scopedUserId) {
+    // P13: Prefer canonical DID user. The watchdog must scope to the canonical
+    // therapist's UI surface; without this it picks any user from did_threads
+    // and produces briefings for the wrong account.
+    try {
+      const { data: canonicalId, error: canonicalErr } = await sb.rpc("get_canonical_did_user_id");
+      if (!canonicalErr && typeof canonicalId === "string" && canonicalId) {
+        scopedUserId = canonicalId;
+      }
+    } catch (e) {
+      console.warn("[sla-watchdog] canonical scope rpc failed, falling back:", (e as Error)?.message);
+    }
+  }
   if (!scopedUserId) {
     // Prefer most-recent MANUAL briefing today — manual rows come from a real
     // therapist UI session, so they reliably identify the correct human user.
