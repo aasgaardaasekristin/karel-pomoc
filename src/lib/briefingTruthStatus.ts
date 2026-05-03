@@ -1,28 +1,32 @@
 /**
- * P12: Briefing truth-status — deterministic, frontend-only.
+ * P12 + P15: Briefing truth-status — deterministic, frontend-only.
  *
  * The Karlův přehled UI must NEVER display "Aktuální" when the briefing is:
  *  - older than today (stale_previous)
  *  - today but limited (limited_repair / cycle_missing)
  *  - today but generated manually (manual)
+ *  - today but produced by a WATCHDOG fallback (P15 — even if not flagged limited)
  *  - missing entirely (missing_today)
  *
  * Single source of truth used by the UI badge + banner. Backed by unit tests
- * in src/test/p12BriefingTruthStatus.test.ts.
+ * in src/test/p12BriefingTruthStatus.test.ts and p15WatchdogIsNotPrimary.test.ts.
  *
  * Rules (no exceptions):
  *  - level "fresh_full" iff
  *      briefing_date == today
  *      && is_stale === false
  *      && payload.limited !== true
- *      && generation_method !== "manual" (and !manual_*)
+ *      && generation_method category === "primary"  (P15: auto / primary_orchestrator)
  *      && (daily_cycle_status === "completed" || daily_cycle_status absent)
  *      && generation_duration_ms > 0
- *  - level "fresh_limited" iff today + limited (or daily cycle not completed)
+ *  - level "fresh_limited" iff today + limited / cycle missing / WATCHDOG-produced
  *  - level "stale_previous" iff briefing_date < today
  *  - level "missing_today" iff no briefing row at all
  *  - manual today rows → "Ruční přehled" label, never "Aktuální"
+ *  - watchdog today rows → "Náhradní omezený přehled", never "Aktuální" (P15)
  */
+
+import { categorizeBriefingMethod } from "./briefingMethodAuthority";
 
 export type BriefingTruthLevel =
   | "fresh_full"
@@ -94,9 +98,14 @@ function formatCzechDate(iso: string): string {
 }
 
 function isManualMethod(method: string | null | undefined): boolean {
-  const m = String(method ?? "").toLowerCase().trim();
-  if (!m) return true; // missing method ⇒ treat as manual (cannot prove auto)
-  return m === "manual" || m.startsWith("manual_") || m.startsWith("manual-");
+  // P15: missing/unknown method is treated as manual (cannot prove auto/primary).
+  const cat = categorizeBriefingMethod(method);
+  if (cat === "manual" || cat === "unknown") return true;
+  return false;
+}
+
+function isWatchdogProducedMethod(method: string | null | undefined): boolean {
+  return categorizeBriefingMethod(method) === "watchdog";
 }
 
 function dailyCycleCompleted(status: string | null | undefined): boolean {
@@ -146,6 +155,7 @@ export function getBriefingTruthStatus(
   const isStale = row.is_stale === true;
   const isLimited = row.payload?.limited === true;
   const isManual = isManualMethod(row.generation_method);
+  const isWatchdog = isWatchdogProducedMethod(row.generation_method);
   const cycleStatus = row.payload?.daily_cycle_status
     ? String(row.payload.daily_cycle_status)
     : null;
@@ -206,6 +216,28 @@ export function getBriefingTruthStatus(
         isStale,
         isLimited,
         isManual: true,
+        dailyCycleStatus: cycleStatus,
+        daysSince,
+      },
+    };
+  }
+
+  // ---- P15: today + WATCHDOG-produced → Náhradní omezený (architectural rule) ----
+  // A watchdog is a fallback monitor — its output is never the primary morning
+  // briefing, even if the watchdog forgot to set payload.limited=true.
+  if (isWatchdog) {
+    return {
+      level: "fresh_limited",
+      badgeLabel: "Náhradní omezený přehled",
+      bannerText:
+        "Tento přehled je náhradní a omezený — vznikl jen jako záložní oprava. Plný ranní cyklus dnes nedoběhl, proto Karel pracuje jen s bezpečně dostupnými podklady.",
+      canShowCurrent: false,
+      technicalLabelForbidden: true,
+      detail: {
+        isToday: true,
+        isStale,
+        isLimited: true, // architecturally limited: produced by watchdog fallback
+        isManual: false,
         dailyCycleStatus: cycleStatus,
         daysSince,
       },
@@ -274,6 +306,12 @@ export const P12_FORBIDDEN_BRIEFING_TERMS: readonly string[] = [
   "Aktuální (SLA",
   "Aktuální (auto)",
   "Aktuální (manuální)",
+  // P15 — watchdog terminology must never appear in user-visible text
+  "watchdog",
+  "Watchdog",
+  "sla_watchdog",
+  "sla_watchdog_repair",
+  "watchdog_limited_repair",
 ] as const;
 
 /** Count occurrences of any forbidden term in a string (case-sensitive for codes, case-insensitive for prose). */

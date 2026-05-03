@@ -2894,6 +2894,26 @@ Deno.serve(async (req) => {
       };
     }
 
+    // ── P15: WATCHDOG ROLE-SPLIT ─────────────────────────────────────────────
+    // ANY SLA/watchdog-produced briefing MUST be marked limited, regardless of
+    // cycle status. Watchdogs are fallback monitors — they never produce the
+    // primary morning briefing. The UI badge must show "Náhradní omezený přehled".
+    // P6 morning_karel_briefing must NOT be marked ok solely on a watchdog row.
+    if (isSlaMethod(generationMethod) && !limitedMeta) {
+      limitedMeta = {
+        limited: true,
+        limited_reason: "produced_by_watchdog_fallback_p15",
+        daily_cycle_status: "completed", // cycle was completed, but briefing came from watchdog
+        daily_cycle_id: null,
+        cycle_started_at: null,
+        cycle_last_error: null,
+      };
+      console.warn(
+        `[briefing-p15] FORCED LIMITED — generationMethod='${generationMethod}' (watchdog category). ` +
+        `Watchdog-produced briefings cannot be primary; marking payload.limited=true.`,
+      );
+    }
+
     if (limitedMeta) {
       payload.limited = true;
       payload.limited_reason = limitedMeta.limited_reason;
@@ -2901,11 +2921,15 @@ Deno.serve(async (req) => {
       payload.daily_cycle_id = limitedMeta.daily_cycle_id;
       payload.cycle_started_at = limitedMeta.cycle_started_at;
       payload.cycle_last_error = limitedMeta.cycle_last_error;
+      payload.produced_by_category = isSlaMethod(generationMethod) ? "watchdog" : "limited";
       payload.available_sources_used = (payload.source_coverage_summary?.sources ?? [])
         .filter((s: any) => s.used_in_briefing).map((s: any) => s.source);
       payload.missing_or_blocked_sources = (payload.source_coverage_summary?.sources ?? [])
         .filter((s: any) => !s.used_in_briefing && s.raw_count > 0)
         .map((s: any) => ({ source: s.source, reason: s.reason_if_not_used }));
+    } else if (generationMethod === "auto" || generationMethod === "primary_orchestrator") {
+      // P15: explicit primary marker for SLO/UI introspection
+      payload.produced_by_category = "primary";
     }
 
     // 3b) ── ASK ITEM IDENTITY ──
