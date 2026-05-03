@@ -2415,27 +2415,7 @@ serve(async (req) => {
     }
   }
 
-  // === DEDUP: Skip if a successful daily cycle completed in last 3 hours ===
-  // Manual admin trigger (source="manual") bypasses dedup so the harness
-  // can prove an end-to-end run on demand.
-  if (!isManualTriggerEarly) {
-    const dedupSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const recentCycle = await dedupSb
-      .from('did_update_cycles')
-      .select('id, completed_at')
-      .eq('cycle_type', 'daily')
-      .eq('status', 'completed')
-      .gte('completed_at', new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString())
-      .limit(1);
-    if (recentCycle.data?.length) {
-      console.log('[DAILY-CYCLE] Přeskočeno — proběhl úspěšně v posledních 3h');
-      return new Response(
-        JSON.stringify({ status: 'skipped', reason: 'recent_success', lastCycleId: recentCycle.data[0].id }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-  }
-
+  // === Auth + user resolution (P13: must come BEFORE dedup so dedup is user-scoped) ===
   const authHeader = req.headers.get("Authorization") || "";
   const authHeaderTrimmed = authHeader.trim();
   const userAgent = (req.headers.get("User-Agent") || "").toLowerCase();
@@ -2448,17 +2428,52 @@ serve(async (req) => {
   const isPgNetCaller = userAgent.includes("pg_net");
   const isCronCall = !!serviceRoleKey && authHeaderTrimmed === `Bearer ${serviceRoleKey}` && (isCronSource || isPgNetCaller || req.headers.get("x-detached") === "1");
 
-  let resolvedUserId: string | null = null;
-  if (!isCronCall) {
+  let resolvedUserId: string | null = requestBody?.userId || null;
+  if (!resolvedUserId && !isCronCall) {
     const authResult = await requireAuth(req);
     if (authResult instanceof Response) return authResult;
     resolvedUserId = (authResult as { user: any }).user?.id || null;
   }
-  // For cron calls, look up any user from did_threads to use as owner
+  // P13: For cron / unscoped calls, prefer canonical DID user (single source
+  // of truth) before falling back to "any thread" — the legacy fallback picked
+  // the wrong account and silently ran the cycle for the wrong user.
   if (!resolvedUserId) {
     const tmpSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const { data: anyThread } = await tmpSb.from("did_threads").select("user_id").limit(1).single();
-    resolvedUserId = anyThread?.user_id || null;
+    try {
+      const { data: canonicalId } = await tmpSb.rpc("get_canonical_did_user_id");
+      if (typeof canonicalId === "string" && canonicalId) resolvedUserId = canonicalId;
+    } catch (e) {
+      console.warn("[daily-cycle] canonical scope rpc failed, falling back:", (e as Error)?.message);
+    }
+    if (!resolvedUserId) {
+      const { data: anyThread } = await tmpSb.from("did_threads").select("user_id").limit(1).single();
+      resolvedUserId = anyThread?.user_id || null;
+    }
+  }
+
+  // === DEDUP: Skip if a successful daily cycle completed in last 3 hours ===
+  // P13: Dedup is now USER-SCOPED. Previously this was global, so a recent
+  // successful run for a different (legacy) user blocked the canonical
+  // user's morning cycle.
+  // Manual admin trigger (source="manual") bypasses dedup so the harness
+  // can prove an end-to-end run on demand.
+  if (!isManualTriggerEarly && resolvedUserId) {
+    const dedupSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const recentCycle = await dedupSb
+      .from('did_update_cycles')
+      .select('id, completed_at')
+      .eq('cycle_type', 'daily')
+      .eq('status', 'completed')
+      .eq('user_id', resolvedUserId)
+      .gte('completed_at', new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString())
+      .limit(1);
+    if (recentCycle.data?.length) {
+      console.log('[DAILY-CYCLE] Přeskočeno — proběhl úspěšně v posledních 3h pro tohoto usera');
+      return new Response(
+        JSON.stringify({ status: 'skipped', reason: 'recent_success', lastCycleId: recentCycle.data[0].id, scoped_user: resolvedUserId }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
   }
 
   // ═══ CACHE INVALIDATION: Clear context-prime caches so fresh context is generated ═══
