@@ -1558,10 +1558,38 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     : null;
   const sanitizeProse = (v: unknown) => humanizeRecencyInProse(cleanVisibleClinicalText(v), playRecency, sessRecency);
 
-  const methodBadge = briefingMethodBadge((briefing as any).generation_method);
-  const limitedFlag = (p as any).limited === true;
-  const limitedReason = String((p as any).limited_reason ?? "").trim();
-  const dailyCycleStatusValue = String((p as any).daily_cycle_status ?? "").trim();
+  // P12: deterministic truth-status — single source for badge + banner.
+  // Replaces the old `briefingMethodBadge` + freshness banner + limited
+  // banner trio that could produce contradictions like
+  // "Aktuální (SLA záplata)" + "starý přehled" + "Dnešní přehled zatím nevznikl".
+  const truth = getBriefingTruthStatus(
+    {
+      briefing_date: briefing.briefing_date,
+      is_stale: briefing.is_stale,
+      generation_method: (briefing as any).generation_method ?? null,
+      generation_duration_ms: (briefing as any).generation_duration_ms ?? null,
+      payload: {
+        limited: (p as any).limited,
+        limited_reason: (p as any).limited_reason,
+        daily_cycle_status: (p as any).daily_cycle_status,
+      },
+    },
+    viewerToday,
+  );
+  const truthBadgeTone =
+    truth.level === "fresh_full"
+      ? "border-primary/30 text-primary/80"
+      : truth.level === "stale_previous"
+      ? "border-border text-muted-foreground"
+      : "border-amber-500/40 text-amber-700 dark:text-amber-400";
+  const truthBannerTone =
+    truth.level === "fresh_full"
+      ? "border-primary/20 bg-primary/5"
+      : "border-amber-500/30 bg-amber-500/5";
+  const daysAgoLabel =
+    !truth.detail.isToday && truth.detail.daysSince > 0
+      ? pluralizeDays(truth.detail.daysSince)
+      : null;
 
   return (
     <div className="space-y-1">
@@ -1574,25 +1602,19 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             <h2 className="text-sm font-medium text-foreground">Karlův přehled</h2>
             <p className="text-[11px] text-muted-foreground">
               {formatDate(briefing.briefing_date)}
-              {!isCurrentBriefing && briefingDateIso && (
-                <span className="ml-1 text-muted-foreground">· starý přehled · {daysSinceBriefing} dny</span>
+              {daysAgoLabel && (
+                <span className="ml-1 text-muted-foreground">· před {daysAgoLabel}</span>
               )}
             </p>
           </div>
           <Badge
             variant="outline"
-            className={
-              "ml-1 text-[10px] font-medium " +
-              (methodBadge.tone === "auto"
-                ? "border-primary/30 text-primary/80"
-                : methodBadge.tone === "sla"
-                ? "border-amber-500/40 text-amber-700 dark:text-amber-400"
-                : "border-border text-muted-foreground")
-            }
-            data-testid="briefing-method-badge"
-            data-method={(briefing as any).generation_method ?? "manual"}
+            className={"ml-1 text-[10px] font-medium " + truthBadgeTone}
+            data-testid="briefing-truth-badge"
+            data-truth-level={truth.level}
+            data-can-show-current={String(truth.canShowCurrent)}
           >
-            {methodBadge.label}
+            {truth.badgeLabel}
           </Badge>
         </div>
         <Button
@@ -1611,27 +1633,19 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </Button>
       </div>
 
-      <div
-        className="mb-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-[12px] leading-relaxed text-foreground/85"
-        data-testid="briefing-freshness-banner"
-        data-viewer-date={viewerToday}
-        data-briefing-date={briefingDateIso || undefined}
-        data-is-current-briefing={String(isCurrentBriefing)}
-        data-days-since-briefing={String(daysSinceBriefing)}
-      >
-        {staleBannerText}
-      </div>
-
-      {limitedFlag && (
+      {truth.bannerText && (
         <div
-          className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[12px] leading-relaxed text-foreground/85"
-          data-testid="briefing-limited-banner"
-          data-limited-reason={limitedReason || undefined}
-          data-cycle-status={dailyCycleStatusValue || undefined}
+          className={`mb-3 rounded-lg border ${truthBannerTone} px-3 py-2 text-[12px] leading-relaxed text-foreground/85`}
+          data-testid="briefing-truth-banner"
+          data-truth-level={truth.level}
+          data-viewer-date={viewerToday}
+          data-briefing-date={briefingDateIso || undefined}
+          data-days-since-briefing={String(truth.detail.daysSince)}
         >
-          Limitovaný ranní přehled: denní cyklus nedoběhl, proto používám dostupné DB/Pantry/Event-ingestion zdroje.
+          {truth.bannerText}
         </div>
       )}
+
 
       {/* 1. Karlův ranní terapeutický monolog */}
       <div className="rounded-xl border border-primary/15 bg-card/35 p-3.5 space-y-2">
