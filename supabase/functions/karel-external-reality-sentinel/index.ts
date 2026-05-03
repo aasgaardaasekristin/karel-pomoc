@@ -242,6 +242,24 @@ async function ingestText(
         sens.recommended_guard ?? "",
       ].filter(Boolean).join(" ");
 
+      // P11 dedupe guard: skip insert if an unacknowledged impact already exists
+      // for the same (user_id, part_name, theme cluster ≈ event_type). This prevents
+      // the post-P10 drift where every ingest_text re-created a parallel impact row
+      // for the same clinical theme (e.g. Tundrupek + animal_suffering).
+      const { data: existingActive } = await admin
+        .from("external_event_impacts")
+        .select("id, event_id, external_reality_events!inner(event_type)")
+        .eq("user_id", userId)
+        .eq("part_name", sens.part_name)
+        .is("acknowledged_at", null)
+        .is("resolved_at", null)
+        .eq("external_reality_events.event_type", hit.event_type)
+        .limit(1);
+      if (existingActive && existingActive.length > 0) {
+        warnings.push(`p11_dedupe_skip:${sens.part_name}:${hit.event_type}`);
+        continue;
+      }
+
       await admin.from("external_event_impacts").insert({
         user_id: userId,
         event_id: eventId,
