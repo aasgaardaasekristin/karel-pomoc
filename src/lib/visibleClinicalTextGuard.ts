@@ -137,6 +137,19 @@ export const FORBIDDEN_TECHNICAL_TERMS: string[] = [
   "test_force_",
   "current_block_index",
   "current_block_status",
+  // P11: external-reality classifier labels must never reach a clinical surface
+  "animal_suffering",
+  "rescue_failure",
+  "broken_promise",
+  "child_abuse",
+  "identity_link",
+  "injustice",
+  "external_reality_events",
+  "external_event_impacts",
+  "part_external_event_sensitivities",
+  "created_task_id",
+  "(typy:",
+  "(types:",
 ];
 
 export const FORBIDDEN_KOSTRBATE_PHRASES: string[] = [
