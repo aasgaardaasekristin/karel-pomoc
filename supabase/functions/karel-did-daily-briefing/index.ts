@@ -1028,10 +1028,10 @@ function buildDeterministicBriefingPayload(context: any, candidates: SessionCand
   const payload: any = {
     greeting: "Dobré ráno, Haničko a Káťo. Dnes držím hlavně návaznost, klidné tempo a práci jen s tím, co máme přesně datované.",
     last_3_days: playroomReview?.exists
-      ? `${recencyIntro(playroomReview, "playroom")} Autoritativní vstup pro dnešek je tento přesně datovaný report části ${playroomReview.part_name || selectedPart}; praktický report je vložen přímo z DB review, nikoli z dlouhé AI syntézy.`
-      : "Včera Herna neproběhla. Pro dnešek používám deterministický přehled bez závěrů z Herny, protože playroom review není k dispozici.",
+      ? `${recencyIntro(playroomReview, "playroom")} Autoritativní vstup pro dnešek je tento přesně datovaný report části ${playroomReview.part_name || selectedPart}; praktický report je převzat přímo z dřívějšího záznamu, ne z dlouhé úvahy.`
+      : "Včera Herna neproběhla. Pro dnešek používám klidný přehled bez závěrů z Herny, protože záznam Herny není k dispozici.",
     lingering: "Důležité je dnes nepřetížit starší materiál a převést ho do jednoho malého, ověřitelného kroku.",
-    technical_note: "Briefing byl sestaven z DB review a dostupných reportů bez dlouhé syntézy.",
+    technical_note: "Přehled je sestaven z dřívějších záznamů a dostupných reportů, bez dlouhé úvahy.",
     yesterday_session_review: null,
     yesterday_playroom_review: playroomReview,
     decisions: [],
@@ -1046,7 +1046,7 @@ function buildDeterministicBriefingPayload(context: any, candidates: SessionCand
     proposed_playroom: buildMandatoryPlayroomProposal({ proposed_session: { part_name: selectedPart, why_today: playroomReview?.recommendations_for_next_playroom || playroomReview?.practical_report_text || "Herna musí navázat jen na doloženou evidenci." }, last_3_days: "" }, context, candidates),
     ask_hanka: ["Prosím ověř, zda dnešní Herna má navázat na doložený praktický report, nebo má zůstat jen stabilizační."],
     ask_kata: ["Prosím zkontroluj rizika a stop signály pro dnešní Hernu podle posledního přesně datovaného review."],
-    closing: "Beru to jako bezpečně omezený přehled: závěry z Herny jsou převzaté z DB review a návrh další Herny je na ně výslovně navázaný.",
+    closing: "Beru to jako bezpečně omezený přehled: závěry z Herny jsou převzaté z dřívějšího záznamu a návrh další Herny je na ně výslovně navázaný.",
   };
   injectPlayroomReviewIntoProposal(payload);
   injectSessionReviewIntoProposals(payload);

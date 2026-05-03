@@ -164,6 +164,10 @@ export const FORBIDDEN_TECHNICAL_TERMS: string[] = [
   "generation_method",
   "limited_reason",
   "sla_watchdog_repair",
+  // P16: technical phrases that previously leaked into Karlův přehled
+  "DB review",
+  "DB/review",
+  "db_review",
 ];
 
 export const FORBIDDEN_KOSTRBATE_PHRASES: string[] = [
@@ -240,6 +244,9 @@ const HUMAN_REPLACEMENTS: Array<{ from: RegExp; to: string }> = [
   { from: wb("child evidence"), to: "vlastní reakce kluků" },
   { from: wb("Karel-led"), to: "vede Karel" },
   { from: wb("DID-relevantní"), to: "důležité pro kluky" },
+  // P16: legacy "DB review" phrasing — sanitize to plain Czech
+  { from: /\bz\s+DB\s+review\b/giu, to: "z dřívějšího záznamu" },
+  { from: /\bDB\s+review\b/giu, to: "dřívější záznam" },
   // Soft-replace technical "Fallback" labels into human Czech.
   // Order: more specific multi-word forms first, then standalone term.
   { from: /\bFallbacky\s*:/giu, to: "Když to nejde:" },

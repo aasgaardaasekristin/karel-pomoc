@@ -88,6 +88,10 @@ const FORBIDDEN_TECHNICAL_TERMS: string[] = [
   "block index",
   "current_block_index",
   "current_block_status",
+  // P16
+  "DB review",
+  "DB/review",
+  "db_review",
 ];
 
 // Kostrbaté / nepřirozené české fráze — strojový překlad / robotická čeština.
@@ -140,6 +144,9 @@ const HUMAN_REPLACEMENTS: Array<{ from: RegExp; to: string }> = [
   { from: /\bentita nebyla nalezena\b/giu, to: "záznam se nenašel" },
   { from: /\bspuštění procesu\b/giu, to: "spuštění" },
   { from: /\bvyvolání funkce\b/giu, to: "spuštění" },
+  // P16: legacy "DB review" → human Czech
+  { from: /\bz\s+DB\s+review\b/giu, to: "z dřívějšího záznamu" },
+  { from: /\bDB\s+review\b/giu, to: "dřívější záznam" },
 ];
 
 // --- Helpers ----------------------------------------------------------------
