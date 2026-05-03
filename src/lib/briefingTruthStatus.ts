@@ -298,7 +298,7 @@ export function countForbiddenBriefingTerms(text: string): number {
 export function countBriefingContradictions(text: string): number {
   const t = text;
   const lower = t.toLowerCase();
-  const hasAktualni = /\baktuální\b/i.test(t);
+  const hasAktualni = /aktuáln[íi]/i.test(t);
   if (!hasAktualni) return 0;
   let n = 0;
   if (/star[ýá]\s+přehled/i.test(t)) n += 1;
