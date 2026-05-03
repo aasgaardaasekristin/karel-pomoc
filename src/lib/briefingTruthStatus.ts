@@ -155,6 +155,7 @@ export function getBriefingTruthStatus(
   const isStale = row.is_stale === true;
   const isLimited = row.payload?.limited === true;
   const isManual = isManualMethod(row.generation_method);
+  const isWatchdog = isWatchdogProducedMethod(row.generation_method);
   const cycleStatus = row.payload?.daily_cycle_status
     ? String(row.payload.daily_cycle_status)
     : null;
