@@ -1,28 +1,32 @@
 /**
- * P12: Briefing truth-status — deterministic, frontend-only.
+ * P12 + P15: Briefing truth-status — deterministic, frontend-only.
  *
  * The Karlův přehled UI must NEVER display "Aktuální" when the briefing is:
  *  - older than today (stale_previous)
  *  - today but limited (limited_repair / cycle_missing)
  *  - today but generated manually (manual)
+ *  - today but produced by a WATCHDOG fallback (P15 — even if not flagged limited)
  *  - missing entirely (missing_today)
  *
  * Single source of truth used by the UI badge + banner. Backed by unit tests
- * in src/test/p12BriefingTruthStatus.test.ts.
+ * in src/test/p12BriefingTruthStatus.test.ts and p15WatchdogIsNotPrimary.test.ts.
  *
  * Rules (no exceptions):
  *  - level "fresh_full" iff
  *      briefing_date == today
  *      && is_stale === false
  *      && payload.limited !== true
- *      && generation_method !== "manual" (and !manual_*)
+ *      && generation_method category === "primary"  (P15: auto / primary_orchestrator)
  *      && (daily_cycle_status === "completed" || daily_cycle_status absent)
  *      && generation_duration_ms > 0
- *  - level "fresh_limited" iff today + limited (or daily cycle not completed)
+ *  - level "fresh_limited" iff today + limited / cycle missing / WATCHDOG-produced
  *  - level "stale_previous" iff briefing_date < today
  *  - level "missing_today" iff no briefing row at all
  *  - manual today rows → "Ruční přehled" label, never "Aktuální"
+ *  - watchdog today rows → "Náhradní omezený přehled", never "Aktuální" (P15)
  */
+
+import { categorizeBriefingMethod } from "./briefingMethodAuthority";
 
 export type BriefingTruthLevel =
   | "fresh_full"
