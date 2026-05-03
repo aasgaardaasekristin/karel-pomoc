@@ -222,6 +222,28 @@ export function getBriefingTruthStatus(
     };
   }
 
+  // ---- P15: today + WATCHDOG-produced → Náhradní omezený (architectural rule) ----
+  // A watchdog is a fallback monitor — its output is never the primary morning
+  // briefing, even if the watchdog forgot to set payload.limited=true.
+  if (isWatchdog) {
+    return {
+      level: "fresh_limited",
+      badgeLabel: "Náhradní omezený přehled",
+      bannerText:
+        "Tento přehled vznikl jen jako náhradní oprava. Plný ranní cyklus dnes nedoběhl, proto Karel pracuje jen s bezpečně dostupnými podklady.",
+      canShowCurrent: false,
+      technicalLabelForbidden: true,
+      detail: {
+        isToday: true,
+        isStale,
+        isLimited: true, // architecturally limited: produced by watchdog fallback
+        isManual: false,
+        dailyCycleStatus: cycleStatus,
+        daysSince,
+      },
+    };
+  }
+
   // ---- today + limited or cycle not completed → Náhradní omezený ---------
   if (isLimited || !cycleCompleted || isStale || durationMs <= 0) {
     return {
