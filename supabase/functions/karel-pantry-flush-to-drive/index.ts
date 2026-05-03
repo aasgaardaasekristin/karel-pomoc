@@ -184,7 +184,18 @@ Deno.serve(async (req: Request) => {
     const dryRun = Boolean(body?.dry_run);
     const authHeader = req.headers.get("Authorization") || "";
     const isServiceCall = authHeader === `Bearer ${SERVICE_KEY}`;
-    if (!isServiceCall) {
+    // P14: Accept X-Karel-Cron-Secret for cron-path auth.
+    const cronSecretHeader = req.headers.get("X-Karel-Cron-Secret") || "";
+    let isCronSecretCall = false;
+    if (cronSecretHeader) {
+      try {
+        const { data: ok } = await admin.rpc("verify_karel_cron_secret", { p_secret: cronSecretHeader });
+        isCronSecretCall = ok === true;
+      } catch (e) {
+        console.warn("[pantry-flush] cron secret rpc failed:", (e as Error)?.message);
+      }
+    }
+    if (!isServiceCall && !isCronSecretCall) {
       if (!scoped) return json({ ok: false, error: "Unauthorized" }, 401);
       const auth = await requireAuth(req);
       if (auth instanceof Response) return auth;
