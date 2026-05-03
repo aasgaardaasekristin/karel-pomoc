@@ -2858,13 +2858,17 @@ Deno.serve(async (req: Request) => {
         };
         delete payload.enqueueOnly;
         delete payload.processPendingJobs;
+        // P14C: self-fetch must use the cron-secret path. The platform's signing-keys
+        // gateway rejects legacy SUPABASE_ANON_KEY Bearer tokens with 401, which was the
+        // residual source of post-deploy 401s observed on this function.
+        const cronSecret = Deno.env.get("KAREL_CRON_SECRET") ?? "";
         const res = await fetch(
           `${supabaseUrl}/functions/v1/karel-did-session-evaluate`,
           {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY") ?? serviceKey}`,
+              "X-Karel-Cron-Secret": cronSecret,
             },
             body: JSON.stringify(payload),
           },
