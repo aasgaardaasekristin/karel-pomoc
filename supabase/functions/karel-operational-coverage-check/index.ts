@@ -181,13 +181,21 @@ async function evaluateAll(
     const cycleCompleted = !cycleStatus || cycleStatus === "completed" || cycleStatus === "ok" || cycleStatus === "done";
     const method = String(latest?.generation_method ?? "").toLowerCase();
     const isManual = !method || method === "manual" || method.startsWith("manual_");
+    // P15: watchdog/SLA methods are NEVER primary. They cannot make P6 ok.
+    const WATCHDOG_METHODS = new Set([
+      "sla_watchdog", "sla_watchdog_repair", "auto_repair_after_missed_morning",
+      "auto_sla_test", "watchdog_limited_repair", "synthetic_repair_not_accepted",
+    ]);
+    const isWatchdog = WATCHDOG_METHODS.has(method);
+    const PRIMARY_METHODS = new Set(["auto", "primary_orchestrator", "primary_morning_orchestrator"]);
+    const isPrimary = PRIMARY_METHODS.has(method);
     const isStaleRow = latest?.is_stale === true;
     const durationMs = Number(latest?.generation_duration_ms ?? 0);
     const visibleTextOk = latest?.payload?.visible_text_quality_audit?.ok !== false;
 
     const todayFullOk =
-      !!latest && isToday && !limited && !isManual && !isStaleRow &&
-      cycleCompleted && durationMs > 0 && visibleTextOk;
+      !!latest && isToday && !limited && !isManual && !isWatchdog && isPrimary &&
+      !isStaleRow && cycleCompleted && durationMs > 0 && visibleTextOk;
 
     type _BriefingStatus = "ok" | "degraded" | "not_implemented";
     let status: _BriefingStatus = "not_implemented";
@@ -198,12 +206,18 @@ async function evaluateAll(
     } else if (!isToday) {
       status = "degraded";
       reason = "stale_previous_only";
+    } else if (isWatchdog) {
+      status = "degraded";
+      reason = "watchdog_fallback_only_p15";
     } else if (limited || !cycleCompleted) {
       status = "degraded";
       reason = "limited_repair_only";
     } else if (isManual) {
       status = "degraded";
       reason = "manual_only";
+    } else if (!isPrimary) {
+      status = "degraded";
+      reason = "non_primary_method";
     } else if (isStaleRow || durationMs <= 0 || !visibleTextOk) {
       status = "degraded";
       reason = "incomplete_or_failed_audit";
