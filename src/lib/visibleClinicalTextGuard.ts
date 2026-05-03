@@ -170,11 +170,6 @@ export const FORBIDDEN_TECHNICAL_TERMS: string[] = [
   "db_review",
 ];
 
-const HUMAN_REPLACEMENTS_DB_REVIEW: Array<{ from: RegExp; to: string }> = [
-  { from: /\bz\s+DB\s+review\b/giu, to: "z dřívějšího záznamu" },
-  { from: /\bDB\s+review\b/giu, to: "dřívější záznam" },
-];
-
 export const FORBIDDEN_KOSTRBATE_PHRASES: string[] = [
   // P1 prompt awkward phrases
   "Herna je vedená Karlem práce",
@@ -249,6 +244,9 @@ const HUMAN_REPLACEMENTS: Array<{ from: RegExp; to: string }> = [
   { from: wb("child evidence"), to: "vlastní reakce kluků" },
   { from: wb("Karel-led"), to: "vede Karel" },
   { from: wb("DID-relevantní"), to: "důležité pro kluky" },
+  // P16: legacy "DB review" phrasing — sanitize to plain Czech
+  { from: /\bz\s+DB\s+review\b/giu, to: "z dřívějšího záznamu" },
+  { from: /\bDB\s+review\b/giu, to: "dřívější záznam" },
   // Soft-replace technical "Fallback" labels into human Czech.
   // Order: more specific multi-word forms first, then standalone term.
   { from: /\bFallbacky\s*:/giu, to: "Když to nejde:" },
