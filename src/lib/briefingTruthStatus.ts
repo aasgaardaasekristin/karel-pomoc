@@ -98,9 +98,14 @@ function formatCzechDate(iso: string): string {
 }
 
 function isManualMethod(method: string | null | undefined): boolean {
-  const m = String(method ?? "").toLowerCase().trim();
-  if (!m) return true; // missing method ⇒ treat as manual (cannot prove auto)
-  return m === "manual" || m.startsWith("manual_") || m.startsWith("manual-");
+  // P15: missing/unknown method is treated as manual (cannot prove auto/primary).
+  const cat = categorizeBriefingMethod(method);
+  if (cat === "manual" || cat === "unknown") return true;
+  return false;
+}
+
+function isWatchdogProducedMethod(method: string | null | undefined): boolean {
+  return categorizeBriefingMethod(method) === "watchdog";
 }
 
 function dailyCycleCompleted(status: string | null | undefined): boolean {
