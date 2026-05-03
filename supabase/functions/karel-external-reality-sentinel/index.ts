@@ -388,6 +388,7 @@ async function repairDanglingTaskLinkages(
     .select("id, event_id, part_name, risk_level, recommended_action, created_task_id")
     .eq("user_id", userId)
     .is("resolved_at", null)
+    .is("acknowledged_at", null)
     .in("risk_level", ["amber", "red"])
     .not("created_task_id", "is", null);
   if (impactsErr) {
@@ -526,6 +527,7 @@ Deno.serve(async (req) => {
         .select("id, event_id, part_name, risk_level, reason, recommended_action, created_task_id, created_at, acknowledged_at, resolved_at, external_reality_events(event_title, event_type, source_type, verification_status, graphic_content_risk, summary_for_therapists)")
         .eq("user_id", canonicalUserId)
         .is("resolved_at", null)
+        .is("acknowledged_at", null)
         .order("created_at", { ascending: false })
         .limit(50);
       if (error) return json({ ok: false, message: error.message }, 500);
