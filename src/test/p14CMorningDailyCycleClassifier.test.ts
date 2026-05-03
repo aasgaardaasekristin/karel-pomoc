@@ -24,10 +24,13 @@ describe("P14C morning_daily_cycle classifier (static)", () => {
     expect(window.includes('"did_update_cycles"')).toBe(true);
   });
 
-  it("does NOT classify morning_daily_cycle from did_cycle_run_log anymore", () => {
+  it("does NOT classify morning_daily_cycle from did_cycle_run_log anymore (code paths only, comments allowed)", () => {
     const block = src.split("morning_daily_cycle")[1] ?? "";
     const window = block.slice(0, 4000);
-    expect(window.includes("did_cycle_run_log")).toBe(false);
+    // Strip line comments so the historical reference in the fix-note doesn't trip the audit.
+    const noLineComments = window.replace(/^\s*\/\/.*$/gm, "");
+    const noBlockComments = noLineComments.replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(noBlockComments.includes("did_cycle_run_log")).toBe(false);
   });
 
   it("requires status=completed and no last_error to mark ok", () => {
