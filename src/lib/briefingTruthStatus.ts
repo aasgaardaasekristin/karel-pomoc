@@ -306,6 +306,12 @@ export const P12_FORBIDDEN_BRIEFING_TERMS: readonly string[] = [
   "Aktuální (SLA",
   "Aktuální (auto)",
   "Aktuální (manuální)",
+  // P15 — watchdog terminology must never appear in user-visible text
+  "watchdog",
+  "Watchdog",
+  "sla_watchdog",
+  "sla_watchdog_repair",
+  "watchdog_limited_repair",
 ] as const;
 
 /** Count occurrences of any forbidden term in a string (case-sensitive for codes, case-insensitive for prose). */
