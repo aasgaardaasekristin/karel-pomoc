@@ -2665,8 +2665,12 @@ Deno.serve(async (req) => {
     } | null = null;
 
     if (generationMethod === "auto" || isSlaMethod(generationMethod)) {
+      // P13B: widen guard window to the whole Prague day. The previous 00:00–10:00
+      // UTC window only captured natural pre-morning runs and ignored any forced
+      // or late-arriving canonical cycle (e.g. afternoon repair). The watchdog
+      // already uses the full-day window; align with it.
       const morningStartUtc = `${today}T00:00:00Z`;
-      const morningEndUtc   = `${today}T10:00:00Z`;
+      const morningEndUtc   = `${today}T23:59:59Z`;
       const { data: cycleRow, error: cycleErr } = await supabase
         .from("did_update_cycles")
         .select("id, status, started_at, completed_at, last_error, heartbeat_at, phase")
