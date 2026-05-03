@@ -150,6 +150,20 @@ export const FORBIDDEN_TECHNICAL_TERMS: string[] = [
   "created_task_id",
   "(typy:",
   "(types:",
+  // P12: morning briefing truthfulness — these strings must NEVER reach UI.
+  "SLA záplata",
+  "(SLA záplata)",
+  "Aktuální (SLA",
+  "Aktuální (auto)",
+  "Aktuální (manuální)",
+  "Limitovaný ranní přehled",
+  "DB/Pantry",
+  "DB/Pantry/Event-ingestion",
+  "Event-ingestion",
+  "daily_cycle_status",
+  "generation_method",
+  "limited_reason",
+  "sla_watchdog_repair",
 ];
 
 export const FORBIDDEN_KOSTRBATE_PHRASES: string[] = [

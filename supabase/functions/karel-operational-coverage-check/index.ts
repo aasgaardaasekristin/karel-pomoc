@@ -96,15 +96,84 @@ async function evaluateAll(
     });
   }
 
-  // morning_karel_briefing — did_daily_briefings within 30h
+  // morning_karel_briefing — P12 hard gate:
+  //   degraded if today_full_morning_briefing_ok is false (limited / stale / manual / missing).
   {
-    const r = await safeCount(admin, "did_daily_briefings", "created_at", 30, userId);
+    const todayPragueIso = new Date(
+      new Date().toLocaleString("en-US", { timeZone: "Europe/Prague" }),
+    ).toISOString().slice(0, 10);
+    const { data: rows } = await admin
+      .from("did_daily_briefings")
+      .select("briefing_date, generated_at, generation_method, is_stale, generation_duration_ms, payload")
+      .eq("user_id", userId)
+      .order("generated_at", { ascending: false })
+      .limit(1);
+    // deno-lint-ignore no-explicit-any
+    const latest: any = rows?.[0] ?? null;
+    const briefingDate = String(latest?.briefing_date ?? "").slice(0, 10);
+    const isToday = briefingDate === todayPragueIso;
+    const limited = latest?.payload?.limited === true;
+    const cycleStatus = String(latest?.payload?.daily_cycle_status ?? "").toLowerCase();
+    const cycleCompleted = !cycleStatus || cycleStatus === "completed" || cycleStatus === "ok" || cycleStatus === "done";
+    const method = String(latest?.generation_method ?? "").toLowerCase();
+    const isManual = !method || method === "manual" || method.startsWith("manual_");
+    const isStaleRow = latest?.is_stale === true;
+    const durationMs = Number(latest?.generation_duration_ms ?? 0);
+    const visibleTextOk = latest?.payload?.visible_text_quality_audit?.ok !== false;
+
+    const todayFullOk =
+      !!latest && isToday && !limited && !isManual && !isStaleRow &&
+      cycleCompleted && durationMs > 0 && visibleTextOk;
+
+    type _BriefingStatus = "ok" | "degraded" | "not_implemented";
+    let status: _BriefingStatus = "not_implemented";
+    let reason: string | null = null;
+    if (!latest) {
+      status = "not_implemented";
+      reason = "no_briefings_in_db";
+    } else if (!isToday) {
+      status = "degraded";
+      reason = "stale_previous_only";
+    } else if (limited || !cycleCompleted) {
+      status = "degraded";
+      reason = "limited_repair_only";
+    } else if (isManual) {
+      status = "degraded";
+      reason = "manual_only";
+    } else if (isStaleRow || durationMs <= 0 || !visibleTextOk) {
+      status = "degraded";
+      reason = "incomplete_or_failed_audit";
+    } else {
+      status = "ok";
+    }
+
     out.push({
       pipeline_name: "morning_karel_briefing",
-      status: evidenceStatus(r.count),
-      evidence: { briefings_30h: r.count, latest: r.latest_at },
-      evidence_ref: r.count > 0 ? `did_daily_briefings:${r.latest_at}` : undefined,
-      next_action: r.count > 0 ? undefined : "Manuálně spustit karel-did-briefing-sla-watchdog.",
+      status,
+      evidence: {
+        today_full_morning_briefing_ok: todayFullOk,
+        latest_briefing_date: briefingDate || null,
+        viewer_today_iso: todayPragueIso,
+        is_today: isToday,
+        limited,
+        daily_cycle_status: cycleStatus || null,
+        is_manual: isManual,
+        is_stale: isStaleRow,
+        generation_duration_ms: durationMs,
+        visible_text_ok: visibleTextOk,
+        reason,
+      },
+      evidence_ref: latest ? `did_daily_briefings:${latest.generated_at}` : undefined,
+      next_action:
+        status === "ok"
+          ? undefined
+          : reason === "stale_previous_only"
+          ? "Spustit dnešní ranní cyklus + briefing (cron / manual force)."
+          : reason === "limited_repair_only"
+          ? "Opravit ranní daily cycle, aby briefing nebyl jen náhradní omezený."
+          : reason === "manual_only"
+          ? "Spustit auto/cron briefing — manuální nepokrývá pravdivost UI."
+          : "Manuálně spustit karel-did-briefing-sla-watchdog a ověřit audit.",
     });
   }
 
