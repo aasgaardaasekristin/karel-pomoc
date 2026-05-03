@@ -164,6 +164,15 @@ export const FORBIDDEN_TECHNICAL_TERMS: string[] = [
   "generation_method",
   "limited_reason",
   "sla_watchdog_repair",
+  // P16: technical phrases that previously leaked into Karlův přehled
+  "DB review",
+  "DB/review",
+  "db_review",
+];
+
+const HUMAN_REPLACEMENTS_DB_REVIEW: Array<{ from: RegExp; to: string }> = [
+  { from: /\bz\s+DB\s+review\b/giu, to: "z dřívějšího záznamu" },
+  { from: /\bDB\s+review\b/giu, to: "dřívější záznam" },
 ];
 
 export const FORBIDDEN_KOSTRBATE_PHRASES: string[] = [
