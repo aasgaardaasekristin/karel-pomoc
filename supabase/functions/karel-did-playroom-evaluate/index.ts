@@ -485,18 +485,41 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
     const apiKey = Deno.env.get("LOVABLE_API_KEY")!;
-    const userId = await authenticatedUserId(req, supabaseUrl, anonKey);
-    if (!userId) return json({ ok: false, error: "Nepřihlášený požadavek." }, 401);
-    const body = await req.json().catch(() => ({}));
     const sb = createClient(supabaseUrl, serviceKey);
+
+    // P14B: Accept X-Karel-Cron-Secret as service-equivalent (cron path).
+    const cronSecretHeader = req.headers.get("X-Karel-Cron-Secret") || "";
+    let isCronSecretCall = false;
+    if (cronSecretHeader) {
+      try {
+        const { data: ok } = await sb.rpc("verify_karel_cron_secret", { p_secret: cronSecretHeader });
+        isCronSecretCall = ok === true;
+      } catch (e) {
+        console.warn("[playroom-evaluate] cron secret rpc failed:", (e as Error)?.message);
+      }
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const isWorkerCall = body.worker === true || body.processPendingJobs === true;
+
+    let userId: string | null = null;
+    if (!isCronSecretCall) {
+      userId = await authenticatedUserId(req, supabaseUrl, anonKey);
+      if (!userId && !isWorkerCall) return json({ ok: false, error: "Nepřihlášený požadavek." }, 401);
+    }
+
     if (body.health === true || body.dryRun === true) {
       const { error: dbError } = await sb.from("did_session_reviews").select("id").limit(1);
       if (dbError) throw dbError;
       return json({ ok: true, health: "playroom-evaluate", auth: "ok", db: "ok" });
     }
-    if (body.worker === true || body.processPendingJobs === true) {
+    if (isWorkerCall) {
+      if (!isCronSecretCall && !userId) {
+        return json({ ok: false, error: "worker_requires_internal_auth" }, 403);
+      }
       return json(await processPendingJobs(sb, apiKey, Number(body.limit ?? 2)));
     }
+    if (!userId) return json({ ok: false, error: "Nepřihlášený požadavek." }, 401);
     const planId = String(body.planId || "").trim();
     const threadId = String(body.threadId || "").trim();
     if (!planId || !threadId) return json({ ok: false, error: "Chybí planId nebo threadId." }, 400);

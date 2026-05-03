@@ -2830,7 +2830,7 @@ Deno.serve(async (req: Request) => {
       authenticatedUserId = String((authResult as { user: any }).user?.id ?? "");
     }
     if (body?.processPendingJobs === true) {
-      if (!isServiceCall) {
+      if (!isInternalCall) {
         return new Response(JSON.stringify({ ok: false, error: "service_role_required" }), {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -2966,7 +2966,7 @@ Deno.serve(async (req: Request) => {
         attempt_count: body?.attempt_count ?? 0,
       });
     const ctx = await loadContext(sb, planId);
-    if (!isServiceCall && authenticatedUserId && ctx.plan.user_id !== authenticatedUserId) {
+    if (!isInternalCall && authenticatedUserId && ctx.plan.user_id !== authenticatedUserId) {
       return new Response(JSON.stringify({ ok: false, error: "user_scope_mismatch" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
