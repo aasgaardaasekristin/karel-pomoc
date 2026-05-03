@@ -84,15 +84,79 @@ async function evaluateAll(
 ): Promise<PipelineEvidence[]> {
   const out: PipelineEvidence[] = [];
 
-  // morning_daily_cycle — did_cycle_run_log within 30h
+  // morning_daily_cycle — canonical source: did_update_cycles for canonical user.
+  // P14C fix: previously used did_cycle_run_log which is not the canonical
+  // table; that produced false-negative `not_implemented` even when a
+  // canonical completed daily cycle existed today.
   {
-    const r = await safeCount(admin, "did_cycle_run_log", "created_at", 30);
+    const todayPragueIso = new Date(
+      new Date().toLocaleString("en-US", { timeZone: "Europe/Prague" }),
+    ).toISOString().slice(0, 10);
+    const todayStartUtc = new Date(`${todayPragueIso}T00:00:00+02:00`).toISOString();
+
+    type _Cycle = {
+      id: string; status: string | null; completed_at: string | null;
+      last_error: string | null; started_at: string | null;
+    };
+    let canonicalRow: _Cycle | null = null;
+    let wrongUserRow: _Cycle | null = null;
+    try {
+      const { data: canon } = await admin
+        .from("did_update_cycles")
+        .select("id,status,completed_at,last_error,started_at")
+        .eq("user_id", userId)
+        .eq("cycle_type", "daily")
+        .gte("started_at", todayStartUtc)
+        .order("started_at", { ascending: false })
+        .limit(1);
+      // deno-lint-ignore no-explicit-any
+      canonicalRow = ((canon?.[0] as any) ?? null) as _Cycle | null;
+
+      const { data: others } = await admin
+        .from("did_update_cycles")
+        .select("id,status,completed_at,last_error,started_at,user_id")
+        .neq("user_id", userId)
+        .eq("cycle_type", "daily")
+        .gte("started_at", todayStartUtc)
+        .order("started_at", { ascending: false })
+        .limit(1);
+      // deno-lint-ignore no-explicit-any
+      wrongUserRow = ((others?.[0] as any) ?? null) as _Cycle | null;
+    } catch { /* swallow */ }
+
+    const status: "ok" | "degraded" | "not_implemented" =
+      canonicalRow &&
+      String(canonicalRow.status).toLowerCase() === "completed" &&
+      canonicalRow.completed_at &&
+      !(canonicalRow.last_error ?? "").trim()
+        ? "ok"
+        : canonicalRow
+        ? "degraded"
+        : "not_implemented";
+
     out.push({
       pipeline_name: "morning_daily_cycle",
-      status: r.count > 0 ? "ok" : "not_implemented",
-      evidence: { runs_30h: r.count, latest: r.latest_at },
-      evidence_ref: r.count > 0 ? `did_cycle_run_log:${r.latest_at}` : undefined,
-      next_action: r.count > 0 ? undefined : "Cron pipeline nemá recent runs; ověřit scheduler.",
+      status,
+      evidence: {
+        reason: status === "ok"
+          ? "canonical_daily_cycle_completed_today"
+          : canonicalRow
+          ? "canonical_row_present_but_not_completed"
+          : "no_canonical_row_today",
+        canonical_user_id: userId,
+        viewer_today_iso: todayPragueIso,
+        canonical_cycle_id: canonicalRow?.id ?? null,
+        canonical_status: canonicalRow?.status ?? null,
+        canonical_completed_at: canonicalRow?.completed_at ?? null,
+        canonical_last_error: canonicalRow?.last_error ?? null,
+        wrong_user_row_present: !!wrongUserRow,
+      },
+      evidence_ref: canonicalRow ? `did_update_cycles:${canonicalRow.id}` : undefined,
+      next_action: status === "ok"
+        ? undefined
+        : canonicalRow
+        ? "Canonical daily cycle dnes existuje, ale není completed bez chyby — vyšetřit phase/last_error."
+        : "Spustit canonical daily cycle (cron / forced repair).",
     });
   }
 
