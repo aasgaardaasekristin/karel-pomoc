@@ -2811,8 +2811,20 @@ Deno.serve(async (req: Request) => {
     requestBody = body;
     const authHeader = req.headers.get("Authorization") || "";
     const isServiceCall = serviceKey && authHeader === `Bearer ${serviceKey}`;
+    // P14B: Accept X-Karel-Cron-Secret as service-equivalent (cron path).
+    const cronSecretHeader = req.headers.get("X-Karel-Cron-Secret") || "";
+    let isCronSecretCall = false;
+    if (cronSecretHeader) {
+      try {
+        const { data: ok } = await sb.rpc("verify_karel_cron_secret", { p_secret: cronSecretHeader });
+        isCronSecretCall = ok === true;
+      } catch (e) {
+        console.warn("[session-evaluate] cron secret rpc failed:", (e as Error)?.message);
+      }
+    }
+    const isInternalCall = isServiceCall || isCronSecretCall;
     let authenticatedUserId: string | null = null;
-    if (!isServiceCall) {
+    if (!isInternalCall) {
       const authResult = await requireAuth(req);
       if (authResult instanceof Response) return authResult;
       authenticatedUserId = String((authResult as { user: any }).user?.id ?? "");

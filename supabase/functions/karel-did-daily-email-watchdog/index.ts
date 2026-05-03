@@ -79,6 +79,27 @@ serve(async (req) => {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const sb = createClient(supabaseUrl, serviceRoleKey);
 
+  // P14B: Accept X-Karel-Cron-Secret header (same pattern as briefing SLA watchdog & daily-cycle).
+  // The Supabase JWT signing-keys system rejects legacy service-role / stale anon bearers at
+  // the platform gateway with 401 before our code runs, so cron commands must
+  // authenticate with an in-code-verified shared secret instead of a JWT bearer.
+  const cronSecretHeader = req.headers.get("X-Karel-Cron-Secret") || "";
+  if (cronSecretHeader) {
+    try {
+      const { data: ok } = await sb.rpc("verify_karel_cron_secret", { p_secret: cronSecretHeader });
+      if (ok !== true) {
+        return new Response(JSON.stringify({ error: "invalid_cron_secret" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } catch (e) {
+      console.warn("[email-watchdog] cron secret rpc failed:", (e as Error)?.message);
+      return new Response(JSON.stringify({ error: "cron_secret_verify_failed" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+
   const today = getPragueDate();
   const pragueHour = getPragueHour();
   const logs: string[] = [];
