@@ -2811,14 +2811,26 @@ Deno.serve(async (req: Request) => {
     requestBody = body;
     const authHeader = req.headers.get("Authorization") || "";
     const isServiceCall = serviceKey && authHeader === `Bearer ${serviceKey}`;
+    // P14B: Accept X-Karel-Cron-Secret as service-equivalent (cron path).
+    const cronSecretHeader = req.headers.get("X-Karel-Cron-Secret") || "";
+    let isCronSecretCall = false;
+    if (cronSecretHeader) {
+      try {
+        const { data: ok } = await sb.rpc("verify_karel_cron_secret", { p_secret: cronSecretHeader });
+        isCronSecretCall = ok === true;
+      } catch (e) {
+        console.warn("[session-evaluate] cron secret rpc failed:", (e as Error)?.message);
+      }
+    }
+    const isInternalCall = isServiceCall || isCronSecretCall;
     let authenticatedUserId: string | null = null;
-    if (!isServiceCall) {
+    if (!isInternalCall) {
       const authResult = await requireAuth(req);
       if (authResult instanceof Response) return authResult;
       authenticatedUserId = String((authResult as { user: any }).user?.id ?? "");
     }
     if (body?.processPendingJobs === true) {
-      if (!isServiceCall) {
+      if (!isInternalCall) {
         return new Response(JSON.stringify({ ok: false, error: "service_role_required" }), {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -2954,7 +2966,7 @@ Deno.serve(async (req: Request) => {
         attempt_count: body?.attempt_count ?? 0,
       });
     const ctx = await loadContext(sb, planId);
-    if (!isServiceCall && authenticatedUserId && ctx.plan.user_id !== authenticatedUserId) {
+    if (!isInternalCall && authenticatedUserId && ctx.plan.user_id !== authenticatedUserId) {
       return new Response(JSON.stringify({ ok: false, error: "user_scope_mismatch" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

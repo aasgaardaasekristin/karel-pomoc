@@ -162,6 +162,9 @@ verify_jwt = false
 [functions.karel-did-daily-email-watchdog]
 verify_jwt = false
 
+[functions.karel-did-session-evaluate]
+verify_jwt = false
+
 [functions.karel-did-auto-session-plan]
 verify_jwt = false
 
