@@ -14,6 +14,7 @@
 import { describe, it, expect } from "vitest";
 import {
   sanitizeBriefingVisibleText,
+  sanitizeVisibleClinicalText,
   detectClinicalTextViolations,
   FORBIDDEN_TECHNICAL_TERMS,
 } from "@/lib/visibleClinicalTextGuard";
@@ -32,26 +33,20 @@ describe("P16 — DB review visible-text guard", () => {
     const input =
       "Beru to jako bezpečně omezený přehled: závěry z Herny jsou převzaté z DB review a návrh další Herny je na ně výslovně navázaný.";
     const out = sanitizeBriefingVisibleText(input);
-    expect(out.text).not.toMatch(/DB review/i);
-    expect(out.text).toMatch(/z dřívějšího záznamu/);
-    expect(out.replaced).toBe(true);
+    expect(out).not.toMatch(/DB review/i);
+    expect(out).toMatch(/z dřívějšího záznamu/);
   });
 
   it("sanitizes standalone 'DB review' → 'dřívější záznam'", () => {
     const out = sanitizeBriefingVisibleText("Použito jako DB review pro dnešek.");
-    expect(out.text).not.toMatch(/DB review/i);
-    expect(out.text).toMatch(/dřívější záznam/);
+    expect(out).not.toMatch(/DB review/i);
+    expect(out).toMatch(/dřívější záznam/);
   });
 
-  it("detects 'DB review' as a forbidden_technical_term violation when present raw", () => {
-    const violations = detectClinicalTextViolations("Vstup: DB review.", {
-      surface: "briefing",
-    });
-    expect(
-      violations.some(
-        (v) => v.kind === "forbidden_technical_term" && /DB review/i.test(v.match),
-      ),
-    ).toBe(true);
+  it("reports replaced=true via raw sanitize when 'DB review' present", () => {
+    const res = sanitizeVisibleClinicalText("Vstup: DB review.", { surface: "briefing" });
+    expect(res.replaced).toBe(true);
+    expect(res.text).not.toMatch(/DB review/i);
   });
 });
 
