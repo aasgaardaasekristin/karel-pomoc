@@ -1526,9 +1526,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const viewerToday = pragueTodayIso();
   const freshnessMeta = getBriefingFreshnessMeta(briefing.briefing_date, viewerToday);
   const briefingDateIso = freshnessMeta.briefing_date ?? String(briefing.briefing_date ?? "").slice(0, 10);
-  const isCurrentBriefing = freshnessMeta.is_current_briefing;
-  const daysSinceBriefing = freshnessMeta.days_since_briefing;
-  const staleBannerText = briefingFreshnessBannerText(briefingDateIso, viewerToday);
+  // P12: isCurrentBriefing / daysSinceBriefing / staleBannerText replaced
+  // by the deterministic getBriefingTruthStatus() below — never trust
+  // calendar freshness alone (today + limited still must NOT show "Aktuální").
   const rawPlayRecency = ((p as any).recent_playroom_review ?? p.yesterday_playroom_review) as RecencyMeta | null | undefined;
   const rawSessRecency = ((p as any).recent_session_review ?? p.yesterday_session_review) as RecencyMeta | null | undefined;
   const playRecency = revalidateRecencyForViewer(rawPlayRecency, viewerToday, "playroom");
