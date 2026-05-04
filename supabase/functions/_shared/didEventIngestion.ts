@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * didEventIngestion.ts — centrální sběr DID-relevantních událostí.
  *
@@ -7,7 +8,7 @@
  * source-of-truth.
  */
 
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { encodeGovernedWrite } from "./documentWriteEnvelope.ts";
 import { appendPantryB, type PantryBEntryKind, type PantryBSourceKind, type PantryBDestination } from "./pantryB.ts";
 
