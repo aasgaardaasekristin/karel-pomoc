@@ -1435,6 +1435,8 @@ function buildDailyTherapeuticPriority(payload: any): string {
 function buildOpeningMonologue(payload: any, context: any, candidates: SessionCandidate[]) {
   const play = payload?.yesterday_playroom_review?.exists ? payload.yesterday_playroom_review : null;
   const sess = payload?.yesterday_session_review?.exists ? payload.yesterday_session_review : null;
+  const sessEvidence: ClinicalActivityEvidence | null = (sess?.evidence as ClinicalActivityEvidence) ?? null;
+  const sessCanClaimStarted = sessEvidence?.can_claim_started === true;
   const proposedSession = payload?.proposed_session && typeof payload.proposed_session === "object" ? payload.proposed_session : null;
   const proposedPlayroom = payload?.proposed_playroom && typeof payload.proposed_playroom === "object" ? payload.proposed_playroom : null;
   const activePart = String(play?.part_name || sess?.part_name || proposedSession?.part_name || proposedPlayroom?.part_name || candidates?.[0]?.part_name || "část, která se dnes nejvíc ukáže v datech").trim();
@@ -1444,7 +1446,8 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   const operationalEntries = operationalContextEntries(context);
   const operationalInfo = sanitizeKarelClinicalText(operationalEntries.map((e: any) => e.summary || e.detail?.operational_implication || "").filter(Boolean).slice(0, 4).join(" "));
   const hasRealityCorrection = operationalEntries.some((e: any) => REAL_WORLD_CONTEXT_RE.test(`${e?.summary ?? ""} ${JSON.stringify(e?.detail ?? {})}`));
-  const openedPartialSession = sess?.exists && isOpenedPartialSessionReview(sess);
+  // P20.2: openedPartialSession requires evidence.can_claim_started
+  const openedPartialSession = sessCanClaimStarted && sess?.exists && isOpenedPartialSessionReview(sess);
   const newInfo = sanitizeKarelClinicalText(firstMeaningful(operationalInfo, play?.implications_for_part, sess?.key_finding_about_part, playReport, sessionReport));
   const planImplication = sanitizeKarelClinicalText(firstMeaningful(operationalInfo, sess?.implications_for_plan, play?.recommendations_for_next_session, play?.recommendations_for_next_playroom, proposedSession?.why_today, proposedPlayroom?.why_this_part_today));
   const teamWorkCandidate = sanitizeKarelClinicalText(firstMeaningful(sess?.team_closing_text, sess?.team_acknowledgement, play?.recommendations_for_therapists));
