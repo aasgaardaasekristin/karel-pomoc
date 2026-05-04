@@ -114,7 +114,7 @@ async function evaluateAll(
 
       const { data: others } = await admin
         .from("did_update_cycles")
-        .select("id,status,completed_at,last_error,started_at,user_id")
+        .select("id,status,completed_at,last_error,started_at,user_id,context_data")
         .neq("user_id", userId)
         .eq("cycle_type", "daily")
         .gte("started_at", todayStartUtc)
@@ -124,7 +124,38 @@ async function evaluateAll(
       wrongUserRow = ((others?.[0] as any) ?? null) as _Cycle | null;
     } catch { /* swallow */ }
 
-    const status: "ok" | "degraded" | "not_implemented" =
+    // P18: separate fresh wrong-user (true blocker) from quarantined historical
+    // (audit-preserved legacy data, not a regression). Fresh wrong-user rows
+    // ARE a regression — they mean a cron path bypassed the canonical guard
+    // again. Quarantined historical rows are inert and proven harmless.
+    let wrongUserFresh24h = 0;
+    let wrongUserUnquarantinedActive = 0;
+    let wrongUserQuarantinedHistorical = 0;
+    try {
+      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: fresh } = await admin
+        .from("did_update_cycles")
+        .select("id,user_id,started_at,context_data")
+        .neq("user_id", userId)
+        .gte("started_at", since24h);
+      const freshList = (fresh ?? []) as Array<{ context_data?: { legacy_wrong_user_quarantine?: { active?: boolean } } | null }>;
+      wrongUserFresh24h = freshList.filter(
+        (r) => !(r.context_data?.legacy_wrong_user_quarantine?.active === true),
+      ).length;
+
+      const { data: allWrong } = await admin
+        .from("did_update_cycles")
+        .select("id,context_data")
+        .neq("user_id", userId);
+      const allList = (allWrong ?? []) as Array<{ context_data?: { legacy_wrong_user_quarantine?: { active?: boolean } } | null }>;
+      wrongUserUnquarantinedActive = allList.filter(
+        (r) => !(r.context_data?.legacy_wrong_user_quarantine?.active === true),
+      ).length;
+      wrongUserQuarantinedHistorical = allList.length - wrongUserUnquarantinedActive;
+    } catch { /* swallow */ }
+
+    // Status reflects canonical row health AND fresh wrong-user regression risk.
+    let status: "ok" | "degraded" | "not_implemented" =
       canonicalRow &&
       String(canonicalRow.status).toLowerCase() === "completed" &&
       canonicalRow.completed_at &&
@@ -133,6 +164,9 @@ async function evaluateAll(
         : canonicalRow
         ? "degraded"
         : "not_implemented";
+    // Fresh wrong-user activity demotes to degraded (real regression),
+    // but historical quarantined rows do NOT.
+    if (status === "ok" && wrongUserFresh24h > 0) status = "degraded";
 
     out.push({
       pipeline_name: "morning_daily_cycle",
@@ -141,7 +175,9 @@ async function evaluateAll(
         reason: status === "ok"
           ? "canonical_daily_cycle_completed_today"
           : canonicalRow
-          ? "canonical_row_present_but_not_completed"
+          ? (wrongUserFresh24h > 0
+            ? "fresh_wrong_user_rows_detected_p18_regression"
+            : "canonical_row_present_but_not_completed")
           : "no_canonical_row_today",
         canonical_user_id: userId,
         viewer_today_iso: todayPragueIso,
@@ -149,11 +185,18 @@ async function evaluateAll(
         canonical_status: canonicalRow?.status ?? null,
         canonical_completed_at: canonicalRow?.completed_at ?? null,
         canonical_last_error: canonicalRow?.last_error ?? null,
+        // Legacy field kept for backward compat, but no longer a blocker.
         wrong_user_row_present: !!wrongUserRow,
+        // P18 fields:
+        wrong_user_fresh_24h: wrongUserFresh24h,
+        wrong_user_unquarantined_active: wrongUserUnquarantinedActive,
+        wrong_user_quarantined_historical: wrongUserQuarantinedHistorical,
       },
       evidence_ref: canonicalRow ? `did_update_cycles:${canonicalRow.id}` : undefined,
       next_action: status === "ok"
         ? undefined
+        : wrongUserFresh24h > 0
+        ? "Fresh wrong-user rows in last 24h — scope guard regression. Audit cron paths."
         : canonicalRow
         ? "Canonical daily cycle dnes existuje, ale není completed bez chyby — vyšetřit phase/last_error."
         : "Spustit canonical daily cycle (cron / forced repair).",
