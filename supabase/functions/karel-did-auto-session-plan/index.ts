@@ -521,6 +521,17 @@ serve(async (req) => {
   if (!userId) {
     return new Response(JSON.stringify({ error: "No user_id found" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
+  // P23 fix: enforce canonical match before any write path.
+  try {
+    const { resolveCanonicalDidUserId } = await import("../_shared/canonicalUserResolver.ts");
+    await resolveCanonicalDidUserId(sb as any, userId);
+  } catch (e: any) {
+    const code = String(e?.code || "CANONICAL_USER_SCOPE_UNRESOLVED");
+    const status = code === "CANONICAL_USER_SCOPE_MISMATCH" ? 403 : 500;
+    return new Response(JSON.stringify({ ok: false, error_code: code, message: e?.message ?? String(e) }), {
+      status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   try {
     let forcePart: string | null = null;
