@@ -1315,10 +1315,17 @@ serve(async (req) => {
     console.warn("[ANALYST] Stale cleanup failed:", cleanupErr.message);
   }
 
-  // Create new cycle record
+  // Create new cycle record — strict canonical user (P2 fail-closed).
+  let cycleOwnerUserId: string;
+  try {
+    cycleOwnerUserId = await resolveUserId(sb);
+  } catch (e) {
+    console.error("[ANALYST] Canonical scope unresolved — refusing to create placeholder cycle:", (e as Error).message);
+    return jsonResponse({ error: "canonical_user_scope_unresolved", message: (e as Error).message }, 500);
+  }
   const { data: cycleRow, error: cycleInsertErr } = await sb
     .from("did_update_cycles")
-    .insert({ status: "running", cycle_type: forceRun ? "manual" : "analyst_loop", user_id: "00000000-0000-0000-0000-000000000000" })
+    .insert({ status: "running", cycle_type: forceRun ? "manual" : "analyst_loop", user_id: cycleOwnerUserId })
     .select()
     .single();
 
