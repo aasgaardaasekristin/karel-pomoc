@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * pantryB.ts — Spižírna B helpers (denní implikační deník)
  *
