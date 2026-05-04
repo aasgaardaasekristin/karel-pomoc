@@ -1384,17 +1384,30 @@ const isTechnicalTestSessionReview = (review: any): boolean => {
 function buildClinicalLast3Days(payload: any, context: any, candidates: SessionCandidate[]): string {
   const play = payload?.yesterday_playroom_review?.exists ? payload.yesterday_playroom_review : null;
   const sess = payload?.yesterday_session_review?.exists ? payload.yesterday_session_review : null;
+  const sessEvidence: ClinicalActivityEvidence | null = (sess?.evidence as ClinicalActivityEvidence) ?? null;
+  const sessCanClaimStarted = sessEvidence?.can_claim_started === true;
   const activePart = String(play?.part_name || sess?.part_name || candidates?.[0]?.part_name || "část, která se ukáže v evidenci").trim();
   const recentThreads = Array.isArray(context?.recent_threads) ? context.recent_threads : [];
   const recentNames = Array.from(new Set(recentThreads.map((t: any) => String(t?.part_name ?? "").trim()).filter(Boolean))).slice(0, 4);
   const communicated = recentNames.length ? recentNames.join(", ") : activePart;
-  const openedPartialSession = sess?.exists && isOpenedPartialSessionReview(sess);
+  // P20.2: openedPartial smí být true POUZE když evidence dovoluje started claim
+  const openedPartialSession = sessCanClaimStarted && sess?.exists && isOpenedPartialSessionReview(sess);
   const sessionNotHeld = sess?.exists && sess?.held === false && !openedPartialSession;
   if (!play && !sess && recentNames.length === 0) return "Na toto nemám dost dat.";
+  // P20.2: pending_generated_plan / approved_plan_not_started → pravdivá věta o návrhu
+  const pendingOnlySentence = sess?.exists && !sessCanClaimStarted && sessEvidence
+    ? sessEvidence.category === "pending_generated_plan"
+      ? `Pro ${sess.part_name || activePart} včera existoval pouze automaticky vygenerovaný návrh plánu, který nebyl schválen ani spuštěn. Z něj nedělám klinický závěr.`
+      : sessEvidence.category === "approved_plan_not_started"
+      ? `Pro ${sess.part_name || activePart} byl včera schválený plán, ale Sezení nebylo spuštěno. Z toho nedělám klinický závěr.`
+      : "V DID režimu nebylo včera doložené Sezení."
+    : null;
   return [
     `Za posledních 24–72 hodin máme nejvýraznější doloženou aktivitu u ${partGenitive(activePart)}. V komunikaci se objevuje zejména ${communicated}; u kormidla to ale neznamená celodenní jistotu, jen nejsilnější dostupnou stopu.`,
     play ? `${recencyIntro(play, "playroom")} Ukázala práci přes symboly bezpečí, domova, světla nebo ochrany; beru je jako jazyk této části z daného dne, ne jako hotovou charakteristiku všech kluků.` : "Včera Herna neproběhla; z Herny za včerejšek nemám uzavřený materiál pro klinický závěr.",
-    openedPartialSession ? `${recencyIntro(sess, "session")} Bylo otevřené nebo částečně rozpracované a čeká na plné dovyhodnocení; zacházím s ním jako s otevřeným materiálem, ne jako s neproběhlým.` : sessionNotHeld ? "Plánované terapeutické Sezení klinicky neproběhlo, případně odpovídá technickému testu; z něj proto nevyvozuji nové klinické poznatky." : sess?.held ? `${recencyIntro(sess, "session")} Má doložený klinický vstup a může sloužit jako samostatný zdroj pro dnešní plán.` : "O samostatném včerejším Sezení nemám dost dat.",
+    pendingOnlySentence
+      ? pendingOnlySentence
+      : openedPartialSession ? `${recencyIntro(sess, "session")} Bylo otevřené nebo částečně rozpracované a čeká na plné dovyhodnocení; zacházím s ním jako s otevřeným materiálem, ne jako s neproběhlým.` : sessionNotHeld ? "Plánované terapeutické Sezení klinicky neproběhlo, případně odpovídá technickému testu; z něj proto nevyvozuji nové klinické poznatky." : sess?.held ? `${recencyIntro(sess, "session")} Má doložený klinický vstup a může sloužit jako samostatný zdroj pro dnešní plán.` : "O samostatném včerejším Sezení nemám dost dat.",
     "Bezpečný závěr pro dnešek: držet se doloženého materiálu, oddělit jisté poznatky od hypotéz a nejprve ověřit aktuální tělesnou i emoční dostupnost části.",
   ].join("\n\n");
 }
