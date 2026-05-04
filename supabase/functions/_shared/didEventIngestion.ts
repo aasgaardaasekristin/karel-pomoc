@@ -321,7 +321,10 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
     include_in_daily_briefing: isClinical || isRisk || isTask || isPlan || isTechnical || isFactualCorrection || isHanaDidRelevantHit,
     include_in_next_session_plan: isClinical || isRisk || isPlan || isFactualCorrection || isHanaDidRelevantHit,
     include_in_next_playroom_plan: isChild || isFactualCorrection,
-    write_to_drive: sourceKind === "hana_personal_ingestion" ? false : (isRisk || isPlan || sourceKind === "briefing_ask_resolution" || sourceKind === "deliberation_event"),
+    // P27 D1: allow safe summaries from Hana personal ingestion to reach Drive (raw text never leaves origin thread).
+    write_to_drive: (sourceKind === "hana_personal_ingestion")
+      ? (isHanaDidRelevantHit || isFactualCorrection)
+      : (isRisk || isPlan || sourceKind === "briefing_ask_resolution" || sourceKind === "deliberation_event"),
     related_part_name: inferredPart,
     urgency: isRisk ? "crisis" : isTask || isPlan || isTechnical ? "high" : isClinical ? "normal" : "low",
     clinical_relevance: isClinical || isChild || isRisk,
