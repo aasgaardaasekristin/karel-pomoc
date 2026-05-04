@@ -170,10 +170,11 @@ serve(async (req) => {
 
     // Create cycle record
     // Find a user_id for the cycle record
+    // P18: never fall back to "any thread"; use canonical resolver.
+    const { resolveCanonicalDidUserIdOrNull } = await import("../_shared/canonicalUserResolver.ts");
     let userId = requesterUserId;
     if (!userId) {
-      const { data: anyThread } = await supabaseAdmin.from("did_threads").select("user_id").limit(1);
-      userId = anyThread?.[0]?.user_id || null;
+      userId = await resolveCanonicalDidUserIdOrNull(supabaseAdmin);
     }
 
     const { data: cycleRow } = await supabaseAdmin.from("did_update_cycles").insert({

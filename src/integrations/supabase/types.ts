@@ -3058,6 +3058,42 @@ export type Database = {
         }
         Relationships: []
       }
+      did_p18_quarantine_audit: {
+        Row: {
+          actor: string
+          before_image: Json
+          canonical_user_id: string
+          id: string
+          quarantined_at: string
+          reason: string
+          row_id: string
+          table_name: string
+          wrong_user_id: string
+        }
+        Insert: {
+          actor?: string
+          before_image: Json
+          canonical_user_id: string
+          id?: string
+          quarantined_at?: string
+          reason: string
+          row_id: string
+          table_name: string
+          wrong_user_id: string
+        }
+        Update: {
+          actor?: string
+          before_image?: Json
+          canonical_user_id?: string
+          id?: string
+          quarantined_at?: string
+          reason?: string
+          row_id?: string
+          table_name?: string
+          wrong_user_id?: string
+        }
+        Relationships: []
+      }
       did_pantry_packages: {
         Row: {
           content_md: string

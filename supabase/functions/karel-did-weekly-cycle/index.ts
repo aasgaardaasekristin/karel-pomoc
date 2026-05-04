@@ -1293,10 +1293,11 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, supabaseKey);
 
+    // P18: never fall back to "latest thread user"; use canonical resolver.
+    const { resolveCanonicalDidUserIdOrNull } = await import("../_shared/canonicalUserResolver.ts");
     let userId = requesterUserId;
     if (!userId) {
-      const { data: anyUser } = await sb.from("did_threads").select("user_id").order("last_activity_at", { ascending: false }).limit(1).maybeSingle();
-      userId = anyUser?.user_id ?? null;
+      userId = await resolveCanonicalDidUserIdOrNull(sb);
     }
     if (!userId) throw new Error("No user found");
 

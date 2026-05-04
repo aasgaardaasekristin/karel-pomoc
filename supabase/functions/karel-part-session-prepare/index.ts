@@ -391,7 +391,9 @@ function jsonRes(body: Record<string, unknown>, status = 200) {
 async function ensurePlayroomProgress(sb: any, args: { userId: string | null; planId: string; partName: string; playroomPlan: any }) {
   const steps = Array.isArray(args.playroomPlan?.therapeutic_program) ? args.playroomPlan.therapeutic_program : [];
   if (!steps.length) return;
-  const userId = args.userId ?? (await sb.from("did_threads").select("user_id").not("user_id", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle()).data?.user_id ?? null;
+  // P18: never fall back to "latest thread user"; use canonical resolver.
+  const { resolveCanonicalDidUserIdOrNull } = await import("../_shared/canonicalUserResolver.ts");
+  const userId = args.userId ?? (await resolveCanonicalDidUserIdOrNull(sb));
   if (!userId) return;
   await sb.from("did_live_session_progress").upsert({
     user_id: userId,

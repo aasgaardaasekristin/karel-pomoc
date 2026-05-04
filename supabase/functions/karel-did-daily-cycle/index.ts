@@ -2461,10 +2461,10 @@ serve(async (req) => {
     } catch (e) {
       console.warn("[daily-cycle] canonical scope rpc failed, falling back:", (e as Error)?.message);
     }
-    if (!resolvedUserId) {
-      const { data: anyThread } = await tmpSb.from("did_threads").select("user_id").limit(1).single();
-      resolvedUserId = anyThread?.user_id || null;
-    }
+    // P18: hard guard — no "any thread" fallback. Canonical RPC already
+    // attempted above; if it failed, leave resolvedUserId null so the
+    // pipeline fails closed instead of silently switching scope.
+
   }
 
   // === DEDUP: Skip if a successful daily cycle completed in last 3 hours ===

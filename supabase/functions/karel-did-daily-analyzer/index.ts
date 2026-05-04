@@ -149,8 +149,9 @@ serve(async (req) => {
       userId = user?.id || null;
     }
     if (!userId) {
-      const { data: fallback } = await sb.from("did_part_registry").select("user_id").limit(1).single();
-      userId = fallback?.user_id || null;
+      // P18: never fall back to "first part"; use canonical resolver.
+      const { resolveCanonicalDidUserIdOrNull } = await import("../_shared/canonicalUserResolver.ts");
+      userId = await resolveCanonicalDidUserIdOrNull(sb);
     }
     if (!userId) {
       return new Response(JSON.stringify({ error: "No user found" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
