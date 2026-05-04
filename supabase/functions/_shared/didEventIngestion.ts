@@ -433,7 +433,11 @@ function buildSummary(event: NormalizedDidEvent, classification: DidEventClassif
   const part = classification.related_part_name || event.related_part_name;
   const prefix = part ? `${part}: ` : "";
   if (classification.evidence_level === "therapist_factual_correction") {
-    return `${prefix}faktická korekce reality má přednost před původním plánem; držet evidence discipline.`.slice(0, 1000);
+    return `${prefix}faktick\u00e1 korekce reality m\u00e1 p\u0159ednost p\u0159ed p\u016fvodn\u00edm pl\u00e1nem; dr\u017eet evidence discipline.`.slice(0, 1000);
+  }
+  // P21 — Hana/Personal: NEVER include raw intimate text in summary
+  if (classification.evidence_level === "hana_personal_did_relevant") {
+    return (classification.clinical_implication || classification.operational_implication || `${prefix}DID-relevantn\u00ed bod z osobn\u00edho vl\u00e1kna; bez raw textu.`).slice(0, 1000);
   }
   return `${prefix}${classification.operational_implication || classification.clinical_implication || event.raw_excerpt}`.slice(0, 1000);
 }
