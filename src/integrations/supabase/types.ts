@@ -3121,6 +3121,30 @@ export type Database = {
         }
         Relationships: []
       }
+      did_p25_session_evaluate_fixture_audit: {
+        Row: {
+          before_image: Json
+          expired_at: string
+          id: string
+          job_id: string
+          reason: string
+        }
+        Insert: {
+          before_image: Json
+          expired_at?: string
+          id?: string
+          job_id: string
+          reason: string
+        }
+        Update: {
+          before_image?: Json
+          expired_at?: string
+          id?: string
+          job_id?: string
+          reason?: string
+        }
+        Relationships: []
+      }
       did_pantry_packages: {
         Row: {
           content_md: string
