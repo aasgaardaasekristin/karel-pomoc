@@ -32,6 +32,12 @@ import { summarizeToolboxForPrompt } from "../_shared/therapeuticToolbox.ts";
 import { runGlobalDidEventIngestion } from "../_shared/didEventIngestion.ts";
 import { requireAuth } from "../_shared/auth.ts";
 import { buildSourceCoverageSummary, buildDriveStatus } from "../_shared/sourceCoverage.ts";
+import {
+  classifyClinicalActivityEvidence,
+  computeLastRealSession,
+  detectEvidenceGuardViolations,
+  type ClinicalActivityEvidence,
+} from "../_shared/clinicalActivityEvidence.ts";
 
 /**
  * SLA generation methods (added 2026-04-30, morning_operational_integrity_e2e):
@@ -699,6 +705,28 @@ function buildYesterdaySessionReview(context: any) {
   const reviews = Array.isArray(context?.yesterday_session_reviews) ? context.yesterday_session_reviews : [];
   const sessionReviews = reviews.filter((r: any) => String(r?.mode ?? "session") !== "playroom");
   const review = sessionReviews[0] ?? null;
+  const yesterdayPlans = Array.isArray(context?.yesterday_plans)
+    ? context.yesterday_plans.filter((p: any) => String(p?.mode ?? "session") !== "playroom")
+    : [];
+  const yesterdayPartSessions = Array.isArray(context?.yesterday_sessions) ? context.yesterday_sessions : [];
+
+  // P20: centrální klasifikace klinické aktivity (pending plan vs. real session)
+  const evidence: ClinicalActivityEvidence = classifyClinicalActivityEvidence({
+    session_reviews: sessionReviews.map((r: any) => ({
+      id: r?.id, status: r?.status, part_name: r?.part_name, session_date: r?.session_date,
+    })),
+    part_sessions: yesterdayPartSessions.map((s: any) => ({
+      id: s?.id, part_name: s?.part_name, session_date: s?.session_date,
+    })),
+    live_progress: [], // briefing context nenese live progress samostatně; review evidence_items to pokrývají
+    plans: yesterdayPlans.map((p: any) => ({
+      id: p?.id, selected_part: p?.selected_part, status: p?.status,
+      lifecycle_status: p?.lifecycle_status, program_status: p?.program_status,
+      approved_at: p?.approved_at, started_at: p?.started_at, completed_at: p?.completed_at,
+      generated_by: p?.generated_by,
+    })),
+  });
+
   if (review) {
     const analysis = review.analysis_json && typeof review.analysis_json === "object" ? review.analysis_json : {};
     const evidenceBasis = reviewEvidenceBasis(review);
@@ -748,26 +776,39 @@ function buildYesterdaySessionReview(context: any) {
       source_of_truth_status: review.source_of_truth_status ?? "pending_drive_sync",
       evidence_basis: evidenceBasis,
       evidence_limitations: buildBriefingEvidenceLimitations(review),
+      // P20:
+      evidence,
     };
   }
-  const activity = Array.isArray(context?.yesterday_plans) ? context.yesterday_plans.find((p: any) => String(p?.mode ?? "session") !== "playroom") : null;
-  if (!activity) return { exists: false, status: "none", ...recencyFields(null, "session", context?.today) };
+  const activity = yesterdayPlans[0] ?? null;
+  if (!activity) return { exists: false, status: "none", ...recencyFields(null, "session", context?.today), evidence };
   const recency = recencyFields(activity.plan_date ?? activity.session_date ?? activity.completed_at ?? activity.created_at, "session", context?.today);
+  // P20: pending plan už nikdy nesmí lhát "Proběhlo nebo bylo zahájeno".
+  // Visible builder čte `evidence.can_claim_started`. `held` je tvrdě false,
+  // status reflektuje skutečnou kategorii.
+  const partLabel = activity.selected_part ?? activity.part_name ?? "části";
   return {
     exists: true,
     ...recency,
     held: false,
-    status: "pending_review",
-    fallback_reason: "session_activity_exists_without_review",
+    status: evidence.category === "approved_plan_not_started" ? "approved_not_started" : "pending_generated_plan",
+    fallback_reason: evidence.category === "approved_plan_not_started"
+      ? "approved_plan_not_started"
+      : "pending_generated_plan_only",
     part_name: activity.selected_part ?? activity.part_name ?? null,
     plan_id: activity.id ?? null,
     thread_id: null,
     evidence_count: 1,
-    practical_report_text: `${recency.visible_sentence_prefix} Proběhlo nebo bylo zahájeno, ale čeká na vyhodnocení. Karlův přehled ho proto bere jako otevřený materiál, ne jako hotový klinický závěr.`,
+    practical_report_text: evidence.category === "approved_plan_not_started"
+      ? `${recency.visible_sentence_prefix} Pro ${partLabel} byl schválený plán, ale Sezení nebylo spuštěno. Z toho nedělám klinický závěr.`
+      : `${recency.visible_sentence_prefix} Pro ${partLabel} existoval pouze automaticky vygenerovaný návrh, který nebyl schválen ani spuštěn. Z toho nedělám klinický závěr.`,
     detailed_analysis_text: "",
     team_closing_text: "",
     drive_sync_status: "not_queued",
     source_of_truth_status: "pending_drive_sync",
+    evidence_basis: "planned_only",
+    // P20:
+    evidence,
   };
 }
 
@@ -1495,38 +1536,83 @@ function buildVisibleClinicalMorningBriefing(payload: any, context: any): string
     : payload?.yesterday_session_review?.exists
     ? payload.yesterday_session_review
     : null;
+
+  // P20: Tvrdě čteme evidence categorii. NIKDY nestavíme silné claim
+  // ("zahájené Sezení", "klinický vstup") na slabém důkazu (pending plán).
+  const evidence: ClinicalActivityEvidence | null = (sess?.evidence as ClinicalActivityEvidence) ?? null;
+  const canClaimStarted = evidence?.can_claim_started === true;
+  const canClaimClinicalInput = evidence?.can_claim_clinical_input === true;
+
   const partRaw = sess?.part_name || payload?.proposed_session?.part_name || "";
   const part = capitalizePartName(partRaw || "část");
   const partInst = partInstrumental(partRaw);
   const partAcc = partAccusative(partRaw);
   const dateStr = formatClinicalDate(sess?.source_date_iso || sess?.session_date_iso || context?.yesterday || null);
-  const openedPartial = sess?.exists && isOpenedPartialSessionReview(sess);
+  const openedPartial = canClaimStarted && sess?.exists && isOpenedPartialSessionReview(sess);
   const sessionRecencyLabel = sess?.is_yesterday
     ? "včerejší"
     : sess?.days_since_today === 2
     ? "předevčerejší"
     : "poslední doložené";
 
+  // P20: last_real_session — pravdivá kotva i když včera nic neproběhlo
+  const lastReal = context?.last_real_session && context.last_real_session.found
+    ? context.last_real_session
+    : null;
+  const lastRealLine = lastReal
+    ? `Poslední skutečně doložené Sezení mám zaznamenané s ${partInstrumental(String(lastReal.part_name || ""))}${lastReal.session_date ? ` z ${formatClinicalDate(lastReal.session_date)}` : ""}.`
+    : "";
+
   const greeting = "Dobré ráno, Haničko a Káťo.";
-  const mainAnchor = sess?.exists
-    ? `Dnešní přehled navazuje hlavně na ${sessionRecencyLabel} otevřené Sezení s ${partInst}${dateStr ? ` z ${dateStr}` : ""}. Záznam ukazuje, že práce byla zahájená${openedPartial ? " a částečně rozpracovaná" : ""}, ale ještě z ní nemáme uzavřený klinický závěr. Nedělám z ní víc, než opravdu víme.`
-    : `Pro dnešek nemám čerstvé klinické sezení, ze kterého bych vycházel. Beru to vážně a nebudu předbíhat k závěrům, které kluci sami nepotvrdili.`;
-  const certainty = sess?.exists
+
+  // P20: mainAnchor — tři větve podle skutečné kategorie důkazu
+  let mainAnchor: string;
+  if (canClaimStarted) {
+    mainAnchor = `Dnešní přehled navazuje na ${sessionRecencyLabel} otevřené Sezení s ${partInst}${dateStr ? ` z ${dateStr}` : ""}. Záznam ukazuje, že práce byla zahájená${openedPartial ? " a částečně rozpracovaná" : ""}, ale ještě z ní nemáme uzavřený klinický závěr. Nedělám z ní víc, než opravdu víme.`;
+  } else if (sess?.exists && evidence?.category === "approved_plan_not_started") {
+    mainAnchor = `Pro ${partInst || "vybranou část"}${dateStr ? ` (${dateStr})` : ""} byl schválený plán, ale Sezení nebylo spuštěno. Z toho nedělám klinický závěr.${lastRealLine ? " " + lastRealLine : ""}`;
+  } else if (sess?.exists && evidence?.category === "pending_generated_plan") {
+    mainAnchor = `Pro ${partInst || "vybranou část"}${dateStr ? ` (${dateStr})` : ""} existoval pouze automaticky vygenerovaný návrh plánu, který nebyl schválen ani spuštěn. Žádné Sezení neproběhlo, žádný klinický vstup z toho nedělám.${lastRealLine ? " " + lastRealLine : ""}`;
+  } else {
+    mainAnchor = `Včera v DID režimu neproběhlo žádné doložené Sezení ani Herna. Nebudu předbíhat k závěrům, které kluci sami nepotvrdili.${lastRealLine ? " " + lastRealLine : ""}`;
+  }
+
+  // P20: certainty větev musí respektovat can_claim_clinical_input
+  const certainty = canClaimClinicalInput
     ? `Víme jistě, že${dateStr ? ` ${dateStr}` : ""} bylo s ${partInst} zahájené Sezení a že${openedPartial ? " zůstalo otevřené" : " je doložené jako klinický vstup"}. To je opora, ze které dnes můžu vyjít.`
+    : canClaimStarted
+    ? `Víme jistě, že${dateStr ? ` ${dateStr}` : ""} bylo s ${partInst} zahájené Sezení, ale ještě nemáme uzavřený klinický závěr. Beru to opatrně.`
     : `Víme jistě jen to, co máme přesně datované. Tam, kde nemáme doložený materiál, nedoplňuji závěry za kluky.`;
+
   const unknown = openedPartial
     ? `Zatím nevíme, jak je na tom ${part} dnes v těle a v emoci, jestli je dostupný pro kontakt a co si z otevřené práce odnáší jako pravdu pro dnešek.`
-    : `Zatím nevíme, kdo z kluků je dnes opravdu dostupný a v jaké náladě nám to ukáže až první kontakt.`;
-  const todayMeans = sess?.exists
-    ? `Pro dnešek z toho plyne jednoduchý první krok. Nezačínat výkladem ani novým úkolem, ale nejdřív ověřit, jak je na tom ${part} dnes v těle, v emoci a v ochotě být v kontaktu. Pokud je dostupný, můžeme na ${partAcc} navázat velmi malým krokem. Pokud je unavený nebo stažený, bude správné zůstat u stabilizace.`
-    : `Pro dnešek z toho plyne držet bezpečný práh: krátké ověření těla, emoce a kontaktu, žádné nové téma, dokud kluci sami neukážou, na co je prostor.`;
-  const forHana = `Haničko, pro tebe je dnes hlavní držet otázky krátké a bezpečné a hlídat tělesné a emoční stop signály.`;
-  const forKata = sess?.exists
-    ? `Káťo, prosím hlídej, aby se z otevřeného Sezení nedělal hotový závěr dřív, než kluci sami ukážou, co je pro ně pravda dnes.`
-    : `Káťo, prosím hlídej, aby se starší záznamy nepoužívaly jako dnešní závěr — pravda dnešního dne musí přijít od kluků.`;
+    : `Zatím nevíme, kdo z kluků je dnes opravdu dostupný a v jaké náladě — to nám ukáže až první kontakt.`;
 
-  const opening = [greeting, mainAnchor, certainty, unknown, todayMeans, forHana, forKata].join("\n\n");
-  return ensureKarelFirstPersonOpening(opening, opening);
+  const todayMeans = canClaimStarted
+    ? `Pro dnešek z toho plyne jednoduchý první krok. Nezačínat výkladem ani novým úkolem, ale nejdřív ověřit, jak je na tom ${part} dnes v těle, v emoci a v ochotě být v kontaktu. Pokud je dostupný, můžeme na ${partAcc} navázat velmi malým krokem. Pokud je unavený nebo stažený, bude správné zůstat u stabilizace.`
+    : `Pro dnešek z toho plyne držet bezpečný práh: krátké ověření těla, emoce a kontaktu, žádné nové téma, dokud kluci sami neukážou, na co je prostor. Návrh dnešní části je pracovní hypotéza, kterou musí potvrdit Hanička s Káťou.`;
+
+  const forHana = `Haničko, pro tebe je dnes hlavní držet otázky krátké a bezpečné a hlídat tělesné a emoční stop signály.`;
+  const forKata = canClaimStarted
+    ? `Káťo, prosím hlídej, aby se z otevřeného Sezení nedělal hotový závěr dřív, než kluci sami ukážou, co je pro ně pravda dnes.`
+    : `Káťo, prosím hlídej, aby se starší záznamy nebo automatické návrhy plánu nepoužívaly jako dnešní závěr — pravda dnešního dne musí přijít od kluků.`;
+
+  let opening = [greeting, mainAnchor, certainty, unknown, todayMeans, forHana, forKata].join("\n\n");
+  opening = ensureKarelFirstPersonOpening(opening, opening);
+
+  // P20: contextual evidence guard — fail-loud, pokud i přes tuto logiku
+  // visible text obsahuje started-claim phrase při slabém důkazu.
+  if (evidence) {
+    const violations = detectEvidenceGuardViolations(opening, evidence);
+    if (violations.length > 0) {
+      console.warn("[P20] evidence guard violations in visible briefing:", JSON.stringify(violations));
+      try {
+        (payload as any).p20_evidence_guard_violations = violations;
+      } catch (_e) { /* non-fatal */ }
+    }
+  }
+
+  return opening;
 }
 
 /** Last-resort human clinical repair: filter audit sentences, dedupe, fix grammar. */
@@ -1960,6 +2046,40 @@ async function gatherContext(supabase: any, proofReviewId?: string | null, reque
     ? yesterdaySessions.filter((s: any) => clinicalReviewParts.has(String(s.part_name ?? "").toLowerCase()))
     : [];
 
+  // P20: last real session (across all time) — POUZE z reálných tabulek,
+  // nikdy z pending generated plans. Slouží buildru visible textu, aby
+  // dokázal pravdivě říct "Poslední skutečně doložené Sezení bylo s …".
+  let lastRealSession: any = { found: false };
+  try {
+    const [lastReviewsRes, lastPartSessionsRes, lastLiveProgressRes] = await Promise.all([
+      supabase
+        .from("did_session_reviews")
+        .select("id, part_name, session_date, status, created_at")
+        .neq("mode", "playroom")
+        .eq("is_current", true)
+        .in("status", ["analyzed", "completed"])
+        .order("session_date", { ascending: false })
+        .limit(5),
+      supabase
+        .from("did_part_sessions")
+        .select("id, part_name, session_date, created_at")
+        .order("session_date", { ascending: false })
+        .limit(5),
+      supabase
+        .from("did_live_session_progress")
+        .select("id, part_name, completed_blocks, finalized_at, last_activity_at, created_at")
+        .order("last_activity_at", { ascending: false, nullsFirst: false })
+        .limit(5),
+    ]);
+    lastRealSession = computeLastRealSession({
+      session_reviews: lastReviewsRes.data ?? [],
+      part_sessions: lastPartSessionsRes.data ?? [],
+      live_progress: lastLiveProgressRes.data ?? [],
+    });
+  } catch (e) {
+    console.warn("[P20] last_real_session fetch failed (non-fatal):", e);
+  }
+
   return {
     today: pragueDayISO(),
     yesterday: yesterdayISO,
@@ -1990,6 +2110,7 @@ async function gatherContext(supabase: any, proofReviewId?: string | null, reque
     yesterday_sessions: safeYesterdaySessions,
     yesterday_plans: yesterdayPlans,
     yesterday_session_reviews: yesterdaySessionReviews,
+    last_real_session: lastRealSession,
     yesterday_playroom_reviews: yesterdayPlayroomReviews ?? [],
     yesterday_playroom_thread: yesterdayPlayroomThread ?? null,
     pantry_a: pantryA,
