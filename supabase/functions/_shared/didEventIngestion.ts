@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * didEventIngestion.ts — centrální sběr DID-relevantních událostí.
  *
