@@ -2589,6 +2589,31 @@ Včera Herna neproběhla. Pokud existuje starší Herna, smíš ji označit jen 
 
 `;
 
+    // ── P21: Hana/Personal DID ingestion status block (transparent in briefing) ──
+    try {
+      const hanaImpls = Array.isArray(payload.hana_personal_did_relevant_implications)
+        ? payload.hana_personal_did_relevant_implications
+        : [];
+      const usedCount = hanaImpls.length;
+      const partsMentioned = Array.from(new Set(hanaImpls
+        .map((e: any) => e?.related_part_name)
+        .filter((s: any) => typeof s === "string" && s.length > 0)));
+      let statusVal: "used" | "not_applicable_for_that_day" = usedCount > 0 ? "used" : "not_applicable_for_that_day";
+      const safeSummary = usedCount > 0
+        ? `Z osobního vlákna Hany se objevila DID-relevantní zmínka části ${partsMentioned.join(", ") || "(neurčeno)"}. Beru ji jen jako bezpečnou implikaci, žádný raw intimní text se do přehledu nepřenáší.`
+        : `Z osobního vlákna Hany nebyl pro DID použit žádný relevantní obsah.`;
+      payload.hana_personal_did_ingestion = {
+        status: statusVal,
+        used_implications_count: usedCount,
+        parts_mentioned: partsMentioned,
+        safe_summary_text: safeSummary,
+        raw_text_leaked: false,
+        source: "hana_personal_ingestion",
+      };
+    } catch (e) {
+      console.warn("[P21] hana_personal_did_ingestion block failed (non-fatal):", e);
+    }
+
 
   const userPrompt = `KONTEXT PRO BRIEFING (${context.today}):
 
