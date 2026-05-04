@@ -21,10 +21,22 @@ Deno.serve(async (req) => {
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
+    // Verify cron-secret via RPC (P14B) — header presence alone is not sufficient.
+    let isCronSecretCall = false;
+    if (cronSecretHeader) {
+      try {
+        const { data: ok } = await sb.rpc("verify_karel_cron_secret", { p_secret: cronSecretHeader });
+        isCronSecretCall = ok === true;
+      } catch (e) {
+        console.warn("[event-ingest] cron secret rpc failed:", (e as Error)?.message);
+      }
+    }
+    const isInternalCall = isServiceCall || isCronSecretCall;
+
     // P2 fail-closed canonical scope guard (P23 fix). For both auth and service/cron paths
     // we must resolve to canonical and reject any mismatch.
     let requestedUserId = String(body?.userId ?? "").trim() || null;
-    if (!isServiceCall && !cronSecretHeader) {
+    if (!isInternalCall) {
       const auth = await requireAuth(req);
       if (auth instanceof Response) return auth;
       const authenticatedUserId = String((auth as { user: any }).user?.id ?? "");
@@ -45,6 +57,15 @@ Deno.serve(async (req) => {
         });
       }
       throw e;
+    }
+
+    // Non-destructive health/dryRun short-circuit for P23 canary.
+    if (body?.health === true || body?.dryRun === true) {
+      const { error: dbErr } = await sb.from("did_event_ingestion_log").select("id").limit(1);
+      return new Response(JSON.stringify({
+        ok: true, health: "event-ingest", auth: "ok", db: dbErr ? "error" : "ok",
+        canonical_user_id: canonicalUserId,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const mode = String(body?.mode ?? "last_24h");
