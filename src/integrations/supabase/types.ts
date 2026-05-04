@@ -3094,6 +3094,33 @@ export type Database = {
         }
         Relationships: []
       }
+      did_p23_null_user_quarantine_audit: {
+        Row: {
+          before_image: Json
+          created_at: string
+          id: string
+          quarantine_reason: string
+          row_id: string
+          table_name: string
+        }
+        Insert: {
+          before_image: Json
+          created_at?: string
+          id?: string
+          quarantine_reason: string
+          row_id: string
+          table_name: string
+        }
+        Update: {
+          before_image?: Json
+          created_at?: string
+          id?: string
+          quarantine_reason?: string
+          row_id?: string
+          table_name?: string
+        }
+        Relationships: []
+      }
       did_pantry_packages: {
         Row: {
           content_md: string
