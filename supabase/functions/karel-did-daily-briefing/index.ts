@@ -705,6 +705,28 @@ function buildYesterdaySessionReview(context: any) {
   const reviews = Array.isArray(context?.yesterday_session_reviews) ? context.yesterday_session_reviews : [];
   const sessionReviews = reviews.filter((r: any) => String(r?.mode ?? "session") !== "playroom");
   const review = sessionReviews[0] ?? null;
+  const yesterdayPlans = Array.isArray(context?.yesterday_plans)
+    ? context.yesterday_plans.filter((p: any) => String(p?.mode ?? "session") !== "playroom")
+    : [];
+  const yesterdayPartSessions = Array.isArray(context?.yesterday_sessions) ? context.yesterday_sessions : [];
+
+  // P20: centrální klasifikace klinické aktivity (pending plan vs. real session)
+  const evidence: ClinicalActivityEvidence = classifyClinicalActivityEvidence({
+    session_reviews: sessionReviews.map((r: any) => ({
+      id: r?.id, status: r?.status, part_name: r?.part_name, session_date: r?.session_date,
+    })),
+    part_sessions: yesterdayPartSessions.map((s: any) => ({
+      id: s?.id, part_name: s?.part_name, session_date: s?.session_date,
+    })),
+    live_progress: [], // briefing context nenese live progress samostatně; review evidence_items to pokrývají
+    plans: yesterdayPlans.map((p: any) => ({
+      id: p?.id, selected_part: p?.selected_part, status: p?.status,
+      lifecycle_status: p?.lifecycle_status, program_status: p?.program_status,
+      approved_at: p?.approved_at, started_at: p?.started_at, completed_at: p?.completed_at,
+      generated_by: p?.generated_by,
+    })),
+  });
+
   if (review) {
     const analysis = review.analysis_json && typeof review.analysis_json === "object" ? review.analysis_json : {};
     const evidenceBasis = reviewEvidenceBasis(review);
@@ -754,26 +776,39 @@ function buildYesterdaySessionReview(context: any) {
       source_of_truth_status: review.source_of_truth_status ?? "pending_drive_sync",
       evidence_basis: evidenceBasis,
       evidence_limitations: buildBriefingEvidenceLimitations(review),
+      // P20:
+      evidence,
     };
   }
-  const activity = Array.isArray(context?.yesterday_plans) ? context.yesterday_plans.find((p: any) => String(p?.mode ?? "session") !== "playroom") : null;
-  if (!activity) return { exists: false, status: "none", ...recencyFields(null, "session", context?.today) };
+  const activity = yesterdayPlans[0] ?? null;
+  if (!activity) return { exists: false, status: "none", ...recencyFields(null, "session", context?.today), evidence };
   const recency = recencyFields(activity.plan_date ?? activity.session_date ?? activity.completed_at ?? activity.created_at, "session", context?.today);
+  // P20: pending plan už nikdy nesmí lhát "Proběhlo nebo bylo zahájeno".
+  // Visible builder čte `evidence.can_claim_started`. `held` je tvrdě false,
+  // status reflektuje skutečnou kategorii.
+  const partLabel = activity.selected_part ?? activity.part_name ?? "části";
   return {
     exists: true,
     ...recency,
     held: false,
-    status: "pending_review",
-    fallback_reason: "session_activity_exists_without_review",
+    status: evidence.category === "approved_plan_not_started" ? "approved_not_started" : "pending_generated_plan",
+    fallback_reason: evidence.category === "approved_plan_not_started"
+      ? "approved_plan_not_started"
+      : "pending_generated_plan_only",
     part_name: activity.selected_part ?? activity.part_name ?? null,
     plan_id: activity.id ?? null,
     thread_id: null,
     evidence_count: 1,
-    practical_report_text: `${recency.visible_sentence_prefix} Proběhlo nebo bylo zahájeno, ale čeká na vyhodnocení. Karlův přehled ho proto bere jako otevřený materiál, ne jako hotový klinický závěr.`,
+    practical_report_text: evidence.category === "approved_plan_not_started"
+      ? `${recency.visible_sentence_prefix} Pro ${partLabel} byl schválený plán, ale Sezení nebylo spuštěno. Z toho nedělám klinický závěr.`
+      : `${recency.visible_sentence_prefix} Pro ${partLabel} existoval pouze automaticky vygenerovaný návrh, který nebyl schválen ani spuštěn. Z toho nedělám klinický závěr.`,
     detailed_analysis_text: "",
     team_closing_text: "",
     drive_sync_status: "not_queued",
     source_of_truth_status: "pending_drive_sync",
+    evidence_basis: "planned_only",
+    // P20:
+    evidence,
   };
 }
 
