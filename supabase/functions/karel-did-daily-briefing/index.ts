@@ -1966,6 +1966,40 @@ async function gatherContext(supabase: any, proofReviewId?: string | null, reque
     ? yesterdaySessions.filter((s: any) => clinicalReviewParts.has(String(s.part_name ?? "").toLowerCase()))
     : [];
 
+  // P20: last real session (across all time) — POUZE z reálných tabulek,
+  // nikdy z pending generated plans. Slouží buildru visible textu, aby
+  // dokázal pravdivě říct "Poslední skutečně doložené Sezení bylo s …".
+  let lastRealSession: any = { found: false };
+  try {
+    const [lastReviewsRes, lastPartSessionsRes, lastLiveProgressRes] = await Promise.all([
+      supabase
+        .from("did_session_reviews")
+        .select("id, part_name, session_date, status, created_at")
+        .neq("mode", "playroom")
+        .eq("is_current", true)
+        .in("status", ["analyzed", "completed"])
+        .order("session_date", { ascending: false })
+        .limit(5),
+      supabase
+        .from("did_part_sessions")
+        .select("id, part_name, session_date, created_at")
+        .order("session_date", { ascending: false })
+        .limit(5),
+      supabase
+        .from("did_live_session_progress")
+        .select("id, part_name, completed_blocks, finalized_at, last_activity_at, created_at")
+        .order("last_activity_at", { ascending: false, nullsFirst: false })
+        .limit(5),
+    ]);
+    lastRealSession = computeLastRealSession({
+      session_reviews: lastReviewsRes.data ?? [],
+      part_sessions: lastPartSessionsRes.data ?? [],
+      live_progress: lastLiveProgressRes.data ?? [],
+    });
+  } catch (e) {
+    console.warn("[P20] last_real_session fetch failed (non-fatal):", e);
+  }
+
   return {
     today: pragueDayISO(),
     yesterday: yesterdayISO,
