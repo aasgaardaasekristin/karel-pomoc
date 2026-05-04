@@ -93,6 +93,9 @@ verify_jwt = false
 [functions.karel-did-playroom-evaluate]
 verify_jwt = false
 
+[functions.karel-did-event-ingest]
+verify_jwt = false
+
 [functions.karel-did-monthly-cycle]
 verify_jwt = false
 
