@@ -680,7 +680,10 @@ async function collectHanaPersonal(sb: SupabaseClient, userId: string, sinceISO:
   const { data } = await sb.from("karel_hana_conversations").select("id, user_id, messages, sub_mode, thread_label, current_domain, last_activity_at").eq("user_id", userId).gte("last_activity_at", sinceISO).limit(20);
   for (const thread of data ?? []) {
     const messages = Array.isArray((thread as any).messages) ? (thread as any).messages : [];
-    for (const [idx, m] of messages.slice(-12).entries()) {
+    // P21 — scan ALL user messages in the thread (no -12 tail slice). Index is the
+    // ORIGINAL position so source_ref stays stable and matches real order.
+    for (let idx = 0; idx < messages.length; idx++) {
+      const m = messages[idx];
       if (String(m?.role ?? "") !== "user") continue;
       const text = compactText(m?.content, 1000);
       if (!text) continue;
