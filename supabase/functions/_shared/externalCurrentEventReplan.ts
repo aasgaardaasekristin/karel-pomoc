@@ -554,6 +554,17 @@ export async function runExternalCurrentEventReplan(
       },
     };
 
+    // P3: snapshot before destructive external-event replan overwrite.
+    const { error: snapErr } = await admin.rpc("did_snapshot_protected_mutation", {
+      p_table_name: "did_team_deliberations",
+      p_row_id: row.id,
+      p_reason: "external_current_event_replan: invalidate signatures + rewrite program_draft",
+      p_actor: "edge:_shared/externalCurrentEventReplan",
+    });
+    if (snapErr) {
+      console.error("[external-event-replan] snapshot failed for", row.id, snapErr);
+      continue;
+    }
     const { error: updErr } = await admin
       .from("did_team_deliberations")
       .update(updatePatch)
