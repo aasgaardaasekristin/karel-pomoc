@@ -2878,7 +2878,27 @@ Deno.serve(async (req: Request) => {
         .limit(limit);
       if (jobsError) throw jobsError;
       const results: any[] = [];
+      // P25: pre-skip placeholder/non-existent plan_ids that have already been
+      // expired (see did_p25_session_evaluate_fixture_audit). These are stale
+      // test fixtures and must not be retried via self-fetch.
+      const STALE_FIXTURE_PREFIX = "00000000-0000-4000-8000-0000000000";
+      // P25: self-fetch now uses BOTH service-role Authorization and the
+      // X-Karel-Cron-Secret header (whichever the receiver accepts).
+      // KAREL_CRON_SECRET is not guaranteed to be in the function env; the
+      // service-role bearer always is, and the receiver treats it as
+      // service-equivalent (isServiceCall path).
+      const cronSecret = Deno.env.get("KAREL_CRON_SECRET") ?? "";
       for (const job of jobs ?? []) {
+        if (typeof job.plan_id === "string" && job.plan_id.startsWith(STALE_FIXTURE_PREFIX)) {
+          await sb.from("karel_action_jobs").update({
+            status: "failed_expired_fixture",
+            last_error: "[P25_STALE_TEST_FIXTURE_EXPIRED] placeholder plan_id, skipped at worker entry",
+            finished_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }).eq("id", job.id);
+          results.push({ job_id: job.id, status: 200, skipped_expired_fixture: true });
+          continue;
+        }
         const payload = {
           ...(job.result_payload && typeof job.result_payload === "object"
             ? job.result_payload
@@ -2890,20 +2910,15 @@ Deno.serve(async (req: Request) => {
         };
         delete payload.enqueueOnly;
         delete payload.processPendingJobs;
-        // P14C: self-fetch must use the cron-secret path. The platform's signing-keys
-        // gateway rejects legacy SUPABASE_ANON_KEY Bearer tokens with 401, which was the
-        // residual source of post-deploy 401s observed on this function.
-        const cronSecret = Deno.env.get("KAREL_CRON_SECRET") ?? "";
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${serviceKey}`,
+          "X-Karel-Internal-Call": "session-evaluate-worker",
+        };
+        if (cronSecret) headers["X-Karel-Cron-Secret"] = cronSecret;
         const res = await fetch(
           `${supabaseUrl}/functions/v1/karel-did-session-evaluate`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Karel-Cron-Secret": cronSecret,
-            },
-            body: JSON.stringify(payload),
-          },
+          { method: "POST", headers, body: JSON.stringify(payload) },
         );
         const json = await res
           .json()
