@@ -2030,6 +2030,7 @@ async function gatherContext(supabase: any, proofReviewId?: string | null, reque
     yesterday_sessions: safeYesterdaySessions,
     yesterday_plans: yesterdayPlans,
     yesterday_session_reviews: yesterdaySessionReviews,
+    last_real_session: lastRealSession,
     yesterday_playroom_reviews: yesterdayPlayroomReviews ?? [],
     yesterday_playroom_thread: yesterdayPlayroomThread ?? null,
     pantry_a: pantryA,
