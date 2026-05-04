@@ -94,6 +94,19 @@ const FORBIDDEN_TECHNICAL_TERMS: string[] = [
   "db_review",
 ];
 
+// P20: Fráze, které smí být použité POUZE pokud evidence_category je
+// completed_session nebo started_session. Builder nesmí tato slova vložit
+// do visible textu, pokud yesterday_session_review.evidence.can_claim_started=false.
+// Tento seznam je čistě dokumentační — runtime guard sedí v
+// `clinicalActivityEvidence.ts` → `detectEvidenceGuardViolations`.
+export const P20_STARTED_CLAIM_PHRASES_DOCS: string[] = [
+  "zahájené Sezení",
+  "doložené jako klinický vstup",
+  "práce byla zahájená",
+  "včerejší otevřené Sezení",
+  "navazuje hlavně na včerejší otevřené Sezení",
+];
+
 // Kostrbaté / nepřirozené české fráze — strojový překlad / robotická čeština.
 const FORBIDDEN_KOSTRBATE_PHRASES: string[] = [
   "provedení akce",
