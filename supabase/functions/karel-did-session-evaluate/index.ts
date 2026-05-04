@@ -2823,6 +2823,17 @@ Deno.serve(async (req: Request) => {
       }
     }
     const isInternalCall = isServiceCall || isCronSecretCall;
+
+    // P23 canary: non-destructive health/dryRun short-circuit (no planId required).
+    if (body?.health === true || body?.dryRun === true) {
+      const { error: dbErr } = await sb.from("did_session_reviews").select("id").limit(1);
+      return new Response(JSON.stringify({
+        ok: true, health: "session-evaluate",
+        auth: isInternalCall ? "internal" : "user",
+        db: dbErr ? "error" : "ok",
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     let authenticatedUserId: string | null = null;
     if (!isInternalCall) {
       const authResult = await requireAuth(req);
