@@ -386,11 +386,14 @@ export type Database = {
           new_content: string | null
           old_content: string | null
           part_id: string
+          payload: Json
           priority: number
           reason: string | null
           section: string
+          source: string | null
           source_date: string | null
           source_thread_id: string | null
+          status: string
           subsection: string | null
           user_id: string
         }
@@ -402,11 +405,14 @@ export type Database = {
           new_content?: string | null
           old_content?: string | null
           part_id: string
+          payload?: Json
           priority?: number
           reason?: string | null
           section: string
+          source?: string | null
           source_date?: string | null
           source_thread_id?: string | null
+          status?: string
           subsection?: string | null
           user_id?: string
         }
@@ -418,11 +424,14 @@ export type Database = {
           new_content?: string | null
           old_content?: string | null
           part_id?: string
+          payload?: Json
           priority?: number
           reason?: string | null
           section?: string
+          source?: string | null
           source_date?: string | null
           source_thread_id?: string | null
+          status?: string
           subsection?: string | null
           user_id?: string
         }
@@ -4947,6 +4956,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      hana_personal_memory: {
+        Row: {
+          created_at: string
+          did_relevant: boolean
+          do_not_export_raw_text: boolean
+          emotional_state: string | null
+          expires_at: string | null
+          id: string
+          memory_type: string
+          next_opening_hint: string | null
+          private_to_hana: boolean
+          safe_summary: string
+          source_message_refs: string[]
+          source_thread_id: string
+          superseded_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          did_relevant?: boolean
+          do_not_export_raw_text?: boolean
+          emotional_state?: string | null
+          expires_at?: string | null
+          id?: string
+          memory_type: string
+          next_opening_hint?: string | null
+          private_to_hana?: boolean
+          safe_summary: string
+          source_message_refs?: string[]
+          source_thread_id: string
+          superseded_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          did_relevant?: boolean
+          do_not_export_raw_text?: boolean
+          emotional_state?: string | null
+          expires_at?: string | null
+          id?: string
+          memory_type?: string
+          next_opening_hint?: string | null
+          private_to_hana?: boolean
+          safe_summary?: string
+          source_message_refs?: string[]
+          source_thread_id?: string
+          superseded_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       karel_action_jobs: {
         Row: {
