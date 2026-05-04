@@ -1623,6 +1623,13 @@ function buildVisibleClinicalMorningBriefing(payload: any, context: any): string
   let opening = [greeting, mainAnchor, certainty, unknown, todayMeans, forHana, forKata].join("\n\n");
   opening = ensureKarelFirstPersonOpening(opening, opening);
 
+  // P20.2: Hard post-processor — pokud evidence neumožňuje started claim,
+  // přepíše jakoukoliv zakázanou větu na pravdivou. Toto je poslední
+  // pojistka před guardem (pojistka pro AI-generated text v jiných sekcích).
+  if (evidence && !evidence.can_claim_started) {
+    opening = sanitizeStartedClaimText(opening, evidence, partRaw || "vybranou část");
+  }
+
   // P20: contextual evidence guard — fail-loud, pokud i přes tuto logiku
   // visible text obsahuje started-claim phrase při slabém důkazu.
   if (evidence) {
