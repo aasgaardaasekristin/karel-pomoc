@@ -2485,6 +2485,7 @@ serve(async (req) => {
     } catch (e) {
       console.warn("[daily-cycle] canonical guard rpc failed (non-fatal):", (e as Error)?.message);
     }
+  }
 
   // === DEDUP: Skip if a successful daily cycle completed in last 3 hours ===
   // P13: Dedup is now USER-SCOPED. Previously this was global, so a recent
