@@ -21,10 +21,59 @@ type EvidenceLevel =
   | "program_change"
   | "task_note"
   | "personal_context_not_for_DID"
+  | "hana_personal_did_relevant"
   | "technical_event"
   | "hypothesis"
   | "admin_note"
   | "unknown";
+
+// P21 — Hana/Personal cross-surface DID detection
+// Maps free-text part names from Hana threads onto canonical part names.
+const HANA_PART_NAME_PATTERNS: Array<{ re: RegExp; canonical: string }> = [
+  { re: /\b(?:Tundrupek|Tundrupa|Tundrup\w*)\b/i, canonical: "Tundrupek" },
+  { re: /\b(?:Arthur|Artik|Art[ií]k(?:ovi)?|ARTHUR)\b/i, canonical: "Arthur" },
+  { re: /\b(?:Gust[ií]k|gustik)\b/i, canonical: "gustik" },
+  { re: /\b(?:Timmy|Timmi|Timmiho|velryba|velryby|keporak)\b/i, canonical: "Tundrupek" },
+];
+
+// Generic DID-context tokens that, even without a part name, indicate the message
+// belongs in the DID operational pipeline (kluci/části/terapie/herna...).
+const HANA_DID_CONTEXT_RE = /\b(?:kluci|kluk[uy]|d[eě]ti|DID|[čc][aá]st(?:i)?|terapi[ei]|sezen[ií]|hern[aey]|playroom|switch|disociac)\b/i;
+
+// External-reality emotional load tokens (Timmy/velryba) that may impact kluci.
+const HANA_EXTERNAL_REALITY_RE = /\b(?:Timmy|Timmi|Timmiho|velryba|velryby|keporak|transport[uem]?)\b/i;
+
+function detectHanaPart(text: string): string | null {
+  for (const { re, canonical } of HANA_PART_NAME_PATTERNS) {
+    if (re.test(text)) return canonical;
+  }
+  return null;
+}
+
+function isHanaDidRelevant(text: string): boolean {
+  return detectHanaPart(text) !== null || HANA_DID_CONTEXT_RE.test(text);
+}
+
+function buildHanaSafeSummary(text: string, part: string | null, externalReality: boolean): string {
+  const tags: string[] = [];
+  if (part) tags.push(part);
+  if (externalReality) tags.push("vnější realita: zátěž zvířete (Timmy/velryba)");
+  const head = tags.length ? `Z osobního vlákna Hany — ${tags.join(", ")}: ` : "Z osobního vlákna Hany — DID-relevantní bod: ";
+  if (externalReality && (part === "Tundrupek" || /kluci|d[eě]ti/i.test(text))) {
+    return `${head}kluci mohou být emočně zatížení tématem velryby Timmy; ověřit tělo, emoci, bezpečí. Bez raw intimního obsahu.`;
+  }
+  if (part) {
+    return `${head}zaznamenat zmínku části ${part} k operativnímu kontextu; ověřit přímou reakcí části, neuzavírat klinický závěr bez D1/D2 evidence.`;
+  }
+  return `${head}téma DID/kluci se objevilo v osobním vlákně; zařadit do dnešního kontextu, ověřit s částmi.`;
+}
+
+export const __p21_internals = {
+  detectHanaPart,
+  isHanaDidRelevant,
+  buildHanaSafeSummary,
+  HANA_EXTERNAL_REALITY_RE,
+};
 
 const CHILD_CLINICAL_BLOCKED_EVIDENCE = new Set<EvidenceLevel>([
   "therapist_factual_correction",
@@ -142,6 +191,8 @@ function hasAny(text: string, needles: RegExp[]) {
 
 function inferPartName(text: string, fallback?: string | null): string | null {
   if (fallback && fallback.trim()) return fallback.trim();
+  const hana = detectHanaPart(text);
+  if (hana) return hana;
   // P20.2: rozšířeno o Tundrupa, Gust(í|i)k, kluci jako fallback signál
   const match = text.match(/\b(?:Tundrupek|Tundrupa|Timmy|Arthur|Gust(?:í|i)k|Maru(?:š|s)ka|Marianna|Aneta|Eli(?:š|s)ka|Tom(?:á|a)(?:š|s))\b/i);
   return match?.[0] ?? null;
@@ -160,17 +211,27 @@ export function normalizeEvent(input: NormalizedDidEventInput): NormalizedDidEve
 
 export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassification {
   const text = event.raw_excerpt.toLowerCase();
+  const rawText = event.raw_excerpt;
   const sourceKind = event.source_kind;
   const isChild = event.author_role === "child" || sourceKind === "playroom_progress";
   const isRealityOverride = sourceKind === "live_session_reality_override";
   const isTechnical = (sourceKind === "live_session_progress" || isRealityOverride) && hasAny(text, [/replan|override|paused|stop|zastav/i]);
-  const isExternalCurrentEvent = hasAny(text, [/skutečn|skutec|reáln|realn|aktu[aá]ln|zpr[aá]v|odkaz|url|https?:\/\/|čl[aá]nek|clanek|telefon[aá]t|škola|skola|pož[aá]r|pozar|v[aá]lk|útulek|utulek|zdravotn|nemoc|úmrt|umrt|ztr[aá]t|z[aá]chran|instituc|extern/i]);
-  const isFactualCorrection = isRealityOverride || hasAny(text, [/nepochopil\s+jsi\s+situaci|nen[ií]\s+to\s+(?:symbol|projekce|fiktivn)|skutečn|skutec|reáln|realn|faktick|odkaz|url|extern/i]) || (sourceKind === "hana_personal_ingestion" && isExternalCurrentEvent);
-  const isRisk = hasAny(text, [/rizik|kriz|sebepo|ubl[ií]žit|nebezpe|stop sign[aá]l|disoci/i]);
-  const isTask = hasAny(text, [/úkol|ukol|domluv|zařiď|zarid|follow[- ]?up|ověř|over|připomeň|pripomen/i]);
-  const isPlan = hasAny(text, [/pl[aá]n|program|zm[eě]na|příště|priste|sezen[ií]|herna|blok/i]);
-  const isClinical = hasAny(text, [/část|cast|kluci|tundrupek|timmy|arthur|úzkost|uzkost|strach|pl[aá]č|tělo|telo|afekt|reakc|potřeb|potreb|bezpe|ztichl|ramen|nechci být s[aá]m|nechci byt sam/i]);
-  const isAdminOnly = hasAny(text, [/technick|login|tlač[ií]tko|tlacitko|chyba ui|export|soubor/i]) && !isClinical && !isRisk;
+  const isExternalCurrentEvent = hasAny(text, [/skute\u010dn|skutec|re\u00e1ln|realn|aktu[a\u00e1]ln|zpr[a\u00e1]v|odkaz|url|https?:\/\/|\u010dl[a\u00e1]nek|clanek|telefon[a\u00e1]t|\u0161kola|skola|po\u017e[a\u00e1]r|pozar|v[a\u00e1]lk|\u00fatulek|utulek|zdravotn|nemoc|\u00famrt|umrt|ztr[a\u00e1]t|z[a\u00e1]chran|instituc|extern/i]);
+  const isFactualCorrection = isRealityOverride || hasAny(text, [/nepochopil\s+jsi\s+situaci|nen[i\u00ed]\s+to\s+(?:symbol|projekce|fiktivn)|skute\u010dn|skutec|re\u00e1ln|realn|faktick|odkaz|url|extern/i]) || (sourceKind === "hana_personal_ingestion" && isExternalCurrentEvent);
+  const isRisk = hasAny(text, [/rizik|kriz|sebepo|ubl[i\u00ed]\u017eit|nebezpe|stop sign[a\u00e1]l|disoci/i]);
+  const isTask = hasAny(text, [/\u00fakol|ukol|domluv|za\u0159i\u010f|zarid|follow[- ]?up|ov\u011b\u0159|over|p\u0159ipome\u0148|pripomen/i]);
+  const isPlan = hasAny(text, [/pl[a\u00e1]n|program|zm[e\u011b]na|p\u0159\u00ed\u0161t\u011b|priste|sezen[i\u00ed]|herna|blok/i]);
+  const isClinicalBase = hasAny(text, [/\u010d\u00e1st|cast|kluci|tundrupek|timmy|arthur|\u00fazkost|uzkost|strach|pl[a\u00e1]\u010d|t\u011blo|telo|afekt|reakc|pot\u0159eb|potreb|bezpe|ztichl|ramen|nechci b\u00fdt s[a\u00e1]m|nechci byt sam/i]);
+
+  // P21 — Hana/Personal cross-surface DID detection
+  const isHanaSurface = sourceKind === "hana_personal_ingestion";
+  const hanaPart = isHanaSurface ? detectHanaPart(rawText) : null;
+  const hanaDidContext = isHanaSurface && HANA_DID_CONTEXT_RE.test(rawText);
+  const hanaExternalReality = isHanaSurface && HANA_EXTERNAL_REALITY_RE.test(rawText);
+  const isHanaDidRelevantHit = isHanaSurface && (hanaPart !== null || hanaDidContext || hanaExternalReality);
+
+  const isClinical = isClinicalBase || isHanaDidRelevantHit;
+  const isAdminOnly = hasAny(text, [/technick|login|tla\u010d[i\u00ed]tko|tlacitko|chyba ui|export|soubor/i]) && !isClinical && !isRisk;
 
   if (!event.raw_excerpt || event.raw_excerpt.length < 8) {
     return skipped("empty_or_too_short", event);
@@ -184,6 +245,14 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
     };
   }
 
+  // P21 — Hana/Personal without DID keywords stays as personal_context_not_for_DID (skip)
+  if (isHanaSurface && !isHanaDidRelevantHit && !isFactualCorrection && !isRisk && !isTask && !isPlan) {
+    return {
+      ...skipped("hana_personal_no_did_keywords", event),
+      evidence_level: "personal_context_not_for_DID",
+    };
+  }
+
   const evidence_level: EvidenceLevel = event.evidence_level ?? (isChild
     ? "direct_child_evidence"
     : isFactualCorrection
@@ -192,17 +261,21 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
         ? "technical_event"
         : sourceKind === "deliberation_event"
           ? "team_decision"
-          : isPlan
-            ? "program_change"
-            : sourceKind === "therapist_task_note"
-              ? "task_note"
-        : sourceKind === "therapist_note"
-          ? "therapist_observation_D2"
-          : isClinical
-            ? "hypothesis"
-            : sourceKind === "hana_personal_ingestion"
-              ? "personal_context_not_for_DID"
-              : "unknown");
+          : isHanaDidRelevantHit
+            ? "hana_personal_did_relevant"
+            : isPlan
+              ? "program_change"
+              : sourceKind === "therapist_task_note"
+                ? "task_note"
+                : sourceKind === "therapist_note"
+                  ? "therapist_observation_D2"
+                  : isClinical
+                    ? "hypothesis"
+                    : sourceKind === "hana_personal_ingestion"
+                      ? "personal_context_not_for_DID"
+                      : "unknown");
+
+  const inferredPart = hanaPart ?? event.related_part_name ?? null;
 
   const entry_kind: PantryBEntryKind = isRisk
     ? "risk"
@@ -216,36 +289,42 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
 
   const clinicalAllowed = (isClinical || isChild || isRisk) && !CHILD_CLINICAL_BLOCKED_EVIDENCE.has(evidence_level);
   const clinical_implication = isFactualCorrection
-    ? "Faktický rámec od terapeutky/externí informace upravuje práci v realitě, ale není klinickým důkazem o části."
-    : clinicalAllowed
-      ? `Z události plyne pracovní klinický signál k ${event.related_part_name || "části"}; validitu je nutné držet podle zdroje evidence.`
-      : "Událost má hlavně operační význam; klinický závěr nelze bezpečně dělat bez přímé reakce části.";
+    ? "Faktick\u00fd r\u00e1mec od terapeutky/extern\u00ed informace upravuje pr\u00e1ci v realit\u011b, ale nen\u00ed klinick\u00fdm d\u016fkazem o \u010d\u00e1sti."
+    : isHanaDidRelevantHit
+      ? buildHanaSafeSummary(rawText, inferredPart, hanaExternalReality)
+      : clinicalAllowed
+        ? `Z ud\u00e1losti plyne pracovn\u00ed klinick\u00fd sign\u00e1l k ${inferredPart || "\u010d\u00e1sti"}; validitu je nutn\u00e9 dr\u017eet podle zdroje evidence.`
+        : "Ud\u00e1lost m\u00e1 hlavn\u011b opera\u010dn\u00ed v\u00fdznam; klinick\u00fd z\u00e1v\u011br nelze bezpe\u010dn\u011b d\u011blat bez p\u0159\u00edm\u00e9 reakce \u010d\u00e1sti.";
 
   return {
     entry_kind,
     evidence_level,
     clinical_implication,
-    operational_implication: isPlan || isTask || isTechnical
-      ? "Zohlednit v nejbližším plánování, briefingu nebo follow-upu."
-      : "Zařadit do denního kontextu, pokud se potvrdí relevance pro dnešní vedení.",
+    operational_implication: isHanaDidRelevantHit
+      ? `DID-relevantn\u00ed vstup z osobn\u00edho vl\u00e1kna Hany (${inferredPart || "obecn\u00fd kontext"}); za\u0159adit do dne\u0161n\u00edho briefingu jako bezpe\u010dn\u00e9 shrnut\u00ed bez raw textu.`
+      : isPlan || isTask || isTechnical
+        ? "Zohlednit v nejbli\u017e\u0161\u00edm pl\u00e1nov\u00e1n\u00ed, briefingu nebo follow-upu."
+        : "Za\u0159adit do denn\u00edho kontextu, pokud se potvrd\u00ed relevance pro dne\u0161n\u00ed veden\u00ed.",
     recommended_action: isFactualCorrection
-      ? "Držet realitu → emoci → potřebu → bezpečí; zaznamenat vlastní slova a reakci části zvlášť."
+      ? "Dr\u017eet realitu \u2192 emoci \u2192 pot\u0159ebu \u2192 bezpe\u010d\u00ed; zaznamenat vlastn\u00ed slova a reakci \u010d\u00e1sti zvl\u00e1\u0161\u0165."
       : isRisk
-        ? "Označit jako rizikový signál a vyžádat lidskou revizi."
-        : "Použít jako zpracovaný vstup v dalším Karlově přehledu; neukládat surový text mimo původní zdroj.",
+        ? "Ozna\u010dit jako rizikov\u00fd sign\u00e1l a vy\u017e\u00e1dat lidskou revizi."
+        : isHanaDidRelevantHit
+          ? "Pou\u017e\u00edt jako bezpe\u010dn\u00e9 shrnut\u00ed v Karlov\u011b p\u0159ehledu (\u017e\u00e1dn\u00fd raw intimn\u00ed text); ov\u011b\u0159it s \u010d\u00e1stmi p\u0159i nejbli\u017e\u0161\u00ed p\u0159\u00edle\u017eitosti."
+          : "Pou\u017e\u00edt jako zpracovan\u00fd vstup v dal\u0161\u00edm Karlov\u011b p\u0159ehledu; neukl\u00e1dat surov\u00fd text mimo p\u016fvodn\u00ed zdroj.",
     what_not_to_conclude: isFactualCorrection
-      ? "Neuzavírat, že externí událost je projekce nebo diagnostický signál bez přímého materiálu části."
-      : "Nedělat definitivní závěr bez opakované nebo přímé evidence.",
-    action_required: isRisk || isTask || isPlan || isTechnical || isFactualCorrection,
-    requires_human_review: isRisk || evidence_level === "hypothesis",
-    include_in_daily_briefing: isClinical || isRisk || isTask || isPlan || isTechnical || isFactualCorrection,
-    include_in_next_session_plan: isClinical || isRisk || isPlan || isFactualCorrection,
+      ? "Neuzav\u00edrat, \u017ee extern\u00ed ud\u00e1lost je projekce nebo diagnostick\u00fd sign\u00e1l bez p\u0159\u00edm\u00e9ho materi\u00e1lu \u010d\u00e1sti."
+      : "Ned\u011blat definitivn\u00ed z\u00e1v\u011br bez opakovan\u00e9 nebo p\u0159\u00edm\u00e9 evidence.",
+    action_required: isRisk || isTask || isPlan || isTechnical || isFactualCorrection || isHanaDidRelevantHit,
+    requires_human_review: isRisk || evidence_level === "hypothesis" || isHanaDidRelevantHit,
+    include_in_daily_briefing: isClinical || isRisk || isTask || isPlan || isTechnical || isFactualCorrection || isHanaDidRelevantHit,
+    include_in_next_session_plan: isClinical || isRisk || isPlan || isFactualCorrection || isHanaDidRelevantHit,
     include_in_next_playroom_plan: isChild || isFactualCorrection,
     write_to_drive: sourceKind === "hana_personal_ingestion" ? false : (isRisk || isPlan || sourceKind === "briefing_ask_resolution" || sourceKind === "deliberation_event"),
-    related_part_name: event.related_part_name,
+    related_part_name: inferredPart,
     urgency: isRisk ? "crisis" : isTask || isPlan || isTechnical ? "high" : isClinical ? "normal" : "low",
     clinical_relevance: isClinical || isChild || isRisk,
-    operational_relevance: isTask || isPlan || isTechnical || isFactualCorrection || sourceKind === "briefing_ask_resolution",
+    operational_relevance: isTask || isPlan || isTechnical || isFactualCorrection || isHanaDidRelevantHit || sourceKind === "briefing_ask_resolution",
   };
 }
 
@@ -354,7 +433,11 @@ function buildSummary(event: NormalizedDidEvent, classification: DidEventClassif
   const part = classification.related_part_name || event.related_part_name;
   const prefix = part ? `${part}: ` : "";
   if (classification.evidence_level === "therapist_factual_correction") {
-    return `${prefix}faktická korekce reality má přednost před původním plánem; držet evidence discipline.`.slice(0, 1000);
+    return `${prefix}faktick\u00e1 korekce reality m\u00e1 p\u0159ednost p\u0159ed p\u016fvodn\u00edm pl\u00e1nem; dr\u017eet evidence discipline.`.slice(0, 1000);
+  }
+  // P21 — Hana/Personal: NEVER include raw intimate text in summary
+  if (classification.evidence_level === "hana_personal_did_relevant") {
+    return (classification.clinical_implication || classification.operational_implication || `${prefix}DID-relevantn\u00ed bod z osobn\u00edho vl\u00e1kna; bez raw textu.`).slice(0, 1000);
   }
   return `${prefix}${classification.operational_implication || classification.clinical_implication || event.raw_excerpt}`.slice(0, 1000);
 }
