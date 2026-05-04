@@ -579,6 +579,16 @@ function chooseDriveTarget(event: NormalizedDidEvent, classification: DidEventCl
   if (event.source_kind === "deliberation_event" || event.source_kind === "briefing_ask_resolution") return "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG";
   if (event.source_kind === "playroom_progress") return "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG";
   if (event.source_kind === "live_session_progress") return "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG";
+  // P27 D1: Hana personal safe-summary destinations (raw text never written here; only summaries built earlier).
+  if (event.source_kind === "hana_personal_ingestion") {
+    if (classification.evidence_level === "therapist_factual_correction") {
+      return "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG";
+    }
+    if (classification.related_part_name && classification.clinical_relevance) {
+      return `KARTA_${classification.related_part_name.toUpperCase()}`;
+    }
+    return "KARTOTEKA_DID/00_CENTRUM/Bezpecne_DID_poznamky_z_osobniho_vlakna";
+  }
   if (classification.related_part_name && classification.clinical_relevance && classification.evidence_level !== "therapist_factual_correction") return `KARTA_${classification.related_part_name.toUpperCase()}`;
   return "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN";
 }
