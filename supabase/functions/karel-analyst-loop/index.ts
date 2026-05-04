@@ -3,6 +3,7 @@ import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-
 import { getAccessToken, resolveKartotekaRoot, findFolder, findFileByName, readFileContent, overwriteDoc, GDOC_MIME } from "../_shared/driveHelpers.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 import { composeEmptyCanonicalContext } from "../_shared/canonicalSnapshot.ts";
+import { resolveCanonicalDidUserId } from "../_shared/canonicalUserResolver.ts";
 
 // ═══════════════════════════════════════════════════════════════
 // KAREL ANALYST LOOP — v1
@@ -214,14 +215,10 @@ function extractAnalysisJson(text: string): Record<string, unknown> | null {
   return null;
 }
 
-// ── Helper: Resolve user_id from DB (no JWT in cron) ──────────
+// ── Helper: Resolve user_id from canonical scope (P2 fail-closed). ──
+// NEVER returns the 00000000 placeholder. NEVER falls back to "first row".
 async function resolveUserId(sb: SupabaseClient): Promise<string> {
-  const { data } = await sb
-    .from("did_part_registry")
-    .select("user_id")
-    .limit(1)
-    .single();
-  return data?.user_id || "00000000-0000-0000-0000-000000000000";
+  return await resolveCanonicalDidUserId(sb as unknown as { rpc: (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string; code?: string } | null }> }, null);
 }
 
 // ── Helper: Build system prompt ────────────────────────────────
