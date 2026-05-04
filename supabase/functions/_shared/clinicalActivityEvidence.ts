@@ -310,7 +310,55 @@ const STARTED_CLAIM_PHRASES_RE = [
   /práce\s+byla\s+zahájen[áa]/giu,
   /včerejší\s+otevřené\s+Sezení/giu,
   /navazuje\s+hlavně\s+na\s+včerejší\s+otevřené\s+Sezení/giu,
+  // P20.2 — additional started/partial claim phrases observed in incident 2026-05-04
+  /otevřené\s+nebo\s+částečně\s+rozpracované/giu,
+  /částečně\s+rozpracované/giu,
+  /Prob[eě]hlo\s+nebo\s+bylo\s+zahájeno/giu,
+  /neoznačuji\s+ho\s+jako\s+neproběhlé/giu,
+  /Sezení\s+s\s+\S+\s+bylo\s+otevřené/giu,
+  /Sezení\s+bylo\s+otevřené/giu,
+  /čeká\s+na\s+plné\s+dovyhodnocení/giu,
+  /otevřený\s+materiál,\s+ne\s+jako\s+neproběhlé/giu,
 ];
+
+/**
+ * P20.2 — Replace forbidden started-claim sentences in `text` with the
+ * pravdivý ekvivalent given the actual evidence category. Used as a hard
+ * post-processor for visible briefing text.
+ */
+export function sanitizeStartedClaimText(
+  text: string,
+  evidence: ClinicalActivityEvidence,
+  partLabel?: string,
+): string {
+  if (!text || typeof text !== "string") return text;
+  if (evidence.can_claim_started) return text;
+  const part = partLabel || evidence.evidence_summary?.part_name || "vybranou část";
+  const truthful =
+    evidence.category === "approved_plan_not_started"
+      ? `Pro ${part} byl schválený plán, ale Sezení nebylo spuštěno; nedělám z toho klinický závěr.`
+      : evidence.category === "pending_generated_plan"
+      ? `Pro ${part} existoval pouze automaticky vygenerovaný návrh plánu, který nebyl schválen ani spuštěn; nedělám z toho klinický závěr.`
+      : `V DID režimu nemám pro tento den doložené Sezení; nedělám z toho klinický závěr.`;
+
+  // Split into sentences and replace any sentence containing a forbidden phrase
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const out: string[] = [];
+  let replaced = false;
+  for (const s of sentences) {
+    let hit = false;
+    for (const re of STARTED_CLAIM_PHRASES_RE) {
+      re.lastIndex = 0;
+      if (re.test(s)) { hit = true; break; }
+    }
+    if (hit) {
+      if (!replaced) { out.push(truthful); replaced = true; }
+      continue;
+    }
+    out.push(s);
+  }
+  return out.join(" ").replace(/\s{2,}/g, " ").trim();
+}
 
 export function detectEvidenceGuardViolations(
   text: string,
