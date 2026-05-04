@@ -8,7 +8,7 @@
  * source-of-truth.
  */
 
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+type SupabaseClient = any;
 import { encodeGovernedWrite } from "./documentWriteEnvelope.ts";
 import { appendPantryB, type PantryBEntryKind, type PantryBSourceKind, type PantryBDestination } from "./pantryB.ts";
 
