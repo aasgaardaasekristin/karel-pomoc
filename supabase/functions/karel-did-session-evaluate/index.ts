@@ -2891,7 +2891,7 @@ Deno.serve(async (req: Request) => {
       for (const job of jobs ?? []) {
         if (typeof job.plan_id === "string" && job.plan_id.startsWith(STALE_FIXTURE_PREFIX)) {
           await sb.from("karel_action_jobs").update({
-            status: "failed_expired_fixture",
+            status: "failed_permanent",
             last_error: "[P25_STALE_TEST_FIXTURE_EXPIRED] placeholder plan_id, skipped at worker entry",
             finished_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
