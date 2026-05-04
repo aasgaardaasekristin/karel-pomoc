@@ -3587,6 +3587,17 @@ Deno.serve(async (req) => {
           checked_at: new Date().toISOString(),
         };
       }
+      // P20.2: propagate clinical truth gate result into visible_text_quality_audit
+      const p20 = (payload as any)?.p20_clinical_truth_audit;
+      if (p20 && payload.visible_text_quality_audit) {
+        payload.visible_text_quality_audit.p20_clinical_truth_ok = p20.ok === true;
+        payload.visible_text_quality_audit.p20_violations_after_repair = p20.violations_after_repair ?? [];
+        payload.visible_text_quality_audit.p20_evidence_category = p20.evidence_category;
+        if (p20.ok !== true) {
+          payload.visible_text_quality_audit.ok = false;
+          payload.visible_text_quality_audit.fail_reason = "p20_clinical_truth_violation";
+        }
+      }
     } catch (e) {
       console.warn("[briefing] visible-text quality gate failed (non-fatal):", e);
     }
