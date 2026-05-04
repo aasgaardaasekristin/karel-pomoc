@@ -293,6 +293,20 @@ Deno.serve(async (req: Request) => {
     const synthesis = await callAI(buildPrompt(row));
     const finalSummary = buildFinalSummary(row, synthesis);
 
+    // P3: snapshot before destructive synthesis overwrite of did_team_deliberations.
+    {
+      const { error: snapErr } = await admin.rpc("did_snapshot_protected_mutation", {
+        p_table_name: "did_team_deliberations",
+        p_row_id: deliberationId,
+        p_reason: "synthesize: karel_synthesis + final_summary overwrite",
+        p_actor: "edge:karel-team-deliberation-synthesize",
+      });
+      if (snapErr) {
+        return new Response(JSON.stringify({ ok: false, error_code: "mutation_snapshot_failed", message: snapErr.message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
     const { data: updated, error: updErr } = await admin
       .from("did_team_deliberations")
       .update({

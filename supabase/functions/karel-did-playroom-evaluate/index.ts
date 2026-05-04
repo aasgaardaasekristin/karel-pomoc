@@ -413,6 +413,13 @@ async function processEvaluation(sb: any, apiKey: string, userId: string, body: 
   review.analysis_json = persistedReview?.analysis_json ?? {};
   const drive = await persistPantryAndDrive(sb, ctx, review, reviewId, persistedReview?.status ?? "analyzed");
   await sb.from("did_live_session_progress").update({ finalized_at: new Date().toISOString(), finalized_reason: body.endedReason || "manual_end", updated_at: new Date().toISOString() }).eq("plan_id", planId);
+  // P3: snapshot before destructive completion overwrite of did_daily_session_plans.
+  await sb.rpc("did_snapshot_protected_mutation", {
+    p_table_name: "did_daily_session_plans",
+    p_row_id: planId,
+    p_reason: "playroom-evaluate: mark plan done/completed after Herna evaluation",
+    p_actor: "edge:karel-did-playroom-evaluate",
+  });
   await sb.from("did_daily_session_plans").update({ status: "done", lifecycle_status: "completed", completed_at: new Date().toISOString(), finalized_at: new Date().toISOString(), finalization_source: "karel-did-playroom-evaluate", finalization_reason: body.endedReason || "manual_end", updated_at: new Date().toISOString() }).eq("id", planId);
   return { ok: true, status: persistedReview?.status ?? "analyzed", review_id: reviewId, mode: "playroom", review_kind: "karel_direct_playroom", drive_write_ids: drive.writeIds, model_used: MODEL };
 }

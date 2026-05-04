@@ -323,6 +323,13 @@ serve(async (req) => {
     if (sessionActor === "karel_direct" && sessionMode === "deferred") {
       if (planId) {
         const { data: plan } = await sb.from("did_daily_session_plans").select("urgency_breakdown").eq("id", planId).maybeSingle();
+        // P3: snapshot before destructive urgency_breakdown overwrite.
+        await sb.rpc("did_snapshot_protected_mutation", {
+          p_table_name: "did_daily_session_plans",
+          p_row_id: planId,
+          p_reason: "part-session-prepare: deferred result_status overwrite",
+          p_actor: "edge:karel-part-session-prepare",
+        });
         await sb.from("did_daily_session_plans").update({
           urgency_breakdown: { ...(plan?.urgency_breakdown ?? {}), result_status: "deferred" },
           updated_at: new Date().toISOString(),

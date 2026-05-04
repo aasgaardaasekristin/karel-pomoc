@@ -85,6 +85,13 @@ async function persistPlannedNotStarted(sb: any, plan: any, jobBase: Record<stri
     const { data: inserted } = await sb.from("did_session_reviews").insert(reviewPayload).select("id").single();
     reviewId = inserted?.id ?? null;
   }
+  // P3: snapshot before destructive plan flip (planned_not_started safety-net).
+  await sb.rpc("did_snapshot_protected_mutation", {
+    p_table_name: "did_daily_session_plans",
+    p_row_id: plan.id,
+    p_reason: "session-finalize: persistPlannedNotStarted lifecycle/urgency overwrite",
+    p_actor: "edge:karel-did-session-finalize/persistPlannedNotStarted",
+  });
   await sb.from("did_daily_session_plans").update({
     lifecycle_status: "evidence_limited",
     urgency_breakdown: { ...(plan.urgency_breakdown ?? {}), result_status: "planned_not_started", session_started_evidence: false },
@@ -267,6 +274,13 @@ serve(async (req: Request) => {
         return json({ ok: true, job_id: jobId, job_status: "completed", dedupe_key: dedupeKey, ...resultPayload });
       }
 
+      // P3: snapshot before destructive plan flip (awaiting_analysis).
+      await sb.rpc("did_snapshot_protected_mutation", {
+        p_table_name: "did_daily_session_plans",
+        p_row_id: planId,
+        p_reason: "session-finalize: pre-evaluator lifecycle flip to awaiting_analysis",
+        p_actor: "edge:karel-did-session-finalize",
+      });
       await sb.from("did_daily_session_plans").update({
         lifecycle_status: "awaiting_analysis",
         finalized_at: now,
@@ -292,6 +306,13 @@ serve(async (req: Request) => {
       const evalPayload = await evalRes.json().catch(() => ({}));
       if (!evalRes.ok || evalPayload?.ok === false) {
         const message = evalPayload?.error || `Evaluator HTTP ${evalRes.status}`;
+        // P3: snapshot before destructive plan flip (failed_analysis).
+        await sb.rpc("did_snapshot_protected_mutation", {
+          p_table_name: "did_daily_session_plans",
+          p_row_id: planId,
+          p_reason: "session-finalize: lifecycle flip to failed_analysis after evaluator error",
+          p_actor: "edge:karel-did-session-finalize",
+        });
         await sb.from("did_daily_session_plans").update({
           lifecycle_status: "failed_analysis",
           analysis_error: message,

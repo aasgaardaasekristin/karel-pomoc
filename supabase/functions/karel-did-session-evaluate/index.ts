@@ -1541,6 +1541,13 @@ async function persistPlannedNotStartedAudit(
       .single();
     reviewId = inserted?.id ?? null;
   }
+  // P3: snapshot before destructive evidence_limited overwrite.
+  await sb.rpc("did_snapshot_protected_mutation", {
+    p_table_name: "did_daily_session_plans",
+    p_row_id: ctx.plan.id,
+    p_reason: "session-evaluate: planned_not_started evidence_limited overwrite",
+    p_actor: "edge:karel-did-session-evaluate",
+  });
   await sb
     .from("did_daily_session_plans")
     .update({
@@ -2010,6 +2017,13 @@ async function persistKarelDirectOutcome(
       .update(reviewPayload)
       .eq("id", existingReview.id);
   else await sb.from("did_session_reviews").insert(reviewPayload);
+  // P3: snapshot before destructive Karel-direct outcome overwrite.
+  await sb.rpc("did_snapshot_protected_mutation", {
+    p_table_name: "did_daily_session_plans",
+    p_row_id: ctx.plan.id,
+    p_reason: "session-evaluate: karel_direct outcome status/lifecycle overwrite",
+    p_actor: "edge:karel-did-session-evaluate",
+  });
   await sb
     .from("did_daily_session_plans")
     .update({
@@ -2487,6 +2501,13 @@ async function persistEvaluation(
   }
 
   // 2) did_daily_session_plans — auditovatelný lifecycle stav podle review
+  // P3: snapshot before destructive evaluation overwrite.
+  await sb.rpc("did_snapshot_protected_mutation", {
+    p_table_name: "did_daily_session_plans",
+    p_row_id: ctx.plan.id,
+    p_reason: "session-evaluate: post-review lifecycle/program_status overwrite",
+    p_actor: "edge:karel-did-session-evaluate",
+  });
   await sb
     .from("did_daily_session_plans")
     .update({
@@ -2990,6 +3011,13 @@ Deno.serve(async (req: Request) => {
     if (enqueueOnly) {
       assertPlanWasApprovedAndStarted(ctx.plan);
       const job = await enqueueSessionEvaluationJob(sb, ctx, body);
+      // P3: snapshot before destructive enqueue status flip.
+      await sb.rpc("did_snapshot_protected_mutation", {
+        p_table_name: "did_daily_session_plans",
+        p_row_id: planId,
+        p_reason: "session-evaluate: enqueueOnly pending_review status flip",
+        p_actor: "edge:karel-did-session-evaluate",
+      });
       await sb
         .from("did_daily_session_plans")
         .update({

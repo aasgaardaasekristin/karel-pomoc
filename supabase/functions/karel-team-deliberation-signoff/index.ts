@@ -386,14 +386,25 @@ Deno.serve(async (req: Request) => {
         const safeStatusFlip = ["pending", "planned", null, undefined].includes((updated as any).__plan_status_unused__ as any);
         if (safeStatusFlip) updatePatch.status = "generated";
 
-        const { error: upErr } = await admin
-          .from("did_daily_session_plans")
-          .update(updatePatch)
-          .eq("id", bridgedPlanId);
-        if (upErr) {
-          console.error("[delib-signoff] bridge update failed:", upErr);
-        } else {
+        // P3: snapshot before destructive bridge update of did_daily_session_plans.
+        try {
+          await snapshotProtectedMutation(admin, {
+            tableName: "did_daily_session_plans",
+            rowId: bridgedPlanId,
+            reason: "signoff: bridge update existing plan_markdown/urgency overwrite",
+            actor: "edge:karel-team-deliberation-signoff",
+            mutate: async () => {
+              const { error: upErr } = await admin
+                .from("did_daily_session_plans")
+                .update(updatePatch)
+                .eq("id", bridgedPlanId);
+              if (upErr) throw upErr;
+              return true;
+            },
+          });
           bridgeMode = "update";
+        } catch (e) {
+          console.error("[delib-signoff] bridge update failed:", e);
         }
       } else {
         // ── INSERT new plan (legacy / standalone porada) ────────────────
