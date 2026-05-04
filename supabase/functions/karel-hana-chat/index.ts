@@ -177,9 +177,29 @@ export async function loadHanaPersonalContinuityContext(sb: any, userId: string,
     sources.push({ source_table: "karel_hana_conversations", conversation_id: r.id, source_ref: sourceRef, privacy_boundary: "Hana/Osobní same-user runtime only; no Drive/DID raw writeback" });
     return `- ${r.last_activity_at?.slice(0, 10) || r.started_at?.slice(0, 10) || "nedávno"} | ${sourceRef} | ${excerpt}`;
   });
-  if (!lines.length) return { text: "", sources: [] };
+  // P27 F1/J1: layer in persistent Hana memory (next opening hint + safe summary).
+  const { data: memRows } = await sb.from("hana_personal_memory")
+    .select("id, memory_type, safe_summary, next_opening_hint, source_thread_id, created_at, did_relevant")
+    .eq("user_id", userId)
+    .is("superseded_at", null)
+    .order("created_at", { ascending: false })
+    .limit(8);
+  const memFiltered = (memRows || []).filter((r: any) => !currentConversationId || r.source_thread_id !== currentConversationId);
+  const stateRow = memFiltered.find((r: any) => r.memory_type === "hana_emotional_state");
+  const memoryLines: string[] = [];
+  if (stateRow?.next_opening_hint) {
+    memoryLines.push(`OPENING_HINT: ${stateRow.next_opening_hint}`);
+  }
+  if (stateRow?.safe_summary) {
+    memoryLines.push(`POSLEDNÍ EMOČNÍ STAV: ${stateRow.safe_summary}`);
+  }
+  for (const r of memFiltered.filter((x: any) => x.memory_type === "hana_to_did_safe_summary").slice(0, 3)) {
+    memoryLines.push(`DID-SAFE SOUVISLOST: ${r.safe_summary}`);
+  }
+
+  if (!lines.length && memoryLines.length === 0) return { text: "", sources: [] };
   return {
-    text: `═══ HANA/OSOBNÍ NÁVAZNOST MEZI VLÁKNY ═══\nPouze same-user osobní runtime kontext. Neposílat raw obsah na Drive ani do DID evidence; nepřevádět do briefingu. Použij jen k přirozené osobní návaznosti. Pokud Hanička navazuje na "rybičku", jde pravděpodobně o Timmiho/keporkaka a včerejší reálnou záchrannou situaci. Drž to jako skutečnou událost a emoční kontext, ne jako projekci/symbol/diagnostický signál bez vlastní reakce kluků.\n${lines.join("\n")}`,
+    text: `═══ HANA/OSOBNÍ NÁVAZNOST MEZI VLÁKNY ═══\nPouze same-user osobní runtime kontext. Neposílat raw obsah na Drive ani do DID evidence; nepřevádět do briefingu. Použij jen k přirozené osobní návaznosti. Pokud Hanička navazuje na "rybičku", jde pravděpodobně o Timmiho/keporkaka a včerejší reálnou záchrannou situaci. Drž to jako skutečnou událost a emoční kontext, ne jako projekci/symbol/diagnostický signál bez vlastní reakce kluků.\n${memoryLines.length ? memoryLines.join("\n") + "\n" : ""}${lines.join("\n")}`,
     sources,
   };
 }

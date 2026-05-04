@@ -133,6 +133,9 @@ export interface IngestionResult {
   task_id?: string | null;
   drive_package_id?: string | null;
   drive_write_id?: string | null;
+  card_proposal_id?: string | null;
+  hana_memory_state_id?: string | null;
+  hana_memory_did_safe_id?: string | null;
   reason?: string;
 }
 
@@ -321,7 +324,10 @@ export function classifyDidRelevance(event: NormalizedDidEvent): DidEventClassif
     include_in_daily_briefing: isClinical || isRisk || isTask || isPlan || isTechnical || isFactualCorrection || isHanaDidRelevantHit,
     include_in_next_session_plan: isClinical || isRisk || isPlan || isFactualCorrection || isHanaDidRelevantHit,
     include_in_next_playroom_plan: isChild || isFactualCorrection,
-    write_to_drive: sourceKind === "hana_personal_ingestion" ? false : (isRisk || isPlan || sourceKind === "briefing_ask_resolution" || sourceKind === "deliberation_event"),
+    // P27 D1: allow safe summaries from Hana personal ingestion to reach Drive (raw text never leaves origin thread).
+    write_to_drive: (sourceKind === "hana_personal_ingestion")
+      ? (isHanaDidRelevantHit || isFactualCorrection)
+      : (isRisk || isPlan || sourceKind === "briefing_ask_resolution" || sourceKind === "deliberation_event"),
     related_part_name: inferredPart,
     urgency: isRisk ? "crisis" : isTask || isPlan || isTechnical ? "high" : isClinical ? "normal" : "low",
     clinical_relevance: isClinical || isChild || isRisk,
@@ -576,6 +582,16 @@ function chooseDriveTarget(event: NormalizedDidEvent, classification: DidEventCl
   if (event.source_kind === "deliberation_event" || event.source_kind === "briefing_ask_resolution") return "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG";
   if (event.source_kind === "playroom_progress") return "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG";
   if (event.source_kind === "live_session_progress") return "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG";
+  // P27 D1: Hana personal safe-summary destinations (raw text never written here; only summaries built earlier).
+  if (event.source_kind === "hana_personal_ingestion") {
+    if (classification.evidence_level === "therapist_factual_correction") {
+      return "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG";
+    }
+    if (classification.related_part_name && classification.clinical_relevance) {
+      return `KARTA_${classification.related_part_name.toUpperCase()}`;
+    }
+    return "KARTOTEKA_DID/00_CENTRUM/Bezpecne_DID_poznamky_z_osobniho_vlakna";
+  }
   if (classification.related_part_name && classification.clinical_relevance && classification.evidence_level !== "therapist_factual_correction") return `KARTA_${classification.related_part_name.toUpperCase()}`;
   return "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN";
 }
@@ -587,6 +603,113 @@ export async function markIngestionProcessed(sb: SupabaseClient, logId: string, 
     processed_by: "did-event-ingestion",
     ...patch,
   }).eq("id", logId);
+}
+
+// P27 G1: create pending card_update_queue proposal for safe Hana DID-relevant events.
+export async function createCardUpdateProposalIfNeeded(sb: SupabaseClient, event: NormalizedDidEvent, classification: DidEventClassification): Promise<string | null> {
+  if (event.source_kind !== "hana_personal_ingestion") return null;
+  if (!classification.related_part_name) return null;
+  if (!classification.clinical_relevance) return null;
+  if (classification.evidence_level === "personal_context_not_for_DID") return null;
+
+  const partId = String(classification.related_part_name);
+  const safeSummary = classification.clinical_implication?.slice(0, 1500) || "Bezpečné shrnutí z osobního vlákna Hany; ověřit s částí.";
+  const reason = `did_event_ingestion: hana_personal -> ${partId}`;
+
+  // dedupe by (part_id, source_thread_id, section, action)
+  const sourceThreadId = event.source_id ?? null;
+  const section = "Aktuální citlivosti / vnější zátěž (návrh z Hana/osobní)";
+  const { data: existing } = await sb.from("card_update_queue")
+    .select("id")
+    .eq("part_id", partId)
+    .eq("section", section)
+    .eq("source_thread_id", sourceThreadId)
+    .eq("applied", false)
+    .limit(1)
+    .maybeSingle();
+  if (existing?.id) return existing.id as string;
+
+  const { data, error } = await sb.from("card_update_queue").insert({
+    user_id: event.user_id,
+    part_id: partId,
+    section,
+    subsection: "",
+    action: "add",
+    new_content: safeSummary,
+    reason,
+    source_thread_id: sourceThreadId,
+    source_date: event.occurred_at?.slice(0, 10) ?? null,
+    priority: 4,
+    applied: false,
+    status: "pending_therapist_confirmation",
+    source: "hana_personal_ingestion",
+    payload: {
+      source_ref: event.source_ref,
+      source_hash: event.source_hash,
+      message_id: event.message_id ?? null,
+      evidence_level: classification.evidence_level,
+      what_not_to_conclude: classification.what_not_to_conclude,
+      recommended_action: classification.recommended_action,
+      requires_therapist_confirmation: true,
+    },
+  }).select("id").single();
+  if (error) {
+    console.error("[did-event-ingestion] card_update_queue insert failed", error);
+    return null;
+  }
+  return data?.id ?? null;
+}
+
+// P27 F1/J1: capture Hana persistent memory (emotional state + next opening hint).
+export async function upsertHanaPersonalMemoryIfNeeded(sb: SupabaseClient, event: NormalizedDidEvent, classification: DidEventClassification): Promise<{ stateId?: string | null; didSafeId?: string | null }> {
+  if (event.source_kind !== "hana_personal_ingestion") return {};
+  // Only emit memory for substantive events (DID-relevant, factual correction, risk, plan, task).
+  const substantive = classification.clinical_relevance || classification.evidence_level === "therapist_factual_correction" || classification.entry_kind === "risk" || classification.entry_kind === "plan_change" || classification.entry_kind === "followup_need";
+  if (!substantive) return {};
+
+  const sourceThreadId = event.source_id;
+  if (!sourceThreadId) return {};
+
+  const safeSummary = (classification.clinical_implication || "Bezpečné shrnutí z osobního vlákna Hany.").slice(0, 1500);
+  const part = classification.related_part_name ?? null;
+  const nextOpening = part
+    ? `Haničko, ve včerejším osobním rozhovoru se objevilo téma kolem části ${part}. Nechci to přejít, jako by to nebylo. Jak ti s tím dnes je?`
+    : `Haničko, včera večer jsi mi nesla něco důležitého z osobního prostoru. Nechci začít neutrálně. Jak ti je dnes?`;
+
+  // Idempotency: one memory row per (thread, message, memory_type)
+  const messageRef = event.message_id ? `${sourceThreadId}:${event.message_id}` : `${sourceThreadId}:${event.source_hash}`;
+
+  const insertRow = async (memory_type: string, did_relevant: boolean, private_to_hana: boolean) => {
+    const { data: existing } = await sb.from("hana_personal_memory")
+      .select("id")
+      .eq("source_thread_id", sourceThreadId)
+      .eq("memory_type", memory_type)
+      .contains("source_message_refs", [messageRef])
+      .limit(1)
+      .maybeSingle();
+    if (existing?.id) return existing.id as string;
+    const { data, error } = await sb.from("hana_personal_memory").insert({
+      user_id: event.user_id,
+      source_thread_id: sourceThreadId,
+      source_message_refs: [messageRef],
+      memory_type,
+      emotional_state: classification.urgency,
+      safe_summary: safeSummary,
+      next_opening_hint: nextOpening,
+      do_not_export_raw_text: true,
+      did_relevant,
+      private_to_hana,
+    }).select("id").single();
+    if (error) {
+      console.error("[did-event-ingestion] hana_personal_memory insert failed", error);
+      return null;
+    }
+    return data?.id ?? null;
+  };
+
+  const stateId = await insertRow("hana_emotional_state", false, true);
+  const didSafeId = classification.clinical_relevance ? await insertRow("hana_to_did_safe_summary", true, true) : null;
+  return { stateId, didSafeId };
 }
 
 export async function routeEvent(sb: SupabaseClient, eventInput: NormalizedDidEventInput): Promise<IngestionResult> {
@@ -601,6 +724,8 @@ export async function routeEvent(sb: SupabaseClient, eventInput: NormalizedDidEv
     const observation = await createObservationIfNeeded(sb, event, classification);
     const taskId = await createTaskIfNeeded(sb, event, classification);
     const drive = await createDrivePackageIfNeeded(sb, event, classification);
+    const cardProposalId = await createCardUpdateProposalIfNeeded(sb, event, classification);
+    const hanaMem = await upsertHanaPersonalMemoryIfNeeded(sb, event, classification);
     await markIngestionProcessed(sb, logId, "routed", {
       pantry_entry_id: pantryEntryId,
       observation_id: observation.observationId ?? null,
@@ -608,7 +733,7 @@ export async function routeEvent(sb: SupabaseClient, eventInput: NormalizedDidEv
       drive_package_id: drive.packageId ?? null,
       drive_write_id: drive.writeId ?? null,
     });
-    return { source_ref: event.source_ref, status: "routed", log_id: logId, pantry_entry_id: pantryEntryId, observation_id: observation.observationId ?? null, implication_id: observation.implicationId ?? null, task_id: taskId, drive_package_id: drive.packageId ?? null, drive_write_id: drive.writeId ?? null };
+    return { source_ref: event.source_ref, status: "routed", log_id: logId, pantry_entry_id: pantryEntryId, observation_id: observation.observationId ?? null, implication_id: observation.implicationId ?? null, task_id: taskId, drive_package_id: drive.packageId ?? null, drive_write_id: drive.writeId ?? null, card_proposal_id: cardProposalId, hana_memory_state_id: hanaMem.stateId ?? null, hana_memory_did_safe_id: hanaMem.didSafeId ?? null } as IngestionResult;
   } catch (e) {
     await markIngestionProcessed(sb, logId, "failed", { error_message: String((e as Error)?.message ?? e).slice(0, 1000) });
     return { source_ref: event.source_ref, status: "failed", log_id: logId, reason: String((e as Error)?.message ?? e) };
