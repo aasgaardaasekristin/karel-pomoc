@@ -2467,6 +2467,24 @@ serve(async (req) => {
 
   }
 
+  // P23 fix: enforce canonical scope match for any explicit body.userId.
+  // Previously body.userId was trusted as-is when present; this allowed a
+  // mistakenly-routed call to operate against a non-canonical user.
+  if (resolvedUserId) {
+    const guardSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    try {
+      const { data: canonicalId } = await guardSb.rpc("get_canonical_did_user_id");
+      if (typeof canonicalId === "string" && canonicalId && canonicalId !== resolvedUserId) {
+        console.error("[daily-cycle] CANONICAL_USER_SCOPE_MISMATCH", { resolvedUserId, canonicalId });
+        return new Response(
+          JSON.stringify({ ok: false, error_code: "CANONICAL_USER_SCOPE_MISMATCH", message: "resolvedUserId is not canonical DID user" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    } catch (e) {
+      console.warn("[daily-cycle] canonical guard rpc failed (non-fatal):", (e as Error)?.message);
+    }
+
   // === DEDUP: Skip if a successful daily cycle completed in last 3 hours ===
   // P13: Dedup is now USER-SCOPED. Previously this was global, so a recent
   // successful run for a different (legacy) user blocked the canonical

@@ -2739,29 +2739,31 @@ Deno.serve(async (req) => {
     let scopedUserId = !isServiceCall && !isCronSecretCall ? authenticatedUserId : null;
     if (isServiceCall || isCronSecretCall) {
       // Service/cron callers (e.g. SLA watchdog) MAY pass body.userId to scope the briefing
-      // explicitly. Honor it first; only fall back to discovery when not provided.
+      // explicitly. Honor it first; then fall back to canonical DID scope.
       if (body?.userId && typeof body.userId === "string") {
         scopedUserId = String(body.userId);
       }
       if (!scopedUserId) {
-        const { data: activeCycleUser } = await supabase.from("did_update_cycles")
-          .select("user_id")
-          .not("user_id", "is", null)
-          .neq("user_id", ZERO_UUID)
-          .order("started_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (activeCycleUser?.user_id) scopedUserId = activeCycleUser.user_id;
+        // P23 fix: replace "any active cycle / any thread" wrong-user fallback
+        // with canonical DID scope resolver. Fail-closed if unresolved.
+        try {
+          const { resolveCanonicalDidUserId } = await import("../_shared/canonicalUserResolver.ts");
+          scopedUserId = await resolveCanonicalDidUserId(supabase as any, null);
+        } catch (e) {
+          console.error("[briefing-auth] canonical scope resolve failed:", (e as Error)?.message || e);
+          scopedUserId = null;
+        }
       }
-      if (!scopedUserId) {
-        const { data: anyThread } = await supabase.from("did_threads")
-          .select("user_id")
-          .not("user_id", "is", null)
-          .neq("user_id", ZERO_UUID)
-          .order("last_activity_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        scopedUserId = anyThread?.user_id ?? null;
+    }
+    // P23: enforce canonical match for any resolved scope (defence in depth)
+    if (scopedUserId) {
+      try {
+        const { resolveCanonicalDidUserId } = await import("../_shared/canonicalUserResolver.ts");
+        await resolveCanonicalDidUserId(supabase as any, scopedUserId);
+      } catch (e: any) {
+        const code = String(e?.code || "CANONICAL_USER_SCOPE_UNRESOLVED");
+        const status = code === "CANONICAL_USER_SCOPE_MISMATCH" ? 403 : 500;
+        return jsonResponse({ ok: false, error_code: code, message: e?.message ?? String(e) }, status);
       }
     }
     if (!scopedUserId) return jsonResponse({ error: "missing_user_scope" }, 400);

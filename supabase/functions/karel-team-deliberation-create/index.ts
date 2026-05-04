@@ -308,6 +308,19 @@ Deno.serve(async (req: Request) => {
     }
     const userId = userData.user.id;
 
+    // P2 fail-closed canonical scope guard (P23 fix)
+    const adminForGuard = createClient(SUPABASE_URL, SERVICE_KEY);
+    try {
+      const { assertCanonicalDidScopeOrThrow } = await import("../_shared/canonicalUserScopeGuard.ts");
+      await assertCanonicalDidScopeOrThrow(adminForGuard as any, userId);
+    } catch (guardErr: any) {
+      const code = String(guardErr?.code || "CANONICAL_USER_SCOPE_UNRESOLVED");
+      const status = code === "CANONICAL_USER_SCOPE_MISMATCH" ? 403 : 500;
+      return new Response(JSON.stringify({ ok: false, error_code: code, message: guardErr?.message ?? String(guardErr) }), {
+        status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const body = await req.json().catch(() => ({}));
     const type = String(body?.deliberation_type ?? "team_task");
     if (!ALLOWED_TYPES.includes(type)) {
