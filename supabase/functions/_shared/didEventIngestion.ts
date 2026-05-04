@@ -133,6 +133,9 @@ export interface IngestionResult {
   task_id?: string | null;
   drive_package_id?: string | null;
   drive_write_id?: string | null;
+  card_proposal_id?: string | null;
+  hana_memory_state_id?: string | null;
+  hana_memory_did_safe_id?: string | null;
   reason?: string;
 }
 
