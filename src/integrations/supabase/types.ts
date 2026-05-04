@@ -6829,10 +6829,12 @@ export type Database = {
         Args: { p_source?: string; p_user_id: string }
         Returns: number
       }
-      invoke_p23_canary_generic: {
-        Args: { p_body: Json; p_function: string }
-        Returns: number
-      }
+      invoke_p23_canary_generic:
+        | { Args: { p_body: Json; p_function: string }; Returns: number }
+        | {
+            Args: { p_body: Json; p_function: string; p_timeout_ms?: number }
+            Returns: number
+          }
       set_canonical_did_user: {
         Args: { p_reason: string; p_user_id: string }
         Returns: Json
