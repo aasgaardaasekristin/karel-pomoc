@@ -21,10 +21,59 @@ type EvidenceLevel =
   | "program_change"
   | "task_note"
   | "personal_context_not_for_DID"
+  | "hana_personal_did_relevant"
   | "technical_event"
   | "hypothesis"
   | "admin_note"
   | "unknown";
+
+// P21 — Hana/Personal cross-surface DID detection
+// Maps free-text part names from Hana threads onto canonical part names.
+const HANA_PART_NAME_PATTERNS: Array<{ re: RegExp; canonical: string }> = [
+  { re: /\b(?:Tundrupek|Tundrupa|Tundrup\w*)\b/i, canonical: "Tundrupek" },
+  { re: /\b(?:Arthur|Artik|Art[ií]k(?:ovi)?|ARTHUR)\b/i, canonical: "Arthur" },
+  { re: /\b(?:Gust[ií]k|gustik)\b/i, canonical: "gustik" },
+  { re: /\b(?:Timmy|Timmi|Timmiho|velryba|velryby|keporak)\b/i, canonical: "Tundrupek" },
+];
+
+// Generic DID-context tokens that, even without a part name, indicate the message
+// belongs in the DID operational pipeline (kluci/části/terapie/herna...).
+const HANA_DID_CONTEXT_RE = /\b(?:kluci|kluk[uy]|d[eě]ti|DID|[čc][aá]st(?:i)?|terapi[ei]|sezen[ií]|hern[aey]|playroom|switch|disociac)\b/i;
+
+// External-reality emotional load tokens (Timmy/velryba) that may impact kluci.
+const HANA_EXTERNAL_REALITY_RE = /\b(?:Timmy|Timmi|Timmiho|velryba|velryby|keporak|transport[uem]?)\b/i;
+
+function detectHanaPart(text: string): string | null {
+  for (const { re, canonical } of HANA_PART_NAME_PATTERNS) {
+    if (re.test(text)) return canonical;
+  }
+  return null;
+}
+
+function isHanaDidRelevant(text: string): boolean {
+  return detectHanaPart(text) !== null || HANA_DID_CONTEXT_RE.test(text);
+}
+
+function buildHanaSafeSummary(text: string, part: string | null, externalReality: boolean): string {
+  const tags: string[] = [];
+  if (part) tags.push(part);
+  if (externalReality) tags.push("vnější realita: zátěž zvířete (Timmy/velryba)");
+  const head = tags.length ? `Z osobního vlákna Hany — ${tags.join(", ")}: ` : "Z osobního vlákna Hany — DID-relevantní bod: ";
+  if (externalReality && (part === "Tundrupek" || /kluci|d[eě]ti/i.test(text))) {
+    return `${head}kluci mohou být emočně zatížení tématem velryby Timmy; ověřit tělo, emoci, bezpečí. Bez raw intimního obsahu.`;
+  }
+  if (part) {
+    return `${head}zaznamenat zmínku části ${part} k operativnímu kontextu; ověřit přímou reakcí části, neuzavírat klinický závěr bez D1/D2 evidence.`;
+  }
+  return `${head}téma DID/kluci se objevilo v osobním vlákně; zařadit do dnešního kontextu, ověřit s částmi.`;
+}
+
+export const __p21_internals = {
+  detectHanaPart,
+  isHanaDidRelevant,
+  buildHanaSafeSummary,
+  HANA_EXTERNAL_REALITY_RE,
+};
 
 const CHILD_CLINICAL_BLOCKED_EVIDENCE = new Set<EvidenceLevel>([
   "therapist_factual_correction",
