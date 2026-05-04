@@ -1536,38 +1536,83 @@ function buildVisibleClinicalMorningBriefing(payload: any, context: any): string
     : payload?.yesterday_session_review?.exists
     ? payload.yesterday_session_review
     : null;
+
+  // P20: Tvrdě čteme evidence categorii. NIKDY nestavíme silné claim
+  // ("zahájené Sezení", "klinický vstup") na slabém důkazu (pending plán).
+  const evidence: ClinicalActivityEvidence | null = (sess?.evidence as ClinicalActivityEvidence) ?? null;
+  const canClaimStarted = evidence?.can_claim_started === true;
+  const canClaimClinicalInput = evidence?.can_claim_clinical_input === true;
+
   const partRaw = sess?.part_name || payload?.proposed_session?.part_name || "";
   const part = capitalizePartName(partRaw || "část");
   const partInst = partInstrumental(partRaw);
   const partAcc = partAccusative(partRaw);
   const dateStr = formatClinicalDate(sess?.source_date_iso || sess?.session_date_iso || context?.yesterday || null);
-  const openedPartial = sess?.exists && isOpenedPartialSessionReview(sess);
+  const openedPartial = canClaimStarted && sess?.exists && isOpenedPartialSessionReview(sess);
   const sessionRecencyLabel = sess?.is_yesterday
     ? "včerejší"
     : sess?.days_since_today === 2
     ? "předevčerejší"
     : "poslední doložené";
 
+  // P20: last_real_session — pravdivá kotva i když včera nic neproběhlo
+  const lastReal = context?.last_real_session && context.last_real_session.found
+    ? context.last_real_session
+    : null;
+  const lastRealLine = lastReal
+    ? `Poslední skutečně doložené Sezení mám zaznamenané s ${partInstrumental(String(lastReal.part_name || ""))}${lastReal.session_date ? ` z ${formatClinicalDate(lastReal.session_date)}` : ""}.`
+    : "";
+
   const greeting = "Dobré ráno, Haničko a Káťo.";
-  const mainAnchor = sess?.exists
-    ? `Dnešní přehled navazuje hlavně na ${sessionRecencyLabel} otevřené Sezení s ${partInst}${dateStr ? ` z ${dateStr}` : ""}. Záznam ukazuje, že práce byla zahájená${openedPartial ? " a částečně rozpracovaná" : ""}, ale ještě z ní nemáme uzavřený klinický závěr. Nedělám z ní víc, než opravdu víme.`
-    : `Pro dnešek nemám čerstvé klinické sezení, ze kterého bych vycházel. Beru to vážně a nebudu předbíhat k závěrům, které kluci sami nepotvrdili.`;
-  const certainty = sess?.exists
+
+  // P20: mainAnchor — tři větve podle skutečné kategorie důkazu
+  let mainAnchor: string;
+  if (canClaimStarted) {
+    mainAnchor = `Dnešní přehled navazuje na ${sessionRecencyLabel} otevřené Sezení s ${partInst}${dateStr ? ` z ${dateStr}` : ""}. Záznam ukazuje, že práce byla zahájená${openedPartial ? " a částečně rozpracovaná" : ""}, ale ještě z ní nemáme uzavřený klinický závěr. Nedělám z ní víc, než opravdu víme.`;
+  } else if (sess?.exists && evidence?.category === "approved_plan_not_started") {
+    mainAnchor = `Pro ${partInst || "vybranou část"}${dateStr ? ` (${dateStr})` : ""} byl schválený plán, ale Sezení nebylo spuštěno. Z toho nedělám klinický závěr.${lastRealLine ? " " + lastRealLine : ""}`;
+  } else if (sess?.exists && evidence?.category === "pending_generated_plan") {
+    mainAnchor = `Pro ${partInst || "vybranou část"}${dateStr ? ` (${dateStr})` : ""} existoval pouze automaticky vygenerovaný návrh plánu, který nebyl schválen ani spuštěn. Žádné Sezení neproběhlo, žádný klinický vstup z toho nedělám.${lastRealLine ? " " + lastRealLine : ""}`;
+  } else {
+    mainAnchor = `Včera v DID režimu neproběhlo žádné doložené Sezení ani Herna. Nebudu předbíhat k závěrům, které kluci sami nepotvrdili.${lastRealLine ? " " + lastRealLine : ""}`;
+  }
+
+  // P20: certainty větev musí respektovat can_claim_clinical_input
+  const certainty = canClaimClinicalInput
     ? `Víme jistě, že${dateStr ? ` ${dateStr}` : ""} bylo s ${partInst} zahájené Sezení a že${openedPartial ? " zůstalo otevřené" : " je doložené jako klinický vstup"}. To je opora, ze které dnes můžu vyjít.`
+    : canClaimStarted
+    ? `Víme jistě, že${dateStr ? ` ${dateStr}` : ""} bylo s ${partInst} zahájené Sezení, ale ještě nemáme uzavřený klinický závěr. Beru to opatrně.`
     : `Víme jistě jen to, co máme přesně datované. Tam, kde nemáme doložený materiál, nedoplňuji závěry za kluky.`;
+
   const unknown = openedPartial
     ? `Zatím nevíme, jak je na tom ${part} dnes v těle a v emoci, jestli je dostupný pro kontakt a co si z otevřené práce odnáší jako pravdu pro dnešek.`
-    : `Zatím nevíme, kdo z kluků je dnes opravdu dostupný a v jaké náladě nám to ukáže až první kontakt.`;
-  const todayMeans = sess?.exists
-    ? `Pro dnešek z toho plyne jednoduchý první krok. Nezačínat výkladem ani novým úkolem, ale nejdřív ověřit, jak je na tom ${part} dnes v těle, v emoci a v ochotě být v kontaktu. Pokud je dostupný, můžeme na ${partAcc} navázat velmi malým krokem. Pokud je unavený nebo stažený, bude správné zůstat u stabilizace.`
-    : `Pro dnešek z toho plyne držet bezpečný práh: krátké ověření těla, emoce a kontaktu, žádné nové téma, dokud kluci sami neukážou, na co je prostor.`;
-  const forHana = `Haničko, pro tebe je dnes hlavní držet otázky krátké a bezpečné a hlídat tělesné a emoční stop signály.`;
-  const forKata = sess?.exists
-    ? `Káťo, prosím hlídej, aby se z otevřeného Sezení nedělal hotový závěr dřív, než kluci sami ukážou, co je pro ně pravda dnes.`
-    : `Káťo, prosím hlídej, aby se starší záznamy nepoužívaly jako dnešní závěr — pravda dnešního dne musí přijít od kluků.`;
+    : `Zatím nevíme, kdo z kluků je dnes opravdu dostupný a v jaké náladě — to nám ukáže až první kontakt.`;
 
-  const opening = [greeting, mainAnchor, certainty, unknown, todayMeans, forHana, forKata].join("\n\n");
-  return ensureKarelFirstPersonOpening(opening, opening);
+  const todayMeans = canClaimStarted
+    ? `Pro dnešek z toho plyne jednoduchý první krok. Nezačínat výkladem ani novým úkolem, ale nejdřív ověřit, jak je na tom ${part} dnes v těle, v emoci a v ochotě být v kontaktu. Pokud je dostupný, můžeme na ${partAcc} navázat velmi malým krokem. Pokud je unavený nebo stažený, bude správné zůstat u stabilizace.`
+    : `Pro dnešek z toho plyne držet bezpečný práh: krátké ověření těla, emoce a kontaktu, žádné nové téma, dokud kluci sami neukážou, na co je prostor. Návrh dnešní části je pracovní hypotéza, kterou musí potvrdit Hanička s Káťou.`;
+
+  const forHana = `Haničko, pro tebe je dnes hlavní držet otázky krátké a bezpečné a hlídat tělesné a emoční stop signály.`;
+  const forKata = canClaimStarted
+    ? `Káťo, prosím hlídej, aby se z otevřeného Sezení nedělal hotový závěr dřív, než kluci sami ukážou, co je pro ně pravda dnes.`
+    : `Káťo, prosím hlídej, aby se starší záznamy nebo automatické návrhy plánu nepoužívaly jako dnešní závěr — pravda dnešního dne musí přijít od kluků.`;
+
+  let opening = [greeting, mainAnchor, certainty, unknown, todayMeans, forHana, forKata].join("\n\n");
+  opening = ensureKarelFirstPersonOpening(opening, opening);
+
+  // P20: contextual evidence guard — fail-loud, pokud i přes tuto logiku
+  // visible text obsahuje started-claim phrase při slabém důkazu.
+  if (evidence) {
+    const violations = detectEvidenceGuardViolations(opening, evidence);
+    if (violations.length > 0) {
+      console.warn("[P20] evidence guard violations in visible briefing:", JSON.stringify(violations));
+      try {
+        (payload as any).p20_evidence_guard_violations = violations;
+      } catch (_e) { /* non-fatal */ }
+    }
+  }
+
+  return opening;
 }
 
 /** Last-resort human clinical repair: filter audit sentences, dedupe, fix grammar. */
