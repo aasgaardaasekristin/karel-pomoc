@@ -32,6 +32,12 @@ import { summarizeToolboxForPrompt } from "../_shared/therapeuticToolbox.ts";
 import { runGlobalDidEventIngestion } from "../_shared/didEventIngestion.ts";
 import { requireAuth } from "../_shared/auth.ts";
 import { buildSourceCoverageSummary, buildDriveStatus } from "../_shared/sourceCoverage.ts";
+import {
+  classifyClinicalActivityEvidence,
+  computeLastRealSession,
+  detectEvidenceGuardViolations,
+  type ClinicalActivityEvidence,
+} from "../_shared/clinicalActivityEvidence.ts";
 
 /**
  * SLA generation methods (added 2026-04-30, morning_operational_integrity_e2e):
