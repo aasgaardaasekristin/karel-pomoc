@@ -191,6 +191,8 @@ function hasAny(text: string, needles: RegExp[]) {
 
 function inferPartName(text: string, fallback?: string | null): string | null {
   if (fallback && fallback.trim()) return fallback.trim();
+  const hana = detectHanaPart(text);
+  if (hana) return hana;
   // P20.2: rozšířeno o Tundrupa, Gust(í|i)k, kluci jako fallback signál
   const match = text.match(/\b(?:Tundrupek|Tundrupa|Timmy|Arthur|Gust(?:í|i)k|Maru(?:š|s)ka|Marianna|Aneta|Eli(?:š|s)ka|Tom(?:á|a)(?:š|s))\b/i);
   return match?.[0] ?? null;
