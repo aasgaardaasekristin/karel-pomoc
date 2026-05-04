@@ -1,4 +1,4 @@
-// @ts-nocheck
+// P21: ts-nocheck removed; types kept loose with explicit `any` casts at row boundaries.
 /**
  * didEventIngestion.ts — centrální sběr DID-relevantních událostí.
  *

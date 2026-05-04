@@ -1,4 +1,4 @@
-// @ts-nocheck
+// P21: ts-nocheck removed; this file is Deno-side; we rely on existing typings.
 /**
  * pantryB.ts — Spižírna B helpers (denní implikační deník)
  *
