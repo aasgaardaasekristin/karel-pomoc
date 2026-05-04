@@ -36,6 +36,7 @@ import {
   classifyClinicalActivityEvidence,
   computeLastRealSession,
   detectEvidenceGuardViolations,
+  sanitizeStartedClaimText,
   type ClinicalActivityEvidence,
 } from "../_shared/clinicalActivityEvidence.ts";
 
