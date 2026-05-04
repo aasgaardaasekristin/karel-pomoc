@@ -3008,6 +3008,99 @@ Deno.serve(async (req) => {
     payload.recent_playroom_review = payload.yesterday_playroom_review;
     payload.recent_session_review = payload.yesterday_session_review;
     payload = applyClinicalRecencyGuard(payload);
+
+    // ── P20.2: Add last_real_session, yesterday_truth, today_part_proposal ──
+    try {
+      const lastReal = (context as any)?.last_real_session ?? { found: false };
+      payload.last_real_session = lastReal;
+
+      const yEvidence: ClinicalActivityEvidence | null =
+        payload?.yesterday_session_review?.evidence ?? null;
+      const yPart =
+        payload?.yesterday_session_review?.part_name ??
+        yEvidence?.evidence_summary?.part_name ??
+        null;
+
+      // CO SE VČERA SKUTEČNĚ STALO
+      const yCat = yEvidence?.category ?? "no_activity";
+      let summaryText = "";
+      if (yCat === "completed_session") {
+        summaryText = `Včera v DID režimu proběhlo doložené Sezení s ${yPart || "vybranou částí"} a má klinický závěr.`;
+      } else if (yCat === "started_session") {
+        summaryText = `Včera v DID režimu bylo zahájené Sezení s ${yPart || "vybranou částí"}, ale ještě nemá uzavřený klinický závěr.`;
+      } else if (yCat === "approved_plan_not_started") {
+        summaryText = `Včera v DID režimu byl pro ${yPart || "vybranou část"} schválený plán, ale Sezení nebylo spuštěno. Z toho nedělám klinický závěr.`;
+      } else if (yCat === "pending_generated_plan") {
+        summaryText = `Včera v DID režimu existoval pro ${yPart || "vybranou část"} pouze automaticky vygenerovaný návrh plánu, který nebyl schválen ani spuštěn. Žádné Sezení neproběhlo, žádný klinický vstup z toho nedělám.`;
+      } else {
+        summaryText = `Včera v DID režimu neproběhlo žádné doložené Sezení ani Herna.`;
+      }
+      if (lastReal?.found) {
+        summaryText += ` Poslední skutečně doložené Sezení mám zaznamenané s ${String(lastReal.part_name || "vybranou částí")}${lastReal.session_date ? ` z ${lastReal.session_date}` : ""}.`;
+      }
+      payload.yesterday_truth = {
+        evidence_category: yCat,
+        activity_happened: yEvidence?.activity_happened ?? false,
+        can_claim_started: yEvidence?.can_claim_started ?? false,
+        can_claim_clinical_input: yEvidence?.can_claim_clinical_input ?? false,
+        part_name: yPart,
+        last_real_session: lastReal?.found ? lastReal : null,
+        summary_text: summaryText,
+      };
+
+      // NÁVRH ČÁSTI PRO DNEŠEK
+      const proposedPart = payload?.proposed_session?.part_name || payload?.proposed_playroom?.part_name || yPart || null;
+      const evidenceStrength = yCat === "completed_session" || yCat === "started_session"
+        ? "high"
+        : yCat === "approved_plan_not_started"
+        ? "medium"
+        : "low";
+      const isHypothesisOnly = yCat === "pending_generated_plan" || yCat === "no_activity" || yCat === "unknown_or_inconsistent";
+      const rationaleText = proposedPart
+        ? (isHypothesisOnly
+            ? `Návrh na dnešní část je ${proposedPart}. Vychází z pracovní hypotézy, ne z doloženého Sezení nebo Herny. Síla důkazu je nízká, takže návrh musí potvrdit Hanička s Káťou; alternativa je počkat na první kontakt a vybrat část až po něm.`
+            : `Návrh na dnešní část je ${proposedPart}. Vychází z dolozené evidence z posledního Sezení. Návrh stále potřebuje schválení Haničky a Káti; alternativa je vybrat jinou část, pokud kluci sami ukážou jiný směr.`)
+        : `Pro dnešek nemám jednoznačný návrh části. Bez doložené evidence nechám výběr na Haničce a Káti po prvním kontaktu.`;
+      payload.today_part_proposal = {
+        proposed_part: proposedPart,
+        evidence_strength: evidenceStrength,
+        is_hypothesis_only: isHypothesisOnly,
+        needs_therapist_approval: true,
+        approver: "hanka_a_kata",
+        alternative_text: "Pokud kluci sami ukážou jiný směr, výběr části se přizpůsobí jim.",
+        rationale_text: rationaleText,
+      };
+    } catch (e) {
+      console.warn("[P20.2] yesterday_truth/today_part_proposal failed (non-fatal):", e);
+    }
+
+    // ── P20.2: HARD CLINICAL TRUTH GATE (full visible payload) ──
+    // Skenuje VŠECHNY visible textové sekce, sanitizuje pending-plan started-claims,
+    // a pokud po sanitaci zůstanou violations, označí briefing jako limited.
+    try {
+      const yEvidence2: ClinicalActivityEvidence | null =
+        payload?.yesterday_session_review?.evidence ?? null;
+      const yPart2 =
+        payload?.yesterday_session_review?.part_name ??
+        yEvidence2?.evidence_summary?.part_name ??
+        payload?.proposed_session?.part_name ??
+        null;
+      const p20Result = runP20ClinicalTruthGate(payload, yEvidence2, yPart2 ?? undefined);
+      payload.p20_clinical_truth_audit = p20Result;
+      if (!p20Result.ok) {
+        payload.limited = true;
+        const reasons: string[] = Array.isArray(payload.limited_reasons) ? payload.limited_reasons : [];
+        if (!reasons.includes("p20_clinical_truth_violation")) reasons.push("p20_clinical_truth_violation");
+        payload.limited_reasons = reasons;
+        console.warn(
+          `[P20.2] HARD FAIL: ${p20Result.violations_after_repair.length} violations remain after sanitization across ${p20Result.scanned_paths.length} paths.`,
+          JSON.stringify(p20Result.violations_after_repair).slice(0, 800),
+        );
+      }
+    } catch (e) {
+      console.warn("[P20.2] truth gate failed (non-fatal but suspicious):", e);
+    }
+
     payload.viewer_meta = {
       viewer_date_iso: today,
       briefing_date_iso: today,
