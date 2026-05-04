@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/auth.ts";
 import { loadEntityRegistry } from "../_shared/entityRegistry.ts";
 import { resolveEntity } from "../_shared/entityResolution.ts";
+import { snapshotProtectedMutation } from "../_shared/mutationSnapshotGuard.ts";
 
 /**
  * karel-did-auto-session-plan
@@ -259,13 +260,23 @@ async function ensureKarelDirectCandidate(sb: any, args: { userId: string; today
     const contract = activeExisting.urgency_breakdown && typeof activeExisting.urgency_breakdown === "object" ? activeExisting.urgency_breakdown : {};
     if (!hasUsablePlayroomPlan(contract)) {
       const playroomPlan = buildPlayroomPlan({ selectedPart: args.selectedPart, forcePart: args.forcePart, todayPrague: args.todayPrague, crisisEventId: args.crisisEventId, partReg: args.partReg });
-      await sb.from("did_daily_session_plans").update({
-        urgency_breakdown: { ...contract, ...deriveKarelDirectContract(args.selectedPart, args.forcePart), playroom_plan: playroomPlan },
-        plan_markdown: playroomPlanToMarkdown(playroomPlan),
-        plan_html: playroomPlanToMarkdown(playroomPlan).replace(/\n/g, "<br>"),
-        program_status: "awaiting_therapist_review",
-        updated_at: new Date().toISOString(),
-      }).eq("id", activeExisting.id);
+      await snapshotProtectedMutation(sb, {
+        tableName: "did_daily_session_plans",
+        rowId: activeExisting.id,
+        reason: "ensureKarelDirectCandidate: repair missing playroom_plan",
+        actor: "edge:karel-did-auto-session-plan/ensureKarelDirectCandidate",
+        mutate: async () => {
+          const { error: e } = await sb.from("did_daily_session_plans").update({
+            urgency_breakdown: { ...contract, ...deriveKarelDirectContract(args.selectedPart, args.forcePart), playroom_plan: playroomPlan },
+            plan_markdown: playroomPlanToMarkdown(playroomPlan),
+            plan_html: playroomPlanToMarkdown(playroomPlan).replace(/\n/g, "<br>"),
+            program_status: "awaiting_therapist_review",
+            updated_at: new Date().toISOString(),
+          }).eq("id", activeExisting.id);
+          if (e) throw e;
+          return true;
+        },
+      });
       console.log(`[auto-session-plan] Repaired missing playroom_plan for ${args.todayPrague}.`);
     }
     console.log(`[auto-session-plan] Karel-direct playroom plan already exists for ${args.todayPrague}; continuing therapist-led flow.`);
@@ -594,9 +605,19 @@ serve(async (req) => {
       if (overduePlans?.length) {
         for (const op of overduePlans) {
           const days = Math.floor((new Date(todayPrague).getTime() - new Date(op.plan_date).getTime()) / (24 * 60 * 60 * 1000));
-          await sb.from("did_daily_session_plans")
-            .update({ overdue_days: days, updated_at: new Date().toISOString() })
-            .eq("id", op.id);
+          await snapshotProtectedMutation(sb, {
+            tableName: "did_daily_session_plans",
+            rowId: op.id,
+            reason: `overdue_escalation: bump overdue_days=${days}`,
+            actor: "edge:karel-did-auto-session-plan/overdue_escalation",
+            mutate: async () => {
+              const { error: e } = await sb.from("did_daily_session_plans")
+                .update({ overdue_days: days, updated_at: new Date().toISOString() })
+                .eq("id", op.id);
+              if (e) throw e;
+              return true;
+            },
+          });
           overduePartBonus.set(op.selected_part, (overduePartBonus.get(op.selected_part) || 0) + 3);
         }
         console.log(`[auto-session-plan] Overdue escalation: ${overduePlans.length} plans, bonuses: ${JSON.stringify(Object.fromEntries(overduePartBonus))}`);
@@ -1072,9 +1093,19 @@ ${perplexityResult || "(nedostupná)"}`;
                 .limit(1)
                 .maybeSingle();
               if (latestPlan) {
-                await sb.from("did_daily_session_plans")
-                  .update({ distributed_drive: true })
-                  .eq("id", latestPlan.id);
+                await snapshotProtectedMutation(sb, {
+                  tableName: "did_daily_session_plans",
+                  rowId: latestPlan.id,
+                  reason: "drive_distribution: mark distributed_drive=true",
+                  actor: "edge:karel-did-auto-session-plan/drive_distribution",
+                  mutate: async () => {
+                    const { error: e } = await sb.from("did_daily_session_plans")
+                      .update({ distributed_drive: true })
+                      .eq("id", latestPlan.id);
+                    if (e) throw e;
+                    return true;
+                  },
+                });
               }
               console.log("[auto-session-plan] Written to Drive.");
             }

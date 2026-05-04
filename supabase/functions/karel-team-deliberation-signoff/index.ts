@@ -20,6 +20,7 @@ import {
   CanonicalUserScopeError,
   canonicalScopeErrorResponse,
 } from "../_shared/canonicalUserScopeGuard.ts";
+import { snapshotProtectedMutation } from "../_shared/mutationSnapshotGuard.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -420,10 +421,20 @@ Deno.serve(async (req: Request) => {
         if (!planErr && planRes?.id) {
           bridgedPlanId = planRes.id;
           bridgeMode = "insert";
-          await admin
-            .from("did_team_deliberations")
-            .update({ linked_live_session_id: bridgedPlanId })
-            .eq("id", deliberationId);
+          await snapshotProtectedMutation(admin, {
+            tableName: "did_team_deliberations",
+            rowId: deliberationId,
+            reason: "signoff: backfill linked_live_session_id after bridge insert",
+            actor: "edge:karel-team-deliberation-signoff",
+            mutate: async () => {
+              const { error: e } = await admin
+                .from("did_team_deliberations")
+                .update({ linked_live_session_id: bridgedPlanId })
+                .eq("id", deliberationId);
+              if (e) throw e;
+              return true;
+            },
+          });
         } else if (planErr) {
           console.error("[delib-signoff] bridge insert failed:", planErr);
         }
@@ -464,10 +475,20 @@ Deno.serve(async (req: Request) => {
           .maybeSingle();
         if (openEv?.id) {
           crisisEventId = openEv.id;
-          await admin
-            .from("did_team_deliberations")
-            .update({ linked_crisis_event_id: crisisEventId })
-            .eq("id", deliberationId);
+          await snapshotProtectedMutation(admin, {
+            tableName: "did_team_deliberations",
+            rowId: deliberationId,
+            reason: "signoff: backfill linked_crisis_event_id (post-write linkage repair)",
+            actor: "edge:karel-team-deliberation-signoff",
+            mutate: async () => {
+              const { error: e } = await admin
+                .from("did_team_deliberations")
+                .update({ linked_crisis_event_id: crisisEventId })
+                .eq("id", deliberationId);
+              if (e) throw e;
+              return true;
+            },
+          });
           crisisEffects.linked_crisis_event_backfilled = crisisEventId;
         }
       }
@@ -529,10 +550,20 @@ Deno.serve(async (req: Request) => {
           .maybeSingle();
         if (!dwErr && dw?.id) {
           crisisEffects.drive_write_id = dw.id;
-          await admin
-            .from("did_team_deliberations")
-            .update({ linked_drive_write_id: dw.id })
-            .eq("id", deliberationId);
+          await snapshotProtectedMutation(admin, {
+            tableName: "did_team_deliberations",
+            rowId: deliberationId,
+            reason: "signoff: backfill linked_drive_write_id (crisis writeback)",
+            actor: "edge:karel-team-deliberation-signoff",
+            mutate: async () => {
+              const { error: e } = await admin
+                .from("did_team_deliberations")
+                .update({ linked_drive_write_id: dw.id })
+                .eq("id", deliberationId);
+              if (e) throw e;
+              return true;
+            },
+          });
         } else if (dwErr) {
           console.warn("[delib-signoff/crisis] drive write insert failed:", dwErr.message);
         }

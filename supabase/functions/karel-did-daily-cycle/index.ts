@@ -11,6 +11,7 @@ import {
   purgeExpiredPantryB,
 } from "../_shared/pantryB.ts";
 import { runGlobalDidEventIngestion } from "../_shared/didEventIngestion.ts";
+import { snapshotProtectedMutation } from "../_shared/mutationSnapshotGuard.ts";
 import {
   buildTherapistTaskInsert,
   buildPendingQuestionInsert,
@@ -7476,6 +7477,18 @@ Vra\u0165 JSON:
             const legacyGenerated = ["auto", "manual", "analyst_loop", "recovery_mode", "karel-did-apply-analysis", "crisis-retroactive-scan"].includes(generatedBy);
             const isCancelledOrDeferred = ["cancelled", "deferred"].includes(String((plan as any).status ?? "")) || String(contract.session_mode ?? "") === "deferred";
             if (!sessionStarted && (!isKarelDirect || legacyGenerated) && !isCancelledOrDeferred) {
+              // P3: snapshot before metadata flip (lifecycle_status + urgency_breakdown).
+              try {
+                await sb.rpc("did_snapshot_protected_mutation", {
+                  p_table_name: "did_daily_session_plans",
+                  p_row_id: (plan as any).id,
+                  p_reason: "phase_8a5: mark planned_not_started",
+                  p_actor: "edge:karel-did-daily-cycle/phase_8a5_safety_net",
+                });
+              } catch (snapErr) {
+                console.warn("[PHASE_8A5] snapshot failed, skipping mutation:", (snapErr as any)?.message ?? snapErr);
+                continue;
+              }
               await sb.from("did_daily_session_plans").update({
                 lifecycle_status: "evidence_limited",
                 urgency_breakdown: { ...contract, result_status: "planned_not_started", session_started_evidence: false },
