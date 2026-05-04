@@ -1461,7 +1461,11 @@ function buildOpeningMonologue(payload: any, context: any, candidates: SessionCa
   else evidenceKnown.push("Včera Herna neproběhla.");
   if (sess?.held) evidenceKnown.push(`${recencyIntro(sess, "session")} ${sess.part_name || activePart} má doložený klinický vstup${sess.status ? ` se stavem ${sess.status}` : ""}.`);
   if (openedPartialSession) evidenceKnown.push(`${recencyIntro(sess, "session")} Sezení s ${sess.part_name || activePart} bylo otevřené nebo částečně rozpracované a čeká na plné dovyhodnocení; neoznačuji ho jako neproběhlé.`);
-  else if (sess?.exists && !sess?.held) evidenceKnown.push(`Plánované Sezení s ${sess.part_name || activePart} klinicky neproběhlo; z tohoto záznamu nevyvozujeme nové klinické poznatky.`);
+  else if (sess?.exists && !sess?.held && sessEvidence?.category === "pending_generated_plan") {
+    evidenceKnown.push(`Pro ${sess.part_name || activePart} včera existoval pouze automaticky vygenerovaný návrh plánu, který nebyl schválen ani spuštěn; žádné Sezení neproběhlo a nedělám z něj klinický závěr.`);
+  } else if (sess?.exists && !sess?.held && sessEvidence?.category === "approved_plan_not_started") {
+    evidenceKnown.push(`Pro ${sess.part_name || activePart} byl včera schválený plán, ale Sezení nebylo spuštěno; nedělám z toho klinický závěr.`);
+  } else if (sess?.exists && !sess?.held) evidenceKnown.push(`Pro ${sess.part_name || activePart} včera neproběhlo skutečně doložené Sezení; z dostupných záznamů nevyvozuji nové klinické poznatky.`);
   if (!evidenceKnown.length) evidenceKnown.push("V dostupném payloadu zatím nevidím plné review Herny ani Sezení.");
 
   const greeting = "Dobré ráno, Haničko a Káťo.";
