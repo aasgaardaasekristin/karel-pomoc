@@ -155,6 +155,33 @@ ${observation}
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    // P28_CDI_2b — server-side block update event
+    try {
+      const sb = createClient(SUPABASE_URL, SERVICE_KEY);
+      const planId = String(body?.live_session_id ?? body?.plan_id ?? body?.session_id ?? userData.user.id);
+      const isPlayroom = !!body?.is_playroom;
+      await recordServerSubmission({
+        sb,
+        userId: userData.user.id,
+        surfaceType: isPlayroom ? "playroom_block_update" : "live_session_block_update",
+        surfaceId: planId,
+        eventType: "block_updated",
+        sourceTable: "did_daily_session_plans",
+        sourceRowId: planId,
+        safeSummary: `block:${blockHint}`.slice(0, 240),
+        rawAllowed: false,
+        metadata: { therapist: therapistName, attachment_kind: attachmentKind, part_name: partName },
+        resumeStatePatch: {
+          current_block_index: typeof programBlock?.index === "number" ? programBlock.index : null,
+          last_completed_block: programBlock?.block ?? null,
+          reason_for_change: observation.slice(0, 200),
+          next_resume_point: "block_feedback_acknowledged",
+          what_changed_since_plan: { observation: observation.slice(0, 400), block: programBlock?.block ?? null },
+        },
+      });
+    } catch (err) {
+      console.warn("[live-feedback] dyn pipeline write failed:", err);
+    }
     return new Response(JSON.stringify({ karel_hint: hint }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
