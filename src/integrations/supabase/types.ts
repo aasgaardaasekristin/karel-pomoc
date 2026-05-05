@@ -3631,6 +3631,7 @@ export type Database = {
           pipeline_state: string | null
           priority: string | null
           processed_at: string | null
+          rerouted_from_write_id: string | null
           retry_count: number
           status: string | null
           target_document: string
@@ -3648,6 +3649,7 @@ export type Database = {
           pipeline_state?: string | null
           priority?: string | null
           processed_at?: string | null
+          rerouted_from_write_id?: string | null
           retry_count?: number
           status?: string | null
           target_document: string
@@ -3665,6 +3667,7 @@ export type Database = {
           pipeline_state?: string | null
           priority?: string | null
           processed_at?: string | null
+          rerouted_from_write_id?: string | null
           retry_count?: number
           status?: string | null
           target_document?: string
