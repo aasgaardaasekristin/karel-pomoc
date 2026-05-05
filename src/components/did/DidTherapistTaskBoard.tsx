@@ -752,14 +752,22 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
       console.error("[TaskBoard] INSERT failed:", error.message, error.details, error.hint, error.code);
       toast.error(`Nepodařilo se přidat úkol: ${error.message}`);
     } else {
-      await supabase.from("did_pending_drive_writes").insert({
-        content: `► ${taskText} [${assigneeLabel(newAssignee)}]`,
-        target_document: targetDoc,
-        write_type: "append",
-        priority: newCategory === "today" ? "high" : "normal",
-      }).then(({ error: writeErr }) => {
-        if (writeErr) console.warn("Pending write queue error:", writeErr);
-      });
+      // P29A governance: legacy short targets (05_Operativni_Plan / 06_Strategicky_Vyhled)
+      // are routed onto canonical 05A/05B via TARGET_REROUTE_MAP server-side.
+      // We invoke a thin server function that uses safeEnqueueDriveWrite — never
+      // bypassing governance from the client.
+      try {
+        await supabase.functions.invoke("karel-task-drive-enqueue", {
+          body: {
+            target_document: targetDoc,
+            content: `► ${taskText} [${assigneeLabel(newAssignee)}]`,
+            write_type: "append",
+            priority: newCategory === "today" ? "high" : "normal",
+          },
+        });
+      } catch (writeErr) {
+        console.warn("Pending write queue error:", writeErr);
+      }
 
       setNewTask("");
       void loadTasks();
