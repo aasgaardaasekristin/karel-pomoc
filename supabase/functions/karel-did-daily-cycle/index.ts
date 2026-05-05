@@ -6421,12 +6421,13 @@ Pokud nejsou žádné nové claims, vrať: []`;
               // CASING: governance whitelist + Drive lookup expects KARTA_<UPPERCASE>.
               // WRITE_TYPE: processor only accepts 'append' | 'replace' — 'crisis_escalation'
               // would be silently skipped (write_type unsupported).
-              await sb.from("did_pending_drive_writes").insert({
+              await safeInsertGovernedDriveWrite(sb, {
+                source: "karel-did-daily-cycle:crisis-escalation",
                 target_document: `KARTA_${partName.toUpperCase()}`,
                 content: `[SEKCE:J:REPLACE]\n${escalationNote}`,
                 write_type: "append",
                 priority: "urgent",
-                user_id: resolvedUserId,
+                user_id: resolvedUserId || undefined,
               });
             }
 
