@@ -452,11 +452,11 @@ Deno.serve(async (req) => {
           })
           .eq("id", writeId);
 
-        await audit(sb, { sourceType, sourceId, target, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: true, status: "ok" });
+        await audit(sb, { sourceType, sourceId, target: effectiveTarget, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: true, status: "ok" });
         await updateReviewDriveSync(sb, { sourceType, sourceId, contentType, fileId: resolved.id, status: "completed" });
         await updatePantryPackageSync(sb, writeId, "flushed", null, true);
-        writeResults.push({ write_id: writeId, status: "completed", target_document: target });
-        addLog(`OK ${writeId}: ${writeType} → '${target}' (file ${resolved.id})`);
+        writeResults.push({ write_id: writeId, status: "completed", target_document: effectiveTarget });
+        addLog(`OK ${writeId}: ${writeType} → '${effectiveTarget}' (file ${resolved.id})`);
         completed++;
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
