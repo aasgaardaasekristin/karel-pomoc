@@ -543,7 +543,8 @@ serve(async (req) => {
           // 4. Family context
           if (seg.segment_type === "family_context" && signal.recommended_actions.includes("write_pamet")) {
             const familyTarget = "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO";
-            await sb.from("did_pending_drive_writes").insert({
+            await safeInsertGovernedDriveWrite(sb, {
+              source: "karel-reactive-loop",
               target_document: familyTarget,
               content: encodeGovernedWrite(
                 `[Rodinný kontext ${new Date().toISOString().split("T")[0]}] ${signal.safe_summary}`,
