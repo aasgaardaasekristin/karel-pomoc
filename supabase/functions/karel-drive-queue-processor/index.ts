@@ -115,6 +115,8 @@ async function resolveTarget(
   }
 
   if (target.startsWith("KARTOTEKA_DID/")) {
+    // P29A closeout-fix: logical canonical KARTA_<NAME> → physical numeric-prefixed file (e.g. 003_TUNDRUPEK)
+    const physicalTitle = resolveCardPhysicalTitle(target);
     const segments = target.replace("KARTOTEKA_DID/", "").split("/");
     let currentFolder = kartotekaRoot;
     for (let i = 0; i < segments.length - 1; i++) {
@@ -124,6 +126,12 @@ async function resolveTarget(
     }
     const docName = segments[segments.length - 1];
     const files = await listFiles(token, currentFolder);
+    if (physicalTitle) {
+      const physical = files.find(
+        (f) => f.mimeType !== FOLDER_MIME && f.name.toUpperCase() === physicalTitle.toUpperCase(),
+      );
+      if (physical) return { id: physical.id, mimeType: physical.mimeType || GDOC_MIME };
+    }
     const doc = files.find(
       (f) => f.mimeType !== FOLDER_MIME && f.name.toUpperCase().includes(docName.toUpperCase()),
     );
