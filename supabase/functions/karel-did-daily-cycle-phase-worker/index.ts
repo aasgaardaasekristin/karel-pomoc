@@ -241,7 +241,7 @@ Deno.serve(async (req: Request) => {
     const canonicalUserId = await resolveCanonicalDidUserId(admin as any);
 
     // Sweep stale running jobs (cheap; idempotent).
-    await admin.rpc("did_phase_jobs_sweep_stale").catch(() => {});
+    try { await admin.rpc("did_phase_jobs_sweep_stale"); } catch { /* non-fatal */ }
 
     // Pick up to N jobs ready to run.
     const body = await req.json().catch(() => ({}));
