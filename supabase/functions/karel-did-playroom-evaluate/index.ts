@@ -336,7 +336,7 @@ async function persistPantryAndDrive(sb: any, ctx: any, review: any, reviewId: s
   const packages = [
     { package_type: "playroom_detail_analysis", content_md: detailAnalysisMarkdown({ text: review.detailed_analysis_text, partName: ctx.plan.selected_part, date: ctx.plan.plan_date, planId: ctx.plan.id, reviewId }), drive_target_path: target, report_kind: "detail_analysis", content_type: "playroom_detail_analysis" },
     { package_type: "playroom_practical_report", content_md: practicalReportMarkdown({ text: review.practical_report_text, partName: ctx.plan.selected_part, date: ctx.plan.plan_date, planId: ctx.plan.id, reviewId }), drive_target_path: target, report_kind: "practical_report", content_type: "playroom_practical_report" },
-    { package_type: "playroom_log", content_md: log, drive_target_path: "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG", report_kind: "central_log", content_type: "playroom_log" },
+    { package_type: "playroom_log", content_md: log, drive_target_path: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN", report_kind: "central_log", content_type: "playroom_log" },
   ];
   const writeIds: string[] = [];
   for (const pkg of packages) {
