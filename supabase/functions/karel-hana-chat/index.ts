@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 import { recordServerSubmission, buildServerDedupeKey } from "../_shared/dynamicPipelineServer.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
+import { safeInsertGovernedDriveWrite } from "../_shared/documentGovernance.ts";
 import {
   persistEvidenceForIntent,
   auditDriveEnqueue,
