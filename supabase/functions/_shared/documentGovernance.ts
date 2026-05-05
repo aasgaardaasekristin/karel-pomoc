@@ -95,9 +95,11 @@ const ROUTING_TABLE: Record<ContentType, (subjectId?: string) => RouteResult> = 
     writeType: "append",
     cardSection: "D",
   }),
+  // P29A closeout: 05D_HERNY_LOG is NOT in canonical governance.
+  // Playroom logs are appended to 05A under the operational plan.
   playroom_log: () => ({
     layer: "05A",
-    driveTarget: "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG",
+    driveTarget: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
     writeType: "append",
   }),
   post_session_analysis: (partName) => ({
