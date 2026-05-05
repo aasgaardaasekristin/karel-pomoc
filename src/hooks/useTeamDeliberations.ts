@@ -5,6 +5,7 @@ import type {
   DeliberationType,
   DeliberationPriority,
 } from "@/types/teamDeliberation";
+import { recordSurfaceSubmission, buildDedupeKey } from "@/lib/dynamicPipeline";
 
 /**
  * Live hook nad did_team_deliberations + realtime subscribe.
