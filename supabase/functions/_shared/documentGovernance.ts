@@ -534,7 +534,10 @@ export function routeBezpecnePoznamky(
 ): BezpecneRouteResult {
   const t = options.therapist ?? "HANKA";
   const therapistRoot = `PAMET_KAREL/DID/${t}`;
-  const text = (content || "").toLowerCase();
+  const text = (content || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
   // 1. DID part-specific implication → canonical KARTA_<PART>
   if (options.partName) {
