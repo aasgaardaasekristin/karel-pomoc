@@ -559,7 +559,7 @@ export async function createDrivePackageIfNeeded(sb: SupabaseClient, event: Norm
   const governed = encodeGovernedWrite(content, {
     source_type: "did_event_ingestion",
     source_id: event.source_ref,
-    content_type: target.includes("05E") ? "team_decision_log" : target.includes("05D") ? "playroom_log" : target.includes("05C_SEZENI") ? "session_log" : "daily_plan",
+    content_type: target.includes("05D") ? "playroom_log" : target.includes("05C_SEZENI") ? "session_log" : target.startsWith("KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/") ? "card_section_update" : target.startsWith("PAMET_KAREL/") ? "situational_analysis" : "daily_plan",
     subject_type: classification.related_part_name ? "part" : "system",
     subject_id: classification.related_part_name || "global",
     payload_fingerprint: event.source_hash,
@@ -580,18 +580,22 @@ export async function createDrivePackageIfNeeded(sb: SupabaseClient, event: Norm
 }
 
 function chooseDriveTarget(event: NormalizedDidEvent, classification: DidEventClassification): string | null {
-  if (event.source_kind === "deliberation_event" || event.source_kind === "briefing_ask_resolution") return "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG";
+  // P29A: 05E_TEAM_DECISIONS_LOG was never in canonical governance — collapse to 05A.
+  if (event.source_kind === "deliberation_event" || event.source_kind === "briefing_ask_resolution") return "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN";
   if (event.source_kind === "playroom_progress") return "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG";
   if (event.source_kind === "live_session_progress") return "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG";
-  // P27 D1 / P28 A+B.2 C1: Hana personal safe-summary destinations (raw text never written here).
-  // 05E is reserved for canonical team deliberations — Hana personal threads MUST NOT write there.
+  // P29A: Bezpecne_DID_poznamky_z_osobniho_vlakna was never in governance.
+  // Hana personal events with a related part go to that part's canonical card;
+  // otherwise route to Hana situational analysis (canonical PAMET_KAREL target).
   if (event.source_kind === "hana_personal_ingestion") {
     if (classification.related_part_name) {
-      return `KARTA_${classification.related_part_name.toUpperCase()}`;
+      return `KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_${classification.related_part_name.toUpperCase()}`;
     }
-    return "KARTOTEKA_DID/00_CENTRUM/Bezpecne_DID_poznamky_z_osobniho_vlakna";
+    return "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA";
   }
-  if (classification.related_part_name && classification.clinical_relevance && classification.evidence_level !== "therapist_factual_correction") return `KARTA_${classification.related_part_name.toUpperCase()}`;
+  if (classification.related_part_name && classification.clinical_relevance && classification.evidence_level !== "therapist_factual_correction") {
+    return `KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_${classification.related_part_name.toUpperCase()}`;
+  }
   return "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN";
 }
 
