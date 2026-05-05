@@ -6716,15 +6716,25 @@ export type Database = {
       }
       surface_resume_state: {
         Row: {
+          answer_summary: string | null
+          answered_by: string | null
+          approval_stage: string | null
+          card_update_id: string | null
           changed_blocks: Json
+          changed_fields: Json | null
           completed_blocks: Json
           created_at: string
           current_block_index: number | null
+          decision_status: string | null
           id: string
           last_open_question: string | null
+          last_pending_decision: string | null
           last_therapist_answer: string | null
           last_therapist_note: string | null
           next_resume_point: string | null
+          next_status: string | null
+          previous_status: string | null
+          question_id: string | null
           reason_for_change: string | null
           skipped_blocks: Json
           surface_id: string
@@ -6734,15 +6744,25 @@ export type Database = {
           what_changed_since_plan: Json
         }
         Insert: {
+          answer_summary?: string | null
+          answered_by?: string | null
+          approval_stage?: string | null
+          card_update_id?: string | null
           changed_blocks?: Json
+          changed_fields?: Json | null
           completed_blocks?: Json
           created_at?: string
           current_block_index?: number | null
+          decision_status?: string | null
           id?: string
           last_open_question?: string | null
+          last_pending_decision?: string | null
           last_therapist_answer?: string | null
           last_therapist_note?: string | null
           next_resume_point?: string | null
+          next_status?: string | null
+          previous_status?: string | null
+          question_id?: string | null
           reason_for_change?: string | null
           skipped_blocks?: Json
           surface_id: string
@@ -6752,15 +6772,25 @@ export type Database = {
           what_changed_since_plan?: Json
         }
         Update: {
+          answer_summary?: string | null
+          answered_by?: string | null
+          approval_stage?: string | null
+          card_update_id?: string | null
           changed_blocks?: Json
+          changed_fields?: Json | null
           completed_blocks?: Json
           created_at?: string
           current_block_index?: number | null
+          decision_status?: string | null
           id?: string
           last_open_question?: string | null
+          last_pending_decision?: string | null
           last_therapist_answer?: string | null
           last_therapist_note?: string | null
           next_resume_point?: string | null
+          next_status?: string | null
+          previous_status?: string | null
+          question_id?: string | null
           reason_for_change?: string | null
           skipped_blocks?: Json
           surface_id?: string
