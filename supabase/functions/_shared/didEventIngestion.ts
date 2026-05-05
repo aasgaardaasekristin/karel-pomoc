@@ -583,14 +583,17 @@ export async function createDrivePackageIfNeeded(sb: SupabaseClient, event: Norm
   });
   const { data: existingWrite } = await sb.from("did_pending_drive_writes").select("id").eq("target_document", effectiveTarget).ilike("content", `%${marker}%`).limit(1).maybeSingle();
   if (existingWrite?.id) return { packageId: pkg?.id ?? null, writeId: existingWrite.id };
-  const { data: write, error: writeErr } = await sb.from("did_pending_drive_writes").insert({
+  const { safeEnqueueDriveWrite } = await import("./documentGovernance.ts");
+  const r = await safeEnqueueDriveWrite(sb, {
     user_id: event.user_id,
     target_document: effectiveTarget,
     content: governed,
     write_type: "append",
     priority: classification.urgency === "crisis" ? "high" : "normal",
     status: "pending",
-  }).select("id").single();
+  }, { source: "did-event-ingestion", returning: "id" });
+  const write: any = r.data;
+  const writeErr = r.inserted ? null : { message: r.reason || "blocked_by_governance" };
   if (writeErr) throw writeErr;
   await sb.from("did_pantry_packages").update({ metadata: { source_marker: marker, source_ref: event.source_ref, source_hash: event.source_hash, source_kind: event.source_kind, evidence_level: classification.evidence_level, pending_drive_write_id: write?.id ?? null, governance_rerouted: gate.rerouted, bezpecne_route: gate.bezpecne_route ?? null } }).eq("id", pkg.id);
   return { packageId: pkg?.id ?? null, writeId: write?.id ?? null };

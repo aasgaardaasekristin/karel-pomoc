@@ -642,14 +642,14 @@ export function gateDriveWriteInsert(input: DriveWriteInsertInput): DriveWriteGa
         partName: input.bezpecne_part_name,
       });
       const c = canonicalizeTarget(r.target);
-      if (!c.ok) return { ok: false, target: raw, rerouted: false, reason: c.reason };
+      if (c.ok === false) return { ok: false, target: raw, rerouted: false, reason: c.reason };
       return { ok: true, target: c.target, rerouted: true, bezpecne_route: r.reason };
     }
     // No payload provided → fall through to static reroute (safe default).
   }
 
   const c = canonicalizeTarget(raw);
-  if (!c.ok) return { ok: false, target: raw, rerouted: false, reason: c.reason };
+  if (c.ok === false) return { ok: false, target: raw, rerouted: false, reason: c.reason };
   return { ok: true, target: c.target, rerouted: c.rerouted };
 }
 
@@ -693,83 +693,86 @@ export function resolveCardPhysicalTitle(logicalTarget: string): string | null {
 // ── P29A closeout-fix: shared safe insert helper for did_pending_drive_writes ──
 //
 // Every did_pending_drive_writes insert MUST funnel through this helper.
-// It runs gateDriveWriteInsert(), and on failure logs to system_health_log
-// (best-effort, non-blocking) and returns { inserted: false }. Callers must
-// NOT fall back to inserting the raw row.
+// It accepts the FULL original row object and ONLY rewrites `target_document`
+// to the canonical form. All other fields (dedupe_key, semantic_dedupe_key,
+// source_ref, source_type, content_type, metadata, retry_count, priority,
+// rerouted_from_write_id, ...) are preserved verbatim so dedupe / consumption
+// tracking / audit are not corrupted by the governance pass.
 
-export interface SafeInsertInput {
-  target_document: string;
-  content: string;
-  write_type: "append" | "replace";
-  priority?: "critical" | "urgent" | "high" | "normal" | "low";
-  status?: string;
-  user_id?: string | null;
+export interface SafeEnqueueOptions {
+  /** Caller name for audit trail. */
+  source: string;
   /** When this is a Bezpecne_DID_poznamky write, pass the raw payload so the
    *  content-aware router can choose the correct sub-target. */
   bezpecne_payload?: string;
   bezpecne_therapist?: "HANKA" | "KATA";
   bezpecne_part_name?: string;
-  /** Caller name for audit trail. */
-  source: string;
+  /** Optional select() projection (e.g. "id"). When provided, returns single row. */
+  returning?: string;
 }
 
-export interface SafeInsertResult {
+export interface SafeEnqueueResult {
   inserted: boolean;
   blocked: boolean;
   reason?: string;
   target?: string;
   rerouted?: boolean;
   bezpecne_route?: BezpecneRoute;
+  data?: any;
 }
 
 // Loose Supabase client interface — avoids hard dep on @supabase/supabase-js types.
 type SbLike = {
-  from: (table: string) => {
-    insert: (row: any) => Promise<{ error: any }>;
-  };
+  from: (table: string) => any;
 };
 
-export async function safeInsertGovernedDriveWrite(
+/**
+ * P29A: Safe enqueue helper.
+ * Usage:
+ *   const r = await safeEnqueueDriveWrite(sb, originalRow, { source: "..." });
+ *   if (!r.inserted) { ... }
+ *
+ * The original row MUST contain target_document. All other fields are
+ * preserved unchanged.
+ */
+export async function safeEnqueueDriveWrite(
   sb: SbLike,
-  input: SafeInsertInput,
-): Promise<SafeInsertResult> {
+  originalRow: Record<string, any>,
+  options: SafeEnqueueOptions,
+): Promise<SafeEnqueueResult> {
+  const rawTarget = String(originalRow?.target_document ?? "");
   const gate = gateDriveWriteInsert({
-    target_document: input.target_document,
-    bezpecne_payload: input.bezpecne_payload,
-    bezpecne_therapist: input.bezpecne_therapist,
-    bezpecne_part_name: input.bezpecne_part_name,
+    target_document: rawTarget,
+    bezpecne_payload: options.bezpecne_payload,
+    bezpecne_therapist: options.bezpecne_therapist,
+    bezpecne_part_name: options.bezpecne_part_name,
   });
 
   if (!gate.ok) {
     console.warn(
-      `[${input.source}] blocked_by_governance: ${input.target_document} (${gate.reason})`,
+      `[${options.source}] blocked_by_governance: ${rawTarget} (${gate.reason})`,
     );
     try {
       await sb.from("system_health_log").insert({
         event_type: "drive_write_blocked_by_governance",
         severity: "warn",
-        source: input.source,
-        details: {
-          raw_target: input.target_document,
-          reason: gate.reason,
-        },
+        source: options.source,
+        details: { raw_target: rawTarget, reason: gate.reason },
       });
     } catch (_) { /* best-effort */ }
-    return { inserted: false, blocked: true, reason: gate.reason, target: input.target_document };
+    return { inserted: false, blocked: true, reason: gate.reason, target: rawTarget };
   }
 
-  const row: Record<string, unknown> = {
-    target_document: gate.target,
-    content: input.content,
-    write_type: input.write_type,
-    priority: input.priority ?? "normal",
-    status: input.status ?? "pending",
-  };
-  if (input.user_id) row.user_id = input.user_id;
+  // Preserve ALL original fields; only canonicalize target_document.
+  const row: Record<string, any> = { ...originalRow, target_document: gate.target };
 
-  const { error } = await sb.from("did_pending_drive_writes").insert(row);
+  let q: any = sb.from("did_pending_drive_writes").insert(row);
+  if (options.returning) {
+    q = q.select(options.returning).single();
+  }
+  const { data, error } = await q;
   if (error) {
-    console.warn(`[${input.source}] insert error for ${gate.target}:`, error.message ?? error);
+    console.warn(`[${options.source}] insert error for ${gate.target}:`, error.message ?? error);
     return { inserted: false, blocked: false, reason: error.message ?? String(error), target: gate.target };
   }
 
@@ -779,6 +782,102 @@ export async function safeInsertGovernedDriveWrite(
     target: gate.target,
     rerouted: gate.rerouted,
     bezpecne_route: gate.bezpecne_route,
+    data,
+  };
+}
+
+/**
+ * Bulk variant — gates each row independently. Rows with invalid targets are
+ * dropped (and logged); the remaining rows are inserted in a single batch
+ * with all original fields preserved.
+ */
+export async function safeBulkEnqueueDriveWrites(
+  sb: SbLike,
+  originalRows: Array<Record<string, any>>,
+  options: SafeEnqueueOptions,
+): Promise<{ inserted: number; blocked: number; reasons: string[] }> {
+  const ok: Array<Record<string, any>> = [];
+  const reasons: string[] = [];
+  let blocked = 0;
+  for (const r of originalRows) {
+    const rawTarget = String(r?.target_document ?? "");
+    const gate = gateDriveWriteInsert({
+      target_document: rawTarget,
+      bezpecne_payload: options.bezpecne_payload,
+      bezpecne_therapist: options.bezpecne_therapist,
+      bezpecne_part_name: options.bezpecne_part_name,
+    });
+    if (!gate.ok) {
+      blocked++;
+      reasons.push(`${rawTarget}: ${gate.reason}`);
+      console.warn(`[${options.source}] blocked_by_governance: ${rawTarget} (${gate.reason})`);
+      try {
+        await sb.from("system_health_log").insert({
+          event_type: "drive_write_blocked_by_governance",
+          severity: "warn",
+          source: options.source,
+          details: { raw_target: rawTarget, reason: gate.reason },
+        });
+      } catch (_) { /* best-effort */ }
+      continue;
+    }
+    ok.push({ ...r, target_document: gate.target });
+  }
+  if (ok.length === 0) return { inserted: 0, blocked, reasons };
+  const { error } = await sb.from("did_pending_drive_writes").insert(ok);
+  if (error) {
+    console.warn(`[${options.source}] bulk insert error:`, error.message ?? error);
+    return { inserted: 0, blocked, reasons: [...reasons, error.message ?? String(error)] };
+  }
+  return { inserted: ok.length, blocked, reasons };
+}
+
+// ── Backward-compatible thin wrapper (deprecated; prefer safeEnqueueDriveWrite) ──
+export interface SafeInsertInput {
+  target_document: string;
+  content: string;
+  write_type: "append" | "replace";
+  priority?: "critical" | "urgent" | "high" | "normal" | "low";
+  status?: string;
+  user_id?: string | null;
+  bezpecne_payload?: string;
+  bezpecne_therapist?: "HANKA" | "KATA";
+  bezpecne_part_name?: string;
+  source: string;
+}
+export interface SafeInsertResult {
+  inserted: boolean;
+  blocked: boolean;
+  reason?: string;
+  target?: string;
+  rerouted?: boolean;
+  bezpecne_route?: BezpecneRoute;
+}
+export async function safeInsertGovernedDriveWrite(
+  sb: SbLike,
+  input: SafeInsertInput,
+): Promise<SafeInsertResult> {
+  const row: Record<string, any> = {
+    target_document: input.target_document,
+    content: input.content,
+    write_type: input.write_type,
+    priority: input.priority ?? "normal",
+    status: input.status ?? "pending",
+  };
+  if (input.user_id) row.user_id = input.user_id;
+  const r = await safeEnqueueDriveWrite(sb, row, {
+    source: input.source,
+    bezpecne_payload: input.bezpecne_payload,
+    bezpecne_therapist: input.bezpecne_therapist,
+    bezpecne_part_name: input.bezpecne_part_name,
+  });
+  return {
+    inserted: r.inserted,
+    blocked: r.blocked,
+    reason: r.reason,
+    target: r.target,
+    rerouted: r.rerouted,
+    bezpecne_route: r.bezpecne_route,
   };
 }
 

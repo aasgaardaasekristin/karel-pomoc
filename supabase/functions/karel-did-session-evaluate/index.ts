@@ -2213,13 +2213,14 @@ async function insertDriveWriteOnce(
   if (existing?.length && !force) return existing[0].id;
   if (existing?.length && force)
     await sb.from("did_pending_drive_writes").delete().eq("id", existing[0].id);
-  const { data, error } = await sb
-    .from("did_pending_drive_writes")
-    .insert(row)
-    .select("id")
-    .single();
-  if (error) throw error;
-  return data?.id ?? null;
+  // P29A closeout-fix: route every insert through governance gate, preserve all original row fields.
+  const { safeEnqueueDriveWrite } = await import("../_shared/documentGovernance.ts");
+  const r = await safeEnqueueDriveWrite(sb, row, { source: "karel-did-session-evaluate", returning: "id" });
+  if (!r.inserted) {
+    if (r.blocked) return null;
+    throw new Error(r.reason || "drive write enqueue failed");
+  }
+  return (r.data as any)?.id ?? null;
 }
 
 function sessionDetailMarkdown(args: {
@@ -2643,14 +2644,15 @@ async function persistEvaluation(
       .ilike("content", `%did_session_review:${reviewId}%`)
       .limit(1);
     if (!existingWrites || existingWrites.length === 0 || force) {
-      await sb.from("did_pending_drive_writes").insert({
+      const { safeEnqueueDriveWrite } = await import("../_shared/documentGovernance.ts");
+      await safeEnqueueDriveWrite(sb, {
         user_id: userId,
         target_document: projectionTarget,
         content: projectionContent,
         write_type: "append",
         priority: "high",
         status: "pending",
-      });
+      }, { source: "karel-did-session-evaluate:projection" });
       await sb
         .from("did_session_reviews")
         .update({ projection_status: "queued", updated_at: now })
@@ -2660,7 +2662,9 @@ async function persistEvaluation(
 
   // 4) did_pantry_packages + did_pending_drive_writes — nové autoritativní typy, starý session_summary zachován kompatibilně
   const cardTarget = `KARTA_${partName.toUpperCase()}`;
-  const sessionLogTarget = `KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG`;
+  // P29A closeout-fix: 05C_SEZENI_LOG is NOT in canonical governance.
+  // Reroute session log entries into 05A_OPERATIVNI_PLAN.
+  const sessionLogTarget = `KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN`;
   const assistants = Array.isArray(
     (ctx.plan.urgency_breakdown as any)?.assistant_persons,
   )

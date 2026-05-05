@@ -336,14 +336,17 @@ async function persistPantryAndDrive(sb: any, ctx: any, review: any, reviewId: s
   const packages = [
     { package_type: "playroom_detail_analysis", content_md: detailAnalysisMarkdown({ text: review.detailed_analysis_text, partName: ctx.plan.selected_part, date: ctx.plan.plan_date, planId: ctx.plan.id, reviewId }), drive_target_path: target, report_kind: "detail_analysis", content_type: "playroom_detail_analysis" },
     { package_type: "playroom_practical_report", content_md: practicalReportMarkdown({ text: review.practical_report_text, partName: ctx.plan.selected_part, date: ctx.plan.plan_date, planId: ctx.plan.id, reviewId }), drive_target_path: target, report_kind: "practical_report", content_type: "playroom_practical_report" },
-    { package_type: "playroom_log", content_md: log, drive_target_path: "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG", report_kind: "central_log", content_type: "playroom_log" },
+    { package_type: "playroom_log", content_md: log, drive_target_path: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN", report_kind: "central_log", content_type: "playroom_log" },
   ];
   const writeIds: string[] = [];
   for (const pkg of packages) {
     const metadata = { review_id: reviewId, plan_id: ctx.plan.id, thread_id: ctx.thread.id, part_name: ctx.plan.selected_part, mode: "playroom", report_kind: pkg.report_kind };
     const packageId = await insertOnce(sb, "did_pantry_packages", { package_type: pkg.package_type, source_id: ctx.plan.id }, { user_id: ctx.plan.user_id, package_type: pkg.package_type, source_id: ctx.plan.id, source_table: "did_daily_session_plans", content_md: pkg.content_md, drive_target_path: pkg.drive_target_path, metadata, status: "pending_drive", flushed_at: null });
     const content = encodeGovernedWrite(pkg.content_md, { source_type: "did_session_review", source_id: reviewId, content_type: pkg.content_type as any, subject_type: pkg.package_type === "playroom_log" ? "system" : "part", subject_id: ctx.plan.selected_part, payload_fingerprint: `playroom:${reviewId}:${pkg.package_type}` });
-    const writeId = await insertOnce(sb, "did_pending_drive_writes", { target_document: pkg.drive_target_path, content }, { user_id: ctx.plan.user_id, target_document: pkg.drive_target_path, content, write_type: "append", priority: "normal", status: "pending" });
+    const { safeEnqueueDriveWrite } = await import("../_shared/documentGovernance.ts");
+    const dwGate = await safeEnqueueDriveWrite(sb, { user_id: ctx.plan.user_id, target_document: pkg.drive_target_path, content, write_type: "append", priority: "normal", status: "pending" }, { source: "karel-did-playroom-evaluate", returning: "id" });
+    const writeId = dwGate.inserted ? (dwGate.data as any)?.id : null;
+    if (!writeId) continue;
     writeIds.push(writeId);
     await sb.from("did_pantry_packages").update({ metadata: { ...metadata, pending_drive_write_id: writeId } }).eq("id", packageId);
   }
