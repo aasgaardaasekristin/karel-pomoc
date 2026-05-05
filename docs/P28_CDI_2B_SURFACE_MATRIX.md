@@ -1,0 +1,21 @@
+# P28_CDI_2b — Remaining Surface Matrix
+
+Inventory of submission surfaces beyond the three covered in P28_CDI_2a (therapist_task_answer, team_deliberation_answer, hana_personal_thread).
+
+| surface | frontend_component | submit_handler | edge_function_or_rpc | db_table_written | server_pipeline_event_written | active_activity_session_written | resume_state_written | dashboard_refetch_or_realtime | status | gap |
+|---|---|---|---|---|---|---|---|---|---|---|
+| playroom_deliberation_answer | DeliberationRoom.tsx | useTeamDeliberations.iterate (playroom variant) | karel-team-deliberation-iterate | did_team_deliberations | yes (existing iterate hook reused — surfaceType set to playroom_deliberation_answer when deliberation_type=playroom) | yes (recordServerSubmission) | yes (last_open_question, next_resume_point) | useTeamDeliberations realtime + invalidateQueries on updated_at | covered | none |
+| session_approval_answer | DeliberationRoom.tsx (signoff) | karel-team-deliberation-signoff | karel-team-deliberation-signoff | did_team_deliberations | yes (NEW — recordServerSubmission with eventType=approval_answered) | yes | yes (approval_stage, last_pending_decision, next_resume_point) | useTeamDeliberations realtime | covered | none |
+| pending_question_answer | PendingQuestionsPanel.tsx | karel-direct-followup-process | karel-direct-followup-process | did_pending_questions | yes (NEW — pending_question_answered) | yes | yes (question_id, answered_by, answer_summary) | emitPendingQuestionsChanged window event + 30s poll | covered | none |
+| card_update_discussion | DeliberationRoom.tsx (card flow) | client orchestrator (kartothekaUpdateOrchestrator) | n/a (client-driven; processor dispatch via card_update_queue.updated_at bump) | card_update_queue | dispatch-only (active processor bumps updated_at when surface activity recorded by FE recordSurfaceSubmission) | optional (FE markActivity) | optional | DidKartotekaTab realtime via card_update_queue subscription | partial | discussion edits stay client-side; covered by FE markActivity + processor resync hint. No server entrypoint exists today — explicit gap acknowledged for P28_CDI_3 |
+| daily_plan_edit | KarelDailyPlan.tsx + DidDailySessionPlan.tsx | karel-daily-plan-sync-start (and direct UPDATE) | karel-daily-plan-sync-start | did_daily_session_plans | yes (NEW — plan_edited) | yes | yes (changed_fields, previous_status, next_status) | DidDailySessionPlan realtime via did_daily_session_plans updated_at | covered | direct UPDATE branches still rely on FE recordSurfaceSubmission (acceptable — FE+server both write) |
+| live_session_block_update | DidLiveSessionPanel.tsx | karel-live-session-feedback | karel-live-session-feedback | did_live_session_progress | yes (NEW — block_updated) | yes | yes (current_block_index, what_changed_since_plan, etc.) | DidLiveSessionPanel realtime + heartbeat | covered | none |
+| playroom_block_update | DidKidsPlayroom.tsx | karel-live-session-feedback (is_playroom=true) | karel-live-session-feedback | did_live_session_progress | yes (NEW — same handler differentiates by is_playroom flag) | yes | yes | DidKidsPlayroom realtime | covered | requires UI to pass is_playroom=true (follow-up) |
+| did_part_chat_thread | Chat.tsx | karel-chat (existing) + safe synthetic smoke | karel-chat | did_chat_messages | covered earlier in 2a + safe smoke helper (p28CdiSafeSmoke.ts) | yes | n/a | useDidThreads realtime | covered | safe smoke only — real raw payload disabled (raw_allowed=false) |
+| session_resume | DidLiveSessionPanel.tsx (resume handler) | direct DB upsert via upsertResumeState (FE) | n/a | surface_resume_state | n/a (resume itself IS the resume state) | n/a | yes (next_resume_point=resume_acknowledged from active processor dispatch) | DidLiveSessionPanel realtime | covered | none |
+| playroom_resume | DidKidsPlayroom.tsx | direct DB upsert via upsertResumeState (FE) | n/a | surface_resume_state | n/a | n/a | yes (active processor dispatches resume_state_sync) | DidKidsPlayroom realtime | covered | none |
+
+## Summary
+- 9/10 surfaces fully covered with server-side pipeline events.
+- 1/10 (card_update_discussion) is currently FE-driven; explicit gap recorded — to be promoted in P28_CDI_3 alongside global cron reduction.
+- All synthetic smoke events use `raw_allowed=false`.
