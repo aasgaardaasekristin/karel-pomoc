@@ -382,14 +382,17 @@ export type Database = {
           action: string
           applied: boolean
           created_at: string
+          dedupe_key: string | null
           id: string
           new_content: string | null
           old_content: string | null
           part_id: string
           payload: Json
+          pipeline_state: string | null
           priority: number
           reason: string | null
           section: string
+          semantic_dedupe_key: string | null
           source: string | null
           source_date: string | null
           source_thread_id: string | null
@@ -401,14 +404,17 @@ export type Database = {
           action?: string
           applied?: boolean
           created_at?: string
+          dedupe_key?: string | null
           id?: string
           new_content?: string | null
           old_content?: string | null
           part_id: string
           payload?: Json
+          pipeline_state?: string | null
           priority?: number
           reason?: string | null
           section: string
+          semantic_dedupe_key?: string | null
           source?: string | null
           source_date?: string | null
           source_thread_id?: string | null
@@ -420,14 +426,17 @@ export type Database = {
           action?: string
           applied?: boolean
           created_at?: string
+          dedupe_key?: string | null
           id?: string
           new_content?: string | null
           old_content?: string | null
           part_id?: string
           payload?: Json
+          pipeline_state?: string | null
           priority?: number
           reason?: string | null
           section?: string
+          semantic_dedupe_key?: string | null
           source?: string | null
           source_date?: string | null
           source_thread_id?: string | null
@@ -2493,7 +2502,10 @@ export type Database = {
           author_role: string | null
           classification_json: Json
           clinical_relevance: boolean
+          consumed_at: string | null
+          consumed_by: Json | null
           created_at: string
+          dedupe_key: string | null
           drive_package_id: string | null
           drive_write_id: string | null
           error_message: string | null
@@ -2505,10 +2517,13 @@ export type Database = {
           occurred_at: string
           operational_relevance: boolean
           pantry_entry_id: string | null
+          pipeline_state: string | null
           processed_at: string | null
           processed_by: string | null
           raw_excerpt: string | null
           related_part_name: string | null
+          retention_state: string | null
+          semantic_dedupe_key: string | null
           source_hash: string
           source_id: string | null
           source_kind: string
@@ -2516,6 +2531,7 @@ export type Database = {
           source_surface: string | null
           source_table: string
           status: string
+          supersedes_source_ref: string | null
           task_id: string | null
           updated_at: string
           user_id: string
@@ -2525,7 +2541,10 @@ export type Database = {
           author_role?: string | null
           classification_json?: Json
           clinical_relevance?: boolean
+          consumed_at?: string | null
+          consumed_by?: Json | null
           created_at?: string
+          dedupe_key?: string | null
           drive_package_id?: string | null
           drive_write_id?: string | null
           error_message?: string | null
@@ -2537,10 +2556,13 @@ export type Database = {
           occurred_at?: string
           operational_relevance?: boolean
           pantry_entry_id?: string | null
+          pipeline_state?: string | null
           processed_at?: string | null
           processed_by?: string | null
           raw_excerpt?: string | null
           related_part_name?: string | null
+          retention_state?: string | null
+          semantic_dedupe_key?: string | null
           source_hash: string
           source_id?: string | null
           source_kind: string
@@ -2548,6 +2570,7 @@ export type Database = {
           source_surface?: string | null
           source_table: string
           status?: string
+          supersedes_source_ref?: string | null
           task_id?: string | null
           updated_at?: string
           user_id: string
@@ -2557,7 +2580,10 @@ export type Database = {
           author_role?: string | null
           classification_json?: Json
           clinical_relevance?: boolean
+          consumed_at?: string | null
+          consumed_by?: Json | null
           created_at?: string
+          dedupe_key?: string | null
           drive_package_id?: string | null
           drive_write_id?: string | null
           error_message?: string | null
@@ -2569,10 +2595,13 @@ export type Database = {
           occurred_at?: string
           operational_relevance?: boolean
           pantry_entry_id?: string | null
+          pipeline_state?: string | null
           processed_at?: string | null
           processed_by?: string | null
           raw_excerpt?: string | null
           related_part_name?: string | null
+          retention_state?: string | null
+          semantic_dedupe_key?: string | null
           source_hash?: string
           source_id?: string | null
           source_kind?: string
@@ -2580,6 +2609,7 @@ export type Database = {
           source_surface?: string | null
           source_table?: string
           status?: string
+          supersedes_source_ref?: string | null
           task_id?: string | null
           updated_at?: string
           user_id?: string
@@ -3536,10 +3566,12 @@ export type Database = {
         Row: {
           content: string
           created_at: string | null
+          dedupe_key: string | null
           id: string
           last_attempt_at: string | null
           last_error_message: string | null
           next_retry_at: string | null
+          pipeline_state: string | null
           priority: string | null
           processed_at: string | null
           retry_count: number
@@ -3551,10 +3583,12 @@ export type Database = {
         Insert: {
           content: string
           created_at?: string | null
+          dedupe_key?: string | null
           id?: string
           last_attempt_at?: string | null
           last_error_message?: string | null
           next_retry_at?: string | null
+          pipeline_state?: string | null
           priority?: string | null
           processed_at?: string | null
           retry_count?: number
@@ -3566,10 +3600,12 @@ export type Database = {
         Update: {
           content?: string
           created_at?: string | null
+          dedupe_key?: string | null
           id?: string
           last_attempt_at?: string | null
           last_error_message?: string | null
           next_retry_at?: string | null
+          pipeline_state?: string | null
           priority?: string | null
           processed_at?: string | null
           retry_count?: number
@@ -4959,7 +4995,10 @@ export type Database = {
       }
       hana_personal_memory: {
         Row: {
+          consumed_at: string | null
+          consumed_by: Json | null
           created_at: string
+          dedupe_key: string | null
           did_relevant: boolean
           do_not_export_raw_text: boolean
           emotional_state: string | null
@@ -4967,15 +5006,22 @@ export type Database = {
           id: string
           memory_type: string
           next_opening_hint: string | null
+          pipeline_state: string | null
           private_to_hana: boolean
+          retention_state: string | null
           safe_summary: string
+          semantic_dedupe_key: string | null
           source_message_refs: string[]
           source_thread_id: string
           superseded_at: string | null
+          supersedes_id: string | null
           user_id: string
         }
         Insert: {
+          consumed_at?: string | null
+          consumed_by?: Json | null
           created_at?: string
+          dedupe_key?: string | null
           did_relevant?: boolean
           do_not_export_raw_text?: boolean
           emotional_state?: string | null
@@ -4983,15 +5029,22 @@ export type Database = {
           id?: string
           memory_type: string
           next_opening_hint?: string | null
+          pipeline_state?: string | null
           private_to_hana?: boolean
+          retention_state?: string | null
           safe_summary: string
+          semantic_dedupe_key?: string | null
           source_message_refs?: string[]
           source_thread_id: string
           superseded_at?: string | null
+          supersedes_id?: string | null
           user_id: string
         }
         Update: {
+          consumed_at?: string | null
+          consumed_by?: Json | null
           created_at?: string
+          dedupe_key?: string | null
           did_relevant?: boolean
           do_not_export_raw_text?: boolean
           emotional_state?: string | null
@@ -4999,14 +5052,26 @@ export type Database = {
           id?: string
           memory_type?: string
           next_opening_hint?: string | null
+          pipeline_state?: string | null
           private_to_hana?: boolean
+          retention_state?: string | null
           safe_summary?: string
+          semantic_dedupe_key?: string | null
           source_message_refs?: string[]
           source_thread_id?: string
           superseded_at?: string | null
+          supersedes_id?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "hana_personal_memory_supersedes_id_fkey"
+            columns: ["supersedes_id"]
+            isOneToOne: false
+            referencedRelation: "hana_personal_memory"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       karel_action_jobs: {
         Row: {
@@ -5472,57 +5537,78 @@ export type Database = {
       }
       karel_pantry_b_entries: {
         Row: {
+          consumed_at: string | null
+          consumed_by: Json | null
           created_at: string
+          dedupe_key: string | null
           detail: Json
           entry_kind: string
           expires_at: string
           flush_result: Json | null
           id: string
           intended_destinations: string[]
+          pipeline_state: string | null
           processed_at: string | null
           processed_by: string | null
           related_crisis_event_id: string | null
           related_part_name: string | null
           related_therapist: string | null
+          retention_state: string | null
+          semantic_dedupe_key: string | null
           source_kind: string
           source_ref: string | null
           summary: string
+          supersedes_source_ref: string | null
           user_id: string
         }
         Insert: {
+          consumed_at?: string | null
+          consumed_by?: Json | null
           created_at?: string
+          dedupe_key?: string | null
           detail?: Json
           entry_kind: string
           expires_at?: string
           flush_result?: Json | null
           id?: string
           intended_destinations?: string[]
+          pipeline_state?: string | null
           processed_at?: string | null
           processed_by?: string | null
           related_crisis_event_id?: string | null
           related_part_name?: string | null
           related_therapist?: string | null
+          retention_state?: string | null
+          semantic_dedupe_key?: string | null
           source_kind: string
           source_ref?: string | null
           summary: string
+          supersedes_source_ref?: string | null
           user_id: string
         }
         Update: {
+          consumed_at?: string | null
+          consumed_by?: Json | null
           created_at?: string
+          dedupe_key?: string | null
           detail?: Json
           entry_kind?: string
           expires_at?: string
           flush_result?: Json | null
           id?: string
           intended_destinations?: string[]
+          pipeline_state?: string | null
           processed_at?: string | null
           processed_by?: string | null
           related_crisis_event_id?: string | null
           related_part_name?: string | null
           related_therapist?: string | null
+          retention_state?: string | null
+          semantic_dedupe_key?: string | null
           source_kind?: string
           source_ref?: string | null
           summary?: string
+          supersedes_source_ref?: string | null
           user_id?: string
         }
         Relationships: []
@@ -6906,6 +6992,23 @@ export type Database = {
         Returns: string
       }
       did_count_visible_dirty_fields: { Args: never; Returns: number }
+      did_lifecycle_state_for_thread: {
+        Args: { p_thread_id: string }
+        Returns: {
+          consumed_at: string
+          consumed_by: Json
+          created_at: string
+          dedupe_key: string
+          drive_status: string
+          drive_target: string
+          layer: string
+          message_id: string
+          pipeline_state: string
+          retention_state: string
+          row_id: string
+          source_ref: string
+        }[]
+      }
       did_p4_acceptance_inventory: { Args: never; Returns: Json }
       did_record_slo_run: {
         Args: {
