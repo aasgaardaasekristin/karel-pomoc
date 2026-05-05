@@ -349,7 +349,7 @@ export async function executeClassifiedItems(
       if (isDup) {
         result.dedup_skipped++;
       } else {
-        await sb.from("did_pending_drive_writes").insert({
+        const inserted = await safeInsertGovernedWrite(sb, {
           target_document: planTarget,
           content: encodeGovernedWrite(planPayload, {
             source_type: callerName,
@@ -365,7 +365,7 @@ export async function executeClassifiedItems(
           status: "pending",
           user_id: DID_OWNER_ID,
         });
-        result.drive_writes++;
+        if (inserted) result.drive_writes++;
       }
     }
 
