@@ -367,7 +367,8 @@ serve(async (req) => {
           // NOT private Hana content. Therapist clinical observations are safe for KARTA write.
           // Personal thread raw text is NEVER written here — that path uses derived_clinical_implication only.
           const targetName = resolved.matched_canonical_name || candidatePart;
-          await sb.from("did_pending_drive_writes").insert({
+          await safeInsertGovernedDriveWrite(sb, {
+            source: "karel-reactive-loop",
             target_document: `KARTA_${targetName.toUpperCase()}`,
             content: encodeGovernedWrite(
               `[Reaktivní zpracování] Odpověď terapeuta: ${answer.slice(0, 500)}`,
