@@ -37,6 +37,7 @@ import {
   isGovernedTarget,
   isReplaceAllowed,
   canonicalizeTarget,
+  resolveCardPhysicalTitle,
 } from "../_shared/documentGovernance.ts";
 import { decodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 
