@@ -25,6 +25,8 @@ export interface EnqueuePhaseJobInput {
   input?: Record<string, unknown>;
   priority?: "low" | "normal" | "high";
   max_attempts?: number;
+  /** Optional discriminator for multi-job phases (e.g. per plan_id). */
+  idempotency_suffix?: string;
 }
 
 export interface EnqueuePhaseJobResult {
