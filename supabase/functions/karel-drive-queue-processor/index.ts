@@ -425,6 +425,24 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        // P29A: Hard gate canonical KARTA_<NAME> targets without physical Drive mapping.
+        if (isCanonicalKartaTarget(effectiveTarget) && !hasPhysicalCardMapping(effectiveTarget)) {
+          await sb
+            .from("did_pending_drive_writes")
+            .update({
+              status: "blocked_by_governance",
+              pipeline_state: "blocked_by_governance_no_physical_card",
+              last_error_message: `blocked_by_governance_no_physical_card: ${effectiveTarget} has no entry in CARD_PHYSICAL_MAP`,
+              next_retry_at: null,
+            })
+            .eq("id", writeId);
+          await audit(sb, { sourceType, sourceId, target: effectiveTarget, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: "blocked_by_governance", err: "no_physical_card" });
+          skipped++;
+          writeResults.push({ write_id: writeId, status: "skipped", target_document: effectiveTarget, error: "blocked_by_governance_no_physical_card" });
+          addLog(`BLOCK ${writeId}: '${effectiveTarget}' has no physical card mapping`);
+          continue;
+        }
+
         // Resolve target — only canonical centrum docs may be auto-created.
         let resolved = await resolveTarget(token, kartotekaRoot, effectiveTarget);
         if (!resolved && (
