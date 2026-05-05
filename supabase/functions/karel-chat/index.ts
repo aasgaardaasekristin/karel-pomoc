@@ -3,6 +3,7 @@ import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 import { getSystemPrompt, ConversationMode } from "./systemPrompts.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
+import { safeInsertGovernedDriveWrite } from "../_shared/documentGovernance.ts";
 import {
   buildGovernedWriteIntents,
   buildExtractionPrompt,
