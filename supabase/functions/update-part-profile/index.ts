@@ -3,6 +3,7 @@ import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-
 import {
   buildAuditEntry,
   routeWrite,
+  safeInsertGovernedDriveWrite,
   type GovernanceRequest,
 } from "../_shared/documentGovernance.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
@@ -457,7 +458,8 @@ async function enqueuePartCardSync(
       subject_id: governanceRequest.subject_id,
     });
 
-    const { error: queueError } = await sb.from("did_pending_drive_writes").insert({
+    const insertResult = await safeInsertGovernedDriveWrite(sb, {
+      source: "update-part-profile",
       target_document: governanceResult.driveTarget,
       content: queuedContent,
       write_type: governanceResult.writeType,
@@ -465,7 +467,9 @@ async function enqueuePartCardSync(
       priority: "high",
     });
 
-    if (queueError) throw queueError;
+    if (!insertResult.inserted) {
+      throw new Error(`Drive write blocked or failed: ${insertResult.reason || "unknown"}`);
+    }
 
     try {
       const pendingAudit = buildAuditEntry(

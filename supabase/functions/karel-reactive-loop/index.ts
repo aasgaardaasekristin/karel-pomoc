@@ -34,6 +34,7 @@ import {
 } from "../_shared/topicSegmentation.ts";
 import { loadEntityRegistry, type EntityRegistry } from "../_shared/entityRegistry.ts";
 import { resolveEntity } from "../_shared/entityResolution.ts";
+import { safeInsertGovernedDriveWrite } from "../_shared/documentGovernance.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -366,7 +367,8 @@ serve(async (req) => {
           // NOT private Hana content. Therapist clinical observations are safe for KARTA write.
           // Personal thread raw text is NEVER written here — that path uses derived_clinical_implication only.
           const targetName = resolved.matched_canonical_name || candidatePart;
-          await sb.from("did_pending_drive_writes").insert({
+          await safeInsertGovernedDriveWrite(sb, {
+            source: "karel-reactive-loop",
             target_document: `KARTA_${targetName.toUpperCase()}`,
             content: encodeGovernedWrite(
               `[Reaktivní zpracování] Odpověď terapeuta: ${answer.slice(0, 500)}`,
@@ -450,7 +452,8 @@ serve(async (req) => {
               ? "PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY"
               : "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY";
 
-            await sb.from("did_pending_drive_writes").insert({
+            await safeInsertGovernedDriveWrite(sb, {
+              source: "karel-reactive-loop",
               target_document: pametTarget,
               content: encodeGovernedWrite(
                 `[Osobní vlákno ${new Date().toISOString().split("T")[0]} | ${seg.segment_type}] ${seg.raw_segment.slice(0, 500)}`,
@@ -473,7 +476,8 @@ serve(async (req) => {
           if (seg.segment_type !== "personal_relational"
             && canWriteToOperationalLayer(signal)
             && signal.derived_operational_implication) {
-            await sb.from("did_pending_drive_writes").insert({
+            await safeInsertGovernedDriveWrite(sb, {
+              source: "karel-reactive-loop",
               target_document: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
               content: encodeGovernedWrite(
                 `\n\n--- ${new Date().toISOString().split("T")[0]} | reactive-loop | ${seg.segment_type} ---\n${signal.derived_operational_implication}`,
@@ -501,7 +505,8 @@ serve(async (req) => {
             const partResolved = resolveEntity(signal.part_name, registry);
             if (partResolved.can_write_existing_card) {
               const targetName = partResolved.matched_canonical_name || signal.part_name;
-              await sb.from("did_pending_drive_writes").insert({
+              await safeInsertGovernedDriveWrite(sb, {
+                source: "karel-reactive-loop",
                 target_document: `KARTA_${targetName.toUpperCase()}`,
                 content: encodeGovernedWrite(
                   signal.derived_clinical_implication,
@@ -538,7 +543,8 @@ serve(async (req) => {
           // 4. Family context
           if (seg.segment_type === "family_context" && signal.recommended_actions.includes("write_pamet")) {
             const familyTarget = "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO";
-            await sb.from("did_pending_drive_writes").insert({
+            await safeInsertGovernedDriveWrite(sb, {
+              source: "karel-reactive-loop",
               target_document: familyTarget,
               content: encodeGovernedWrite(
                 `[Rodinný kontext ${new Date().toISOString().split("T")[0]}] ${signal.safe_summary}`,

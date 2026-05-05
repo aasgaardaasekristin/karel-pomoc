@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 import { recordServerSubmission, buildServerDedupeKey } from "../_shared/dynamicPipelineServer.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
+import { safeInsertGovernedDriveWrite } from "../_shared/documentGovernance.ts";
 import {
   persistEvidenceForIntent,
   auditDriveEnqueue,
@@ -765,15 +766,18 @@ async function runHanaPostChatWriteback(args: {
         subject_type: resolveGovernedSubjectType(intent),
         subject_id: resolveGovernedSubjectId(intent, therapistKey),
       });
-      const writeErr = allowDriveWriteback
-        ? (await sb.from("did_pending_drive_writes").insert({
+      let writeErr: { message?: string } | null = null;
+      if (allowDriveWriteback) {
+        const r = await safeInsertGovernedDriveWrite(sb, {
+          source: "karel-hana-chat:writeback",
           target_document: intent.target.documentKey,
           content: governedContent,
           priority: intent.evidenceKind === "FACT" ? "high" : "normal",
           status: "pending",
           write_type: "append",
-        })).error
-        : null;
+        });
+        writeErr = r.inserted ? null : { message: r.reason || "blocked_by_governance" };
+      }
 
       // ── FÁZE 2B: DB evidence pipeline (parallel with Drive enqueue) ──
       let observationId: string | null = null;

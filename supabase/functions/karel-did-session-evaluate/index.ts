@@ -41,6 +41,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 import { appendPantryB } from "../_shared/pantryB.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 import { requireAuth } from "../_shared/auth.ts";
+import { gateDriveWriteInsert, safeInsertGovernedDriveWrite } from "../_shared/documentGovernance.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1382,18 +1383,17 @@ async function projectReviewToPametKarel(
     subject_id: "hanka",
     payload_fingerprint: marker,
   });
-  const { error: insertErr } = await sb
-    .from("did_pending_drive_writes")
-    .insert({
-      user_id: review.user_id,
-      target_document: PAMET_KAREL_HANKA_INSIGHTS_TARGET,
-      content,
-      write_type: "append",
-      priority: "normal",
-      status: "pending",
-    });
-  if (insertErr) throw insertErr;
-  return { inserted: true, target_document: PAMET_KAREL_HANKA_INSIGHTS_TARGET };
+  const r = await safeInsertGovernedDriveWrite(sb, {
+    source: "karel-did-session-evaluate:pamet-karel",
+    user_id: review.user_id,
+    target_document: PAMET_KAREL_HANKA_INSIGHTS_TARGET,
+    content,
+    write_type: "append",
+    priority: "normal",
+    status: "pending",
+  });
+  if (!r.inserted) throw new Error(`pamet_karel insert blocked: ${r.reason}`);
+  return { inserted: true, target_document: r.target ?? PAMET_KAREL_HANKA_INSIGHTS_TARGET };
 }
 
 function sanitizeEvaluation(

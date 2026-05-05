@@ -3,6 +3,7 @@ import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 import { getSystemPrompt, ConversationMode } from "./systemPrompts.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
+import { safeInsertGovernedDriveWrite } from "../_shared/documentGovernance.ts";
 import {
   buildGovernedWriteIntents,
   buildExtractionPrompt,
@@ -1954,13 +1955,15 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                       },
                     );
 
-                    const { error: writeErr } = await sbMem.from("did_pending_drive_writes").insert({
+                    const insertResult = await safeInsertGovernedDriveWrite(sbMem, {
+                      source: "karel-chat:post-chat-writeback",
                       target_document: intent.target.documentKey,
                       content: governedContent,
                       priority: intent.evidenceKind === "FACT" ? "high" : "normal",
                       status: "pending",
                       write_type: "append",
                     });
+                    const writeErr = insertResult.inserted ? null : { message: insertResult.reason || "blocked_by_governance" };
 
                     // FÁZE 2B: parallel DB evidence pipeline
                     let observationId: string | null = null;

@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { corsHeaders } from "../_shared/auth.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 import { normalizeSignal } from "../_shared/signalNormalization.ts";
+import { safeInsertGovernedDriveWrite } from "../_shared/documentGovernance.ts";
 
 /**
  * karel-daily-therapist-intelligence
@@ -245,8 +246,20 @@ ${crisisDigest}`;
             };
           });
 
-          await sb.from("did_pending_drive_writes").insert(normalizedWrites);
-          console.log(`[therapist-intel] ${t.key}: inserted ${normalizedWrites.length} pending writes (governed + normalized)`);
+          let okCount = 0;
+          for (const w of normalizedWrites) {
+            const r = await safeInsertGovernedDriveWrite(sb, {
+              source: "karel-daily-therapist-intelligence",
+              target_document: w.target_document,
+              content: w.content,
+              write_type: w.write_type,
+              priority: w.priority,
+              status: w.status,
+              user_id: w.user_id,
+            });
+            if (r.inserted) okCount++;
+          }
+          console.log(`[therapist-intel] ${t.key}: inserted ${okCount}/${normalizedWrites.length} pending writes (governed + normalized)`);
         }
 
         results[t.key] = { ok: true };

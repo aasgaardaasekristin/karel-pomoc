@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
+import { safeInsertGovernedDriveWrite } from "../_shared/documentGovernance.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
@@ -4606,17 +4607,17 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
           subject_type: params.subject_type,
           subject_id: params.subject_id,
         });
-        const insertPayload: Record<string, unknown> = {
+        const result = await safeInsertGovernedDriveWrite(sb, {
+          source: "karel-did-daily-cycle",
           target_document: params.target_document,
           content: envelope,
           write_type: params.write_type,
           priority: params.priority || "normal",
           status: "pending",
-        };
-        if (resolvedUserId) insertPayload.user_id = resolvedUserId;
-        const { error } = await sb.from("did_pending_drive_writes").insert(insertPayload);
-        if (error) {
-          console.error(`[PHASE_4_ENQUEUE] insert error for ${params.target_document}:`, error.message);
+          user_id: resolvedUserId || undefined,
+        });
+        if (!result.inserted) {
+          console.error(`[PHASE_4_ENQUEUE] insert blocked/failed for ${params.target_document}: ${result.reason || "unknown"}`);
           cardEnqueueErrors++;
           return false;
         }
@@ -6420,12 +6421,13 @@ Pokud nejsou žádné nové claims, vrať: []`;
               // CASING: governance whitelist + Drive lookup expects KARTA_<UPPERCASE>.
               // WRITE_TYPE: processor only accepts 'append' | 'replace' — 'crisis_escalation'
               // would be silently skipped (write_type unsupported).
-              await sb.from("did_pending_drive_writes").insert({
+              await safeInsertGovernedDriveWrite(sb, {
+                source: "karel-did-daily-cycle:crisis-escalation",
                 target_document: `KARTA_${partName.toUpperCase()}`,
                 content: `[SEKCE:J:REPLACE]\n${escalationNote}`,
                 write_type: "append",
                 priority: "urgent",
-                user_id: resolvedUserId,
+                user_id: resolvedUserId || undefined,
               });
             }
 
@@ -7337,8 +7339,9 @@ Vra\u0165 JSON:
           // Write HANKA profile append
           const hankaContent = `\n\n=== AKTUALIZACE ${todayStr} ===\nKRIZOVÁ PORADA ${ac.part_name} — HANKA:\n- Počet příspěvků dnes: ${hankaCount}\n- Spolupráce: ${todayJournal.hanka_cooperation || "N/A"}\n- Poznámka Karla: ${karelNote}`;
 
-          await sb.from("did_pending_drive_writes").insert({
-            target_document: "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI",
+          await safeInsertGovernedDriveWrite(sb, {
+            source: "karel-did-daily-cycle:pamet-crisis-hanka",
+            target_document: "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI.txt",
             content: hankaContent,
             write_type: "append",
             status: "pending",
@@ -7348,8 +7351,9 @@ Vra\u0165 JSON:
           // Write KATA profile append
           const kataContent = `\n\n=== AKTUALIZACE ${todayStr} ===\nKRIZOVÁ PORADA ${ac.part_name} — KATA:\n- Počet příspěvků dnes: ${kataCount}\n- Spolupráce: ${todayJournal.kata_cooperation || "N/A"}\n- Poznámka Karla: ${karelNote}`;
 
-          await sb.from("did_pending_drive_writes").insert({
-            target_document: "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI",
+          await safeInsertGovernedDriveWrite(sb, {
+            source: "karel-did-daily-cycle:pamet-crisis-kata",
+            target_document: "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI.txt",
             content: kataContent,
             write_type: "append",
             status: "pending",

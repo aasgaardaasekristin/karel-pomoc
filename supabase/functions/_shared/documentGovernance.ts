@@ -366,9 +366,11 @@ export const TARGET_REROUTE_MAP: Record<string, string> = {
     "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
   "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG":
     "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
-  // Removed kontexty doc → KDO_JE_KDO (closest authoritative target)
-  "PAMET_KAREL/DID/KONTEXTY/SUPERVIZNI_POZNATKY":
-    "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
+  // P29A closeout-fix: SUPERVIZNI_POZNATKY is NOT auto-rerouted to KDO_JE_KDO.
+  // It is semantically a different document; mechanical rewrite into the
+  // people directory would corrupt that target. Such writes must be
+  // blocked_by_governance and require explicit manual mapping. Therefore
+  // intentionally NOT present in TARGET_REROUTE_MAP.
 
   // Default fallback for Bezpecne_DID_poznamky_z_osobniho_vlakna
   // (when content-aware routing is not available, e.g. legacy queue row).
@@ -650,4 +652,134 @@ export function gateDriveWriteInsert(input: DriveWriteInsertInput): DriveWriteGa
   if (!c.ok) return { ok: false, target: raw, rerouted: false, reason: c.reason };
   return { ok: true, target: c.target, rerouted: c.rerouted };
 }
+
+// ── P29A closeout-fix: Logical → Physical Drive title mapping for KARTA_<NAME> ──
+//
+// On the actual Drive, several active part cards live under file titles that
+// are numerically prefixed (e.g. "003_TUNDRUPEK") inside
+// KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY. Governance layer always speaks in
+// canonical logical targets (KARTA_<NAME>); the resolver in
+// karel-drive-queue-processor uses this map to find the physical file.
+export interface CardPhysicalMapping {
+  logical_target: string;
+  physical_drive_title: string;
+  parent_folder: "01_AKTIVNI_FRAGMENTY";
+}
+
+export const CARD_PHYSICAL_MAP: Record<string, CardPhysicalMapping> = {
+  "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_TUNDRUPEK": {
+    logical_target: "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_TUNDRUPEK",
+    physical_drive_title: "003_TUNDRUPEK",
+    parent_folder: "01_AKTIVNI_FRAGMENTY",
+  },
+  "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_ARTHUR": {
+    logical_target: "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_ARTHUR",
+    physical_drive_title: "004_ARTHUR",
+    parent_folder: "01_AKTIVNI_FRAGMENTY",
+  },
+  "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_GUSTIK": {
+    logical_target: "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_GUSTIK",
+    physical_drive_title: "002_GUSTIK",
+    parent_folder: "01_AKTIVNI_FRAGMENTY",
+  },
+};
+
+/** Resolve logical KARTA_* target into the physical Drive file title. */
+export function resolveCardPhysicalTitle(logicalTarget: string): string | null {
+  const m = CARD_PHYSICAL_MAP[logicalTarget];
+  return m ? m.physical_drive_title : null;
+}
+
+// ── P29A closeout-fix: shared safe insert helper for did_pending_drive_writes ──
+//
+// Every did_pending_drive_writes insert MUST funnel through this helper.
+// It runs gateDriveWriteInsert(), and on failure logs to system_health_log
+// (best-effort, non-blocking) and returns { inserted: false }. Callers must
+// NOT fall back to inserting the raw row.
+
+export interface SafeInsertInput {
+  target_document: string;
+  content: string;
+  write_type: "append" | "replace";
+  priority?: "critical" | "urgent" | "high" | "normal" | "low";
+  status?: string;
+  user_id?: string | null;
+  /** When this is a Bezpecne_DID_poznamky write, pass the raw payload so the
+   *  content-aware router can choose the correct sub-target. */
+  bezpecne_payload?: string;
+  bezpecne_therapist?: "HANKA" | "KATA";
+  bezpecne_part_name?: string;
+  /** Caller name for audit trail. */
+  source: string;
+}
+
+export interface SafeInsertResult {
+  inserted: boolean;
+  blocked: boolean;
+  reason?: string;
+  target?: string;
+  rerouted?: boolean;
+  bezpecne_route?: BezpecneRoute;
+}
+
+// Loose Supabase client interface — avoids hard dep on @supabase/supabase-js types.
+type SbLike = {
+  from: (table: string) => {
+    insert: (row: any) => Promise<{ error: any }>;
+  };
+};
+
+export async function safeInsertGovernedDriveWrite(
+  sb: SbLike,
+  input: SafeInsertInput,
+): Promise<SafeInsertResult> {
+  const gate = gateDriveWriteInsert({
+    target_document: input.target_document,
+    bezpecne_payload: input.bezpecne_payload,
+    bezpecne_therapist: input.bezpecne_therapist,
+    bezpecne_part_name: input.bezpecne_part_name,
+  });
+
+  if (!gate.ok) {
+    console.warn(
+      `[${input.source}] blocked_by_governance: ${input.target_document} (${gate.reason})`,
+    );
+    try {
+      await sb.from("system_health_log").insert({
+        event_type: "drive_write_blocked_by_governance",
+        severity: "warn",
+        source: input.source,
+        details: {
+          raw_target: input.target_document,
+          reason: gate.reason,
+        },
+      });
+    } catch (_) { /* best-effort */ }
+    return { inserted: false, blocked: true, reason: gate.reason, target: input.target_document };
+  }
+
+  const row: Record<string, unknown> = {
+    target_document: gate.target,
+    content: input.content,
+    write_type: input.write_type,
+    priority: input.priority ?? "normal",
+    status: input.status ?? "pending",
+  };
+  if (input.user_id) row.user_id = input.user_id;
+
+  const { error } = await sb.from("did_pending_drive_writes").insert(row);
+  if (error) {
+    console.warn(`[${input.source}] insert error for ${gate.target}:`, error.message ?? error);
+    return { inserted: false, blocked: false, reason: error.message ?? String(error), target: gate.target };
+  }
+
+  return {
+    inserted: true,
+    blocked: false,
+    target: gate.target,
+    rerouted: gate.rerouted,
+    bezpecne_route: gate.bezpecne_route,
+  };
+}
+
 
