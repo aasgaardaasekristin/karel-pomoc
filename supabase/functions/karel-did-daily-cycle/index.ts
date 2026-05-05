@@ -4784,6 +4784,12 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       criticalPhaseStatus.cardPipelineOk = cardEnqueueErrors === 0;
       console.log(`[PHASE_8] Card pipeline (async): enqueueErrors=${cardEnqueueErrors}, enqueued=${cardsEnqueued.length}, pipelineOk=${criticalPhaseStatus.cardPipelineOk}`);
 
+      // P29B: explicit phase_step marker — primary enqueue is done; from here
+      // on it is "tail" work (CENTRUM, KNIHOVNA, profiling). If the cycle dies
+      // later, we know Phase 4 enqueue itself succeeded.
+      await setPhase("update_cards_enqueued",
+        `enqueued=${cardsEnqueued.length} deferred=${cardsDeferred.length} centrum=${centrumEnqueued.length} errors=${cardEnqueueErrors} elapsed=${phase4ElapsedMs}ms`);
+
       // ═══ PROCESS [CENTRUM:...] BLOCKS – Update 00_CENTRUM documents ═══
       // Build valid sources set for evidence validation
       const validSources = new Set<string>();
