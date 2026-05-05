@@ -4888,10 +4888,20 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
         } else {
           centrumTailPayloadId = payloadRow.id;
           // Merge a SMALL ref into context_data — never overwrite.
-          await sb.rpc("did_update_cycle_merge_context", {
-            p_cycle_id: cycle.id,
-            p_patch: {
+          try {
+            const { data: ctxRow } = await sb
+              .from("did_update_cycles")
+              .select("context_data")
+              .eq("id", cycle.id)
+              .maybeSingle();
+            const prev = (ctxRow?.context_data && typeof ctxRow.context_data === "object")
+              ? ctxRow.context_data as Record<string, any>
+              : {};
+            const prevPhase4 = (prev.phase4 && typeof prev.phase4 === "object") ? prev.phase4 as Record<string, any> : {};
+            const merged = {
+              ...prev,
               phase4: {
+                ...prevPhase4,
                 phase4_tail_payload_ref: {
                   payload_table: "did_daily_cycle_phase_payloads",
                   payload_id: payloadRow.id,
@@ -4899,8 +4909,13 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
                   job_kind: "phase4_centrum_tail",
                 },
               },
-            },
-          }).then(() => {}, (e: any) => console.warn("[PHASE_4_TAIL] context merge rpc warn:", e?.message));
+            };
+            await sb.from("did_update_cycles")
+              .update({ context_data: merged })
+              .eq("id", cycle.id);
+          } catch (mergeErr: any) {
+            console.warn("[PHASE_4_TAIL] context merge warn:", mergeErr?.message);
+          }
 
           const enqTail = await enqueuePhaseJob(sb as any, {
             cycle_id: cycle.id,
