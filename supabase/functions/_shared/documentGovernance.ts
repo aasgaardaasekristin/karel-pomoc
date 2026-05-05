@@ -380,6 +380,8 @@ export const TARGET_REROUTE_MAP: Record<string, string> = {
   "PAMET_KAREL_PROFIL_KATA": "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI.txt",
   "05_Operativni_Plan": "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
   "05A_OPERATIVNI_PLAN": "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+  // Non-canonical kontexty alias → VZORCE (closest semantic match in governance).
+  "PAMET_KAREL/DID/KONTEXTY/TRIGGERY": "PAMET_KAREL/DID/KONTEXTY/VZORCE",
 
   // Auto-rewrite bare HANKA/KATA names without .txt to canonical .txt form.
   "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY": "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY.txt",
