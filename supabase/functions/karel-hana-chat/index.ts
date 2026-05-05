@@ -1043,7 +1043,15 @@ serve(async (req) => {
     const shouldBufferForHanaGuard = requestedModeId === "hana_osobni" || persistencePolicy.mode_id === "hana_osobni";
     if (shouldBufferForHanaGuard) {
       const rawResponse = await readStreamedAiText(response.body!);
-      const guarded = guardHanaPersonalResponse(rawResponse, lastUserTextForSafety);
+      let guarded = guardHanaPersonalResponse(rawResponse, lastUserTextForSafety);
+      // P28 EFGH — block generic openings when deep memory exists
+      if (!guarded.replaced && p28OpeningSelection && isGenericOpening(guarded.text)) {
+        guarded = {
+          replaced: true,
+          reasons: ["generic_opening_blocked_p28"],
+          text: p28OpeningSelection.candidate,
+        };
+      }
       fullResponse = guarded.text;
       if (guarded.replaced) {
         console.warn("[hana-chat-guard] response replaced", guarded.reasons);
