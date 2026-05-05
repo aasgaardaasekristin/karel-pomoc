@@ -315,15 +315,16 @@ export async function executeClassifiedItems(
         subject_id: cu.part_name,
       };
 
-      await sb.from("did_pending_drive_writes").insert({
+      const inserted = await safeInsertGovernedWrite(sb, {
         target_document: cardTarget,
         content: encodeGovernedWrite(cardPayload, cardMeta),
         write_type: "append",
         priority: "normal",
         status: "pending",
         user_id: DID_OWNER_ID,
+        bezpecne_part_name: cu.part_name,
       });
-      result.drive_writes++;
+      if (inserted) result.drive_writes++;
     }
 
     // Plan updates (05A/05B/05C from generated actions)
