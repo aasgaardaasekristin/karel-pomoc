@@ -9,6 +9,8 @@ import {
   CARD_PHYSICAL_MAP,
   safeEnqueueDriveWrite,
   gateDriveWriteInsert,
+  isAmbiguousPhysicalCardTarget,
+  hasPhysicalCardMapping,
 } from "../../supabase/functions/_shared/documentGovernance.ts";
 
 /**
