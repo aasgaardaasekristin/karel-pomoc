@@ -49,7 +49,7 @@ describe("P29A drive governance hard gate", () => {
   it("4. invalid target outside governance is rejected (not silently retried)", () => {
     const r = canonicalizeTarget("SOMETHING/RANDOM/UNKNOWN_DOC");
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toMatch(/not in canonical registry/i);
+    if (r.ok === false) expect(r.reason).toMatch(/not in canonical registry/i);
   });
 
   it("4b. archive folder targets are rejected", () => {
