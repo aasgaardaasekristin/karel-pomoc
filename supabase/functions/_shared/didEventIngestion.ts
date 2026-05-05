@@ -582,12 +582,10 @@ function chooseDriveTarget(event: NormalizedDidEvent, classification: DidEventCl
   if (event.source_kind === "deliberation_event" || event.source_kind === "briefing_ask_resolution") return "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG";
   if (event.source_kind === "playroom_progress") return "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG";
   if (event.source_kind === "live_session_progress") return "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG";
-  // P27 D1: Hana personal safe-summary destinations (raw text never written here; only summaries built earlier).
+  // P27 D1 / P28 A+B.2 C1: Hana personal safe-summary destinations (raw text never written here).
+  // 05E is reserved for canonical team deliberations — Hana personal threads MUST NOT write there.
   if (event.source_kind === "hana_personal_ingestion") {
-    if (classification.evidence_level === "therapist_factual_correction") {
-      return "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG";
-    }
-    if (classification.related_part_name && classification.clinical_relevance) {
+    if (classification.related_part_name) {
       return `KARTA_${classification.related_part_name.toUpperCase()}`;
     }
     return "KARTOTEKA_DID/00_CENTRUM/Bezpecne_DID_poznamky_z_osobniho_vlakna";
