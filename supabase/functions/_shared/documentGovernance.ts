@@ -170,9 +170,11 @@ const ROUTING_TABLE: Record<ContentType, (subjectId?: string) => RouteResult> = 
     driveTarget: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
     writeType: "replace",
   }),
+  // P29A: 05E_TEAM_DECISIONS_LOG is NOT in canonical governance.
+  // Team decisions are appended to 05A under "Rozhodnutí týmu / denní audit změn" section.
   team_decision_log: () => ({
     layer: "05A",
-    driveTarget: "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG",
+    driveTarget: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
     writeType: "append",
   }),
 
