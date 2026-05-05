@@ -79,6 +79,15 @@ export async function markActivity(input: MarkActivityInput): Promise<string | n
 }
 
 export async function writeDynamicPipelineEvent(input: WritePipelineEventInput): Promise<string | null> {
+  // P28_CDI_2c — card_update_discussion is server-only. FE callers MUST go
+  // through @/services/cardUpdateDiscussion.submitCardUpdateDiscussion(),
+  // which posts to karel-card-update-discussion-event. Refuse direct writes.
+  if (input.surfaceType === "card_update_discussion") {
+    console.warn(
+      "[dynamicPipeline] card_update_discussion writes must go through the server endpoint (karel-card-update-discussion-event); refusing FE-direct write.",
+    );
+    return null;
+  }
   try {
     const { data: u } = await supabase.auth.getUser();
     const userId = u?.user?.id;
