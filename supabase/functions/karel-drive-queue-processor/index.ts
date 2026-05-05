@@ -428,19 +428,26 @@ Deno.serve(async (req) => {
 
         // P29A: Hard gate canonical KARTA_<NAME> targets without physical Drive mapping.
         if (isCanonicalKartaTarget(effectiveTarget) && !hasPhysicalCardMapping(effectiveTarget)) {
+          const ambiguous = isAmbiguousPhysicalCardTarget(effectiveTarget);
+          const pState = ambiguous
+            ? "requires_manual_approval_physical_card_missing_or_ambiguous"
+            : "blocked_by_governance_no_physical_card";
+          const errMsg = ambiguous
+            ? `P29A: ${effectiveTarget} has no unambiguous physical Drive card mapping; manual approval required`
+            : `blocked_by_governance_no_physical_card: ${effectiveTarget} has no entry in CARD_PHYSICAL_MAP`;
           await sb
             .from("did_pending_drive_writes")
             .update({
               status: "blocked_by_governance",
-              pipeline_state: "blocked_by_governance_no_physical_card",
-              last_error_message: `blocked_by_governance_no_physical_card: ${effectiveTarget} has no entry in CARD_PHYSICAL_MAP`,
+              pipeline_state: pState,
+              last_error_message: errMsg,
               next_retry_at: null,
             })
             .eq("id", writeId);
-          await audit(sb, { sourceType, sourceId, target: effectiveTarget, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: "blocked_by_governance", err: "no_physical_card" });
+          await audit(sb, { sourceType, sourceId, target: effectiveTarget, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: "blocked_by_governance", err: ambiguous ? "manual_approval_required" : "no_physical_card" });
           skipped++;
-          writeResults.push({ write_id: writeId, status: "skipped", target_document: effectiveTarget, error: "blocked_by_governance_no_physical_card" });
-          addLog(`BLOCK ${writeId}: '${effectiveTarget}' has no physical card mapping`);
+          writeResults.push({ write_id: writeId, status: "skipped", target_document: effectiveTarget, error: pState });
+          addLog(`BLOCK ${writeId}: '${effectiveTarget}' ${pState}`);
           continue;
         }
 
