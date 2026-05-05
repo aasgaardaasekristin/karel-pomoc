@@ -20,6 +20,38 @@ import {
 } from "./informationClassifier.ts";
 import { encodeGovernedWrite } from "./documentWriteEnvelope.ts";
 import { decodeGovernedWrite } from "./documentWriteEnvelope.ts";
+import { gateDriveWriteInsert } from "./documentGovernance.ts";
+
+/**
+ * P29A closeout: Centralized governed insert for did_pending_drive_writes.
+ * Returns true on success, false when blocked by governance.
+ */
+async function safeInsertGovernedWrite(
+  sb: SupabaseClient,
+  row: {
+    target_document: string;
+    content: string;
+    write_type: "append" | "replace";
+    priority: "high" | "normal" | "low";
+    status: string;
+    user_id: string;
+    bezpecne_payload?: string;
+    bezpecne_part_name?: string;
+  },
+): Promise<boolean> {
+  const gate = gateDriveWriteInsert({
+    target_document: row.target_document,
+    bezpecne_payload: row.bezpecne_payload,
+    bezpecne_part_name: row.bezpecne_part_name,
+  });
+  if (!gate.ok) {
+    console.warn(`[classified-action-executor] blocked_by_governance: ${row.target_document} (${gate.reason})`);
+    return false;
+  }
+  const { bezpecne_payload: _bp, bezpecne_part_name: _bn, ...insertRow } = row;
+  await sb.from("did_pending_drive_writes").insert({ ...insertRow, target_document: gate.target });
+  return true;
+}
 
 const DID_OWNER_ID = "8a7816ee-4fd1-43d4-8d83-4230d7517ae1";
 
