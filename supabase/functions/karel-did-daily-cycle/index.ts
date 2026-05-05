@@ -7339,8 +7339,9 @@ Vra\u0165 JSON:
           // Write HANKA profile append
           const hankaContent = `\n\n=== AKTUALIZACE ${todayStr} ===\nKRIZOVÁ PORADA ${ac.part_name} — HANKA:\n- Počet příspěvků dnes: ${hankaCount}\n- Spolupráce: ${todayJournal.hanka_cooperation || "N/A"}\n- Poznámka Karla: ${karelNote}`;
 
-          await sb.from("did_pending_drive_writes").insert({
-            target_document: "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI",
+          await safeInsertGovernedDriveWrite(sb, {
+            source: "karel-did-daily-cycle:pamet-crisis-hanka",
+            target_document: "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI.txt",
             content: hankaContent,
             write_type: "append",
             status: "pending",
@@ -7350,8 +7351,9 @@ Vra\u0165 JSON:
           // Write KATA profile append
           const kataContent = `\n\n=== AKTUALIZACE ${todayStr} ===\nKRIZOVÁ PORADA ${ac.part_name} — KATA:\n- Počet příspěvků dnes: ${kataCount}\n- Spolupráce: ${todayJournal.kata_cooperation || "N/A"}\n- Poznámka Karla: ${karelNote}`;
 
-          await sb.from("did_pending_drive_writes").insert({
-            target_document: "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI",
+          await safeInsertGovernedDriveWrite(sb, {
+            source: "karel-did-daily-cycle:pamet-crisis-kata",
+            target_document: "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI.txt",
             content: kataContent,
             write_type: "append",
             status: "pending",
