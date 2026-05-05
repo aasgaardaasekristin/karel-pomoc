@@ -41,7 +41,7 @@ export async function enqueuePhaseJob(
   admin: any,
   i: EnqueuePhaseJobInput,
 ): Promise<EnqueuePhaseJobResult> {
-  const idempotency_key = `${i.cycle_id}:${i.job_kind}`;
+  const idempotency_key = `${i.cycle_id}:${i.job_kind}${i.idempotency_suffix ? `:${i.idempotency_suffix}` : ""}`;
   try {
     const { data, error } = await admin
       .from("did_daily_cycle_phase_jobs")
