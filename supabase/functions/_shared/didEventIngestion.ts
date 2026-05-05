@@ -674,18 +674,51 @@ export async function upsertHanaPersonalMemoryIfNeeded(sb: SupabaseClient, event
     ? `Haničko, ve včerejším osobním rozhovoru se objevilo téma kolem části ${part}. Nechci to přejít, jako by to nebylo. Jak ti s tím dnes je?`
     : `Haničko, včera večer jsi mi nesla něco důležitého z osobního prostoru. Nechci začít neutrálně. Jak ti je dnes?`;
 
-  // Idempotency: one memory row per (thread, message, memory_type)
+  // P28 A+B.2 HANA_MEMORY-B1: idempotent writer against partial unique index uq_hana_memory_dedupe_active.
+  // dedupe_key MUST match the formula used in the migration backfill:
+  //   md5(source_thread_id || '|' || memory_type || '|' || lower(squash_ws(next_opening_hint)))
   const messageRef = event.message_id ? `${sourceThreadId}:${event.message_id}` : `${sourceThreadId}:${event.source_hash}`;
+  const computeDedupeKey = async (memory_type: string): Promise<string> => {
+    const norm = (nextOpening || "").toLowerCase().replace(/\s+/g, " ");
+    const raw = `${sourceThreadId}|${memory_type}|${norm}`;
+    const buf = await crypto.subtle.digest("MD5", new TextEncoder().encode(raw)).catch(() => null);
+    if (!buf) {
+      // Fallback: deterministic non-MD5 hash if subtle.digest("MD5") is unavailable.
+      let h = 5381;
+      for (let i = 0; i < raw.length; i++) h = ((h << 5) + h + raw.charCodeAt(i)) | 0;
+      return `fallback_${(h >>> 0).toString(16)}`;
+    }
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  };
+
+  const semanticKey = (memory_type: string) => `${memory_type}:${(classification.urgency || "_unspecified").toLowerCase()}`;
 
   const insertRow = async (memory_type: string, did_relevant: boolean, private_to_hana: boolean) => {
-    const { data: existing } = await sb.from("hana_personal_memory")
+    const dedupeKey = await computeDedupeKey(memory_type);
+
+    // 1) Try to find existing active row for this (user, thread, memory_type, dedupe_key).
+    const { data: existingActive } = await sb.from("hana_personal_memory")
+      .select("id")
+      .eq("user_id", event.user_id)
+      .eq("source_thread_id", sourceThreadId)
+      .eq("memory_type", memory_type)
+      .eq("dedupe_key", dedupeKey)
+      .eq("pipeline_state", "active")
+      .limit(1)
+      .maybeSingle();
+    if (existingActive?.id) return existingActive.id as string;
+
+    // 2) Fallback: same message_ref already recorded (legacy rows without dedupe_key).
+    const { data: existingByMsg } = await sb.from("hana_personal_memory")
       .select("id")
       .eq("source_thread_id", sourceThreadId)
       .eq("memory_type", memory_type)
       .contains("source_message_refs", [messageRef])
       .limit(1)
       .maybeSingle();
-    if (existing?.id) return existing.id as string;
+    if (existingByMsg?.id) return existingByMsg.id as string;
+
+    // 3) Insert; if the partial unique index fires (23505), recover by selecting the active row.
     const { data, error } = await sb.from("hana_personal_memory").insert({
       user_id: event.user_id,
       source_thread_id: sourceThreadId,
@@ -697,12 +730,28 @@ export async function upsertHanaPersonalMemoryIfNeeded(sb: SupabaseClient, event
       do_not_export_raw_text: true,
       did_relevant,
       private_to_hana,
+      dedupe_key: dedupeKey,
+      semantic_dedupe_key: semanticKey(memory_type),
+      pipeline_state: "active",
+      retention_state: "active",
     }).select("id").single();
-    if (error) {
-      console.error("[did-event-ingestion] hana_personal_memory insert failed", error);
-      return null;
+    if (!error) return data?.id ?? null;
+
+    if ((error as any)?.code === "23505") {
+      const { data: retry } = await sb.from("hana_personal_memory")
+        .select("id")
+        .eq("user_id", event.user_id)
+        .eq("source_thread_id", sourceThreadId)
+        .eq("memory_type", memory_type)
+        .eq("dedupe_key", dedupeKey)
+        .eq("pipeline_state", "active")
+        .limit(1)
+        .maybeSingle();
+      return retry?.id ?? null;
     }
-    return data?.id ?? null;
+
+    console.error("[did-event-ingestion] hana_personal_memory insert failed", error);
+    return null;
   };
 
   const stateId = await insertRow("hana_emotional_state", false, true);
