@@ -7752,26 +7752,43 @@ Vra\u0165 JSON:
     }
 
     // P29B: write completion semantics to cycle context_data
+    // CRITICAL: MERGE with existing context_data — never overwrite. We must
+    // preserve phase4 audit, source/canary metadata, auditAlerts, and any
+    // other audit objects accumulated during the cycle.
     try {
-      const phaseJobsSummary = await summarizePhaseJobsForCycle(sb as any, cycle?.id ?? cycleId);
+      const targetCycleId = cycle?.id ?? cycleId;
+      const phaseJobsSummary = await summarizePhaseJobsForCycle(sb as any, targetCycleId);
       const criticalFailures = Object.entries(phaseJobsSummary.by_kind)
         .filter(([, status]) => status === "failed_permanent")
         .map(([kind]) => kind);
       const controlledSkips = Object.entries(phaseJobsSummary.by_kind)
         .filter(([, status]) => status === "controlled_skipped")
         .map(([kind]) => kind);
-      await sb.from("did_update_cycles").update({
-        context_data: {
-          phase_jobs: phaseJobsSummary,
-          daily_cycle_completion_semantics: {
-            main_phases_completed: true,
-            detached_jobs_summary: phaseJobsSummary,
-            critical_failures: criticalFailures,
-            controlled_skips: controlledSkips,
-            architecture: "p29b_effortmax_detached_phase_jobs",
-          },
+      // Read existing context_data first
+      const { data: existingRow } = await sb
+        .from("did_update_cycles")
+        .select("context_data")
+        .eq("id", targetCycleId)
+        .maybeSingle();
+      const existingContext = (existingRow?.context_data && typeof existingRow.context_data === "object")
+        ? existingRow.context_data as Record<string, unknown>
+        : {};
+      const mergedContext = {
+        ...existingContext,
+        phase_jobs: phaseJobsSummary,
+        daily_cycle_completion_semantics: {
+          main_phases_completed: true,
+          detached_jobs_summary: phaseJobsSummary,
+          critical_failures: criticalFailures,
+          controlled_skips: controlledSkips,
+          architecture: "p29b_effortmax_detached_phase_jobs",
+          merged_at: new Date().toISOString(),
+          preserved_keys: Object.keys(existingContext),
         },
-      }).eq("id", cycle?.id ?? cycleId);
+      };
+      await sb.from("did_update_cycles").update({
+        context_data: mergedContext,
+      }).eq("id", targetCycleId);
     } catch (e) { console.warn("[P29B] completion_semantics write failed:", e); }
 
     if (consolidationRunId) {
