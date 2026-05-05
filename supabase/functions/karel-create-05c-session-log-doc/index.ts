@@ -1,50 +1,30 @@
 /**
- * karel-create-05c-session-log-doc
+ * karel-create-05c-session-log-doc — NEUTRALIZED (P29A)
  *
- * One-off narrow governance operation:
- * - creates only KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG when missing
- * - does not touch pantry packages or drive write queue
- * - does not run processors or broad batches
+ * P29A governance closeout: 05C_SEZENI_LOG is NOT a canonical Drive target.
+ * This function previously created a Google Doc named "05C_SEZENI_LOG" inside
+ * KARTOTEKA_DID/00_CENTRUM. Under the new governance hard gate that path is
+ * not in CANONICAL_DRIVE_REGISTRY and any write is fail-closed.
+ *
+ * P29A reroute (variant B): session/daily clinical audit content must be
+ * appended to the canonical 05A operational plan. This function therefore
+ * no longer creates any Drive file; it only enqueues a governed append into
+ * KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN through safeEnqueueDriveWrite.
  */
 
-import {
-  FOLDER_MIME,
-  GDOC_MIME,
-  findFolder,
-  getAccessToken,
-  listFiles,
-  resolveKartotekaRoot,
-} from "../_shared/driveHelpers.ts";
-import { isGovernedTarget } from "../_shared/documentGovernance.ts";
+import { safeEnqueueDriveWrite } from "../_shared/documentGovernance.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const TARGET_NAME = "05C_SEZENI_LOG";
-const TARGET_PATH = "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG";
-const TARGET_FOLDER = "KARTOTEKA_DID/00_CENTRUM";
-const INITIAL_CONTENT = `# 05C_SEZENI_LOG
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-Tento dokument je centrální auditní log terapeutických sezení DID systému.
-
-Slouží k lidsky čitelné dokumentaci:
-- kdy sezení proběhlo,
-- s jakou částí,
-- kdo ho vedl,
-- v jakém rozsahu proběhlo,
-- jaký byl výsledek,
-- jaké jsou implikace pro další práci.
-
-Tento dokument není runtime source of truth.
-Primární runtime záznamy jsou v databázi, zejména \`did_session_reviews\`, session plans a související evidence.
-
-Zápisy do tohoto dokumentu musí být dedukční a stručné.
-Nepatří sem syrový transcript.
-`;
-
-type ResolvedDoc = { id: string; name: string; mimeType?: string };
+const REROUTE_TARGET = "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN";
+const SECTION_HEADER = "## Sezení / denní audit klinických vstupů";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -53,75 +33,46 @@ function json(body: unknown, status = 200) {
   });
 }
 
-function exactDoc(files: ResolvedDoc[]): ResolvedDoc | null {
-  return files.find((file) => file.mimeType !== FOLDER_MIME && file.name === TARGET_NAME) ?? null;
-}
-
-async function createGoogleDoc(token: string, folderId: string): Promise<ResolvedDoc> {
-  const createRes = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ name: TARGET_NAME, parents: [folderId], mimeType: GDOC_MIME }),
-  });
-  if (!createRes.ok) {
-    throw new Error(`Drive create failed: ${createRes.status} ${await createRes.text()}`);
-  }
-  const created = await createRes.json();
-
-  const updateRes = await fetch(`https://docs.googleapis.com/v1/documents/${created.id}:batchUpdate`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ requests: [{ insertText: { location: { index: 1 }, text: INITIAL_CONTENT } }] }),
-  });
-  if (!updateRes.ok) {
-    throw new Error(`Docs initial content insert failed: ${updateRes.status} ${await updateRes.text()}`);
-  }
-
-  return { id: created.id, name: created.name ?? TARGET_NAME, mimeType: created.mimeType ?? GDOC_MIME };
-}
-
-async function resolveTarget(token: string, kartotekaRoot: string): Promise<ResolvedDoc | null> {
-  const centrumFolder = await findFolder(token, "00_CENTRUM", kartotekaRoot);
-  if (!centrumFolder) return null;
-  return exactDoc(await listFiles(token, centrumFolder));
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (req.method !== "POST") return json({ ok: false, error: "POST only" }, 405);
 
+  // Hard governance answer: 05C_SEZENI_LOG cannot be created.
+  // For backward compat with any callers, accept POST and reroute the marker
+  // to 05A through the gated enqueue helper (no direct Drive create anymore).
   try {
-    if (!isGovernedTarget(TARGET_PATH)) {
-      return json({ ok: false, error: "Governance target is not explicitly whitelisted", target_path: TARGET_PATH }, 500);
-    }
+    const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+    const today = new Date().toISOString().slice(0, 10);
+    const marker =
+      `\n\n${SECTION_HEADER}\n` +
+      `_[${today}] P29A reroute: legacy 05C_SEZENI_LOG marker → 05A operativní plán._\n`;
 
-    const token = await getAccessToken();
-    const kartotekaRoot = await resolveKartotekaRoot(token);
-    if (!kartotekaRoot) return json({ ok: false, error: "KARTOTEKA_DID root not found" }, 404);
-
-    const centrumFolder = await findFolder(token, "00_CENTRUM", kartotekaRoot);
-    if (!centrumFolder) return json({ ok: false, error: "00_CENTRUM folder not found", folder: TARGET_FOLDER }, 404);
-
-    const before = exactDoc(await listFiles(token, centrumFolder));
-    const doc = before ?? await createGoogleDoc(token, centrumFolder);
-    const resolved = await resolveTarget(token, kartotekaRoot);
+    const enqRes = await safeEnqueueDriveWrite(
+      admin as any,
+      {
+        target_document: REROUTE_TARGET,
+        content: marker,
+        write_type: "append",
+        priority: "low",
+        status: "pending",
+      },
+      { source: "karel-create-05c-session-log-doc(neutralized)" },
+    );
 
     return json({
       ok: true,
-      created: before ? false : true,
-      file_id: doc.id,
-      file_name: doc.name,
-      path: TARGET_PATH,
-      folder: TARGET_FOLDER,
-      resolver_found: resolved?.id === doc.id,
-      resolver_file_id: resolved?.id ?? null,
-      governance_exact: isGovernedTarget(TARGET_PATH),
-      processors_run: false,
-      package_touched: false,
-      queue_touched: false,
+      neutralized: true,
+      original_target: "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG",
+      rerouted_to: REROUTE_TARGET,
+      section: SECTION_HEADER,
+      enqueued: enqRes.inserted,
+      blocked_reason: enqRes.inserted ? null : (enqRes.reason ?? null),
+      created: false,
+      note:
+        "P29A: 05C_SEZENI_LOG is not in CANONICAL_DRIVE_REGISTRY. " +
+        "This function no longer creates a Drive file; clinical session/daily audit " +
+        "content is appended to 05A_OPERATIVNI_PLAN via the governance-gated enqueue helper.",
     });
   } catch (e: any) {
-    console.error("[create-05c-session-log-doc] fatal:", e);
-    return json({ ok: false, error: e?.message ?? String(e) }, 500);
+    return json({ ok: false, neutralized: true, error: e?.message ?? String(e) }, 500);
   }
 });
