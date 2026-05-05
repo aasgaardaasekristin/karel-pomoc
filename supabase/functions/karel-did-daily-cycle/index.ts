@@ -4607,17 +4607,17 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
           subject_type: params.subject_type,
           subject_id: params.subject_id,
         });
-        const insertPayload: Record<string, unknown> = {
+        const result = await safeInsertGovernedDriveWrite(sb, {
+          source: "karel-did-daily-cycle",
           target_document: params.target_document,
           content: envelope,
           write_type: params.write_type,
           priority: params.priority || "normal",
           status: "pending",
-        };
-        if (resolvedUserId) insertPayload.user_id = resolvedUserId;
-        const { error } = await sb.from("did_pending_drive_writes").insert(insertPayload);
-        if (error) {
-          console.error(`[PHASE_4_ENQUEUE] insert error for ${params.target_document}:`, error.message);
+          user_id: resolvedUserId || undefined,
+        });
+        if (!result.inserted) {
+          console.error(`[PHASE_4_ENQUEUE] insert blocked/failed for ${params.target_document}: ${result.reason || "unknown"}`);
           cardEnqueueErrors++;
           return false;
         }
