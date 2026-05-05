@@ -114,8 +114,9 @@ export async function handleUncertainEntity(
     `Kontext: ${contextSnippet.slice(0, 200)}. ` +
     `[K OVĚŘENÍ TERAPEUTY]`;
 
-  const { error: writeErr } = await supabase.from("did_pending_drive_writes").insert({
-    target_document: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
+  const kdoGate = gateDriveWriteInsert({ target_document: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO" });
+  const { error: writeErr } = kdoGate.ok ? await supabase.from("did_pending_drive_writes").insert({
+    target_document: kdoGate.target,
     content: encodeGovernedWrite(kdoContent, {
       source_type: "entity-watchdog",
       source_id: ctx.thread_id,
@@ -127,7 +128,7 @@ export async function handleUncertainEntity(
     priority: "normal",
     status: "pending",
     user_id: ctx.user_id || DID_OWNER_ID,
-  });
+  }) : { error: { message: `blocked_by_governance: ${kdoGate.reason}` } };
 
   if (writeErr) {
     console.warn(`[entityWatchdog] KDO_JE_KDO write failed: ${writeErr.message}`);
