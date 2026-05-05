@@ -956,7 +956,23 @@ serve(async (req) => {
     if (continuityContext.text) {
       systemPrompt += `\n\n${continuityContext.text}`;
     }
-    
+
+    // P28 EFGH — deep Hana memory + persona + opening strategy
+    let p28OpeningSelection: OpeningSelection | null = null;
+    let p28LoadedMemoryIds: string[] = [];
+    try {
+      const deepMems = await loadHanaDeepMemory(sb, user.id, null);
+      const firstUserText = extractFirstUserText(messages);
+      const blocks = buildHanaDeepContextBlocks({ memories: deepMems, firstUserMessage: firstUserText });
+      p28OpeningSelection = blocks.opening_selection;
+      p28LoadedMemoryIds = blocks.loaded_memory_ids;
+      if (blocks.text) {
+        systemPrompt += `\n\n${KAREL_PERSONA_LAYER_HANA_PERSONAL}\n\n${blocks.text}`;
+      }
+    } catch (e) {
+      console.warn("[hana-chat][p28-efgh] deep memory load failed (non-fatal):", e);
+    }
+
     // Inject context-prime cache if available (dynamic 3D memory)
     if (contextPrimeCache && typeof contextPrimeCache === "string" && contextPrimeCache.length > 50) {
       systemPrompt += `\n\n═══ DYNAMICKÁ KONTEXTOVÁ CACHE (context-prime) ═══\nToto je tvá aktuální "předsunutá paměť" – plastická mezipaměť vystavěná ze VŠECH zdrojů (Drive, DB, všechna vlákna, internet). Využívej ji pro maximální přítomnost a adaptabilitu.\n\n${contextPrimeCache}`;
