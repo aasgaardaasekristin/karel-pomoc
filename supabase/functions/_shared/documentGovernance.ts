@@ -642,14 +642,14 @@ export function gateDriveWriteInsert(input: DriveWriteInsertInput): DriveWriteGa
         partName: input.bezpecne_part_name,
       });
       const c = canonicalizeTarget(r.target);
-      if (!c.ok) return { ok: false, target: raw, rerouted: false, reason: c.reason };
+      if (c.ok === false) return { ok: false, target: raw, rerouted: false, reason: c.reason };
       return { ok: true, target: c.target, rerouted: true, bezpecne_route: r.reason };
     }
     // No payload provided → fall through to static reroute (safe default).
   }
 
   const c = canonicalizeTarget(raw);
-  if (!c.ok) return { ok: false, target: raw, rerouted: false, reason: c.reason };
+  if (c.ok === false) return { ok: false, target: raw, rerouted: false, reason: c.reason };
   return { ok: true, target: c.target, rerouted: c.rerouted };
 }
 
