@@ -505,7 +505,8 @@ JSON pole
       // Write summary to kartoteka (pending drive write)
       if (summary) {
         try {
-          await sb.from("did_pending_drive_writes").insert({
+          await safeInsertGovernedDriveWrite(sb, {
+            source: "karel-did-meeting",
             content: `═══ ZÁPIS Z PORADY (${new Date().toISOString().slice(0, 10)}) ═══\nTéma: ${meeting.topic}\n\n${summary}\n\nÚkoly:\n${tasks.map(t => `► ${t.task} [${t.assigned_to}] ${t.priority === "high" ? "⚠️" : ""}`).join("\n")}`,
             target_document: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
             write_type: "append",
