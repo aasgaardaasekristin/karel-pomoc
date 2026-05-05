@@ -25,6 +25,7 @@ import {
 import { loadEntityRegistry, type EntityRegistry } from "../_shared/entityRegistry.ts";
 import { resolveEntity, toLegacyClassification } from "../_shared/entityResolution.ts";
 import { handleUncertainEntity, type EntitySourceContext } from "../_shared/entityWatchdog.ts";
+import { safeBulkEnqueueDriveWrites } from "../_shared/documentGovernance.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -501,15 +502,17 @@ Roztřiď do bloků A klasifikuj. Pokud segment neobsahuje nic nového, vrať { 
       });
 
       if (rows.length > 0) {
-        const { error: writeErr } = await supabase
-          .from("did_pending_drive_writes")
-          .insert(rows);
-
-        if (writeErr) {
-          addLog(`  Write error for thread ${thread.id}: ${writeErr.message}`);
-        } else {
-          totalWrites += rows.length;
-          addLog(`  → ${rows.length} pending writes created`);
+        const bulkRes = await safeBulkEnqueueDriveWrites(
+          supabase as any,
+          rows,
+          { source: "daily-thread-sorter" },
+        );
+        if (bulkRes.inserted > 0) {
+          totalWrites += bulkRes.inserted;
+          addLog(`  → ${bulkRes.inserted} pending writes created (${bulkRes.blocked} blocked)`);
+        }
+        if (bulkRes.blocked > 0) {
+          addLog(`  Blocked by governance: ${bulkRes.reasons.slice(0, 3).join("; ")}`);
         }
       }
 

@@ -347,6 +347,11 @@ export const CANONICAL_DRIVE_REGISTRY: ReadonlySet<string> = new Set([
   "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
   "PAMET_KAREL/DID/KONTEXTY/SLOVNIK",
   "PAMET_KAREL/DID/KONTEXTY/VZORCE",
+
+  // PAMET_KAREL / ORIGINAL — Karlova „minulá inkarnace" (Jung)
+  "PAMET_KAREL/ORIGINAL/CHARAKTER_JUNGA",
+  "PAMET_KAREL/ORIGINAL/VZPOMINKY_ZIVOT",
+  "PAMET_KAREL/ORIGINAL/ZNALOSTI_DILA",
 ]);
 
 /**
@@ -534,7 +539,10 @@ export function routeBezpecnePoznamky(
 ): BezpecneRouteResult {
   const t = options.therapist ?? "HANKA";
   const therapistRoot = `PAMET_KAREL/DID/${t}`;
-  const text = (content || "").toLowerCase();
+  const text = (content || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
   // 1. DID part-specific implication → canonical KARTA_<PART>
   if (options.partName) {

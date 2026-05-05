@@ -14,7 +14,7 @@ const corsHeaders = {
 };
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
-import { isGovernedTarget } from "../_shared/documentGovernance.ts";
+import { isGovernedTarget, safeEnqueueDriveWrite } from "../_shared/documentGovernance.ts";
 import { requireAuth } from "../_shared/auth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -140,19 +140,20 @@ async function processPackage(admin: any, pkg: PantryPackage, dryRun: boolean): 
     return { package_id: pkg.id, status: "would_enqueue", target_document: targetDoc };
   }
 
-  const { data: inserted, error: enqueueErr } = await admin
-    .from("did_pending_drive_writes")
-    .insert({
+  const enqRes = await safeEnqueueDriveWrite(
+    admin as any,
+    {
       user_id: pkg.user_id,
       content: buildContent(pkg),
       target_document: targetDoc,
       write_type: "append",
       priority: "normal",
       status: "pending",
-    })
-    .select("id")
-    .single();
-  if (enqueueErr) throw enqueueErr;
+    },
+    { source: "pantry-flush-to-drive", returning: "id" },
+  );
+  if (!enqRes.inserted) throw new Error(enqRes.reason ?? "blocked_by_governance");
+  const inserted = enqRes.data as any;
 
   const { error: updErr } = await admin
     .from("did_pantry_packages")

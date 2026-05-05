@@ -24,6 +24,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
+import { safeEnqueueDriveWrite } from "../_shared/documentGovernance.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -160,9 +161,9 @@ serve(async (req) => {
           subject_id: spec.key,
         });
 
-        const { error: insertErr } = await (admin as any)
-          .from("did_pending_drive_writes")
-          .insert({
+        const enqRes = await safeEnqueueDriveWrite(
+          admin as any,
+          {
             target_document: targetPath,
             content: governedContent,
             write_type: "replace",
@@ -170,8 +171,10 @@ serve(async (req) => {
             status: "pending",
             user_id: userId,
             metadata: { source: "jung_original_bootstrap", doc: spec.key },
-          });
-        if (insertErr) throw new Error(`enqueue failed: ${insertErr.message}`);
+          },
+          { source: "jung-original-bootstrap" },
+        );
+        if (!enqRes.inserted) throw new Error(`enqueue failed: ${enqRes.reason ?? "blocked_by_governance"}`);
 
         // Log success (best-effort — table may not exist yet on fresh project)
         try {
