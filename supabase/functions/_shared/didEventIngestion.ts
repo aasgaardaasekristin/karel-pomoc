@@ -11,6 +11,7 @@
 type SupabaseClient = any;
 import { encodeGovernedWrite } from "./documentWriteEnvelope.ts";
 import { appendPantryB, type PantryBEntryKind, type PantryBSourceKind, type PantryBDestination } from "./pantryB.ts";
+import { createHash } from "node:crypto";
 
 type IngestionStatus = "captured" | "classified" | "routed" | "skipped" | "failed" | "duplicate";
 type EvidenceLevel =
