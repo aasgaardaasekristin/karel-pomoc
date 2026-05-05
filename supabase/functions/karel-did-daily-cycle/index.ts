@@ -7366,17 +7366,15 @@ Vra\u0165 JSON:
               console.log(`[PHASE_8A5] Plan ${(plan as any).id} (${(plan as any).selected_part}, ${(plan as any).plan_date}): planned_not_started, skipped evaluator`);
               continue;
             }
-            const evalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-did-session-finalize`;
-            const evalCtl = new AbortController();
-            evalTo = setTimeout(() => evalCtl.abort(), 60000) as unknown as number;
-            const evalRes = await fetch(evalUrl, {
-              method: "POST",
-              signal: evalCtl.signal,
-              headers: {
-                Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
+            // P29B: detach evaluator call into a phase job (one job per stale plan).
+            const enq = await enqueuePhaseJob(sb as any, {
+              cycle_id: cycle?.id ?? cycleId,
+              user_id: resolvedUserId,
+              phase_name: "phase_8a5_session_eval_safety_net",
+              job_kind: "phase8a5_session_eval_safety_net",
+              idempotency_suffix: String((plan as any).id),
+              input: {
+                plan_id: (plan as any).id,
                 planId: (plan as any).id,
                 source: "auto_safety_net",
                 reason: "calendar_day_safety_net",
@@ -7384,11 +7382,10 @@ Vra\u0165 JSON:
                 totalBlocks: (liveProgress as any)?.total_blocks,
                 turnsByBlock: (liveProgress as any)?.turns_by_block ?? {},
                 observationsByBlock,
-              }),
+              },
             });
-            const okText = evalRes.ok ? "OK" : `HTTP ${evalRes.status}`;
-            console.log(`[PHASE_8A5] Plan ${(plan as any).id} (${(plan as any).selected_part}, ${(plan as any).plan_date}): ${okText}`);
-            if (evalRes.ok) phase8a5ProcessedSessions++;
+            console.log(`[PHASE_8A5] Plan ${(plan as any).id} eval detached: ${enq.ok} (${enq.reason ?? "ok"})`);
+            if (enq.ok) phase8a5ProcessedSessions++;
             if (((liveProgress as any)?.completed_blocks ?? 0) < ((liveProgress as any)?.total_blocks ?? 1)) phase8a5PartialSessions++;
           } catch (evalErr) {
             console.warn(`[PHASE_8A5] Evaluator failed for plan ${(plan as any).id}:`, (evalErr as any)?.message ?? evalErr);
