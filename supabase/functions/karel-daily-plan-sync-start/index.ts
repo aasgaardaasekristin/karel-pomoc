@@ -58,6 +58,30 @@ Deno.serve(async (req: Request) => {
       return json(result as Record<string, unknown>, 409);
     }
 
+    // P28_CDI_2b — server-side pipeline event for plan-edit/start
+    try {
+      await recordServerSubmission({
+        sb: admin,
+        userId: auth.user.id,
+        surfaceType: "daily_plan_edit",
+        surfaceId: result.plan_id ?? deliberationId,
+        eventType: "plan_edited",
+        sourceTable: "did_daily_session_plans",
+        sourceRowId: result.plan_id ?? null,
+        safeSummary: `plan_sync:${result.started ? "started" : result.already_started ? "already_started" : "synced"}`,
+        rawAllowed: false,
+        metadata: { deliberation_id: deliberationId, started: result.started, synced: result.synced },
+        resumeStatePatch: {
+          changed_fields: { synced: !!result.synced, started: !!result.started },
+          previous_status: result.was_missing_sync ? "missing_sync" : "approved",
+          next_status: result.started ? "in_progress" : (result.already_started ? "in_progress" : "ready_to_start"),
+          next_resume_point: result.started ? "session_running" : "ready_to_start",
+        },
+      });
+    } catch (err) {
+      console.warn("[daily-plan-sync-start] dyn pipeline write failed:", err);
+    }
+
     return json(result as Record<string, unknown>);
   } catch (error) {
     console.error("[daily-plan-sync-start] unexpected failure", error);
