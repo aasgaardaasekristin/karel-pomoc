@@ -9,6 +9,8 @@ import {
   CARD_PHYSICAL_MAP,
   safeEnqueueDriveWrite,
   gateDriveWriteInsert,
+  isAmbiguousPhysicalCardTarget,
+  hasPhysicalCardMapping,
 } from "../../supabase/functions/_shared/documentGovernance.ts";
 
 /**
@@ -139,5 +141,16 @@ describe("P29A drive governance hard gate", () => {
   it("16. gateDriveWriteInsert blocks invalid targets fail-closed", () => {
     const r = gateDriveWriteInsert({ target_document: "PAMET_KAREL/DID/KONTEXTY/SUPERVIZNI_POZNATKY" });
     expect(r.ok).toBe(false);
+  });
+
+  it("17. KARTA_GERHARDT is ambiguous and has NO physical card mapping (P29A subpass)", () => {
+    const tgt = "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_GERHARDT";
+    // Drive proof: only 022_GERHARDT exists, in 03_ARCHIV_SPICICH (not active fragments).
+    // Registry has both active `001_gerhardt` (no physical file) and sleeping `GERHARDT`.
+    // Therefore mapping must NOT be auto-added; processor must mark it manual_approval.
+    expect(hasPhysicalCardMapping(tgt)).toBe(false);
+    expect(resolveCardPhysicalTitle(tgt)).toBeNull();
+    expect(isAmbiguousPhysicalCardTarget(tgt)).toBe(true);
+    expect(CARD_PHYSICAL_MAP[tgt]).toBeUndefined();
   });
 });
