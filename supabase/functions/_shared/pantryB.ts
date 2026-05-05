@@ -169,16 +169,60 @@ export async function markPantryBProcessed(
   flushResult: Record<string, unknown> = {},
 ): Promise<void> {
   if (!ids.length) return;
+  const processedAt = new Date().toISOString();
   const { error } = await sb
     .from("karel_pantry_b_entries")
     .update({
-      processed_at: new Date().toISOString(),
+      processed_at: processedAt,
       processed_by: processedBy,
       flush_result: flushResult,
+      consumed_by: (flushResult as any)?.briefing_id
+        ? [{ layer: "briefing", id: (flushResult as any).briefing_id, via: "pantry_b", at: processedAt }]
+        : undefined,
+      consumed_at: (flushResult as any)?.briefing_id ? processedAt : undefined,
+      pipeline_state: (flushResult as any)?.briefing_id ? "consumed_by_briefing" : undefined,
     })
     .in("id", ids);
   if (error) {
     console.error("[pantryB] mark processed failed", error);
+    return;
+  }
+
+  // P28 A+B.2 CONSUMPTION-B1: propagate consumed_by markers back into did_event_ingestion_log
+  // for any rows whose source_ref was just flushed via pantry → briefing.
+  const briefingId = (flushResult as any)?.briefing_id as string | undefined;
+  if (!briefingId) return;
+  try {
+    const { data: pantryRows } = await sb
+      .from("karel_pantry_b_entries")
+      .select("id, source_ref")
+      .in("id", ids);
+    const sourceRefs = Array.from(new Set((pantryRows ?? []).map((r: any) => r.source_ref).filter(Boolean)));
+    if (!sourceRefs.length) return;
+    const { data: logs } = await sb
+      .from("did_event_ingestion_log")
+      .select("id, source_ref, consumed_by, pipeline_state")
+      .in("source_ref", sourceRefs);
+    const lockedStates = new Set([
+      "drive_written","drive_queued","drive_skipped_governance",
+      "drive_failed_unresolved_target","governance_skipped_wrong_target",
+    ]);
+    for (const log of logs ?? []) {
+      const existing: any[] = Array.isArray(log.consumed_by) ? log.consumed_by : [];
+      if (existing.some((x: any) => x?.layer === "briefing" && x?.id === briefingId)) continue;
+      const pantryRow = (pantryRows ?? []).find((p: any) => p.source_ref === log.source_ref);
+      const next = [...existing, {
+        layer: "briefing", id: briefingId, via: "pantry_b",
+        pantry_id: pantryRow?.id ?? null, at: processedAt,
+      }];
+      await sb.from("did_event_ingestion_log").update({
+        consumed_by: next,
+        consumed_at: processedAt,
+        pipeline_state: lockedStates.has(log.pipeline_state) ? log.pipeline_state : "consumed_by_briefing",
+      }).eq("id", log.id);
+    }
+  } catch (e) {
+    console.error("[pantryB] consumed_by propagation failed", e);
   }
 }
 
