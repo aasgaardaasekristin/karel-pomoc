@@ -7751,6 +7751,29 @@ Vra\u0165 JSON:
       console.warn(`[PHASE_10] ⚠️ NOT marking ${threadIds.length} threads + ${convIds.length} conversations as processed — critical phases incomplete`);
     }
 
+    // P29B: write completion semantics to cycle context_data
+    try {
+      const phaseJobsSummary = await summarizePhaseJobsForCycle(sb as any, cycle?.id ?? cycleId);
+      const criticalFailures = Object.entries(phaseJobsSummary.by_kind)
+        .filter(([, status]) => status === "failed_permanent")
+        .map(([kind]) => kind);
+      const controlledSkips = Object.entries(phaseJobsSummary.by_kind)
+        .filter(([, status]) => status === "controlled_skipped")
+        .map(([kind]) => kind);
+      await sb.from("did_update_cycles").update({
+        context_data: {
+          phase_jobs: phaseJobsSummary,
+          daily_cycle_completion_semantics: {
+            main_phases_completed: true,
+            detached_jobs_summary: phaseJobsSummary,
+            critical_failures: criticalFailures,
+            controlled_skips: controlledSkips,
+            architecture: "p29b_effortmax_detached_phase_jobs",
+          },
+        },
+      }).eq("id", cycle?.id ?? cycleId);
+    } catch (e) { console.warn("[P29B] completion_semantics write failed:", e); }
+
     if (consolidationRunId) {
       await sb.from("did_daily_consolidation_runs").update({
         status: allCriticalOk && !hadCardUpdateErrors ? "completed" : "completed_with_warnings",
