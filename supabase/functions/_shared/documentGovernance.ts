@@ -316,46 +316,148 @@ export function buildAuditEntry(
 }
 
 /**
- * Validate that a drive target is allowed by governance.
- * Used by drive-queue-processor to enforce whitelist.
+ * P29A: Canonical Drive target registry — fail-closed.
+ * Single source of truth.
  */
-export function isGovernedTarget(target: string): boolean {
-  // All KARTA_ targets
-  if (/^KARTA_.+$/.test(target)) return true;
+export const CANONICAL_DRIVE_REGISTRY: ReadonlySet<string> = new Set([
+  "KARTOTEKA_DID/00_CENTRUM/01_INDEX",
+  "KARTOTEKA_DID/00_CENTRUM/03_VNITRNI_SVET",
+  "KARTOTEKA_DID/00_CENTRUM/04_MAPA_VZTAHU",
+  "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+  "KARTOTEKA_DID/00_CENTRUM/05B_STRATEGICKY_VYHLED",
+  "KARTOTEKA_DID/00_CENTRUM/05C_DLOUHODOBA_INTEGRACNI_TRAJEKTORIE",
+  "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG",
+  "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG",
+  "KARTOTEKA_DID/00_CENTRUM/DASHBOARD",
+  "KARTOTEKA_DID/00_CENTRUM/06_BRADAVICE/PRIBEHY",
+  "KARTOTEKA_DID/00_CENTRUM/06_BRADAVICE/STAV_HRY",
+  "KARTOTEKA_DID/00_CENTRUM/09_KNIHOVNA/00_PREHLED",
+  "KARTOTEKA_DID/00_CENTRUM/09_KNIHOVNA/VYZKUM_DID",
+  "KARTOTEKA_DID/00_CENTRUM/09_KNIHOVNA/VZDELAVACI_MATERIALY",
+  "PAMET_KAREL/DID/HANKA/KAREL",
+  "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY",
+  "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI",
+  "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA",
+  "PAMET_KAREL/DID/HANKA/STRATEGIE_KOMUNIKACE",
+  "PAMET_KAREL/DID/HANKA/VLAKNA_3DNY",
+  "PAMET_KAREL/DID/HANKA/VLAKNA_POSLEDNI",
+  "PAMET_KAREL/DID/KATA/KAREL",
+  "PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY",
+  "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI",
+  "PAMET_KAREL/DID/KATA/SITUACNI_ANALYZA",
+  "PAMET_KAREL/DID/KATA/STRATEGIE_KOMUNIKACE",
+  "PAMET_KAREL/DID/KATA/VLAKNA_3DNY",
+  "PAMET_KAREL/DID/KATA/VLAKNA_POSLEDNI",
+  "PAMET_KAREL/DID/KONTEXTY/DULEZITA_DATA",
+  "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
+  "PAMET_KAREL/DID/KONTEXTY/SLOVNIK",
+  "PAMET_KAREL/DID/KONTEXTY/VZORCE",
+  "PAMET_KAREL/DID/KONTEXTY/SUPERVIZNI_POZNATKY",
+]);
 
-  // KARTOTEKA_DID/00_CENTRUM documents
-  const centrumDocs = [
+/** P29A: Reroute table for legacy / invalid targets. */
+export const TARGET_REROUTE_MAP: Record<string, string> = {
+  "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG":
     "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
-    "KARTOTEKA_DID/00_CENTRUM/05B_STRATEGICKY_VYHLED",
-    "KARTOTEKA_DID/00_CENTRUM/05C_DLOUHODOBA_INTEGRACNI_TRAJEKTORIE",
-    "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG",
-    "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG",
-    "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG",
-    "KARTOTEKA_DID/00_CENTRUM/DASHBOARD",
-    // P28 A+B.2 D1: safe-notes destination for Hana personal threads (no raw text — only safe summaries).
-    "KARTOTEKA_DID/00_CENTRUM/Bezpecne_DID_poznamky_z_osobniho_vlakna",
-  ];
-  if (centrumDocs.includes(target)) return true;
+  "KARTOTEKA_DID/00_CENTRUM/Bezpecne_DID_poznamky_z_osobniho_vlakna":
+    "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA",
+  "PAMET_KAREL_PROFIL_HANKA": "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI",
+  "PAMET_KAREL_PROFIL_KATA": "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI",
+  "05_Operativni_Plan": "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+  "05A_OPERATIVNI_PLAN": "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+};
 
-  if (PAMET_KAREL_ALLOWED_TARGETS.has(target)) return true;
+const KARTA_CANONICAL_PREFIX = "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/";
 
-  return false;
+export type CanonicalizeOutcome =
+  | { ok: true; target: string; rerouted: boolean }
+  | { ok: false; reason: string };
+
+/**
+ * P29A: Canonicalize a raw target into the registry form. Fail-closed.
+ * - bare KARTA_X → KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_X
+ * - reroutes legacy aliases via TARGET_REROUTE_MAP
+ * - strips parenthetical part-name aliases (e.g. "KARTA_ARTHUR (ARTUR, ARTÍK)")
+ * - rejects 03_ARCHIV_SPICICH writes and unknown targets
+ */
+export function canonicalizeTarget(rawTarget: string): CanonicalizeOutcome {
+  if (!rawTarget) return { ok: false, reason: "empty target" };
+  let target = rawTarget.trim();
+  let rerouted = false;
+
+  if (target.startsWith("KARTOTEKA_DID/03_ARCHIV_SPICICH/")) {
+    return { ok: false, reason: "archive folder is not a write target" };
+  }
+
+  if (TARGET_REROUTE_MAP[target]) {
+    target = TARGET_REROUTE_MAP[target];
+    rerouted = true;
+  }
+
+  // Strip and uppercase KARTA_<NAME> in either bare or canonical form.
+  const stripPart = (raw: string): string | null => {
+    const part = raw.split("(")[0].trim().split(/[\s,]+/)[0];
+    if (!part) return null;
+    return part.toUpperCase().replace(/[^A-Z0-9_]/g, "");
+  };
+
+  const bare = target.match(/^KARTA_(.+)$/);
+  if (bare) {
+    const part = stripPart(bare[1]);
+    if (!part) return { ok: false, reason: `unparseable KARTA_ name: ${rawTarget}` };
+    target = `${KARTA_CANONICAL_PREFIX}KARTA_${part}`;
+    rerouted = true;
+  } else if (target.startsWith(KARTA_CANONICAL_PREFIX)) {
+    const tail = target.slice(KARTA_CANONICAL_PREFIX.length);
+    const m = tail.match(/^KARTA_(.+)$/);
+    if (m) {
+      const part = stripPart(m[1]);
+      if (!part) return { ok: false, reason: `unparseable KARTA_ name: ${rawTarget}` };
+      const canon = `${KARTA_CANONICAL_PREFIX}KARTA_${part}`;
+      if (canon !== target) rerouted = true;
+      target = canon;
+    }
+  }
+
+  if (!isGovernedTarget(target)) {
+    return { ok: false, reason: `target not in canonical registry: ${target}` };
+  }
+
+  return { ok: true, target, rerouted: rerouted || target !== rawTarget };
 }
 
 /**
- * Targets where full replace (overwrite) is permitted.
- * All others are append-only for safety.
+ * Validate that a drive target is allowed by governance. Fail-closed.
  */
+export function isGovernedTarget(target: string): boolean {
+  if (!target) return false;
+  if (CANONICAL_DRIVE_REGISTRY.has(target)) return true;
+  if (
+    target.startsWith(KARTA_CANONICAL_PREFIX)
+    && /^KARTA_[A-Z0-9_]+$/.test(target.slice(KARTA_CANONICAL_PREFIX.length))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+const STATIC_REPLACE_TARGETS_BASE: ReadonlySet<string> = new Set([
+  "PAMET_KAREL/DID/HANKA/VLAKNA_3DNY",
+  "PAMET_KAREL/DID/KATA/VLAKNA_3DNY",
+  "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+  "KARTOTEKA_DID/00_CENTRUM/05B_STRATEGICKY_VYHLED",
+  "KARTOTEKA_DID/00_CENTRUM/05C_DLOUHODOBA_INTEGRACNI_TRAJEKTORIE",
+  "KARTOTEKA_DID/00_CENTRUM/DASHBOARD",
+]);
+
 export function isReplaceAllowed(
   target: string,
   sourceType?: string | null,
   contentType?: string | null,
 ): boolean {
-  if (STATIC_REPLACE_ALLOWED_TARGETS.has(target)) return true;
-
-  if (/^KARTA_.+$/.test(target)) {
+  if (STATIC_REPLACE_TARGETS_BASE.has(target)) return true;
+  if (target.startsWith(KARTA_CANONICAL_PREFIX) || /^KARTA_.+$/.test(target)) {
     return sourceType === "update-part-profile" && contentType === "profile_claim";
   }
-
   return false;
 }
