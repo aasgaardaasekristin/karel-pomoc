@@ -36,6 +36,7 @@ import {
 import {
   isGovernedTarget,
   isReplaceAllowed,
+  canonicalizeTarget,
 } from "../_shared/documentGovernance.ts";
 import { decodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 
