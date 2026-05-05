@@ -8,6 +8,7 @@ import { buildKarelIdentityBlock } from "../_shared/karelIdentity.ts";
 import { getKarelTone } from "../_shared/karelTonalRouter.ts";
 import { buildKarelVoiceGuide } from "../_shared/karelVoiceGuide.ts";
 import { appendPantryB } from "../_shared/pantryB.ts";
+import { safeInsertGovernedDriveWrite } from "../_shared/documentGovernance.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
