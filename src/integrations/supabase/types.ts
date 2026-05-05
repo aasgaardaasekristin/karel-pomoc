@@ -5004,6 +5004,7 @@ export type Database = {
           emotional_state: string | null
           expires_at: string | null
           id: string
+          memory_payload: Json
           memory_type: string
           next_opening_hint: string | null
           pipeline_state: string | null
@@ -5027,6 +5028,7 @@ export type Database = {
           emotional_state?: string | null
           expires_at?: string | null
           id?: string
+          memory_payload?: Json
           memory_type: string
           next_opening_hint?: string | null
           pipeline_state?: string | null
@@ -5050,6 +5052,7 @@ export type Database = {
           emotional_state?: string | null
           expires_at?: string | null
           id?: string
+          memory_payload?: Json
           memory_type?: string
           next_opening_hint?: string | null
           pipeline_state?: string | null
