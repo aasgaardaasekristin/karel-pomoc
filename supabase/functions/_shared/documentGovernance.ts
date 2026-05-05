@@ -675,6 +675,16 @@ export interface CardPhysicalMapping {
 }
 
 export const CARD_PHYSICAL_MAP: Record<string, CardPhysicalMapping> = {
+  "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_ANICKA": {
+    logical_target: "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_ANICKA",
+    physical_drive_title: "001_ANICKA",
+    parent_folder: "01_AKTIVNI_FRAGMENTY",
+  },
+  "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_GUSTIK": {
+    logical_target: "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_GUSTIK",
+    physical_drive_title: "002_GUSTIK",
+    parent_folder: "01_AKTIVNI_FRAGMENTY",
+  },
   "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_TUNDRUPEK": {
     logical_target: "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_TUNDRUPEK",
     physical_drive_title: "003_TUNDRUPEK",
@@ -685,9 +695,14 @@ export const CARD_PHYSICAL_MAP: Record<string, CardPhysicalMapping> = {
     physical_drive_title: "004_ARTHUR",
     parent_folder: "01_AKTIVNI_FRAGMENTY",
   },
-  "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_GUSTIK": {
-    logical_target: "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_GUSTIK",
-    physical_drive_title: "002_GUSTIK",
+  "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_GUSTAV_PUVODNI_CAST": {
+    logical_target: "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_GUSTAV_PUVODNI_CAST",
+    physical_drive_title: "017_GUSTAV_PUVODNI_CAST",
+    parent_folder: "01_AKTIVNI_FRAGMENTY",
+  },
+  "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_QA_TEST": {
+    logical_target: "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_QA_TEST",
+    physical_drive_title: "042_QA_TEST",
     parent_folder: "01_AKTIVNI_FRAGMENTY",
   },
 };
@@ -696,6 +711,19 @@ export const CARD_PHYSICAL_MAP: Record<string, CardPhysicalMapping> = {
 export function resolveCardPhysicalTitle(logicalTarget: string): string | null {
   const m = CARD_PHYSICAL_MAP[logicalTarget];
   return m ? m.physical_drive_title : null;
+}
+
+/**
+ * P29A: Hard gate for canonical KARTA_<NAME> writes.
+ * Returns the physical title only if the logical target has a confirmed
+ * physical Drive mapping. Otherwise the caller MUST block the write as
+ * `blocked_by_governance_no_physical_card` (no retry).
+ */
+export function isCanonicalKartaTarget(target: string): boolean {
+  return target.startsWith("KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_");
+}
+export function hasPhysicalCardMapping(target: string): boolean {
+  return Object.prototype.hasOwnProperty.call(CARD_PHYSICAL_MAP, target);
 }
 
 // ── P29A closeout-fix: shared safe insert helper for did_pending_drive_writes ──
