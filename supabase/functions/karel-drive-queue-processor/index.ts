@@ -368,34 +368,58 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Governance whitelist
-        if (!isGovernedTarget(target)) {
-          await markSkipped(sb, writeId, "target not in governance whitelist");
-          await audit(sb, { sourceType, sourceId, target, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: "skipped", err: "not in whitelist" });
+        // P29A: Canonicalize target — fail-closed.
+        const canon = canonicalizeTarget(target);
+        if (!canon.ok) {
+          await sb
+            .from("did_pending_drive_writes")
+            .update({
+              status: "blocked_by_governance",
+              pipeline_state: "blocked_by_governance",
+              last_error_message: `governance: ${canon.reason}`,
+              next_retry_at: null,
+            })
+            .eq("id", writeId);
+          await audit(sb, { sourceType, sourceId, target, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: "blocked_by_governance", err: canon.reason });
           skipped++;
-          writeResults.push({ write_id: writeId, status: "skipped", target_document: target, error: "target not in governance whitelist" });
-          addLog(`SKIP ${writeId}: '${target}' not in whitelist`);
+          writeResults.push({ write_id: writeId, status: "skipped", target_document: target, error: `blocked_by_governance: ${canon.reason}` });
+          addLog(`BLOCK ${writeId}: '${target}' rejected by governance (${canon.reason})`);
+          continue;
+        }
+        const effectiveTarget = canon.target;
+        if (canon.rerouted) {
+          addLog(`REROUTE ${writeId}: '${target}' → '${effectiveTarget}'`);
+          await sb
+            .from("did_pending_drive_writes")
+            .update({ target_document: effectiveTarget })
+            .eq("id", writeId);
+        }
+
+        // Governance whitelist (defensive — canonicalize already enforces this).
+        if (!isGovernedTarget(effectiveTarget)) {
+          await markSkipped(sb, writeId, "target not in governance whitelist");
+          await audit(sb, { sourceType, sourceId, target: effectiveTarget, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: "skipped", err: "not in whitelist" });
+          skipped++;
+          writeResults.push({ write_id: writeId, status: "skipped", target_document: effectiveTarget, error: "target not in governance whitelist" });
+          addLog(`SKIP ${writeId}: '${effectiveTarget}' not in whitelist`);
           continue;
         }
 
-        // Resolve target
-        let resolved = await resolveTarget(token, kartotekaRoot, target);
+        // Resolve target — only canonical centrum docs may be auto-created.
+        let resolved = await resolveTarget(token, kartotekaRoot, effectiveTarget);
         if (!resolved && (
-              target === "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG"
-           || target === "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG"
-           || target === "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG"
-           || target === "KARTOTEKA_DID/00_CENTRUM/Bezpecne_DID_poznamky_z_osobniho_vlakna"
+              effectiveTarget === "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG"
+           || effectiveTarget === "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG"
         )) {
-          resolved = await createCentrumDocIfMissing(token, kartotekaRoot, target);
-          if (resolved) addLog(`Created missing centrum doc for '${target}' (file ${resolved.id})`);
+          resolved = await createCentrumDocIfMissing(token, kartotekaRoot, effectiveTarget);
+          if (resolved) addLog(`Created missing centrum doc for '${effectiveTarget}' (file ${resolved.id})`);
         }
         if (!resolved) {
-          // This is a transient-or-permanent failure — retry until MAX_RETRIES
           const result = await markFailedWithRetry(sb, writeId, currentRetry, "target could not be resolved on Drive");
-          await audit(sb, { sourceType, sourceId, target, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: result.status, err: "target unresolved" });
+          await audit(sb, { sourceType, sourceId, target: effectiveTarget, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: result.status, err: "target unresolved" });
           if (result.permanent) permanent++; else failed++;
-          writeResults.push({ write_id: writeId, status: "failed", target_document: target, error: "target could not be resolved on Drive" });
-          addLog(`${result.permanent ? "PERMANENT" : "RETRY"} ${writeId}: target '${target}' unresolved (attempt ${currentRetry + 1}/${MAX_RETRIES})`);
+          writeResults.push({ write_id: writeId, status: "failed", target_document: effectiveTarget, error: "target could not be resolved on Drive" });
+          addLog(`${result.permanent ? "PERMANENT" : "RETRY"} ${writeId}: target '${effectiveTarget}' unresolved (attempt ${currentRetry + 1}/${MAX_RETRIES})`);
           continue;
         }
 
