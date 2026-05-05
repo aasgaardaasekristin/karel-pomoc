@@ -294,55 +294,106 @@ export function buildAuditEntry(
 }
 
 /**
- * P29A: Canonical Drive target registry — fail-closed.
- * Single source of truth.
+ * P29A closeout: Canonical Drive target registry — fail-closed, single source of truth.
+ *
+ * Authoritative governance list. Any target NOT in this set must either:
+ *   (a) be rerouted by TARGET_REROUTE_MAP / canonicalizeTarget, or
+ *   (b) be rejected (blocked_by_governance).
+ *
+ * Notes about physical Drive truth (verified 2026-05-05):
+ *   - HANKA/KATA memory documents are stored as text/plain files with the
+ *     literal name "<NAME>.txt" (e.g. SITUACNI_ANALYZA.txt).
+ *   - HANKA/KAREL and KATA/KAREL are stored as Google Docs without extension
+ *     (the literal Drive name is "KAREL", mimeType application/vnd.google-apps.document).
+ *   - 00_CENTRUM/05E_TEAM_DECISIONS_LOG, 05C_SEZENI_LOG, 05D_HERNY_LOG and
+ *     KONTEXTY/SUPERVIZNI_POZNATKY are NOT in the authoritative governance
+ *     architecture for P29A and are therefore explicitly excluded.
  */
 export const CANONICAL_DRIVE_REGISTRY: ReadonlySet<string> = new Set([
+  // KARTOTEKA_DID / 00_CENTRUM
   "KARTOTEKA_DID/00_CENTRUM/01_INDEX",
   "KARTOTEKA_DID/00_CENTRUM/03_VNITRNI_SVET",
   "KARTOTEKA_DID/00_CENTRUM/04_MAPA_VZTAHU",
   "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
   "KARTOTEKA_DID/00_CENTRUM/05B_STRATEGICKY_VYHLED",
   "KARTOTEKA_DID/00_CENTRUM/05C_DLOUHODOBA_INTEGRACNI_TRAJEKTORIE",
-  "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG",
-  "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG",
   "KARTOTEKA_DID/00_CENTRUM/DASHBOARD",
   "KARTOTEKA_DID/00_CENTRUM/06_BRADAVICE/PRIBEHY",
   "KARTOTEKA_DID/00_CENTRUM/06_BRADAVICE/STAV_HRY",
   "KARTOTEKA_DID/00_CENTRUM/09_KNIHOVNA/00_PREHLED",
   "KARTOTEKA_DID/00_CENTRUM/09_KNIHOVNA/VYZKUM_DID",
   "KARTOTEKA_DID/00_CENTRUM/09_KNIHOVNA/VZDELAVACI_MATERIALY",
+
+  // PAMET_KAREL / DID / HANKA — text files use .txt; KAREL is bare Google Doc
   "PAMET_KAREL/DID/HANKA/KAREL",
-  "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY",
-  "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI",
-  "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA",
-  "PAMET_KAREL/DID/HANKA/STRATEGIE_KOMUNIKACE",
-  "PAMET_KAREL/DID/HANKA/VLAKNA_3DNY",
-  "PAMET_KAREL/DID/HANKA/VLAKNA_POSLEDNI",
+  "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY.txt",
+  "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI.txt",
+  "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA.txt",
+  "PAMET_KAREL/DID/HANKA/STRATEGIE_KOMUNIKACE.txt",
+  "PAMET_KAREL/DID/HANKA/VLAKNA_3DNY.txt",
+  "PAMET_KAREL/DID/HANKA/VLAKNA_POSLEDNI.txt",
+
+  // PAMET_KAREL / DID / KATA — text files use .txt; KAREL is bare Google Doc
   "PAMET_KAREL/DID/KATA/KAREL",
-  "PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY",
-  "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI",
-  "PAMET_KAREL/DID/KATA/SITUACNI_ANALYZA",
-  "PAMET_KAREL/DID/KATA/STRATEGIE_KOMUNIKACE",
-  "PAMET_KAREL/DID/KATA/VLAKNA_3DNY",
-  "PAMET_KAREL/DID/KATA/VLAKNA_POSLEDNI",
+  "PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY.txt",
+  "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI.txt",
+  "PAMET_KAREL/DID/KATA/SITUACNI_ANALYZA.txt",
+  "PAMET_KAREL/DID/KATA/STRATEGIE_KOMUNIKACE.txt",
+  "PAMET_KAREL/DID/KATA/VLAKNA_3DNY.txt",
+  "PAMET_KAREL/DID/KATA/VLAKNA_POSLEDNI.txt",
+
+  // PAMET_KAREL / DID / KONTEXTY
   "PAMET_KAREL/DID/KONTEXTY/DULEZITA_DATA",
   "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
   "PAMET_KAREL/DID/KONTEXTY/SLOVNIK",
   "PAMET_KAREL/DID/KONTEXTY/VZORCE",
-  "PAMET_KAREL/DID/KONTEXTY/SUPERVIZNI_POZNATKY",
 ]);
 
-/** P29A: Reroute table for legacy / invalid targets. */
+/**
+ * P29A closeout: Reroute table for legacy / invalid targets.
+ *
+ * Auto-applied for purely structural rewrites (.txt suffix, removed
+ * unauthorized centrum docs). Content-aware routing for
+ * Bezpecne_DID_poznamky_z_osobniho_vlakna lives in
+ * routeBezpecnePoznamky() below — the static map only covers a default
+ * fallback so legacy queue rows do not block governance.
+ */
 export const TARGET_REROUTE_MAP: Record<string, string> = {
+  // Removed centrum docs → operational plan
   "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG":
     "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+  "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG":
+    "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+  "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG":
+    "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+  // Removed kontexty doc → KDO_JE_KDO (closest authoritative target)
+  "PAMET_KAREL/DID/KONTEXTY/SUPERVIZNI_POZNATKY":
+    "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
+
+  // Default fallback for Bezpecne_DID_poznamky_z_osobniho_vlakna
+  // (when content-aware routing is not available, e.g. legacy queue row).
   "KARTOTEKA_DID/00_CENTRUM/Bezpecne_DID_poznamky_z_osobniho_vlakna":
-    "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA",
-  "PAMET_KAREL_PROFIL_HANKA": "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI",
-  "PAMET_KAREL_PROFIL_KATA": "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI",
+    "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA.txt",
+
+  // Legacy alias remaps
+  "PAMET_KAREL_PROFIL_HANKA": "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI.txt",
+  "PAMET_KAREL_PROFIL_KATA": "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI.txt",
   "05_Operativni_Plan": "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
   "05A_OPERATIVNI_PLAN": "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+
+  // Auto-rewrite bare HANKA/KATA names without .txt to canonical .txt form.
+  "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY": "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY.txt",
+  "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI": "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI.txt",
+  "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA": "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA.txt",
+  "PAMET_KAREL/DID/HANKA/STRATEGIE_KOMUNIKACE": "PAMET_KAREL/DID/HANKA/STRATEGIE_KOMUNIKACE.txt",
+  "PAMET_KAREL/DID/HANKA/VLAKNA_3DNY": "PAMET_KAREL/DID/HANKA/VLAKNA_3DNY.txt",
+  "PAMET_KAREL/DID/HANKA/VLAKNA_POSLEDNI": "PAMET_KAREL/DID/HANKA/VLAKNA_POSLEDNI.txt",
+  "PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY": "PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY.txt",
+  "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI": "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI.txt",
+  "PAMET_KAREL/DID/KATA/SITUACNI_ANALYZA": "PAMET_KAREL/DID/KATA/SITUACNI_ANALYZA.txt",
+  "PAMET_KAREL/DID/KATA/STRATEGIE_KOMUNIKACE": "PAMET_KAREL/DID/KATA/STRATEGIE_KOMUNIKACE.txt",
+  "PAMET_KAREL/DID/KATA/VLAKNA_3DNY": "PAMET_KAREL/DID/KATA/VLAKNA_3DNY.txt",
+  "PAMET_KAREL/DID/KATA/VLAKNA_POSLEDNI": "PAMET_KAREL/DID/KATA/VLAKNA_POSLEDNI.txt",
 };
 
 const KARTA_CANONICAL_PREFIX = "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/";
@@ -354,7 +405,7 @@ export type CanonicalizeOutcome =
 /**
  * P29A: Canonicalize a raw target into the registry form. Fail-closed.
  * - bare KARTA_X → KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_X
- * - reroutes legacy aliases via TARGET_REROUTE_MAP
+ * - reroutes legacy aliases via TARGET_REROUTE_MAP (incl. .txt suffix fix)
  * - strips parenthetical part-name aliases (e.g. "KARTA_ARTHUR (ARTUR, ARTÍK)")
  * - rejects 03_ARCHIV_SPICICH writes and unknown targets
  */
@@ -420,8 +471,8 @@ export function isGovernedTarget(target: string): boolean {
 }
 
 const STATIC_REPLACE_TARGETS_BASE: ReadonlySet<string> = new Set([
-  "PAMET_KAREL/DID/HANKA/VLAKNA_3DNY",
-  "PAMET_KAREL/DID/KATA/VLAKNA_3DNY",
+  "PAMET_KAREL/DID/HANKA/VLAKNA_3DNY.txt",
+  "PAMET_KAREL/DID/KATA/VLAKNA_3DNY.txt",
   "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
   "KARTOTEKA_DID/00_CENTRUM/05B_STRATEGICKY_VYHLED",
   "KARTOTEKA_DID/00_CENTRUM/05C_DLOUHODOBA_INTEGRACNI_TRAJEKTORIE",
@@ -439,3 +490,162 @@ export function isReplaceAllowed(
   }
   return false;
 }
+
+// ── P29A closeout: Content-aware router for Bezpecne_DID_poznamky_z_osobniho_vlakna ──
+
+export type BezpecneRoute =
+  | "SITUACNI_ANALYZA"
+  | "STRATEGIE_KOMUNIKACE"
+  | "VLAKNA_POSLEDNI"
+  | "VLAKNA_3DNY"
+  | "PROFIL_OSOBNOSTI"
+  | "KAREL_RELATIONAL"
+  | "OPERATIVNI_PLAN"
+  | "KARTA_PART";
+
+export interface BezpecneRouteResult {
+  /** Canonical Drive target inside CANONICAL_DRIVE_REGISTRY */
+  target: string;
+  /** Why this route was chosen (audit trail) */
+  reason: BezpecneRoute;
+  /** When KARTA_PART, the canonical part name (uppercased) */
+  partName?: string;
+}
+
+/**
+ * P29A closeout: Classify a "Bezpecne_DID_poznamky" snippet by content
+ * and return a canonical Drive target. Fail-soft: defaults to
+ * SITUACNI_ANALYZA when content is generic emotional state.
+ *
+ * therapist defaults to "HANKA" — Bezpecne_DID_poznamky_z_osobniho_vlakna
+ * is a Hana-personal channel; pass "KATA" only if upstream caller has
+ * explicit evidence the content is about Káťa.
+ */
+export function routeBezpecnePoznamky(
+  content: string,
+  options: {
+    therapist?: "HANKA" | "KATA";
+    partName?: string;
+  } = {},
+): BezpecneRouteResult {
+  const t = options.therapist ?? "HANKA";
+  const therapistRoot = `PAMET_KAREL/DID/${t}`;
+  const text = (content || "").toLowerCase();
+
+  // 1. DID part-specific implication → canonical KARTA_<PART>
+  if (options.partName) {
+    const part = options.partName.toUpperCase().replace(/[^A-Z0-9_]/g, "");
+    if (part) {
+      return {
+        target: `${KARTA_CANONICAL_PREFIX}KARTA_${part}`,
+        reason: "KARTA_PART",
+        partName: part,
+      };
+    }
+  }
+
+  // 2. DID operational implication → 05A
+  if (
+    /\b(05a|operativ\w*|denn\w* plan|rozhodnut\w* tym|akce na den|ukol pro karla)\b/i
+      .test(text)
+  ) {
+    return {
+      target: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+      reason: "OPERATIVNI_PLAN",
+    };
+  }
+
+  // 3. Shared Karel–Hana relational memory
+  if (
+    /(karel a hank\w*|nas vztah|spolecn\w* pamet|spolecn\w* hranic\w*|nase dohod\w*|mezi nami|jak spolu)/i
+      .test(text)
+  ) {
+    return { target: `${therapistRoot}/KAREL`, reason: "KAREL_RELATIONAL" };
+  }
+
+  // 4. Communication strategy / how Karel should talk to Hana
+  if (
+    /(komunikac\w*|jak ji(?:\b| )|jak mluv\w*|tone|tonalit\w*|nereagov\w*|vyhnout|nezvedat|jak odpov\w*|strateg\w*)/i
+      .test(text)
+  ) {
+    return {
+      target: `${therapistRoot}/STRATEGIE_KOMUNIKACE.txt`,
+      reason: "STRATEGIE_KOMUNIKACE",
+    };
+  }
+
+  // 5. Stable personality insight (long-term trait, not today's state)
+  if (
+    /(osobnost\w*|trvale|dlouhodob\w*|charakter|temperament|hodnot\w*|zivotn\w* vzorec|core belief)/i
+      .test(text)
+  ) {
+    return {
+      target: `${therapistRoot}/PROFIL_OSOBNOSTI.txt`,
+      reason: "PROFIL_OSOBNOSTI",
+    };
+  }
+
+  // 6. 3-day rolling summary
+  if (/(za posledni\s*3\s*dn\w*|tridenn\w*|3-?denn\w*|trend\s+poslednich)/i.test(text)) {
+    return { target: `${therapistRoot}/VLAKNA_3DNY.txt`, reason: "VLAKNA_3DNY" };
+  }
+
+  // 7. Latest personal thread safe summary
+  if (
+    /(posledni\s*vlak\w*|posledni\s*konverz\w*|posledni\s*sezen\w*|dnesn\w*\s*vlak\w*|vcerejs\w*\s*vlak\w*)/i
+      .test(text)
+  ) {
+    return { target: `${therapistRoot}/VLAKNA_POSLEDNI.txt`, reason: "VLAKNA_POSLEDNI" };
+  }
+
+  // 8. Default — emotional state / guilt / burnout / heaviness → situational analysis
+  return { target: `${therapistRoot}/SITUACNI_ANALYZA.txt`, reason: "SITUACNI_ANALYZA" };
+}
+
+// ── P29A closeout: Hard governance gate for ALL did_pending_drive_writes inserts ──
+
+export interface DriveWriteInsertInput {
+  target_document: string;
+  /** When this is a Bezpecne_DID_poznamky write, pass the raw payload so the
+   *  content-aware router can choose the correct sub-target. */
+  bezpecne_payload?: string;
+  bezpecne_therapist?: "HANKA" | "KATA";
+  bezpecne_part_name?: string;
+}
+
+export interface DriveWriteGateResult {
+  ok: boolean;
+  /** Canonical target when ok=true; original raw target when ok=false. */
+  target: string;
+  rerouted: boolean;
+  reason?: string;
+  bezpecne_route?: BezpecneRoute;
+}
+
+/**
+ * P29A closeout: every did_pending_drive_writes insert MUST go through this
+ * gate. Returns ok=false when the target cannot be routed onto a canonical
+ * registry entry; callers must NOT insert the row in that case.
+ */
+export function gateDriveWriteInsert(input: DriveWriteInsertInput): DriveWriteGateResult {
+  const raw = input.target_document;
+
+  // Bezpecne content-aware routing takes priority over the static reroute.
+  if (raw === "KARTOTEKA_DID/00_CENTRUM/Bezpecne_DID_poznamky_z_osobniho_vlakna") {
+    if (typeof input.bezpecne_payload === "string" && input.bezpecne_payload.trim()) {
+      const r = routeBezpecnePoznamky(input.bezpecne_payload, {
+        therapist: input.bezpecne_therapist,
+        partName: input.bezpecne_part_name,
+      });
+      const c = canonicalizeTarget(r.target);
+      if (!c.ok) return { ok: false, target: raw, rerouted: false, reason: c.reason };
+      return { ok: true, target: c.target, rerouted: true, bezpecne_route: r.reason };
+    }
+    // No payload provided → fall through to static reroute (safe default).
+  }
+
+  const c = canonicalizeTarget(raw);
+  if (!c.ok) return { ok: false, target: raw, rerouted: false, reason: c.reason };
+  return { ok: true, target: c.target, rerouted: c.rerouted };
+}
+
