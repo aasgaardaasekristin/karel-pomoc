@@ -2213,13 +2213,14 @@ async function insertDriveWriteOnce(
   if (existing?.length && !force) return existing[0].id;
   if (existing?.length && force)
     await sb.from("did_pending_drive_writes").delete().eq("id", existing[0].id);
-  const { data, error } = await sb
-    .from("did_pending_drive_writes")
-    .insert(row)
-    .select("id")
-    .single();
-  if (error) throw error;
-  return data?.id ?? null;
+  // P29A closeout-fix: route every insert through governance gate, preserve all original row fields.
+  const { safeEnqueueDriveWrite } = await import("../_shared/documentGovernance.ts");
+  const r = await safeEnqueueDriveWrite(sb, row, { source: "karel-did-session-evaluate", returning: "id" });
+  if (!r.inserted) {
+    if (r.blocked) return null;
+    throw new Error(r.reason || "drive write enqueue failed");
+  }
+  return (r.data as any)?.id ?? null;
 }
 
 function sessionDetailMarkdown(args: {
