@@ -138,6 +138,48 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
     return { id: job.id, kind: job.job_kind, outcome: "skipped_already_claimed" };
   }
 
+  // ── In-process dispatch for phase4_centrum_tail (no HTTP self-call) ──
+  if (job.job_kind === "phase4_centrum_tail") {
+    const ref = (job.input as any)?.payload_ref;
+    if (!ref?.payload_id || !job.cycle_id) {
+      await admin.from("did_daily_cycle_phase_jobs").update({
+        status: "controlled_skipped",
+        error_message: "missing_payload_ref_or_cycle",
+        completed_at: new Date().toISOString(),
+      }).eq("id", job.id);
+      return { id: job.id, kind: job.job_kind, outcome: "controlled_skipped", reason: "missing_payload_ref" };
+    }
+    try {
+      const tailResult: CentrumTailResult = await withHeartbeat(admin, job.id, () =>
+        runPhase4CentrumTail({
+          cycleId: job.cycle_id!,
+          userId: job.user_id,
+          payloadRef: ref,
+          setHeartbeat: async () => {
+            await admin.from("did_daily_cycle_phase_jobs")
+              .update({ last_heartbeat_at: new Date().toISOString() })
+              .eq("id", job.id);
+          },
+        }),
+      );
+      const status = tailResult.outcome === "controlled_skipped" ? "controlled_skipped" : "completed";
+      await admin.from("did_daily_cycle_phase_jobs").update({
+        status,
+        completed_at: new Date().toISOString(),
+        result: tailResult as unknown as Record<string, unknown>,
+      }).eq("id", job.id);
+      return { id: job.id, kind: job.job_kind, outcome: status, writes: tailResult.writes_enqueued, duration_ms: tailResult.duration_ms };
+    } catch (e: any) {
+      const exhausted = job.attempt_count + 1 >= job.max_attempts;
+      await admin.from("did_daily_cycle_phase_jobs").update({
+        status: exhausted ? "failed_permanent" : "failed_retry",
+        error_message: (e?.message ?? String(e)).slice(0, 500),
+        next_retry_at: exhausted ? null : new Date(Date.now() + Math.min(60_000 * Math.pow(2, job.attempt_count), 30 * 60_000)).toISOString(),
+      }).eq("id", job.id);
+      return { id: job.id, kind: job.job_kind, outcome: exhausted ? "failed_permanent" : "failed_retry", error: e?.message ?? String(e) };
+    }
+  }
+
   const target = dispatchTarget(job);
   if ("skip" in target) {
     await admin.from("did_daily_cycle_phase_jobs").update({
