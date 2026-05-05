@@ -57,9 +57,13 @@ serve(async (req) => {
   const message = String(body?.message ?? "").trim();
   const author = String(body?.author ?? "").trim().toLowerCase();
   const mode = String(body?.mode ?? "discussion_comment") as Mode;
+  const idempotencyKey = body?.idempotency_key
+    ? String(body.idempotency_key).trim().slice(0, 128)
+    : null;
 
   if (!cardUpdateId) return json({ error: "missing_card_update_id" }, 400);
   if (!message) return json({ error: "missing_message" }, 400);
+  if (message.length > 2000) return json({ error: "message_too_long", limit: 2000 }, 400);
   if (!AUTHORS.has(author)) return json({ error: "invalid_author" }, 400);
   if (!MODES.includes(mode)) return json({ error: "invalid_mode" }, 400);
 
@@ -101,16 +105,46 @@ serve(async (req) => {
   const summary = safeSummary(message, mode);
   const nowIso = new Date().toISOString();
   const prevPayload = (row.payload && typeof row.payload === "object") ? row.payload : {};
-  const discussion = Array.isArray((prevPayload as any).discussion)
+  const summary = safeSummary(message, mode);
+  const nowIso = new Date().toISOString();
+  const prevPayload = (row.payload && typeof row.payload === "object") ? row.payload : {};
+  const existingDiscussion: any[] = Array.isArray((prevPayload as any).discussion)
     ? [...(prevPayload as any).discussion]
     : [];
-  discussion.push({
+
+  // Idempotency: short-circuit if same key already recorded.
+  if (idempotencyKey) {
+    const dup = existingDiscussion.find((d) => d?.idempotency_key === idempotencyKey);
+    if (dup) {
+      // Look up the existing pipeline event for this dedupe key.
+      const { data: ev } = await admin
+        .from("dynamic_pipeline_events")
+        .select("id")
+        .eq("surface_type", "card_update_discussion")
+        .eq("surface_id", cardUpdateId)
+        .eq("dedupe_key", idempotencyKey)
+        .maybeSingle();
+      return json({
+        ok: true,
+        deduplicated: true,
+        card_update_id: cardUpdateId,
+        discussion_count: existingDiscussion.length,
+        pipeline_event_id: ev?.id ?? null,
+        resume_id: null,
+        activity_id: null,
+      });
+    }
+  }
+
+  const newEntry = {
     at: nowIso,
     author,
     mode,
     safe_summary: summary,
     message_length: message.length,
-  });
+    ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+  };
+  const discussion = [...existingDiscussion, newEntry];
   const newPayload = { ...prevPayload, discussion, last_discussion_at: nowIso };
 
   const { error: updErr } = await admin
@@ -133,12 +167,14 @@ serve(async (req) => {
       sourceRowId: cardUpdateId,
       safeSummary: summary,
       rawAllowed: false,
+      dedupeKey: idempotencyKey ?? undefined,
       metadata: {
         mode,
         author,
         part_id: row.part_id,
         section: row.section,
         discussion_count: discussion.length,
+        idempotency_key: idempotencyKey,
       },
       resumeStatePatch: {
         card_update_id: cardUpdateId,
@@ -161,6 +197,7 @@ serve(async (req) => {
 
   return json({
     ok: true,
+    deduplicated: false,
     card_update_id: cardUpdateId,
     discussion_count: discussion.length,
     pipeline_event_id: recorded?.event_id ?? null,

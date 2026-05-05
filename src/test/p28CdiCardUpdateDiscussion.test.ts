@@ -62,6 +62,38 @@ describe("P28_CDI_2c card_update_discussion server-only routing", () => {
     });
   });
 
+  it("forwards idempotency_key to the server endpoint when provided", async () => {
+    const res = await submitCardUpdateDiscussion({
+      cardUpdateId: "cu-1",
+      message: "safe smoke",
+      author: "hanka",
+      mode: "discussion_comment",
+      idempotencyKey: "idem-abc-123",
+    });
+    expect(res.ok).toBe(true);
+    const fetchMock = globalThis.fetch as any;
+    const [, init] = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
+    expect(JSON.parse(init.body)).toMatchObject({
+      card_update_id: "cu-1",
+      idempotency_key: "idem-abc-123",
+    });
+  });
+
+  it("surfaces deduplicated=true result without throwing", async () => {
+    // @ts-ignore
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, deduplicated: true, card_update_id: "cu-1", discussion_count: 1, pipeline_event_id: "ev-1" }), { status: 200 })
+    );
+    const res = await submitCardUpdateDiscussion({
+      cardUpdateId: "cu-1",
+      message: "safe smoke",
+      author: "hanka",
+      idempotencyKey: "idem-abc-123",
+    });
+    expect(res.ok).toBe(true);
+    expect((res as any).deduplicated).toBe(true);
+  });
+
   it("rejects unknown author / mode at request shape level", async () => {
     // @ts-expect-error invalid author
     const r = submitCardUpdateDiscussion({ cardUpdateId: "cu-1", message: "x", author: "stranger" });

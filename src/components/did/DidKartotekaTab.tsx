@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import CardUpdateDiscussionPanel from "./CardUpdateDiscussionPanel";
 
 interface UpdateLogEntry {
   id: string;
@@ -153,6 +154,9 @@ export default function DidKartotekaTab() {
           </Button>
         </div>
       </div>
+
+      {/* P28_CDI_2d — Discussion panel for pending card update proposals */}
+      <CardUpdateDiscussionPanel />
 
       {/* Update log */}
       <div>
