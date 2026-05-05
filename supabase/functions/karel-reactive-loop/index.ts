@@ -476,7 +476,8 @@ serve(async (req) => {
           if (seg.segment_type !== "personal_relational"
             && canWriteToOperationalLayer(signal)
             && signal.derived_operational_implication) {
-            await sb.from("did_pending_drive_writes").insert({
+            await safeInsertGovernedDriveWrite(sb, {
+              source: "karel-reactive-loop",
               target_document: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
               content: encodeGovernedWrite(
                 `\n\n--- ${new Date().toISOString().split("T")[0]} | reactive-loop | ${seg.segment_type} ---\n${signal.derived_operational_implication}`,
