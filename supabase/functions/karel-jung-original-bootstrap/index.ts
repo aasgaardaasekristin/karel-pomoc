@@ -161,9 +161,9 @@ serve(async (req) => {
           subject_id: spec.key,
         });
 
-        const { error: insertErr } = await (admin as any)
-          .from("did_pending_drive_writes")
-          .insert({
+        const enqRes = await safeEnqueueDriveWrite(
+          admin as any,
+          {
             target_document: targetPath,
             content: governedContent,
             write_type: "replace",
@@ -171,8 +171,10 @@ serve(async (req) => {
             status: "pending",
             user_id: userId,
             metadata: { source: "jung_original_bootstrap", doc: spec.key },
-          });
-        if (insertErr) throw new Error(`enqueue failed: ${insertErr.message}`);
+          },
+          { source: "jung-original-bootstrap" },
+        );
+        if (!enqRes.inserted) throw new Error(`enqueue failed: ${enqRes.reason ?? "blocked_by_governance"}`);
 
         // Log success (best-effort — table may not exist yet on fresh project)
         try {
