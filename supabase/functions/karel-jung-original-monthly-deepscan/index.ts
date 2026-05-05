@@ -134,10 +134,12 @@ serve(async (req) => {
         };
         if (userId) insertPayload.user_id = userId;
 
-        const { error: insertErr } = await (admin as any)
-          .from("did_pending_drive_writes")
-          .insert(insertPayload);
-        if (insertErr) throw new Error(`enqueue failed: ${insertErr.message}`);
+        const enqRes = await safeEnqueueDriveWrite(
+          admin as any,
+          insertPayload,
+          { source: "jung-original-deepscan" },
+        );
+        if (!enqRes.inserted) throw new Error(`enqueue failed: ${enqRes.reason ?? "blocked_by_governance"}`);
 
         try {
           await (admin as any).from("did_doc_sync_log").insert({
