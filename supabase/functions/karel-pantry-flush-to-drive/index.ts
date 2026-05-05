@@ -14,7 +14,7 @@ const corsHeaders = {
 };
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
-import { isGovernedTarget } from "../_shared/documentGovernance.ts";
+import { isGovernedTarget, safeEnqueueDriveWrite } from "../_shared/documentGovernance.ts";
 import { requireAuth } from "../_shared/auth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
