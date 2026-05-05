@@ -246,8 +246,20 @@ ${crisisDigest}`;
             };
           });
 
-          await sb.from("did_pending_drive_writes").insert(normalizedWrites);
-          console.log(`[therapist-intel] ${t.key}: inserted ${normalizedWrites.length} pending writes (governed + normalized)`);
+          let okCount = 0;
+          for (const w of normalizedWrites) {
+            const r = await safeInsertGovernedDriveWrite(sb, {
+              source: "karel-daily-therapist-intelligence",
+              target_document: w.target_document,
+              content: w.content,
+              write_type: w.write_type,
+              priority: w.priority,
+              status: w.status,
+              user_id: w.user_id,
+            });
+            if (r.inserted) okCount++;
+          }
+          console.log(`[therapist-intel] ${t.key}: inserted ${okCount}/${normalizedWrites.length} pending writes (governed + normalized)`);
         }
 
         results[t.key] = { ok: true };
