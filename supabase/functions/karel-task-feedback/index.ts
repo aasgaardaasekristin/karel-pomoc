@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { corsHeaders, requireAuth } from "../_shared/auth.ts";
+import { recordServerSubmission, buildServerDedupeKey } from "../_shared/dynamicPipelineServer.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -146,6 +147,28 @@ ${message}`;
       author: "karel",
       message: karelMessage,
     });
+
+    // P28_CDI_2 — server-side pipeline event for therapist task answer
+    try {
+      await recordServerSubmission({
+        sb: supabaseAdmin,
+        userId: task.user_id,
+        surfaceType: "therapist_task_answer",
+        surfaceId: taskId,
+        eventType: "task_answered",
+        sourceTable: "did_task_feedback",
+        sourceRowId: taskId,
+        safeSummary: `${author} answered task`,
+        rawAllowed: false,
+        dedupeKey: buildServerDedupeKey(["task_answer", taskId, author, message.length, Math.floor(Date.now()/1000)]),
+        metadata: { author, message_len: message.length },
+        resumeStatePatch: {
+          last_therapist_answer: message.slice(0, 500),
+          next_resume_point: "task_answer_processed",
+        },
+      });
+    } catch (e) { console.warn("[task-feedback] pipeline event failed:", (e as Error)?.message); }
+
 
     // Silently update motivation profile based on interaction signals
     if (profile) {

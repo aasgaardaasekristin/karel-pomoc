@@ -27,6 +27,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { summarizeToolboxForPrompt } from "../_shared/therapeuticToolbox.ts";
 import { appendPantryB } from "../_shared/pantryB.ts";
 import { createObservation, routeObservation } from "../_shared/observations.ts";
+import { recordServerSubmission, buildServerDedupeKey } from "../_shared/dynamicPipelineServer.ts";
 import {
   classifyExternalCurrentEvent,
   runExternalCurrentEventReplan,
@@ -541,6 +542,28 @@ PRAVIDLA STRUKTURY:
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // P28_CDI_2 — server-side pipeline event for deliberation answer
+    try {
+      await recordServerSubmission({
+        sb: admin, userId,
+        surfaceType: "team_deliberation_answer",
+        surfaceId: deliberationId,
+        eventType: "deliberation_answered",
+        sourceTable: "did_team_deliberations",
+        sourceRowId: deliberationId,
+        safeSummary: `${author} iterated deliberation`,
+        rawAllowed: false,
+        dedupeKey: buildServerDedupeKey(["delib_iter", deliberationId, author, newLog.length]),
+        metadata: { author, log_length: newLog.length, has_question: Boolean(question) },
+        resumeStatePatch: {
+          last_open_question: question,
+          last_therapist_answer: text.slice(0, 500),
+          next_resume_point: "synthesis_invalidated",
+        },
+      });
+    } catch (e) { console.warn("[delib-iterate] pipeline event failed:", (e as Error)?.message); }
+
 
     try {
       const obsId = await createObservation(admin as any, {

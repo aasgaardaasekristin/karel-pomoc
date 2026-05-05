@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
+import { recordServerSubmission, buildServerDedupeKey } from "../_shared/dynamicPipelineServer.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 import {
   persistEvidenceForIntent,
@@ -874,6 +875,24 @@ async function runHanaBackgroundProcessing(args: {
   }
   if (fullResponse.length > 10 && !persistencePolicy.no_save) {
     await saveEpisodeInBackground(user.id, analysis, fullResponse, conversationId || null);
+  }
+  // P28_CDI_2 — server-side source-of-truth pipeline event for Hana message
+  if (conversationId && !persistencePolicy.no_save) {
+    try {
+      const lastMsgCount = Array.isArray(messages) ? messages.length : 0;
+      await recordServerSubmission({
+        sb, userId: user.id,
+        surfaceType: "hana_personal_thread",
+        surfaceId: conversationId,
+        eventType: "message_sent",
+        sourceTable: "karel_hana_conversations",
+        sourceRowId: conversationId,
+        safeSummary: `Hana message #${lastMsgCount}`,
+        rawAllowed: false,
+        dedupeKey: buildServerDedupeKey(["hana_msg", conversationId, lastMsgCount, persistencePolicy.mode_id]),
+        metadata: { mode_id: persistencePolicy.mode_id, response_len: fullResponse.length },
+      });
+    } catch (e) { console.warn("[hana-chat] pipeline event failed:", (e as Error)?.message); }
   }
   if (fullResponse.length <= 30 || persistencePolicy.no_save) return;
   const lastUserMsg = messages.filter((m: any) => m.role === "user").pop();
