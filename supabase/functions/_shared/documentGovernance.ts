@@ -726,6 +726,23 @@ export function hasPhysicalCardMapping(target: string): boolean {
   return Object.prototype.hasOwnProperty.call(CARD_PHYSICAL_MAP, target);
 }
 
+/**
+ * P29A GERHARDT subpass: KARTA_* targets where the physical Drive reality is
+ * ambiguous or mismatched (e.g. file exists only in 03_ARCHIV_SPICICH, or
+ * multiple candidates, or registry/file mismatch). These MUST NOT auto-map.
+ * Drive Proof for GERHARDT (Drive API):
+ *   - 022_GERHARDT exists in 03_ARCHIV_SPICICH (NOT 01_AKTIVNI_FRAGMENTY)
+ *   - No 001_GERHARDT in 01_AKTIVNI_FRAGMENTY
+ *   - Registry has both active `001_gerhardt` (no physical file) and sleeping
+ *     `GERHARDT` → 022_GERHARDT (archive). Ambiguous → manual approval.
+ */
+export const AMBIGUOUS_PHYSICAL_CARD_TARGETS: ReadonlySet<string> = new Set([
+  "KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_GERHARDT",
+]);
+export function isAmbiguousPhysicalCardTarget(target: string): boolean {
+  return AMBIGUOUS_PHYSICAL_CARD_TARGETS.has(target);
+}
+
 // ── P29A closeout-fix: shared safe insert helper for did_pending_drive_writes ──
 //
 // Every did_pending_drive_writes insert MUST funnel through this helper.
