@@ -14,7 +14,9 @@ export type ServerSurfaceType =
   | "card_update_discussion"
   | "daily_plan_edit"
   | "pending_question_answer"
-  | "task_completion";
+  | "task_completion"
+  | "session_resume"
+  | "playroom_resume";
 
 export type ServerEventType =
   | "message_sent"
