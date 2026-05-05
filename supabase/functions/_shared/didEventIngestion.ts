@@ -11,6 +11,7 @@
 type SupabaseClient = any;
 import { encodeGovernedWrite } from "./documentWriteEnvelope.ts";
 import { appendPantryB, type PantryBEntryKind, type PantryBSourceKind, type PantryBDestination } from "./pantryB.ts";
+import { createHash } from "node:crypto";
 
 type IngestionStatus = "captured" | "classified" | "routed" | "skipped" | "failed" | "duplicate";
 type EvidenceLevel =
@@ -582,12 +583,10 @@ function chooseDriveTarget(event: NormalizedDidEvent, classification: DidEventCl
   if (event.source_kind === "deliberation_event" || event.source_kind === "briefing_ask_resolution") return "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG";
   if (event.source_kind === "playroom_progress") return "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG";
   if (event.source_kind === "live_session_progress") return "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG";
-  // P27 D1: Hana personal safe-summary destinations (raw text never written here; only summaries built earlier).
+  // P27 D1 / P28 A+B.2 C1: Hana personal safe-summary destinations (raw text never written here).
+  // 05E is reserved for canonical team deliberations — Hana personal threads MUST NOT write there.
   if (event.source_kind === "hana_personal_ingestion") {
-    if (classification.evidence_level === "therapist_factual_correction") {
-      return "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG";
-    }
-    if (classification.related_part_name && classification.clinical_relevance) {
+    if (classification.related_part_name) {
       return `KARTA_${classification.related_part_name.toUpperCase()}`;
     }
     return "KARTOTEKA_DID/00_CENTRUM/Bezpecne_DID_poznamky_z_osobniho_vlakna";
@@ -676,18 +675,44 @@ export async function upsertHanaPersonalMemoryIfNeeded(sb: SupabaseClient, event
     ? `Haničko, ve včerejším osobním rozhovoru se objevilo téma kolem části ${part}. Nechci to přejít, jako by to nebylo. Jak ti s tím dnes je?`
     : `Haničko, včera večer jsi mi nesla něco důležitého z osobního prostoru. Nechci začít neutrálně. Jak ti je dnes?`;
 
-  // Idempotency: one memory row per (thread, message, memory_type)
+  // P28 A+B.2 HANA_MEMORY-B1: idempotent writer against partial unique index uq_hana_memory_dedupe_active.
+  // dedupe_key MUST match the formula used in the migration backfill:
+  //   md5(source_thread_id || '|' || memory_type || '|' || lower(squash_ws(next_opening_hint)))
   const messageRef = event.message_id ? `${sourceThreadId}:${event.message_id}` : `${sourceThreadId}:${event.source_hash}`;
+  const computeDedupeKey = (memory_type: string): string => {
+    const norm = (nextOpening || "").toLowerCase().replace(/\s+/g, " ");
+    const raw = `${sourceThreadId}|${memory_type}|${norm}`;
+    return createHash("md5").update(raw).digest("hex");
+  };
+
+  const semanticKey = (memory_type: string) => `${memory_type}:${(classification.urgency || "_unspecified").toLowerCase()}`;
 
   const insertRow = async (memory_type: string, did_relevant: boolean, private_to_hana: boolean) => {
-    const { data: existing } = await sb.from("hana_personal_memory")
+    const dedupeKey = computeDedupeKey(memory_type);
+
+    // 1) Try to find existing active row for this (user, thread, memory_type, dedupe_key).
+    const { data: existingActive } = await sb.from("hana_personal_memory")
+      .select("id")
+      .eq("user_id", event.user_id)
+      .eq("source_thread_id", sourceThreadId)
+      .eq("memory_type", memory_type)
+      .eq("dedupe_key", dedupeKey)
+      .eq("pipeline_state", "active")
+      .limit(1)
+      .maybeSingle();
+    if (existingActive?.id) return existingActive.id as string;
+
+    // 2) Fallback: same message_ref already recorded (legacy rows without dedupe_key).
+    const { data: existingByMsg } = await sb.from("hana_personal_memory")
       .select("id")
       .eq("source_thread_id", sourceThreadId)
       .eq("memory_type", memory_type)
       .contains("source_message_refs", [messageRef])
       .limit(1)
       .maybeSingle();
-    if (existing?.id) return existing.id as string;
+    if (existingByMsg?.id) return existingByMsg.id as string;
+
+    // 3) Insert; if the partial unique index fires (23505), recover by selecting the active row.
     const { data, error } = await sb.from("hana_personal_memory").insert({
       user_id: event.user_id,
       source_thread_id: sourceThreadId,
@@ -699,12 +724,28 @@ export async function upsertHanaPersonalMemoryIfNeeded(sb: SupabaseClient, event
       do_not_export_raw_text: true,
       did_relevant,
       private_to_hana,
+      dedupe_key: dedupeKey,
+      semantic_dedupe_key: semanticKey(memory_type),
+      pipeline_state: "active",
+      retention_state: "active",
     }).select("id").single();
-    if (error) {
-      console.error("[did-event-ingestion] hana_personal_memory insert failed", error);
-      return null;
+    if (!error) return data?.id ?? null;
+
+    if ((error as any)?.code === "23505") {
+      const { data: retry } = await sb.from("hana_personal_memory")
+        .select("id")
+        .eq("user_id", event.user_id)
+        .eq("source_thread_id", sourceThreadId)
+        .eq("memory_type", memory_type)
+        .eq("dedupe_key", dedupeKey)
+        .eq("pipeline_state", "active")
+        .limit(1)
+        .maybeSingle();
+      return retry?.id ?? null;
     }
-    return data?.id ?? null;
+
+    console.error("[did-event-ingestion] hana_personal_memory insert failed", error);
+    return null;
   };
 
   const stateId = await insertRow("hana_emotional_state", false, true);
