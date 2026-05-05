@@ -204,17 +204,53 @@ Deno.serve(async (req) => {
   const cronSecret = req.headers.get("X-Karel-Cron-Secret") || "";
   const auth = req.headers.get("Authorization") || "";
   const isService = auth === `Bearer ${SERVICE_KEY}`;
+  const hasCronHeader = cronSecret.length > 0;
   let isCron = false;
-  if (cronSecret) {
-    try {
-      const { data } = await sb.rpc("verify_karel_cron_secret", { p_secret: cronSecret });
-      isCron = data === true;
-    } catch (_) { /* ignore */ }
+  let lastRpcError: string | null = null;
+  let retryAttempted = false;
+
+  async function verifyCronSecretWithRetry(): Promise<boolean> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt === 1) retryAttempted = true;
+      try {
+        const { data, error } = await sb.rpc("verify_karel_cron_secret", { p_secret: cronSecret });
+        if (error) {
+          lastRpcError = error.message || String(error);
+          await new Promise((r) => setTimeout(r, 150));
+          continue;
+        }
+        if (data === true) { lastRpcError = null; return true; }
+        lastRpcError = "secret_mismatch";
+        return false;
+      } catch (e) {
+        lastRpcError = (e as Error)?.message ?? "rpc_threw";
+        await new Promise((r) => setTimeout(r, 150));
+      }
+    }
+    return false;
   }
+
+  if (hasCronHeader && !isService) {
+    isCron = await verifyCronSecretWithRetry();
+  }
+
   if (!isService && !isCron) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), {
-      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    if (!hasCronHeader) {
+      console.log("[active-session-processor] auth_fail missing_internal_auth");
+      return new Response(JSON.stringify({
+        ok: false,
+        error: "missing_internal_auth",
+        has_header: false,
+      }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    console.log("[active-session-processor] auth_fail cron_secret_verification_failed", { rpc_error: lastRpcError, retry_attempted: retryAttempted });
+    return new Response(JSON.stringify({
+      ok: false,
+      error: "cron_secret_verification_failed",
+      has_header: true,
+      rpc_error: lastRpcError,
+      retry_attempted: retryAttempted,
+    }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   // Optional body { force_surface_id, force_user_id } — used by smoke tests
