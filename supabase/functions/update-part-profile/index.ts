@@ -3,6 +3,7 @@ import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-
 import {
   buildAuditEntry,
   routeWrite,
+  safeInsertGovernedDriveWrite,
   type GovernanceRequest,
 } from "../_shared/documentGovernance.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
