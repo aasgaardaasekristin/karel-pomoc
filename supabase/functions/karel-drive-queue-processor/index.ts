@@ -40,6 +40,7 @@ import {
   resolveCardPhysicalTitle,
   isCanonicalKartaTarget,
   hasPhysicalCardMapping,
+  isAmbiguousPhysicalCardTarget,
 } from "../_shared/documentGovernance.ts";
 import { decodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 
