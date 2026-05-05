@@ -12,6 +12,7 @@ import AudioRecordButton from "@/components/AudioRecordButton";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
+import { recordSurfaceSubmission, buildDedupeKey } from "@/lib/dynamicPipeline";
 import ModeSelector from "@/components/ModeSelector";
 import StarterQuestions from "@/components/StarterQuestions";
 import ModeAuditPanel from "@/components/ModeAuditPanel";
