@@ -711,7 +711,7 @@ Deno.serve(async (req: Request) => {
     // P28_CDI_2b — server-side pipeline event for session approval signoff
     try {
       await recordServerSubmission({
-        sb,
+        sb: admin,
         userId,
         surfaceType: "session_approval_answer",
         surfaceId: deliberationId,
