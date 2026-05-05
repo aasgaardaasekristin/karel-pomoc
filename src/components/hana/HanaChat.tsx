@@ -25,6 +25,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useAuthReady } from "@/hooks/useAuthReady";
 import { buildSafetyResponse, detectSafetyMention } from "@/lib/safetyDetection";
+import { recordSurfaceSubmission, buildDedupeKey } from "@/lib/dynamicPipeline";
 import {
   AlertDialog,
   AlertDialogAction,
