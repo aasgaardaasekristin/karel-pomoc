@@ -547,21 +547,21 @@ Deno.serve(async (req: Request) => {
         const header = subjectPart
           ? `\n\n## Krizová koordinace — ${subjectPart} (${dateLabel})\n_Zdroj: týmová porada — synthesis ${deliberationId.slice(0, 8)}_\n\n`
           : `\n\n## Krizová koordinace (${dateLabel})\n_Zdroj: týmová porada — synthesis ${deliberationId.slice(0, 8)}_\n\n`;
-        const { data: dw, error: dwErr } = await admin
-          .from("did_pending_drive_writes")
-          .insert({
+        const dwRes = await safeEnqueueDriveWrite(
+          admin as any,
+          {
             user_id: userId,
-            // Plná governance cesta — bez prefixu by drive-queue-processor
-            // skipnul write s "target not in governance whitelist".
             target_document: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
             write_type: "append",
             content: header + synth.drive_writeback_md,
             priority: "high",
             status: "pending",
-          })
-          .select("id")
-          .maybeSingle();
-        if (!dwErr && dw?.id) {
+          },
+          { source: "team-deliberation-signoff/crisis", returning: "id" },
+        );
+        const dw = dwRes.inserted ? (dwRes.data as any) : null;
+        const dwErr = dwRes.inserted ? null : { message: dwRes.reason ?? "blocked" };
+        if (dw?.id) {
           crisisEffects.drive_write_id = dw.id;
           await snapshotProtectedMutation(admin, {
             tableName: "did_team_deliberations",
