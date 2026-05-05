@@ -452,7 +452,8 @@ serve(async (req) => {
               ? "PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY"
               : "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY";
 
-            await sb.from("did_pending_drive_writes").insert({
+            await safeInsertGovernedDriveWrite(sb, {
+              source: "karel-reactive-loop",
               target_document: pametTarget,
               content: encodeGovernedWrite(
                 `[Osobní vlákno ${new Date().toISOString().split("T")[0]} | ${seg.segment_type}] ${seg.raw_segment.slice(0, 500)}`,
