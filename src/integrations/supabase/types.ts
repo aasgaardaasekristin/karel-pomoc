@@ -2294,6 +2294,50 @@ export type Database = {
           },
         ]
       }
+      did_daily_cycle_phase_payloads: {
+        Row: {
+          created_at: string
+          cycle_id: string
+          id: string
+          job_kind: string
+          payload: Json
+          payload_hash: string | null
+          payload_kind: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          cycle_id: string
+          id?: string
+          job_kind: string
+          payload?: Json
+          payload_hash?: string | null
+          payload_kind: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          cycle_id?: string
+          id?: string
+          job_kind?: string
+          payload?: Json
+          payload_hash?: string | null
+          payload_kind?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "did_daily_cycle_phase_payloads_cycle_id_fkey"
+            columns: ["cycle_id"]
+            isOneToOne: false
+            referencedRelation: "did_update_cycles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       did_daily_report_dispatches: {
         Row: {
           created_at: string
