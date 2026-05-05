@@ -5472,19 +5472,28 @@ Vrať POUZE validní JSON (bez markdown):
               const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
               if (!LOVABLE_API_KEY) continue;
 
-              const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-                method: "POST",
-                headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  model: "google/gemini-2.5-flash-lite",
-                  messages: [
-                    { role: "system", content: SYSTEM_RULES + "\n\nJsi klinický psycholog specializující se na DID. Analyzuješ komunikační vzorce a vytváříš psychologické profily fragmentů/částí DID systému. Odpovídej VÝHRADNĚ validním JSON." },
-                    { role: "user", content: profilePrompt },
-                  ],
-                  temperature: 0.2,
-                  max_tokens: 1500,
-                }),
-              });
+              // P29B: per-call AbortController timeout — AI gateway can hang.
+              const profileAbort = new AbortController();
+              const profileTimer = setTimeout(() => profileAbort.abort(), 25_000);
+              let aiRes: Response;
+              try {
+                aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+                  signal: profileAbort.signal,
+                  body: JSON.stringify({
+                    model: "google/gemini-2.5-flash-lite",
+                    messages: [
+                      { role: "system", content: SYSTEM_RULES + "\n\nJsi klinický psycholog specializující se na DID. Analyzuješ komunikační vzorce a vytváříš psychologické profily fragmentů/částí DID systému. Odpovídej VÝHRADNĚ validním JSON." },
+                      { role: "user", content: profilePrompt },
+                    ],
+                    temperature: 0.2,
+                    max_tokens: 1500,
+                  }),
+                });
+              } finally {
+                clearTimeout(profileTimer);
+              }
 
               if (aiRes.ok) {
                 const aiData = await aiRes.json();
