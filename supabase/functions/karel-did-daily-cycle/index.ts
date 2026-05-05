@@ -5404,6 +5404,15 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
 
           // Process each active part
           for (const part of activeParts.slice(0, 10)) {
+            // P29B: hard time-budget guard. AI gateway can stall — bail and continue.
+            if (Date.now() - profilingStart > PROFILING_BUDGET_MS) {
+              profilingSkipped = activeParts.length - profilingProcessed;
+              console.warn(`[daily-cycle] Profiling budget exhausted (${PROFILING_BUDGET_MS}ms) — skipping ${profilingSkipped} remaining parts`);
+              break;
+            }
+            // Heartbeat per part — proves the cycle is alive even during AI calls.
+            void setPhase("update_cards_profiling", `part=${part.part_name} processed=${profilingProcessed}`);
+
             const partThreads = (recentThreads || []).filter((t: any) => 
               t.part_name.toLowerCase() === part.part_name.toLowerCase()
             );
