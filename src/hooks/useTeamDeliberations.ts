@@ -199,6 +199,13 @@ export function useTeamDeliberations(refreshTrigger = 0) {
         .update(patch)
         .eq("id", deliberationId);
       if (error) throw error;
+      void recordSurfaceSubmission(
+        { surface: "team_deliberations", surfaceId: deliberationId, surfaceType: "team_deliberation_answer", metadata: { who, questionIndex } },
+        { eventType: "deliberation_answered", sourceTable: "did_team_deliberations", sourceRowId: deliberationId,
+          safeSummary: `${who} answered question #${questionIndex}`,
+          dedupeKey: buildDedupeKey(["delib_answer", deliberationId, who, questionIndex]),
+          metadata: { answer_length: answer.length } },
+      );
       await reload();
     },
     [items, reload],
