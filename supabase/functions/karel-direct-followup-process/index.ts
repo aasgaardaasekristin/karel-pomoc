@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { recordServerSubmission } from "../_shared/dynamicPipelineServer.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -371,6 +372,30 @@ serve(async (req) => {
         processed_by_reactive: true,
       })
       .eq("id", questionId);
+
+    // P28_CDI_2b — server-side pipeline event
+    try {
+      await recordServerSubmission({
+        sb,
+        userId: sourcePlan.user_id,
+        surfaceType: "pending_question_answer",
+        surfaceId: questionId,
+        eventType: "pending_question_answered",
+        sourceTable: "did_pending_questions",
+        sourceRowId: questionId,
+        safeSummary: `pending_question:${classified.action}`,
+        rawAllowed: false,
+        metadata: { action: classified.action, candidate_plan_id: candidatePlanId },
+        resumeStatePatch: {
+          question_id: questionId,
+          answered_by: "therapist",
+          answer_summary: classified.action,
+          next_resume_point: candidatePlanId ? "candidate_plan_ready" : "no_candidate",
+        },
+      });
+    } catch (err) {
+      console.warn("[direct-followup-process] dyn pipeline write failed:", err);
+    }
 
     return jsonResponse({ success: true, follow_up_result: followUpResult, candidate_plan_id: candidatePlanId, candidate_created: candidateCreated });
   } catch (error) {

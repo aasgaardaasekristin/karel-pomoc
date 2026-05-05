@@ -1,265 +1,140 @@
-# SEV-1 pass: `live_session_block_state_machine_and_ai_fallback_fix`
 
-> **Tento pass není o toastu. Tento pass je o tom, že Karel v živém Sezení musí držet schválený program.**
+# P28_CDI_2b — Remaining surfaces, resume state, dashboard proof
 
-## Dva propojené problémy
+Goal: extend the server-side dynamic pipeline to all remaining submission surfaces, add resume_state writes, prove dashboard refetch paths, resolve the legacy `queued=1` event, and run a safe DID part-chat smoke. The old global ingest cron stays untouched as a safety net.
 
-1. **Klinická regrese.** Karel v živém Sezení s gustíkem ztratil stav programu. Po odsouhlasení posledního bodu („měkké/klidné zakončení") sám zahájil už dokončenou aktivitu („Použijeme techniku kresby postavy… Pověz mi o tom člověku na obrázku…"), ignoroval výslovnou korekci terapeutky.
-2. **Runtime crash.** `karel-block-followup` padá na prázdnou / nevalidní AI odpověď (`SyntaxError: Unexpected end of JSON input`), klient vyhodí Lovable runtime overlay → blank screen.
-
-## Hlavní princip
-
-**Volná AI nesmí rozhodovat o průchodu programem.** Backend je deterministický state-machine nad schváleným plánem; AI smí jen formulovat větu uvnitř povolené akce. AI output validator je **druhá** vrstva ochrany, ne primární řízení.
-
-**Server je jediná autorita pro aktuální blok.** Klientská `current_block_index` / `current_block_title` jsou pouze hint. Pravda je vždy DB.
+Out of scope (later passes): reducing the global ingest cron, Jung persona, Hana memory, Drive lifecycle.
 
 ---
 
-## 0. Audit reálného stavu (před úpravami)
+## Part A — Resolve legacy `queued_for_consumption=1`
 
-Read-only SQL:
+1. Run `read_query`:
+   ```sql
+   select id, surface_type, surface_id, event_type, pipeline_state, consumed_by, metadata, created_at
+   from dynamic_pipeline_events
+   where pipeline_state='queued_for_consumption'
+   order by created_at desc;
+   ```
+2. Decision tree:
+   - If row is the failed fake-task smoke from 2a → migration UPDATE → `pipeline_state='superseded'`, `consumed_by = consumed_by || {superseded_by:'P28_CDI_2a_retry', superseded_at: now()}`.
+   - If genuinely consumable → re-trigger active processor with `force_surface_id`.
+   - Otherwise → report blocker.
+3. Acceptance: `stale_queued_smoke_events = 0`.
 
+## Part B — REMAINING_SURFACE_MATRIX
+
+Produce a `docs/P28_CDI_2B_SURFACE_MATRIX.md` with one row per surface:
+
+| surface | frontend_component | submit_handler | edge_function_or_rpc | db_table_written | server_pipeline_event_written | active_activity_session_written | resume_state_written | dashboard_refetch_or_realtime | status | gap |
+
+Surfaces (10): `playroom_deliberation_answer`, `session_approval_answer`, `pending_question_answer`, `card_update_discussion`, `daily_plan_edit`, `live_session_block_update`, `playroom_block_update`, `did_part_chat_thread`, `session_resume`, `playroom_resume`.
+
+Sources to inspect: `DidKidsPlayroom.tsx`, `DeliberationRoom.tsx`, `PendingQuestionsPanel.tsx`, `DidKartotekaTab.tsx`, `KarelDailyPlan.tsx`, `DidLiveSessionPanel.tsx`, `DidDailySessionPlan.tsx`, `Chat.tsx` (DID part chat), and the matching edge functions (`karel-did-playroom-evaluate`, `karel-team-deliberation-iterate`, `karel-daily-plan-sync-start`, `karel-did-card-update`, `karel-live-session-feedback`, `karel-live-session-produce`, `karel-did-chat`).
+
+## Part C — Server-side `recordServerSubmission` for each remaining surface
+
+For every gap found in Part B, edit the matching edge function to call `recordServerSubmission(...)` from `_shared/dynamicPipelineServer.ts` after the persisted write succeeds. Mappings:
+
+1. **playroom_deliberation_answer** — `karel-team-deliberation-iterate` (when deliberation_type=playroom) or `karel-did-playroom-evaluate`. Event `deliberation_answered`. Resume: `last_open_question`, `last_therapist_answer`, `next_resume_point`.
+2. **session_approval_answer** — `karel-daily-plan-sync-start` and the deliberation sign-off path. Event `approval_answered` (extend ServerEventType union). Resume: `approval_stage`, `last_pending_decision`, `next_resume_point`.
+3. **pending_question_answer** — wherever `PendingQuestionsPanel` posts answers (likely `karel-task-feedback` or a dedicated handler — confirm via rg). Event `pending_question_answered`. Resume: `question_id`, `answered_by`, `answer_summary`.
+4. **card_update_discussion** — `karel-did-card-update` / `update-part-card`. Event `card_update_discussed`. Resume: `card_update_id`, `decision_status`, `next_resume_point`.
+5. **daily_plan_edit** — `karel-daily-plan-sync-start` non-start branch + plan UPDATE handlers. Event `plan_edited`. Resume: `changed_fields`, `previous_status`, `next_status`.
+6. **live_session_block_update / playroom_block_update** — `karel-live-session-produce`, `karel-live-session-feedback`, `karel-block-followup`. Event `block_updated`. Resume: `current_block_index`, `last_completed_block`, `skipped_blocks`, `changed_blocks`, `reason_for_change`, `next_resume_point`, `what_changed_since_plan`.
+
+Extend `ServerSurfaceType` and `ServerEventType` unions in `dynamicPipelineServer.ts` with `approval_answered`, `pending_question_answered`, `card_update_discussed`.
+
+Also add corresponding dispatch branches in `karel-active-session-processor/index.ts` (mostly `updated_at` bumps so dashboards refetch; pending_question dispatches `emitPendingQuestionsChanged` realtime by bumping the row).
+
+## Part D — DID part chat safe smoke
+
+Add `supabase/functions/_shared/p28CdiSafeSmoke.ts` with a helper that injects a synthetic event:
+```
+surface_type=did_part_chat_thread
+event_type=message_sent
+safe_summary='[P28_CDI_2B_SMOKE] DID safe synthetic marker'
+raw_allowed=false
+metadata={p28_cdi_2b_smoke:true, no_child_raw_text:true}
+```
+Trigger `karel-active-session-processor` with `force_surface_id`. Acceptance: `dispatch_kind=did_part_chat_ingest`, `dispatch_ok=true`, `pipeline_state=consumed`.
+
+## Part E — Resume-state proof
+
+After Parts C+D, query:
 ```sql
-select
-  p.id as plan_id, p.selected_part, p.status, p.lifecycle_status, p.started_at,
-  p.plan_markdown ilike '%## Program sezení%' as has_program_section,
-  left(p.plan_markdown, 2500) as plan_excerpt,
-  lp.id as progress_id,
-  lp.current_block_index, lp.current_block_status,
-  lp.completed_blocks, lp.total_blocks, lp.items,
-  lp.turns_by_block, lp.observations_by_block, lp.updated_at
-from did_daily_session_plans p
-left join did_live_session_progress lp on lp.plan_id = p.id
-where p.started_at is not null
-order by p.started_at desc limit 5;
+select surface_type, surface_id, last_open_question, last_therapist_answer,
+       next_resume_point, what_changed_since_plan, updated_at
+from surface_resume_state
+where updated_at >= now() - interval '2 hours'
+order by updated_at desc;
 ```
+Acceptance: ≥3 rows across team_deliberation_answer, playroom_deliberation_answer, and a block_update surface; `next_resume_point` non-null; `what_changed_since_plan` populated for block updates. May require a one-time migration to add the missing columns (`what_changed_since_plan`, `approval_stage`, etc.) to `surface_resume_state` if absent.
 
-Dolož: `active_plan_id`, `active_progress_id`, `current_block_index`, `current_block_title`, `current_block_status`, `completed_blocks`, `total_blocks`, zda poslední Karlův turn navrhuje aktivitu mimo aktuální blok.
+## Part F — Dashboard update proof
+
+Build `docs/P28_CDI_2B_DASHBOARD_PROOF.md` enumerating for each remaining surface the realtime/invalidate path. Use rg over `src/components`, `src/hooks` for `invalidateQueries|refetch|reload|subscribe|postgres_changes|emitPendingQuestionsChanged`. If any panel lacks a refetch trigger, wire a `supabase.channel(...).on('postgres_changes', { table })` subscriber or invalidate the relevant React Query key.
+
+## Part G — Forced safe smokes
+
+Run smoke for each surface via direct insert (synthetic, `raw_allowed=false`) and force `karel-active-session-processor`. Verify:
+```sql
+select surface_type, event_type, pipeline_state, consumed_by, raw_allowed, metadata, created_at
+from dynamic_pipeline_events
+where created_at >= now() - interval '2 hours'
+order by created_at desc;
+```
+All consumed (or explicit `skipped_safe_fixture`); `raw_allowed=false` for synthetic child/Hana surfaces.
+
+## Part H — Cron audit (no changes)
+
+Read-only:
+```sql
+select jobname, schedule, active, command from cron.job
+where command ilike '%karel-did-event-ingest%' or command ilike '%karel-active-session-processor%';
+```
+Document `old_global_ingest_cron_kept_as_safety_net=true`, `active_processor_cron_exists=true`. **No cron edits.**
+
+## Part I — Tests (`src/test/p28CdiRemainingSurfaces.test.ts`)
+
+Vitest cases:
+- playroom_deliberation_answer server-event dedupe key shape
+- session_approval_answer event type valid in union
+- pending_question_answer event type valid
+- card_update_discussion event type valid
+- daily_plan_edit event type valid
+- live_session_block_update resume state shape (zod-style)
+- did_part_chat safe synthetic event passes guards
+- dashboard refetch matrix non-empty (parses the doc)
+- legacy queued smoke marked superseded
+- raw_allowed=false default for synthetic safe smoke
+
+Run `bunx vitest run --reporter=basic` (auto-run by harness).
 
 ---
 
-## 1. `_shared/blockStateMachine.ts` (NOVÝ, čistě deterministický, unit-testovatelný)
+## Acceptance gate
 
-```ts
-type AllowedBlockAction =
-  | "stay_on_current_block"
-  | "await_therapist_result"
-  | "mark_current_block_done"
-  | "move_to_next_block"
-  | "close_session"
-  | "therapist_correction_realign";
+```
+stale_queued_smoke_events = 0
+remaining_surface_matrix_complete = true
+server_pipeline_events_for_remaining_surfaces = true
+resume_state_count >= 3
+did_part_chat_safe_smoke = pass_or_explicit_safe_skip
+dashboard_update_paths_proven = true
+old_global_cron_still_safety_net = true
+tests_pass = true
 ```
 
-Exportuje:
-- `parseProgramBlocks(planMarkdown)` — robustní parser sekce `## Program sezení`. Pro každý blok: `{ index, title, kind, isFinal }`. `isFinal = true` pokud title matchuje `integrace`, `měkké/klidné/jemné ukončení`, `zakončení`, `uzavření`, `closure`, `final` (Unicode escapes pro diakritiku).
-- `isTherapistAcknowledgement(text)` — krátké potvrzení (≤ 25 znaků, žádný otazník): „ano", „dobře", „rozumím", „jasně", „ok", „můžeme", „beru", „pokračuj", „provedeno".
-- `detectTherapistCorrection(text)` — vzorce „to jsme už dělali", „postavu už jsme kreslili", „máš v tom zmatek", „teď má být jen", „takový je plán/domluva", „posledn[íi] bod", „zakonč[ít/it] / měkké zakončení".
-- `detectOffPlanContent(aiText, ctx)` — vrací `{ offPlan, hits }`. Forbidden lex (Unicode escapes):
-  - `nakresli`, `kresba postavy`, `kresb[ua]`, `postav[au]`, `pověz mi o tom člověku`, `co ten člověk dělá`, `kdo to je`, `další krok`, `jdeme na další`, `použijeme techniku`, `nový [úkol/test]`, `projektivní`.
-  - V závěrečném bloku: zakázané vždy.
-  - Mimo závěr: zakázané, pokud obsah patří do bloku, který je v `ctx.completedBlockTitles`.
-- `decideAction({ ctx, lastTherapistMessage, isFirstAiTurn })` — vrací `{ action, allowedActions, forbiddenActions, reason }`.
-- `deterministicFallbackForBlock(ctx, action)` — bezpečný `karel_text` v češtině pro každou akci (např. `await_therapist_result` → „Dobře, proveď prosím tento krok a pak mi napiš, jak gustík reagoval.").
-- `validateBlockFollowupOutput(aiText, ctx)` → `{ ok, violations }`. Selže, pokud:
-  - obsahuje název už dokončeného bloku jako novou aktivitu,
-  - v závěrečném bloku obsahuje cokoliv z forbidden lexikonu,
-  - oznamuje přechod na další blok, ale `action != move_to_next_block`,
-  - referuje stimul/krok mimo aktuální blok.
+If any item fails → `P28_CDI_2b = not_accepted`, report gaps. Reducing the global cron (`P28_CDI_3`) only after 2b is green.
 
-Souborová organizace: čistý TypeScript bez Deno API (aby šel testovat v `vitest` i v `deno test`).
+## Files to be touched (summary)
 
-## 2. `karel-block-followup/index.ts` — refactor
-
-### 2.1 Nové vstupy z klienta (jen jako hint, ne autorita)
-`plan_id`, `progress_id`. Pokud chybí, server je dohledá z `live_session_id` v body, příp. fallback přes user_id + dnešní aktivní plán.
-
-### 2.2 Server-side autoritativní načtení (před AI)
-Service-role klient:
-- `did_daily_session_plans` → `plan_markdown` → `parseProgramBlocks()`,
-- `did_live_session_progress` → `current_block_index`, `current_block_status`, `completed_blocks`, `items`, `turns_by_block`.
-
-Sestav `BlockGuardCtx`:
-```ts
-{
-  plan_id, progress_id,
-  current_block_index, current_block_title, current_block_kind,
-  current_block_status, is_final_block,
-  completed_blocks, total_blocks, completed_block_titles,
-  last_therapist_message,
-  allowed_actions, forbidden_actions,
-}
-```
-
-**Mismatch detekce.** Pokud klientský `current_block_index/title` ≠ DB → server wins, audit do `did_live_session_progress.audit`:
-```json
-{ "event_type": "client_block_state_mismatch",
-  "client_block_index": ..., "db_block_index": ..., "ts": ... }
-```
-
-### 2.3 Pre-AI guard (deterministická akce ještě před voláním AI)
-- `isTherapistAcknowledgement(last)` → `action = await_therapist_result`, **bez AI volání**, vrať deterministický fallback. Block se nemění.
-- `detectTherapistCorrection(last)` → `action = therapist_correction_realign`, **bez AI volání**, deterministická omluva + návrat k aktuálnímu bloku, žádné nové aktivity.
-- `is_final_block` + free reply → AI smí běžet, ale do system promptu se vloží **HARD CLOSING DIRECTIVE** se seznamem `completed_block_titles` a explicitním zákazem nových diagnostických aktivit.
-
-### 2.4 Robustní AI parsing (řeší crash)
-Místo `await aiRes.json()`:
-```ts
-const rawAi = await aiRes.text();
-if (!rawAi.trim()) {
-  console.warn("[block-followup] empty AI body", { status: aiRes.status });
-  return fallback200("AI_EMPTY_RESPONSE", ctx);
-}
-let aiData;
-try { aiData = JSON.parse(rawAi); }
-catch (e) {
-  console.warn("[block-followup] invalid AI JSON", { snippet: rawAi.slice(0, 200) });
-  return fallback200("AI_INVALID_JSON", ctx);
-}
-```
-
-`fallback200(error, ctx)` → **HTTP 200**:
-```json
-{ "fallback": true, "error": "AI_EMPTY_RESPONSE",
-  "karel_text": "<deterministicFallbackForBlock(ctx)>",
-  "state_patch": { "preserve_current_block": true },
-  "done": false }
-```
-
-### 2.5 Test-only force-paths (jen service-role)
-Body může obsahovat:
-- `test_force_ai_empty_body: true`,
-- `test_force_ai_invalid_json: true`.
-
-Povolené **pouze**, když request přišel s `service_role` klíčem (ověř přes `auth.getUser()` → admin role nebo bearer = `SUPABASE_SERVICE_ROLE_KEY`). Jinak ignorováno. Ne dostupné běžnému uživateli.
-
-### 2.6 Post-AI validátor
-Po extrakci `karel_text`:
-```ts
-const v = validateBlockFollowupOutput(aiText, ctx);
-if (!v.ok) {
-  await logHealth({ event_type: "off_plan_ai_block_rejected", violations: v.violations, ctx });
-  return fallback200("OFF_PLAN_AI_BLOCK_REJECTED", ctx, { ai_output_replaced: true });
-}
-```
-
-### 2.7 Audit do `did_live_session_progress.audit`
-Po každém follow-upu:
-```json
-{ "block_followup_guard": {
-    "current_block_index_before": 3, "current_block_index_after": 3,
-    "current_block_status_before": "awaiting_therapist_result",
-    "current_block_status_after": "awaiting_therapist_result",
-    "action_taken": "await_therapist_result",
-    "reason": "therapist_acknowledgement",
-    "ai_output_replaced": false, "ts": "..."
-} }
-```
-
-### 2.8 Fatal catch
-- Auth fail → **401**.
-- Bad input (chybí `part_name`, plan/progress neexistují) → **400**.
-- AI/parsing/network/post-validator selhání → **200** s `fallback=true`.
-```ts
-catch (e) {
-  console.error("[block-followup] fatal:", e);
-  return new Response(JSON.stringify({
-    fallback: true, error: "FOLLOWUP_FAILED",
-    karel_text: "Karel teď nemůže bezpečně vytvořit další krok, ale sezení nespadlo. Drž aktuální blok a zkus to za chvíli znovu.",
-    message: e?.message, done: false,
-  }), { status: 200, headers: ... });
-}
-```
-
-## 3. Klient — `BlockDiagnosticChat.tsx`
-
-V `callFollowup`:
-```ts
-if ((data as any)?.fallback === true) {
-  console.warn("[BlockDiagnosticChat] followup fallback:", data);
-  const txt = String((data as any).karel_text ?? "Karel teď nemůže reagovat, zkus to znovu.");
-  toast.warning(txt);
-  setTurns(prev => [...prev, { from: "karel", text: txt, ts: new Date().toISOString() }]);
-  // NEadvance, NEdone, NEcloseMsg
-  return false;
-}
-```
-Throw zachovat jen pro skutečné network/4xx/5xx.
-
-Do invoke body přidat `plan_id`, `progress_id` (přes nové propsy z `LiveProgramChecklist`/`DidLiveSessionPanel`).
-
-## 4. UI indikátor aktuálního bloku
-V `LiveProgramChecklist`/`BlockDiagnosticChat` lidský header:
-```
-Aktuální bod programu: 4/4 — Integrace a měkké ukončení
-Stav: čeká na reakci terapeutky
-```
-Beige parchment, žádné technické indexy.
-
-## 5. Repair aktivního sezení (migrace)
-Pro live progress, kde poslední Karlův turn obsahuje off-plan kresbu/postavu a `current_block_index < total_blocks - 1`, posuň na závěrečný blok, status `closing_pending`, do `audit` přidej `therapist_corrected_off_plan_ai_response = true`. Transcript ani `turns_by_block` se nemažou.
-
-## 6. Testy (rozdělené)
-
-### A. `_shared/blockStateMachine_test.ts` (Deno + vitest re-export)
-- acknowledgement nezvyšuje block_index,
-- detekce korekce,
-- závěrečný blok → validátor zamítne kresbu,
-- non-final blok → validátor pustí běžnou aktivitu,
-- parser plánu identifikuje `is_final` u 4. bloku.
-
-### B. `karel-block-followup` edge testy (`supabase--test_edge_functions`)
-- `test_force_ai_empty_body=true` → 200 + `fallback=true` + `error="AI_EMPTY_RESPONSE"`,
-- `test_force_ai_invalid_json=true` → 200 + `error="AI_INVALID_JSON"`,
-- unauthorized → 401,
-- bad input → 400,
-- acknowledgement → bez AI volání, deterministický fallback.
-
-### C. Frontend fallback (vitest)
-- `BlockDiagnosticChat` na `fallback=true` nevolá `console.error` ani throw, volá `toast.warning`, nezvyšuje block.
-
-### D. Live E2E DOM
-- Otevři aktivní Sezení v browseru.
-- Header: „Aktuální bod programu: 4/4 — …".
-- Pošli `ano` → DOM `dom_off_plan_terms_after_ack_count = 0`.
-- Pošli `To jsme už dělali. Teď má být jen měkké zakončení.` → DOM `dom_off_plan_terms_after_correction_count = 0`, obsahuje omluvu + návrat k závěru.
-
-## 7. Akceptační tabulka
-
-| Kontrola | Stav | Důkaz |
-|---|---|---|
-| Root cause state-loss confirmed | | SQL |
-| Server is authority for current block (mismatch audited) | | log |
-| AI empty body → 200 fallback (edge test) | | test |
-| AI invalid JSON → 200 fallback (edge test) | | test |
-| Unauthorized → 401, bad input → 400 | | test |
-| Client fallback no overlay | | test |
-| Acknowledgement does not advance block | | test |
-| Final block blocks drawing/projective | | test |
-| Therapist correction realigns | | test |
-| Active session state repaired if needed | | SQL |
-| DOM: current block shown | | DOM |
-| DOM: "ano" does not trigger drawing | | DOM |
-| DOM: correction returns to closing | | DOM |
-| `block_state_machine_tests` | | passed |
-| `edge_ai_fallback_tests` | | passed |
-| `client_fallback_tests` | | passed |
-| `live_session_dom_tests` | | passed |
-| **Final result** | | accepted/not |
-
-## 8. Akceptační pravidlo (zpřísněné)
-
-Pass je `accepted` jen když:
-1. aktuální blok je řízen DB state-machine, ne AI textem,
-2. krátké „ano" neposune blok a nespustí novou aktivitu,
-3. závěrečný blok blokuje kresbu/postavu/projektivní inquiry,
-4. terapeutická korekce vrací Karla k aktuálnímu bloku,
-5. AI empty/invalid JSON nevrací 500,
-6. klient fallback nezpůsobí overlay,
-7. aktivní sezení je opravené a auditované,
-8. DOM E2E potvrzuje, že se kresba po „ano" ani po korekci znovu neobjeví,
-9. všechny čtyři testovací sady prošly.
-
-## Mimo rozsah
-- Nemění se `_shared/clinicalPlaybooks.ts` prompt obsah.
-- Nemění se schéma `did_daily_session_plans` ani `did_team_deliberations` (jen `did_live_session_progress.audit` jsonb append).
-- Nemění se Herna (`did_kids_playroom`) ani `karel-part-session-prepare`.
+- New migration: extend `surface_resume_state` columns; mark legacy queued event superseded.
+- `supabase/functions/_shared/dynamicPipelineServer.ts` — extend unions.
+- `supabase/functions/_shared/p28CdiSafeSmoke.ts` — new helper.
+- `supabase/functions/karel-active-session-processor/index.ts` — dispatch branches for new surfaces.
+- Edge functions: `karel-team-deliberation-iterate`, `karel-did-playroom-evaluate`, `karel-daily-plan-sync-start`, `karel-did-card-update`, `karel-live-session-produce`, `karel-live-session-feedback`, `karel-block-followup`, `karel-did-chat`, `karel-task-feedback` (pending question).
+- Frontend: minimal — only add missing realtime/invalidate subscribers where Part F finds gaps.
+- `docs/P28_CDI_2B_SURFACE_MATRIX.md`, `docs/P28_CDI_2B_DASHBOARD_PROOF.md`.
+- `src/test/p28CdiRemainingSurfaces.test.ts`.

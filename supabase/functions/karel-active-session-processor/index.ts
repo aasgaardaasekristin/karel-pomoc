@@ -138,8 +138,61 @@ async function dispatchSurface(sb: any, session: any, eventCount: number): Promi
     case "session_approval_answer": return dispatchDeliberationAnswer(sb, session);
     case "live_session_block_update":
     case "playroom_block_update":   return dispatchBlockUpdate(sb, session, eventCount);
+    case "pending_question_answer": return dispatchPendingQuestion(sb, session);
+    case "card_update_discussion":  return dispatchCardUpdateDiscussion(sb, session);
+    case "daily_plan_edit":         return dispatchDailyPlanEdit(sb, session);
+    case "session_resume":
+    case "playroom_resume":         return dispatchResume(sb, session);
     default:
       return { ok: true, dispatch_kind: `noop:${session.surface_type}`, details: { events: eventCount } };
+  }
+}
+
+async function dispatchPendingQuestion(sb: any, session: any): Promise<DispatchOutcome> {
+  try {
+    await sb.from("did_pending_questions")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", session.surface_id);
+    return { ok: true, dispatch_kind: "pending_question_resync_hint", details: { question_id: session.surface_id } };
+  } catch (e) {
+    return { ok: false, dispatch_kind: "pending_question_resync_hint", error: (e as Error)?.message };
+  }
+}
+
+async function dispatchCardUpdateDiscussion(sb: any, session: any): Promise<DispatchOutcome> {
+  try {
+    await sb.from("card_update_queue")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", session.surface_id);
+    return { ok: true, dispatch_kind: "card_update_discussion_resync_hint", details: { card_update_id: session.surface_id } };
+  } catch (e) {
+    return { ok: true, dispatch_kind: "card_update_discussion_noop", error: (e as Error)?.message };
+  }
+}
+
+async function dispatchDailyPlanEdit(sb: any, session: any): Promise<DispatchOutcome> {
+  try {
+    await sb.from("did_daily_session_plans")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", session.surface_id);
+    return { ok: true, dispatch_kind: "daily_plan_edit_resync_hint", details: { plan_id: session.surface_id } };
+  } catch (e) {
+    return { ok: false, dispatch_kind: "daily_plan_edit_resync_hint", error: (e as Error)?.message };
+  }
+}
+
+async function dispatchResume(sb: any, session: any): Promise<DispatchOutcome> {
+  try {
+    await sb.from("surface_resume_state").upsert({
+      user_id: session.user_id,
+      surface_type: session.surface_type,
+      surface_id: session.surface_id,
+      next_resume_point: "resume_acknowledged",
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id,surface_type,surface_id" });
+    return { ok: true, dispatch_kind: "resume_state_sync" };
+  } catch (e) {
+    return { ok: false, dispatch_kind: "resume_state_sync", error: (e as Error)?.message };
   }
 }
 
