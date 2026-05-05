@@ -171,29 +171,27 @@ export async function recordEntityContext(
       : `[${sourceContext.date_label}] ${displayName} (${kindLabel}): ` +
         `${fact.description}${fact.related_entity ? ` Vazba: ${fact.related_entity}.` : ""}`;
 
-    const factGate = gateDriveWriteInsert({ target_document: targetDoc });
-    if (!factGate.ok) {
-      console.warn(`[entityWatchdog] blocked_by_governance: ${targetDoc} (${factGate.reason})`);
-      continue;
-    }
-    const { error } = await supabase.from("did_pending_drive_writes").insert({
-      target_document: factGate.target,
-      content: encodeGovernedWrite(content, {
-        source_type: "entity-watchdog",
-        source_id: sourceContext.thread_id,
-        content_type: isTrigger ? "pattern_observation" : "general_classification",
-        subject_type: resolved.entity_kind === "animal" || resolved.entity_kind === "family_member"
-          ? "family_context" : "system",
-        subject_id: resolved.normalized_name,
-      }),
-      write_type: "append",
-      priority: "normal",
-      status: "pending",
-      user_id: sourceContext.user_id || DID_OWNER_ID,
-    });
-
-    if (error) {
-      console.warn(`[entityWatchdog] Context write failed: ${error.message}`);
+    const res = await safeEnqueueDriveWrite(
+      supabase as any,
+      {
+        target_document: targetDoc,
+        content: encodeGovernedWrite(content, {
+          source_type: "entity-watchdog",
+          source_id: sourceContext.thread_id,
+          content_type: isTrigger ? "pattern_observation" : "general_classification",
+          subject_type: resolved.entity_kind === "animal" || resolved.entity_kind === "family_member"
+            ? "family_context" : "system",
+          subject_id: resolved.normalized_name,
+        }),
+        write_type: "append",
+        priority: "normal",
+        status: "pending",
+        user_id: sourceContext.user_id || DID_OWNER_ID,
+      },
+      { source: "entityWatchdog.recordEntityContext" },
+    );
+    if (!res.inserted) {
+      console.warn(`[entityWatchdog] Context write failed: ${res.reason ?? "blocked"}`);
     } else {
       writesEnqueued++;
     }
