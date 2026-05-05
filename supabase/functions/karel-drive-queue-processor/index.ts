@@ -379,7 +379,12 @@ Deno.serve(async (req) => {
 
         // Resolve target
         let resolved = await resolveTarget(token, kartotekaRoot, target);
-        if (!resolved && (target === "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG" || target === "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG")) {
+        if (!resolved && (
+              target === "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG"
+           || target === "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG"
+           || target === "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG"
+           || target === "KARTOTEKA_DID/00_CENTRUM/Bezpecne_DID_poznamky_z_osobniho_vlakna"
+        )) {
           resolved = await createCentrumDocIfMissing(token, kartotekaRoot, target);
           if (resolved) addLog(`Created missing centrum doc for '${target}' (file ${resolved.id})`);
         }
