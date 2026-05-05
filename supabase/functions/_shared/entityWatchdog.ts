@@ -17,7 +17,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { encodeGovernedWrite } from "./documentWriteEnvelope.ts";
-import { gateDriveWriteInsert } from "./documentGovernance.ts";
+import { safeEnqueueDriveWrite } from "./documentGovernance.ts";
 import type { ResolvedEntity, EntityKind } from "./entityResolution.ts";
 
 // ── Types ──
