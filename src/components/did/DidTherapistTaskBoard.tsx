@@ -904,6 +904,11 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
     const dateStr = new Date().toLocaleDateString("cs-CZ");
     const updatedNote = existingNote ? `${existingNote}\n[${dateStr}] ${note}` : `[${dateStr}] ${note}`;
     await supabase.from("did_therapist_tasks").update({ completed_note: updatedNote, updated_at: new Date().toISOString() }).eq("id", taskId);
+    void recordSurfaceSubmission(
+      { surface: "therapist_tasks", surfaceId: taskId, surfaceType: "therapist_task_answer" },
+      { eventType: "task_answered", sourceTable: "did_therapist_tasks", sourceRowId: taskId,
+        safeSummary: "note added", dedupeKey: buildDedupeKey(["task_note", taskId, note.length, Date.now()]) },
+    );
     setNoteInputs((prev) => ({ ...prev, [taskId]: "" }));
     await loadTasks();
     toast.success("Poznámka přidána");
