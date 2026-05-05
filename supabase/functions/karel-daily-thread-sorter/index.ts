@@ -25,6 +25,7 @@ import {
 import { loadEntityRegistry, type EntityRegistry } from "../_shared/entityRegistry.ts";
 import { resolveEntity, toLegacyClassification } from "../_shared/entityResolution.ts";
 import { handleUncertainEntity, type EntitySourceContext } from "../_shared/entityWatchdog.ts";
+import { safeBulkEnqueueDriveWrites } from "../_shared/documentGovernance.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
