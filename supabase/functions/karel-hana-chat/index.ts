@@ -921,7 +921,32 @@ serve(async (req) => {
   const { user, supabase: userClient } = authResult;
 
   try {
-    const { messages, conversationId, contextPrimeCache, mode_id, no_save } = await req.json();
+    const body = await req.json();
+    const { messages, conversationId, contextPrimeCache, mode_id, no_save } = body;
+
+    // ═══ P28 EFGH — preview_next_opening mode (no AI call, no persistence) ═══
+    if (body?.mode === "preview_next_opening") {
+      const sbPrev = getServiceClient();
+      const sourceThreadId = body.source_thread_id || null;
+      const firstMsg = String(body.first_user_message_preview || "");
+      const deepMems = await loadHanaDeepMemory(sbPrev, user.id, sourceThreadId);
+      const blocks = buildHanaDeepContextBlocks({ memories: deepMems, firstUserMessage: firstMsg });
+      const sel = blocks.opening_selection;
+      const out = {
+        loaded_memory_ids: blocks.loaded_memory_ids,
+        selected_strategy: sel?.strategy ?? null,
+        opening_candidate: sel?.candidate ?? null,
+        why_this_opening: sel?.why ?? null,
+        what_it_avoids: sel?.avoids ?? [],
+        what_it_may_bridge_to_later: sel?.may_bridge_to_later ?? [],
+        has_shared_relational_memory: blocks.has_shared_relational,
+        is_generic: sel ? isGenericOpening(sel.candidate) : false,
+      };
+      return new Response(JSON.stringify(out), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const requestedModeId = mode_id || "hana_osobni";
     const persistencePolicy = resolvePersistencePolicy({ mode_id: requestedModeId, no_save, mode: "childcare", didSubMode: "general" });
     const lastUserMsgForSafety = [...(messages || [])].reverse().find((m: any) => m.role === "user");
