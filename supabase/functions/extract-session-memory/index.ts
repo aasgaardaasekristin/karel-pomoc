@@ -246,7 +246,7 @@ Vrať POUZE validní JSON, nic jiného.`;
       const today = new Date().toISOString().slice(0, 10);
       const risks = (parsed.risk_signals || []).filter((r: any) => typeof r === "string" && r.length > 5);
       if (risks.length > 0) {
-        const docKey = `PAMET_KAREL/DID/${therapistKey}/KARLOVY_POZNATKY`;
+        const docKey = `PAMET_KAREL/DID/${therapistKey}/KARLOVY_POZNATKY.txt`;
         const content = `\n=== SEKCE C — [DEDUKCE] [NOVÉ] [STŘEDNÍ JISTOTA] [AKUTNÍ] [VYŽADUJE OVĚŘENÍ] ${today} ===\nRizikové signály ze sezení s ${partName}:\n${risks.map((r: string) => `- ${r}`).join("\n")}\n→ Implikace: vyžaduje pozornost terapeutky před dalším sezením.`;
         const governed = encodeGovernedWrite(content, {
           source_type: "session_memory_extraction",
@@ -255,15 +255,15 @@ Vrať POUZE validní JSON, nic jiného.`;
           subject_type: "part",
           subject_id: partName.toLowerCase(),
         });
-        await sb.from("did_pending_drive_writes").insert({
+        const r = await safeInsertGovernedDriveWrite(sb, {
+          source: "extract-session-memory",
           target_document: docKey,
           content: governed,
           priority: "high",
           status: "pending",
           write_type: "append",
-        }).then(({ error }) => {
-          if (error) console.warn("[extract-session-memory] risk writeback failed:", error.message);
         });
+        if (!r.inserted) console.warn("[extract-session-memory] risk writeback blocked/failed:", r.reason);
       }
 
       // FÁZE 2C: unresolved → pending questions ALWAYS (independent of risks).
