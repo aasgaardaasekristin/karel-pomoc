@@ -868,6 +868,13 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
       setTrafficLock(false);
       return;
     }
+    // P28 C+D+I: dynamic pipeline event for task state change.
+    void recordSurfaceSubmission(
+      { surface: "therapist_tasks", surfaceId: freshTask.id, surfaceType: "therapist_task_answer", metadata: { who, status: (updates as any)[`status_${who}`] } },
+      { eventType: "task_answered", sourceTable: "did_therapist_tasks", sourceRowId: freshTask.id,
+        safeSummary: `${who} → ${(updates as any)[`status_${who}`]}`,
+        dedupeKey: buildDedupeKey(["task_status", freshTask.id, who, (updates as any)[`status_${who}`], Date.now()]) },
+    );
 
     if (bothDone) {
       const assigned = normalizeAssignedTo(freshTask.assigned_to);
