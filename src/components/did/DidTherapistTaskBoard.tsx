@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Plus, MessageSquare, ChevronDown, ChevronUp, Send, Trash2, ExternalLink, ArrowUp } from "lucide-react";
 import { toast } from "sonner";
+import { recordSurfaceSubmission, buildDedupeKey } from "@/lib/dynamicPipeline";
 
 interface TaskFeedbackEntry {
   id: string;
