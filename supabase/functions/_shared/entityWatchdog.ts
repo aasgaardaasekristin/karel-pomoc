@@ -169,8 +169,13 @@ export async function recordEntityContext(
       : `[${sourceContext.date_label}] ${displayName} (${kindLabel}): ` +
         `${fact.description}${fact.related_entity ? ` Vazba: ${fact.related_entity}.` : ""}`;
 
+    const factGate = gateDriveWriteInsert({ target_document: targetDoc });
+    if (!factGate.ok) {
+      console.warn(`[entityWatchdog] blocked_by_governance: ${targetDoc} (${factGate.reason})`);
+      continue;
+    }
     const { error } = await supabase.from("did_pending_drive_writes").insert({
-      target_document: targetDoc,
+      target_document: factGate.target,
       content: encodeGovernedWrite(content, {
         source_type: "entity-watchdog",
         source_id: sourceContext.thread_id,
