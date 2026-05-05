@@ -27,6 +27,9 @@ const corsHeaders = {
 };
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { buildLiveReplanPatch, containsBannedRealityOverridePhrase, correctiveRealityOverrideResponse, detectLiveRealityOverride, verifyExternalReality } from "../_shared/liveRealityOverride.ts";
+import { recordServerSubmission } from "../_shared/dynamicPipelineServer.ts";
+
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
