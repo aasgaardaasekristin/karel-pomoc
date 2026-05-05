@@ -7138,40 +7138,24 @@ Vra\u0165 JSON:
       console.warn("[EMAIL RETRY] Error:", retryErr);
     }
 
-    await setPhase("phase_8_therapist_intel", "Fáze 8: Therapist intelligence");
-    // ═══ PHASE_3_THERAPIST_INTELLIGENCE — delegated to standalone function ═══
-    // Replaced inline profiling (was ~150 lines of raw AI + ungoverned writes)
-    // with delegation to karel-daily-therapist-intelligence which uses
-    // encodeGovernedWrite + normalizeSignal + proper dedup markers
-    let tpTimeout: number | undefined;
+    await setPhase("phase_8_therapist_intel", "Fáze 8: Therapist intelligence (detached)");
+    // ═══ PHASE_8 THERAPIST INTELLIGENCE — DETACHED via P29B phase worker ═══
     try {
-      const tpUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-daily-therapist-intelligence`;
-      const tpController = new AbortController();
-      tpTimeout = setTimeout(() => tpController.abort(), 30000) as unknown as number;
-      const tpRes = await fetch(tpUrl, {
-        method: "POST",
-        signal: tpController.signal,
-        headers: {
-          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ source: "daily-cycle" }),
+      const enq = await enqueuePhaseJob(sb as any, {
+        cycle_id: cycle?.id ?? cycleId,
+        user_id: resolvedUserId,
+        phase_name: "phase_8_therapist_intel",
+        job_kind: "phase8_therapist_intel",
+        input: { source: "main_daily_cycle" },
       });
-      if (tpRes.ok) {
-        const tpBody = await tpRes.json();
-        criticalPhaseStatus.therapistIntelligenceOk = tpBody.ok !== false;
-        console.log(`[PHASE_3] Therapist intelligence: HTTP ${tpRes.status}, ok=${tpBody.ok}, results=${JSON.stringify(tpBody.results || {})}`);
-      } else {
-        const errText = await tpRes.text().catch(() => "");
-        console.error(`[PHASE_3] Therapist intelligence FAILED: HTTP ${tpRes.status} — ${errText.slice(0, 200)}`);
-        // criticalPhaseStatus.therapistIntelligenceOk remains false
-      }
+      // Detached: don't block is_processed on this. Mark as ok if enqueue succeeded
+      // (worker handles real success/failure via job row).
+      criticalPhaseStatus.therapistIntelligenceOk = enq.ok;
+      console.log(`[PHASE_8] therapist_intel detached enqueue: ${enq.ok} (${enq.reason ?? "ok"})`);
     } catch (tpErr) {
-      console.error("[PHASE_3] Therapist intelligence FAILED (timeout or network):", tpErr);
-      // criticalPhaseStatus.therapistIntelligenceOk remains false
-    } finally {
-      if (tpTimeout !== undefined) clearTimeout(tpTimeout);
+      console.error("[PHASE_8] therapist_intel enqueue failed:", tpErr);
     }
+
 
     // ═══ FÁZE 6.5: PAMET_KAREL — krizová profilace terapeutek ═══
     try {
