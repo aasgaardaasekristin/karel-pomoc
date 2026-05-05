@@ -4,7 +4,7 @@ import { runGlobalDidEventIngestion, type RunGlobalDidEventIngestionOptions } fr
 import type { PantryBSourceKind } from "../_shared/pantryB.ts";
 import { resolveCanonicalDidUserId, CanonicalScopeResolveError } from "../_shared/canonicalUserResolver.ts";
 
-const VALID_MODES = new Set(["last_24h", "since_cursor", "source_test"]);
+const VALID_MODES = new Set(["last_24h", "since_cursor", "source_test", "fallback_sweeper"]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
