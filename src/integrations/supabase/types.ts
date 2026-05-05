@@ -14,6 +14,63 @@ export type Database = {
   }
   public: {
     Tables: {
+      active_app_activity_sessions: {
+        Row: {
+          created_at: string
+          current_phase: string | null
+          id: string
+          idle_after_minutes: number
+          last_activity_at: string
+          last_processed_at: string | null
+          last_processed_message_ord: number | null
+          metadata: Json
+          next_processing_at: string | null
+          processing_interval_minutes: number
+          started_at: string
+          status: string
+          surface: string
+          surface_id: string
+          surface_type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_phase?: string | null
+          id?: string
+          idle_after_minutes?: number
+          last_activity_at?: string
+          last_processed_at?: string | null
+          last_processed_message_ord?: number | null
+          metadata?: Json
+          next_processing_at?: string | null
+          processing_interval_minutes?: number
+          started_at?: string
+          status?: string
+          surface: string
+          surface_id: string
+          surface_type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_phase?: string | null
+          id?: string
+          idle_after_minutes?: number
+          last_activity_at?: string
+          last_processed_at?: string | null
+          last_processed_message_ord?: number | null
+          metadata?: Json
+          next_processing_at?: string | null
+          processing_interval_minutes?: number
+          started_at?: string
+          status?: string
+          surface?: string
+          surface_id?: string
+          surface_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       ai_error_log: {
         Row: {
           caller: string
@@ -4776,6 +4833,63 @@ export type Database = {
         }
         Relationships: []
       }
+      dynamic_pipeline_events: {
+        Row: {
+          consumed_at: string | null
+          consumed_by: Json | null
+          created_at: string
+          dedupe_key: string | null
+          event_type: string
+          id: string
+          metadata: Json
+          pipeline_state: string
+          raw_allowed: boolean
+          safe_summary: string | null
+          semantic_dedupe_key: string | null
+          source_row_id: string | null
+          source_table: string | null
+          surface_id: string
+          surface_type: string
+          user_id: string
+        }
+        Insert: {
+          consumed_at?: string | null
+          consumed_by?: Json | null
+          created_at?: string
+          dedupe_key?: string | null
+          event_type: string
+          id?: string
+          metadata?: Json
+          pipeline_state?: string
+          raw_allowed?: boolean
+          safe_summary?: string | null
+          semantic_dedupe_key?: string | null
+          source_row_id?: string | null
+          source_table?: string | null
+          surface_id: string
+          surface_type: string
+          user_id: string
+        }
+        Update: {
+          consumed_at?: string | null
+          consumed_by?: Json | null
+          created_at?: string
+          dedupe_key?: string | null
+          event_type?: string
+          id?: string
+          metadata?: Json
+          pipeline_state?: string
+          raw_allowed?: boolean
+          safe_summary?: string | null
+          semantic_dedupe_key?: string | null
+          source_row_id?: string | null
+          source_table?: string | null
+          surface_id?: string
+          surface_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       external_event_impacts: {
         Row: {
           acknowledged_at: string | null
@@ -6597,6 +6711,63 @@ export type Database = {
         }
         Relationships: []
       }
+      surface_resume_state: {
+        Row: {
+          changed_blocks: Json
+          completed_blocks: Json
+          created_at: string
+          current_block_index: number | null
+          id: string
+          last_open_question: string | null
+          last_therapist_answer: string | null
+          last_therapist_note: string | null
+          next_resume_point: string | null
+          reason_for_change: string | null
+          skipped_blocks: Json
+          surface_id: string
+          surface_type: string
+          updated_at: string
+          user_id: string
+          what_changed_since_plan: Json
+        }
+        Insert: {
+          changed_blocks?: Json
+          completed_blocks?: Json
+          created_at?: string
+          current_block_index?: number | null
+          id?: string
+          last_open_question?: string | null
+          last_therapist_answer?: string | null
+          last_therapist_note?: string | null
+          next_resume_point?: string | null
+          reason_for_change?: string | null
+          skipped_blocks?: Json
+          surface_id: string
+          surface_type: string
+          updated_at?: string
+          user_id: string
+          what_changed_since_plan?: Json
+        }
+        Update: {
+          changed_blocks?: Json
+          completed_blocks?: Json
+          created_at?: string
+          current_block_index?: number | null
+          id?: string
+          last_open_question?: string | null
+          last_therapist_answer?: string | null
+          last_therapist_note?: string | null
+          next_resume_point?: string | null
+          reason_for_change?: string | null
+          skipped_blocks?: Json
+          surface_id?: string
+          surface_type?: string
+          updated_at?: string
+          user_id?: string
+          what_changed_since_plan?: Json
+        }
+        Relationships: []
+      }
       switching_events: {
         Row: {
           acknowledged: boolean | null
@@ -7070,6 +7241,15 @@ export type Database = {
           p_user_id: string
         }
         Returns: Json
+      }
+      upsert_active_activity_session: {
+        Args: {
+          p_metadata?: Json
+          p_surface: string
+          p_surface_id: string
+          p_surface_type: string
+        }
+        Returns: string
       }
       verify_karel_cron_secret: { Args: { p_secret: string }; Returns: boolean }
     }
