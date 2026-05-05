@@ -679,17 +679,10 @@ export async function upsertHanaPersonalMemoryIfNeeded(sb: SupabaseClient, event
   // dedupe_key MUST match the formula used in the migration backfill:
   //   md5(source_thread_id || '|' || memory_type || '|' || lower(squash_ws(next_opening_hint)))
   const messageRef = event.message_id ? `${sourceThreadId}:${event.message_id}` : `${sourceThreadId}:${event.source_hash}`;
-  const computeDedupeKey = async (memory_type: string): Promise<string> => {
+  const computeDedupeKey = (memory_type: string): string => {
     const norm = (nextOpening || "").toLowerCase().replace(/\s+/g, " ");
     const raw = `${sourceThreadId}|${memory_type}|${norm}`;
-    const buf = await crypto.subtle.digest("MD5", new TextEncoder().encode(raw)).catch(() => null);
-    if (!buf) {
-      // Fallback: deterministic non-MD5 hash if subtle.digest("MD5") is unavailable.
-      let h = 5381;
-      for (let i = 0; i < raw.length; i++) h = ((h << 5) + h + raw.charCodeAt(i)) | 0;
-      return `fallback_${(h >>> 0).toString(16)}`;
-    }
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+    return createHash("md5").update(raw).digest("hex");
   };
 
   const semanticKey = (memory_type: string) => `${memory_type}:${(classification.urgency || "_unspecified").toLowerCase()}`;
