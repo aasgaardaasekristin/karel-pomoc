@@ -556,26 +556,42 @@ export async function createDrivePackageIfNeeded(sb: SupabaseClient, event: Norm
   }).select("id").single();
   if (pkgErr) throw pkgErr;
 
+  // P29A closeout: gate every did_pending_drive_writes insert through governance.
+  const gate = gateDriveWriteInsert({
+    target_document: target,
+    bezpecne_payload: target === "KARTOTEKA_DID/00_CENTRUM/Bezpecne_DID_poznamky_z_osobniho_vlakna" ? content : undefined,
+    bezpecne_therapist: "HANKA",
+    bezpecne_part_name: classification.related_part_name || undefined,
+  });
+  if (!gate.ok) {
+    console.warn(`[did-event-ingestion] blocked_by_governance: ${target} (${gate.reason})`);
+    return { packageId: pkg?.id ?? null, writeId: null };
+  }
+  const effectiveTarget = gate.target;
   const governed = encodeGovernedWrite(content, {
     source_type: "did_event_ingestion",
     source_id: event.source_ref,
-    content_type: target.includes("05D") ? "playroom_log" : target.includes("05C_SEZENI") ? "session_log" : target.startsWith("KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/") ? "card_section_update" : target.startsWith("PAMET_KAREL/") ? "situational_analysis" : "daily_plan",
+    content_type: effectiveTarget.startsWith("KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/")
+      ? "card_section_update"
+      : effectiveTarget.startsWith("PAMET_KAREL/")
+        ? "situational_analysis"
+        : "daily_plan",
     subject_type: classification.related_part_name ? "part" : "system",
     subject_id: classification.related_part_name || "global",
     payload_fingerprint: event.source_hash,
   });
-  const { data: existingWrite } = await sb.from("did_pending_drive_writes").select("id").eq("target_document", target).ilike("content", `%${marker}%`).limit(1).maybeSingle();
+  const { data: existingWrite } = await sb.from("did_pending_drive_writes").select("id").eq("target_document", effectiveTarget).ilike("content", `%${marker}%`).limit(1).maybeSingle();
   if (existingWrite?.id) return { packageId: pkg?.id ?? null, writeId: existingWrite.id };
   const { data: write, error: writeErr } = await sb.from("did_pending_drive_writes").insert({
     user_id: event.user_id,
-    target_document: target,
+    target_document: effectiveTarget,
     content: governed,
     write_type: "append",
     priority: classification.urgency === "crisis" ? "high" : "normal",
     status: "pending",
   }).select("id").single();
   if (writeErr) throw writeErr;
-  await sb.from("did_pantry_packages").update({ metadata: { source_marker: marker, source_ref: event.source_ref, source_hash: event.source_hash, source_kind: event.source_kind, evidence_level: classification.evidence_level, pending_drive_write_id: write?.id ?? null } }).eq("id", pkg.id);
+  await sb.from("did_pantry_packages").update({ metadata: { source_marker: marker, source_ref: event.source_ref, source_hash: event.source_hash, source_kind: event.source_kind, evidence_level: classification.evidence_level, pending_drive_write_id: write?.id ?? null, governance_rerouted: gate.rerouted, bezpecne_route: gate.bezpecne_route ?? null } }).eq("id", pkg.id);
   return { packageId: pkg?.id ?? null, writeId: write?.id ?? null };
 }
 
