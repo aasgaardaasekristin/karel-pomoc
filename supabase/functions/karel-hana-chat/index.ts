@@ -26,6 +26,45 @@ import { classifyJungRelevance, shouldActivateJungOriginal } from "../_shared/ju
 import { buildJungOriginalInjection } from "../_shared/jungOriginalInjection.ts";
 import { detectSafetyMention, redactedSafetyExcerpt, resolvePersistencePolicy } from "../_shared/appModePolicy.ts";
 import { guardHanaPersonalResponse, hanaPersonalSystemGuardBlock, pragueDateISO } from "../_shared/hanaPersonalGuards.ts";
+import {
+  KAREL_PERSONA_LAYER_HANA_PERSONAL,
+  buildHanaDeepContextBlocks,
+  isGenericOpening,
+  selectOpeningStrategy,
+  type HanaDeepMemory,
+  type OpeningSelection,
+} from "../_shared/hanaPersonaLayer.ts";
+
+export async function loadHanaDeepMemory(sb: any, userId: string, sourceThreadId?: string | null): Promise<HanaDeepMemory[]> {
+  let q = sb.from("hana_personal_memory")
+    .select("id, memory_type, source_thread_id, memory_payload, created_at")
+    .eq("user_id", userId)
+    .eq("pipeline_state", "active")
+    .is("superseded_at", null)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  const { data } = await q;
+  let rows: any[] = data || [];
+  if (sourceThreadId) {
+    const sameThread = rows.filter((r) => r.source_thread_id === sourceThreadId);
+    const others = rows.filter((r) => r.source_thread_id !== sourceThreadId);
+    rows = [...sameThread, ...others];
+  }
+  return rows
+    .filter((r) => r.memory_payload && typeof r.memory_payload === "object" && Object.keys(r.memory_payload).length > 0)
+    .map((r) => ({ id: r.id, memory_type: r.memory_type, payload: r.memory_payload }));
+}
+
+function extractFirstUserText(messages: any[]): string {
+  const last = [...(messages || [])].reverse().find((m: any) => m.role === "user");
+  if (!last) return "";
+  if (typeof last.content === "string") return last.content;
+  if (Array.isArray(last.content)) {
+    const t = last.content.find((c: any) => c?.type === "text");
+    return t?.text || "";
+  }
+  return "";
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -882,7 +921,32 @@ serve(async (req) => {
   const { user, supabase: userClient } = authResult;
 
   try {
-    const { messages, conversationId, contextPrimeCache, mode_id, no_save } = await req.json();
+    const body = await req.json();
+    const { messages, conversationId, contextPrimeCache, mode_id, no_save } = body;
+
+    // ═══ P28 EFGH — preview_next_opening mode (no AI call, no persistence) ═══
+    if (body?.mode === "preview_next_opening") {
+      const sbPrev = getServiceClient();
+      const sourceThreadId = body.source_thread_id || null;
+      const firstMsg = String(body.first_user_message_preview || "");
+      const deepMems = await loadHanaDeepMemory(sbPrev, user.id, sourceThreadId);
+      const blocks = buildHanaDeepContextBlocks({ memories: deepMems, firstUserMessage: firstMsg });
+      const sel = blocks.opening_selection;
+      const out = {
+        loaded_memory_ids: blocks.loaded_memory_ids,
+        selected_strategy: sel?.strategy ?? null,
+        opening_candidate: sel?.candidate ?? null,
+        why_this_opening: sel?.why ?? null,
+        what_it_avoids: sel?.avoids ?? [],
+        what_it_may_bridge_to_later: sel?.may_bridge_to_later ?? [],
+        has_shared_relational_memory: blocks.has_shared_relational,
+        is_generic: sel ? isGenericOpening(sel.candidate) : false,
+      };
+      return new Response(JSON.stringify(out), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const requestedModeId = mode_id || "hana_osobni";
     const persistencePolicy = resolvePersistencePolicy({ mode_id: requestedModeId, no_save, mode: "childcare", didSubMode: "general" });
     const lastUserMsgForSafety = [...(messages || [])].reverse().find((m: any) => m.role === "user");
@@ -917,7 +981,23 @@ serve(async (req) => {
     if (continuityContext.text) {
       systemPrompt += `\n\n${continuityContext.text}`;
     }
-    
+
+    // P28 EFGH — deep Hana memory + persona + opening strategy
+    let p28OpeningSelection: OpeningSelection | null = null;
+    let p28LoadedMemoryIds: string[] = [];
+    try {
+      const deepMems = await loadHanaDeepMemory(sb, user.id, null);
+      const firstUserText = extractFirstUserText(messages);
+      const blocks = buildHanaDeepContextBlocks({ memories: deepMems, firstUserMessage: firstUserText });
+      p28OpeningSelection = blocks.opening_selection;
+      p28LoadedMemoryIds = blocks.loaded_memory_ids;
+      if (blocks.text) {
+        systemPrompt += `\n\n${KAREL_PERSONA_LAYER_HANA_PERSONAL}\n\n${blocks.text}`;
+      }
+    } catch (e) {
+      console.warn("[hana-chat][p28-efgh] deep memory load failed (non-fatal):", e);
+    }
+
     // Inject context-prime cache if available (dynamic 3D memory)
     if (contextPrimeCache && typeof contextPrimeCache === "string" && contextPrimeCache.length > 50) {
       systemPrompt += `\n\n═══ DYNAMICKÁ KONTEXTOVÁ CACHE (context-prime) ═══\nToto je tvá aktuální "předsunutá paměť" – plastická mezipaměť vystavěná ze VŠECH zdrojů (Drive, DB, všechna vlákna, internet). Využívej ji pro maximální přítomnost a adaptabilitu.\n\n${contextPrimeCache}`;
@@ -988,7 +1068,15 @@ serve(async (req) => {
     const shouldBufferForHanaGuard = requestedModeId === "hana_osobni" || persistencePolicy.mode_id === "hana_osobni";
     if (shouldBufferForHanaGuard) {
       const rawResponse = await readStreamedAiText(response.body!);
-      const guarded = guardHanaPersonalResponse(rawResponse, lastUserTextForSafety);
+      let guarded = guardHanaPersonalResponse(rawResponse, lastUserTextForSafety);
+      // P28 EFGH — block generic openings when deep memory exists
+      if (!guarded.replaced && p28OpeningSelection && isGenericOpening(guarded.text)) {
+        guarded = {
+          replaced: true,
+          reasons: ["generic_opening_blocked_p28"],
+          text: p28OpeningSelection.candidate,
+        };
+      }
       fullResponse = guarded.text;
       if (guarded.replaced) {
         console.warn("[hana-chat-guard] response replaced", guarded.reasons);
