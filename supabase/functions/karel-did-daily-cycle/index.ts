@@ -5531,12 +5531,14 @@ Vrať POUZE validní JSON (bez markdown):
             } catch (partErr) {
               console.warn(`[daily-cycle] Profiling error for ${part.part_name}:`, partErr);
             }
+            profilingProcessed++;
           }
         }
-        console.log("[daily-cycle] Psychological profiling complete.");
+        console.log(`[daily-cycle] Psychological profiling complete. processed=${profilingProcessed} skipped=${profilingSkipped} elapsed=${Date.now() - profilingStart}ms`);
       } catch (profilingErr) {
         console.warn("[daily-cycle] Profiling section error (non-fatal):", profilingErr);
       }
+      await setPhase("update_cards_tail_done", `profiling_processed=${profilingProcessed} profiling_skipped=${profilingSkipped}`);
 
       // EMAIL GENERATION REMOVED — now handled by independent karel-did-daily-email function
       // This ensures emails are sent even if Drive operations fail.
