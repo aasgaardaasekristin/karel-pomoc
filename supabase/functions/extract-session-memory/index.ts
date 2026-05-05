@@ -4,6 +4,7 @@ import { corsHeaders } from "../_shared/auth.ts";
 import { callAiForJson } from "../_shared/aiCallWrapper.ts";
 import { createObservation } from "../_shared/observations.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
+import { safeInsertGovernedDriveWrite } from "../_shared/documentGovernance.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
