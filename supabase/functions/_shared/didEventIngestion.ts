@@ -559,7 +559,7 @@ export async function createDrivePackageIfNeeded(sb: SupabaseClient, event: Norm
   const governed = encodeGovernedWrite(content, {
     source_type: "did_event_ingestion",
     source_id: event.source_ref,
-    content_type: target.includes("05E") ? "team_decision_log" : target.includes("05D") ? "playroom_log" : target.includes("05C_SEZENI") ? "session_log" : "daily_plan",
+    content_type: target.includes("05D") ? "playroom_log" : target.includes("05C_SEZENI") ? "session_log" : target.startsWith("KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/") ? "card_section_update" : target.startsWith("PAMET_KAREL/") ? "situational_analysis" : "daily_plan",
     subject_type: classification.related_part_name ? "part" : "system",
     subject_id: classification.related_part_name || "global",
     payload_fingerprint: event.source_hash,
