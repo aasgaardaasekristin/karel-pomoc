@@ -38,6 +38,8 @@ import {
   isReplaceAllowed,
   canonicalizeTarget,
   resolveCardPhysicalTitle,
+  isCanonicalKartaTarget,
+  hasPhysicalCardMapping,
 } from "../_shared/documentGovernance.ts";
 import { decodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 
@@ -115,7 +117,9 @@ async function resolveTarget(
   }
 
   if (target.startsWith("KARTOTEKA_DID/")) {
-    // P29A closeout-fix: logical canonical KARTA_<NAME> → physical numeric-prefixed file (e.g. 003_TUNDRUPEK)
+    // P29A closeout-fix: logical canonical KARTA_<NAME> → physical numeric-prefixed file (e.g. 003_TUNDRUPEK).
+    // For canonical KARTA_* targets we require an exact physical-title match (no fuzzy includes fallback)
+    // to prevent collisions like KARTA_GUSTIK matching 017_GUSTAV_PUVODNI_CAST.
     const physicalTitle = resolveCardPhysicalTitle(target);
     const segments = target.replace("KARTOTEKA_DID/", "").split("/");
     let currentFolder = kartotekaRoot;
@@ -126,6 +130,13 @@ async function resolveTarget(
     }
     const docName = segments[segments.length - 1];
     const files = await listFiles(token, currentFolder);
+    if (isCanonicalKartaTarget(target)) {
+      if (!physicalTitle) return null; // gated upstream as blocked_by_governance_no_physical_card
+      const physical = files.find(
+        (f) => f.mimeType !== FOLDER_MIME && f.name.toUpperCase() === physicalTitle.toUpperCase(),
+      );
+      return physical ? { id: physical.id, mimeType: physical.mimeType || GDOC_MIME } : null;
+    }
     if (physicalTitle) {
       const physical = files.find(
         (f) => f.mimeType !== FOLDER_MIME && f.name.toUpperCase() === physicalTitle.toUpperCase(),
@@ -411,6 +422,24 @@ Deno.serve(async (req) => {
           skipped++;
           writeResults.push({ write_id: writeId, status: "skipped", target_document: effectiveTarget, error: "target not in governance whitelist" });
           addLog(`SKIP ${writeId}: '${effectiveTarget}' not in whitelist`);
+          continue;
+        }
+
+        // P29A: Hard gate canonical KARTA_<NAME> targets without physical Drive mapping.
+        if (isCanonicalKartaTarget(effectiveTarget) && !hasPhysicalCardMapping(effectiveTarget)) {
+          await sb
+            .from("did_pending_drive_writes")
+            .update({
+              status: "blocked_by_governance",
+              pipeline_state: "blocked_by_governance_no_physical_card",
+              last_error_message: `blocked_by_governance_no_physical_card: ${effectiveTarget} has no entry in CARD_PHYSICAL_MAP`,
+              next_retry_at: null,
+            })
+            .eq("id", writeId);
+          await audit(sb, { sourceType, sourceId, target: effectiveTarget, contentType, subjectType, subjectId, writeType, payload, crisisEventId, success: false, status: "blocked_by_governance", err: "no_physical_card" });
+          skipped++;
+          writeResults.push({ write_id: writeId, status: "skipped", target_document: effectiveTarget, error: "blocked_by_governance_no_physical_card" });
+          addLog(`BLOCK ${writeId}: '${effectiveTarget}' has no physical card mapping`);
           continue;
         }
 

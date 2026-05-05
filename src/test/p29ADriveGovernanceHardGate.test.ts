@@ -81,7 +81,9 @@ describe("P29A drive governance hard gate", () => {
     expect(resolveCardPhysicalTitle("KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_TUNDRUPEK")).toBe("003_TUNDRUPEK");
     expect(resolveCardPhysicalTitle("KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_ARTHUR")).toBe("004_ARTHUR");
     expect(resolveCardPhysicalTitle("KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_GUSTIK")).toBe("002_GUSTIK");
-    expect(Object.keys(CARD_PHYSICAL_MAP).length).toBeGreaterThanOrEqual(3);
+    expect(resolveCardPhysicalTitle("KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_ANICKA")).toBe("001_ANICKA");
+    expect(resolveCardPhysicalTitle("KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_UNKNOWN")).toBeNull();
+    expect(Object.keys(CARD_PHYSICAL_MAP).length).toBeGreaterThanOrEqual(6);
   });
 
   it("14. safeEnqueueDriveWrite preserves all original row fields (dedupe_key, source_ref, metadata, rerouted_from_write_id)", async () => {
