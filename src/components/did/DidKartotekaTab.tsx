@@ -155,6 +155,9 @@ export default function DidKartotekaTab() {
         </div>
       </div>
 
+      {/* P28_CDI_2d — Discussion panel for pending card update proposals */}
+      <CardUpdateDiscussionPanel />
+
       {/* Update log */}
       <div>
         <h4 className="text-xs font-medium mb-2 flex items-center gap-1.5">
