@@ -57,9 +57,13 @@ serve(async (req) => {
   const message = String(body?.message ?? "").trim();
   const author = String(body?.author ?? "").trim().toLowerCase();
   const mode = String(body?.mode ?? "discussion_comment") as Mode;
+  const idempotencyKey = body?.idempotency_key
+    ? String(body.idempotency_key).trim().slice(0, 128)
+    : null;
 
   if (!cardUpdateId) return json({ error: "missing_card_update_id" }, 400);
   if (!message) return json({ error: "missing_message" }, 400);
+  if (message.length > 2000) return json({ error: "message_too_long", limit: 2000 }, 400);
   if (!AUTHORS.has(author)) return json({ error: "invalid_author" }, 400);
   if (!MODES.includes(mode)) return json({ error: "invalid_mode" }, 400);
 
