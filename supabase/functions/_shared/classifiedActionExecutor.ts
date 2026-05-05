@@ -20,6 +20,38 @@ import {
 } from "./informationClassifier.ts";
 import { encodeGovernedWrite } from "./documentWriteEnvelope.ts";
 import { decodeGovernedWrite } from "./documentWriteEnvelope.ts";
+import { gateDriveWriteInsert } from "./documentGovernance.ts";
+
+/**
+ * P29A closeout: Centralized governed insert for did_pending_drive_writes.
+ * Returns true on success, false when blocked by governance.
+ */
+async function safeInsertGovernedWrite(
+  sb: SupabaseClient,
+  row: {
+    target_document: string;
+    content: string;
+    write_type: "append" | "replace";
+    priority: "high" | "normal" | "low";
+    status: string;
+    user_id: string;
+    bezpecne_payload?: string;
+    bezpecne_part_name?: string;
+  },
+): Promise<boolean> {
+  const gate = gateDriveWriteInsert({
+    target_document: row.target_document,
+    bezpecne_payload: row.bezpecne_payload,
+    bezpecne_part_name: row.bezpecne_part_name,
+  });
+  if (!gate.ok) {
+    console.warn(`[classified-action-executor] blocked_by_governance: ${row.target_document} (${gate.reason})`);
+    return false;
+  }
+  const { bezpecne_payload: _bp, bezpecne_part_name: _bn, ...insertRow } = row;
+  await sb.from("did_pending_drive_writes").insert({ ...insertRow, target_document: gate.target });
+  return true;
+}
 
 const DID_OWNER_ID = "8a7816ee-4fd1-43d4-8d83-4230d7517ae1";
 
@@ -181,18 +213,17 @@ export async function executeClassifiedItems(
           console.warn(`[${callerName}] Dedup skipped: ${item.info_class} → ${route.target_document} (fp=${fingerprint})`);
           result.dedup_skipped++;
         } else {
-          await sb.from("did_pending_drive_writes").insert({
+          const inserted = await safeInsertGovernedWrite(sb, {
             target_document: route.target_document,
-            content: encodeGovernedWrite(rawPayload, {
-              ...meta,
-              payload_fingerprint: fingerprint,
-            }),
+            content: encodeGovernedWrite(rawPayload, { ...meta, payload_fingerprint: fingerprint }),
             write_type: route.write_type,
             priority: "normal",
             status: "pending",
             user_id: DID_OWNER_ID,
+            bezpecne_payload: rawPayload,
+            bezpecne_part_name: item.part_name || undefined,
           });
-          result.drive_writes++;
+          if (inserted) result.drive_writes++;
         }
       }
     }
@@ -284,15 +315,16 @@ export async function executeClassifiedItems(
         subject_id: cu.part_name,
       };
 
-      await sb.from("did_pending_drive_writes").insert({
+      const inserted = await safeInsertGovernedWrite(sb, {
         target_document: cardTarget,
         content: encodeGovernedWrite(cardPayload, cardMeta),
         write_type: "append",
         priority: "normal",
         status: "pending",
         user_id: DID_OWNER_ID,
+        bezpecne_part_name: cu.part_name,
       });
-      result.drive_writes++;
+      if (inserted) result.drive_writes++;
     }
 
     // Plan updates (05A/05B/05C from generated actions)
@@ -317,7 +349,7 @@ export async function executeClassifiedItems(
       if (isDup) {
         result.dedup_skipped++;
       } else {
-        await sb.from("did_pending_drive_writes").insert({
+        const inserted = await safeInsertGovernedWrite(sb, {
           target_document: planTarget,
           content: encodeGovernedWrite(planPayload, {
             source_type: callerName,
@@ -333,7 +365,7 @@ export async function executeClassifiedItems(
           status: "pending",
           user_id: DID_OWNER_ID,
         });
-        result.drive_writes++;
+        if (inserted) result.drive_writes++;
       }
     }
 
@@ -348,7 +380,7 @@ export async function executeClassifiedItems(
       if (isDup) {
         result.dedup_skipped++;
       } else {
-        await sb.from("did_pending_drive_writes").insert({
+        const inserted = await safeInsertGovernedWrite(sb, {
           target_document: dashTarget,
           content: encodeGovernedWrite(dashPayload, {
             source_type: callerName,
@@ -364,7 +396,7 @@ export async function executeClassifiedItems(
           status: "pending",
           user_id: DID_OWNER_ID,
         });
-        result.drive_writes++;
+        if (inserted) result.drive_writes++;
       }
     }
   }

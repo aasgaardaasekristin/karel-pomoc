@@ -10,6 +10,7 @@
 
 type SupabaseClient = any;
 import { encodeGovernedWrite } from "./documentWriteEnvelope.ts";
+import { gateDriveWriteInsert } from "./documentGovernance.ts";
 import { appendPantryB, type PantryBEntryKind, type PantryBSourceKind, type PantryBDestination } from "./pantryB.ts";
 import { createHash } from "node:crypto";
 
@@ -556,42 +557,56 @@ export async function createDrivePackageIfNeeded(sb: SupabaseClient, event: Norm
   }).select("id").single();
   if (pkgErr) throw pkgErr;
 
+  // P29A closeout: gate every did_pending_drive_writes insert through governance.
+  const gate = gateDriveWriteInsert({
+    target_document: target,
+    bezpecne_payload: target === "KARTOTEKA_DID/00_CENTRUM/Bezpecne_DID_poznamky_z_osobniho_vlakna" ? content : undefined,
+    bezpecne_therapist: "HANKA",
+    bezpecne_part_name: classification.related_part_name || undefined,
+  });
+  if (!gate.ok) {
+    console.warn(`[did-event-ingestion] blocked_by_governance: ${target} (${gate.reason})`);
+    return { packageId: pkg?.id ?? null, writeId: null };
+  }
+  const effectiveTarget = gate.target;
   const governed = encodeGovernedWrite(content, {
     source_type: "did_event_ingestion",
     source_id: event.source_ref,
-    content_type: target.includes("05D") ? "playroom_log" : target.includes("05C_SEZENI") ? "session_log" : target.startsWith("KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/") ? "card_section_update" : target.startsWith("PAMET_KAREL/") ? "situational_analysis" : "daily_plan",
+    content_type: effectiveTarget.startsWith("KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/")
+      ? "card_section_update"
+      : effectiveTarget.startsWith("PAMET_KAREL/")
+        ? "situational_analysis"
+        : "daily_plan",
     subject_type: classification.related_part_name ? "part" : "system",
     subject_id: classification.related_part_name || "global",
     payload_fingerprint: event.source_hash,
   });
-  const { data: existingWrite } = await sb.from("did_pending_drive_writes").select("id").eq("target_document", target).ilike("content", `%${marker}%`).limit(1).maybeSingle();
+  const { data: existingWrite } = await sb.from("did_pending_drive_writes").select("id").eq("target_document", effectiveTarget).ilike("content", `%${marker}%`).limit(1).maybeSingle();
   if (existingWrite?.id) return { packageId: pkg?.id ?? null, writeId: existingWrite.id };
   const { data: write, error: writeErr } = await sb.from("did_pending_drive_writes").insert({
     user_id: event.user_id,
-    target_document: target,
+    target_document: effectiveTarget,
     content: governed,
     write_type: "append",
     priority: classification.urgency === "crisis" ? "high" : "normal",
     status: "pending",
   }).select("id").single();
   if (writeErr) throw writeErr;
-  await sb.from("did_pantry_packages").update({ metadata: { source_marker: marker, source_ref: event.source_ref, source_hash: event.source_hash, source_kind: event.source_kind, evidence_level: classification.evidence_level, pending_drive_write_id: write?.id ?? null } }).eq("id", pkg.id);
+  await sb.from("did_pantry_packages").update({ metadata: { source_marker: marker, source_ref: event.source_ref, source_hash: event.source_hash, source_kind: event.source_kind, evidence_level: classification.evidence_level, pending_drive_write_id: write?.id ?? null, governance_rerouted: gate.rerouted, bezpecne_route: gate.bezpecne_route ?? null } }).eq("id", pkg.id);
   return { packageId: pkg?.id ?? null, writeId: write?.id ?? null };
 }
 
 function chooseDriveTarget(event: NormalizedDidEvent, classification: DidEventClassification): string | null {
-  // P29A: 05E_TEAM_DECISIONS_LOG was never in canonical governance — collapse to 05A.
+  // P29A closeout: 05E/05D/05C session-log targets are NOT in canonical governance.
   if (event.source_kind === "deliberation_event" || event.source_kind === "briefing_ask_resolution") return "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN";
-  if (event.source_kind === "playroom_progress") return "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG";
-  if (event.source_kind === "live_session_progress") return "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG";
-  // P29A: Bezpecne_DID_poznamky_z_osobniho_vlakna was never in governance.
-  // Hana personal events with a related part go to that part's canonical card;
-  // otherwise route to Hana situational analysis (canonical PAMET_KAREL target).
+  if (event.source_kind === "playroom_progress") return "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN";
+  if (event.source_kind === "live_session_progress") return "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN";
+  // Hana personal events: part-specific → KARTA, otherwise canonical Hana SITUACNI_ANALYZA.txt.
   if (event.source_kind === "hana_personal_ingestion") {
     if (classification.related_part_name) {
       return `KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_${classification.related_part_name.toUpperCase()}`;
     }
-    return "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA";
+    return "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA.txt";
   }
   if (classification.related_part_name && classification.clinical_relevance && classification.evidence_level !== "therapist_factual_correction") {
     return `KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_${classification.related_part_name.toUpperCase()}`;
