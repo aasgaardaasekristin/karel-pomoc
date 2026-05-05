@@ -371,6 +371,16 @@ const HanaChatInner = ({ noSave = false, starterPrompt = "", onStarterPromptCons
       }
 
       await persistConversation(activeConversationId, nextMessages);
+      // P28 C+D+I: dynamic pipeline event + active session marker for Hana personal thread.
+      if (activeConversationId) {
+        void recordSurfaceSubmission(
+          { surface: "hana_personal_thread", surfaceId: activeConversationId, surfaceType: "hana_personal_thread",
+            metadata: { message_index: nextMessages.length - 1 } },
+          { eventType: "message_sent", sourceTable: "hana_threads", sourceRowId: activeConversationId,
+            safeSummary: `hana user message (${userMessage.length} chars)`, rawAllowed: false,
+            dedupeKey: buildDedupeKey(["hana_msg", activeConversationId, nextMessages.length]) },
+        );
+      }
       const safety = detectSafetyMention(userMessage);
 
       const headers = await getAuthHeaders();
