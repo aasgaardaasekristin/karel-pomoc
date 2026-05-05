@@ -596,18 +596,16 @@ export async function createDrivePackageIfNeeded(sb: SupabaseClient, event: Norm
 }
 
 function chooseDriveTarget(event: NormalizedDidEvent, classification: DidEventClassification): string | null {
-  // P29A: 05E_TEAM_DECISIONS_LOG was never in canonical governance — collapse to 05A.
+  // P29A closeout: 05E/05D/05C session-log targets are NOT in canonical governance.
   if (event.source_kind === "deliberation_event" || event.source_kind === "briefing_ask_resolution") return "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN";
-  if (event.source_kind === "playroom_progress") return "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG";
-  if (event.source_kind === "live_session_progress") return "KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG";
-  // P29A: Bezpecne_DID_poznamky_z_osobniho_vlakna was never in governance.
-  // Hana personal events with a related part go to that part's canonical card;
-  // otherwise route to Hana situational analysis (canonical PAMET_KAREL target).
+  if (event.source_kind === "playroom_progress") return "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN";
+  if (event.source_kind === "live_session_progress") return "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN";
+  // Hana personal events: part-specific → KARTA, otherwise canonical Hana SITUACNI_ANALYZA.txt.
   if (event.source_kind === "hana_personal_ingestion") {
     if (classification.related_part_name) {
       return `KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_${classification.related_part_name.toUpperCase()}`;
     }
-    return "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA";
+    return "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA.txt";
   }
   if (classification.related_part_name && classification.clinical_relevance && classification.evidence_level !== "therapist_factual_correction") {
     return `KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY/KARTA_${classification.related_part_name.toUpperCase()}`;
