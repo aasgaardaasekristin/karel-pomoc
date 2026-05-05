@@ -2662,7 +2662,9 @@ async function persistEvaluation(
 
   // 4) did_pantry_packages + did_pending_drive_writes — nové autoritativní typy, starý session_summary zachován kompatibilně
   const cardTarget = `KARTA_${partName.toUpperCase()}`;
-  const sessionLogTarget = `KARTOTEKA_DID/00_CENTRUM/05C_SEZENI_LOG`;
+  // P29A closeout-fix: 05C_SEZENI_LOG is NOT in canonical governance.
+  // Reroute session log entries into 05A_OPERATIVNI_PLAN.
+  const sessionLogTarget = `KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN`;
   const assistants = Array.isArray(
     (ctx.plan.urgency_breakdown as any)?.assistant_persons,
   )
