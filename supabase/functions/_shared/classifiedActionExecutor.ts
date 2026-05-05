@@ -213,18 +213,17 @@ export async function executeClassifiedItems(
           console.warn(`[${callerName}] Dedup skipped: ${item.info_class} → ${route.target_document} (fp=${fingerprint})`);
           result.dedup_skipped++;
         } else {
-          await sb.from("did_pending_drive_writes").insert({
+          const inserted = await safeInsertGovernedWrite(sb, {
             target_document: route.target_document,
-            content: encodeGovernedWrite(rawPayload, {
-              ...meta,
-              payload_fingerprint: fingerprint,
-            }),
+            content: encodeGovernedWrite(rawPayload, { ...meta, payload_fingerprint: fingerprint }),
             write_type: route.write_type,
             priority: "normal",
             status: "pending",
             user_id: DID_OWNER_ID,
+            bezpecne_payload: rawPayload,
+            bezpecne_part_name: item.part_name || undefined,
           });
-          result.drive_writes++;
+          if (inserted) result.drive_writes++;
         }
       }
     }
