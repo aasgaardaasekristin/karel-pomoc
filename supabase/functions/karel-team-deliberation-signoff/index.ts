@@ -706,6 +706,30 @@ Deno.serve(async (req: Request) => {
       console.warn("[delib-signoff] pantry-b append failed (non-fatal):", pErr);
     }
 
+
+    // P28_CDI_2b — server-side pipeline event for session approval signoff
+    try {
+      await recordServerSubmission({
+        sb,
+        userId,
+        surfaceType: "session_approval_answer",
+        surfaceId: deliberationId,
+        eventType: "approval_answered",
+        sourceTable: "did_team_deliberations",
+        sourceRowId: deliberationId,
+        safeSummary: `signoff:${signer}`,
+        rawAllowed: false,
+        metadata: { signer, bridge_mode: bridgeMode, bridged_plan_id: bridgedPlanId },
+        resumeStatePatch: {
+          approval_stage: updated.status,
+          last_pending_decision: `signed_by_${signer}`,
+          next_resume_point: bridgedPlanId ? "plan_ready_to_start" : "awaiting_remaining_signoff",
+        },
+      });
+    } catch (err) {
+      console.warn("[delib-signoff] dyn pipeline write failed (non-fatal):", err);
+    }
+
     return new Response(JSON.stringify({
       deliberation: { ...updated, linked_live_session_id: bridgedPlanId },
       bridged_plan_id: bridgedPlanId,
