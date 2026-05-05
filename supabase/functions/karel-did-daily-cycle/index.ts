@@ -6403,24 +6403,22 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Crisis eval phase error (non-fatal):", crisisErr);
     }
 
-    await setPhase("phase_6_card_autoupdate", "Fáze 6: Autonomní aktualizace karet");
-    // ═══ FÁZE 6: AUTONOMNÍ AKTUALIZACE KARET ═══
+    await setPhase("phase_6_card_autoupdate", "Fáze 6: Autonomní aktualizace karet (detached)");
+    // ═══ FÁZE 6: AUTONOMNÍ AKTUALIZACE KARET — DETACHED via P29B phase worker ═══
     try {
-      console.log("[daily-cycle] Triggering autonomous card updates...");
-      const cardUpdateUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/run-daily-card-updates`;
-      const cardUpdateRes = await fetch(cardUpdateUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({}),
+      const enq = await enqueuePhaseJob(sb as any, {
+        cycle_id: cycle?.id ?? cycleId,
+        user_id: resolvedUserId,
+        phase_name: "phase_6_card_autoupdate",
+        job_kind: "phase6_card_autoupdate",
+        input: { source: "main_daily_cycle" },
       });
-      const cardUpdateData = await cardUpdateRes.json().catch(() => ({}));
-      console.log(`[daily-cycle] Card updates: ${cardUpdateRes.status}, processed=${cardUpdateData.partsProcessed || 0}`);
+      criticalPhaseStatus.cardPipelineOk = enq.ok;
+      console.log(`[daily-cycle] Phase 6 card autoupdate enqueued: ${enq.ok} (${enq.reason ?? "ok"})`);
     } catch (cardUpdateErr) {
-      console.warn("[daily-cycle] Card updates error (non-fatal):", cardUpdateErr);
+      console.warn("[daily-cycle] Phase 6 enqueue error (non-fatal):", cardUpdateErr);
     }
+
 
     // ═══ FÁZE 6.5: CLEANUP STARÉ PAMĚTI ═══
     try {
