@@ -48,6 +48,7 @@ export async function submitCardUpdateDiscussion(
         message: input.message,
         author: input.author,
         mode: input.mode ?? "discussion_comment",
+        ...(input.idempotencyKey ? { idempotency_key: input.idempotencyKey } : {}),
       }),
     });
     const data = await res.json().catch(() => ({}));
