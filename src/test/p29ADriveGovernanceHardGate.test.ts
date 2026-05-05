@@ -4,6 +4,11 @@ import {
   TARGET_REROUTE_MAP,
   canonicalizeTarget,
   isGovernedTarget,
+  routeBezpecnePoznamky,
+  resolveCardPhysicalTitle,
+  CARD_PHYSICAL_MAP,
+  safeEnqueueDriveWrite,
+  gateDriveWriteInsert,
 } from "../../supabase/functions/_shared/documentGovernance.ts";
 
 /**
