@@ -4846,6 +4846,7 @@ export type Database = {
           raw_allowed: boolean
           safe_summary: string | null
           semantic_dedupe_key: string | null
+          source: string
           source_row_id: string | null
           source_table: string | null
           surface_id: string
@@ -4864,6 +4865,7 @@ export type Database = {
           raw_allowed?: boolean
           safe_summary?: string | null
           semantic_dedupe_key?: string | null
+          source?: string
           source_row_id?: string | null
           source_table?: string | null
           surface_id: string
@@ -4882,6 +4884,7 @@ export type Database = {
           raw_allowed?: boolean
           safe_summary?: string | null
           semantic_dedupe_key?: string | null
+          source?: string
           source_row_id?: string | null
           source_table?: string | null
           surface_id?: string
