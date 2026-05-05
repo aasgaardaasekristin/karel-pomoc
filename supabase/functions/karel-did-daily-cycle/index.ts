@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
+import { safeInsertGovernedDriveWrite } from "../_shared/documentGovernance.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
