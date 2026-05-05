@@ -13,10 +13,12 @@ export interface SubmitCardUpdateDiscussionInput {
   message: string;
   author: "hanka" | "kata" | "karel";
   mode?: CardUpdateDiscussionMode;
+  idempotencyKey?: string;
 }
 
 export interface SubmitCardUpdateDiscussionResult {
   ok: boolean;
+  deduplicated?: boolean;
   card_update_id?: string;
   discussion_count?: number;
   pipeline_event_id?: string | null;
