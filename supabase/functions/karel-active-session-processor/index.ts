@@ -64,22 +64,34 @@ async function dispatchDidPartChat(sb: any, session: any, eventCount: number): P
 }
 
 async function dispatchTaskAnswer(sb: any, session: any): Promise<DispatchOutcome> {
-  // Mark related task as having unread therapist input + bump updated_at so
-  // dashboard refetch picks it up. Lightweight, no AI call here — observations
-  // were already created inside karel-task-feedback.
-  try {
+  // Bump updated_at so dashboard refetches. Try optional has_new_therapist_input
+  // column first; supabase-js returns { error } instead of throwing, so we must
+  // inspect the error and fall back to a plain bump if the column is missing.
+  const tryWithFlag = async () => {
     const { error } = await sb.from("did_therapist_tasks")
       .update({ updated_at: new Date().toISOString(), has_new_therapist_input: true })
       .eq("id", session.surface_id);
-    return { ok: !error, dispatch_kind: "task_answer_observation", details: { task_id: session.surface_id }, error: error?.message };
-  } catch (e) {
-    // Column may not exist — fall back to plain bump
-    try {
-      await sb.from("did_therapist_tasks").update({ updated_at: new Date().toISOString() }).eq("id", session.surface_id);
-      return { ok: true, dispatch_kind: "task_answer_observation_fallback", details: { task_id: session.surface_id } };
-    } catch (e2) {
-      return { ok: false, dispatch_kind: "task_answer_observation", error: (e2 as Error)?.message };
+    return error;
+  };
+  const tryPlain = async () => {
+    const { error } = await sb.from("did_therapist_tasks")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", session.surface_id);
+    return error;
+  };
+  try {
+    const errFlag = await tryWithFlag();
+    if (!errFlag) {
+      return { ok: true, dispatch_kind: "task_answer_observation", details: { task_id: session.surface_id } };
     }
+    // Likely missing column (PGRST204 / 42703) — fall back to plain bump.
+    const errPlain = await tryPlain();
+    if (!errPlain) {
+      return { ok: true, dispatch_kind: "task_answer_observation_fallback", details: { task_id: session.surface_id, fallback_reason: errFlag.message } };
+    }
+    return { ok: false, dispatch_kind: "task_answer_observation", error: errPlain.message };
+  } catch (e) {
+    return { ok: false, dispatch_kind: "task_answer_observation", error: (e as Error)?.message };
   }
 }
 
