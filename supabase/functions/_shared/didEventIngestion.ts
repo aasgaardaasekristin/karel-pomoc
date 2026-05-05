@@ -162,7 +162,7 @@ export type NormalizedDidEventInput = Omit<NormalizedDidEvent, "source_hash"> & 
 };
 
 export interface RunGlobalDidEventIngestionOptions {
-  mode?: "last_24h" | "since_cursor" | "source_test";
+  mode?: "last_24h" | "since_cursor" | "source_test" | "fallback_sweeper";
   sinceISO?: string;
   source_filter?: PantryBSourceKind[];
 }

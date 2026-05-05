@@ -4,7 +4,7 @@ import { runGlobalDidEventIngestion, type RunGlobalDidEventIngestionOptions } fr
 import type { PantryBSourceKind } from "../_shared/pantryB.ts";
 import { resolveCanonicalDidUserId, CanonicalScopeResolveError } from "../_shared/canonicalUserResolver.ts";
 
-const VALID_MODES = new Set(["last_24h", "since_cursor", "source_test"]);
+const VALID_MODES = new Set(["last_24h", "since_cursor", "source_test", "fallback_sweeper"]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -76,6 +76,62 @@ Deno.serve(async (req) => {
     const sourceFilter = Array.isArray(body?.source_filter)
       ? body.source_filter.map((s: unknown) => String(s)).filter(Boolean) as PantryBSourceKind[]
       : undefined;
+
+    // P28_CDI_3 — fallback sweeper. Does NOT do a full global poll. It only
+    // runs ingestion if there are stale active sessions or stale pipeline
+    // events the active-session processor missed. Time-window bounded.
+    if (mode === "fallback_sweeper") {
+      const maxAgeHours = Math.max(1, Math.min(72, Number(body?.max_age_hours ?? 24)));
+      const sinceISO = new Date(Date.now() - maxAgeHours * 3600_000).toISOString();
+      const staleAfterMin = Math.max(15, Math.min(360, Number(body?.stale_after_minutes ?? 30)));
+      const staleCutoffISO = new Date(Date.now() - staleAfterMin * 60_000).toISOString();
+
+      // Stale active sessions: last_activity_at advanced past last_processed_at
+      const { data: missedSessions } = await sb
+        .from("active_app_activity_sessions")
+        .select("id, surface_type, surface_id, last_activity_at, last_processed_at, status")
+        .eq("user_id", canonicalUserId)
+        .gte("last_activity_at", sinceISO)
+        .or(`last_processed_at.is.null,last_processed_at.lt.${staleCutoffISO}`)
+        .in("status", ["active", "idle_closed"])
+        .limit(50);
+
+      // Stale unconsumed pipeline events
+      const { count: staleEventCount } = await sb
+        .from("dynamic_pipeline_events")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", canonicalUserId)
+        .eq("pipeline_state", "new_event")
+        .lt("created_at", staleCutoffISO)
+        .gte("created_at", sinceISO);
+
+      const missedCount = missedSessions?.length ?? 0;
+      const staleCount = staleEventCount ?? 0;
+
+      if (missedCount === 0 && staleCount === 0) {
+        return new Response(JSON.stringify({
+          ok: true, mode: "fallback_sweeper", canonical_user_id: canonicalUserId,
+          missed_sessions: 0, stale_events: 0,
+          ran_global_ingest: false, reason: "no_missed_work",
+          since_iso: sinceISO,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      // Run bounded ingestion for the missed window only.
+      const fallbackFilter = sourceFilter ?? ["hana_personal_ingestion", "did_thread_ingestion"] as PantryBSourceKind[];
+      const summary = await runGlobalDidEventIngestion(sb, canonicalUserId, {
+        mode: "since_cursor",
+        sinceISO,
+        source_filter: fallbackFilter,
+      });
+      return new Response(JSON.stringify({
+        ok: true, mode: "fallback_sweeper", canonical_user_id: canonicalUserId,
+        missed_sessions: missedCount, stale_events: staleCount,
+        ran_global_ingest: true, since_iso: sinceISO, source_filter: fallbackFilter,
+        ...summary,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const options: RunGlobalDidEventIngestionOptions = {
       mode: mode as RunGlobalDidEventIngestionOptions["mode"],
       sinceISO: typeof body?.sinceISO === "string" ? body.sinceISO : undefined,
