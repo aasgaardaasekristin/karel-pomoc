@@ -28,7 +28,10 @@ export type ServerEventType =
   | "block_changed"
   | "plan_edited"
   | "session_paused"
-  | "session_resumed";
+  | "session_resumed"
+  | "approval_answered"
+  | "pending_question_answered"
+  | "card_update_discussed";
 
 const fnv1a = (s: string): string => {
   let h = 0x811c9dc5;
