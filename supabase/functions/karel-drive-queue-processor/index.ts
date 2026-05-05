@@ -38,6 +38,8 @@ import {
   isReplaceAllowed,
   canonicalizeTarget,
   resolveCardPhysicalTitle,
+  isCanonicalKartaTarget,
+  hasPhysicalCardMapping,
 } from "../_shared/documentGovernance.ts";
 import { decodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 
