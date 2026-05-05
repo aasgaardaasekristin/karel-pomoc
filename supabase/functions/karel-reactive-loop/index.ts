@@ -505,7 +505,8 @@ serve(async (req) => {
             const partResolved = resolveEntity(signal.part_name, registry);
             if (partResolved.can_write_existing_card) {
               const targetName = partResolved.matched_canonical_name || signal.part_name;
-              await sb.from("did_pending_drive_writes").insert({
+              await safeInsertGovernedDriveWrite(sb, {
+                source: "karel-reactive-loop",
                 target_document: `KARTA_${targetName.toUpperCase()}`,
                 content: encodeGovernedWrite(
                   signal.derived_clinical_implication,
