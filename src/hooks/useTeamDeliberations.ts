@@ -232,6 +232,12 @@ export function useTeamDeliberations(refreshTrigger = 0) {
         .update(patch)
         .eq("id", deliberationId);
       if (error) throw error;
+      void recordSurfaceSubmission(
+        { surface: "team_deliberations", surfaceId: deliberationId, surfaceType: "team_deliberation_answer", metadata: { author } },
+        { eventType: "deliberation_answered", sourceTable: "did_team_deliberations", sourceRowId: deliberationId,
+          safeSummary: `${author} posted message`,
+          dedupeKey: buildDedupeKey(["delib_msg", deliberationId, author, (target.discussion_log?.length ?? 0) + 1]) },
+      );
       await reload();
     },
     [items, reload],
