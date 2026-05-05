@@ -34,6 +34,7 @@ import {
 } from "../_shared/topicSegmentation.ts";
 import { loadEntityRegistry, type EntityRegistry } from "../_shared/entityRegistry.ts";
 import { resolveEntity } from "../_shared/entityResolution.ts";
+import { safeInsertGovernedDriveWrite } from "../_shared/documentGovernance.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
