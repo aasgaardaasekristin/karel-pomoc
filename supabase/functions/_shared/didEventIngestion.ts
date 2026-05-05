@@ -688,7 +688,7 @@ export async function upsertHanaPersonalMemoryIfNeeded(sb: SupabaseClient, event
   const semanticKey = (memory_type: string) => `${memory_type}:${(classification.urgency || "_unspecified").toLowerCase()}`;
 
   const insertRow = async (memory_type: string, did_relevant: boolean, private_to_hana: boolean) => {
-    const dedupeKey = await computeDedupeKey(memory_type);
+    const dedupeKey = computeDedupeKey(memory_type);
 
     // 1) Try to find existing active row for this (user, thread, memory_type, dedupe_key).
     const { data: existingActive } = await sb.from("hana_personal_memory")
