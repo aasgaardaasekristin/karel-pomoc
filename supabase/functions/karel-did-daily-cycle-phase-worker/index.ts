@@ -17,6 +17,7 @@
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { resolveCanonicalDidUserId } from "../_shared/canonicalUserResolver.ts";
+import { runPhase4CentrumTail, type CentrumTailResult } from "../_shared/dailyCyclePhase4CentrumTail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

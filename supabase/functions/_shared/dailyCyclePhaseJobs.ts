@@ -11,6 +11,7 @@
 export type PhaseJobKind =
   | "phase4_card_profiling"
   | "phase4_card_update_tail"
+  | "phase4_centrum_tail"
   | "phase6_card_autoupdate"
   | "phase8_therapist_intel"
   | "phase8a5_session_eval_safety_net"
