@@ -1966,6 +1966,16 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     setMessages((prev) => [...prev, { role: "user", content: userContent as any }]);
     if (mode === "childcare") didContextPrime.trackMessage();
     setIsLoading(true);
+    // P28 C+D+I: dynamic pipeline event for DID part chat thread.
+    if (mode === "childcare" && activeThread?.id) {
+      void recordSurfaceSubmission(
+        { surface: "did_part_chat", surfaceId: activeThread.id, surfaceType: "did_part_chat_thread",
+          metadata: { partName: activeThread.partName, subMode: didSubMode } },
+        { eventType: "message_sent", sourceTable: "did_threads", sourceRowId: activeThread.id,
+          safeSummary: `did message (${userMessage.length} chars)`, rawAllowed: false,
+          dedupeKey: buildDedupeKey(["did_msg", activeThread.id, messages.length + 1]) },
+      );
+    }
     let assistantContent = "";
     try {
       const headers = await getAuthHeaders();
