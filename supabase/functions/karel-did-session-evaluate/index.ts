@@ -41,6 +41,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 import { appendPantryB } from "../_shared/pantryB.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 import { requireAuth } from "../_shared/auth.ts";
+import { gateDriveWriteInsert, safeInsertGovernedDriveWrite } from "../_shared/documentGovernance.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
