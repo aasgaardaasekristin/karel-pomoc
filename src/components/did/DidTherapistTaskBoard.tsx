@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Plus, MessageSquare, ChevronDown, ChevronUp, Send, Trash2, ExternalLink, ArrowUp } from "lucide-react";
 import { toast } from "sonner";
+import { recordSurfaceSubmission, buildDedupeKey } from "@/lib/dynamicPipeline";
 
 interface TaskFeedbackEntry {
   id: string;
@@ -867,6 +868,13 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
       setTrafficLock(false);
       return;
     }
+    // P28 C+D+I: dynamic pipeline event for task state change.
+    void recordSurfaceSubmission(
+      { surface: "therapist_tasks", surfaceId: freshTask.id, surfaceType: "therapist_task_answer", metadata: { who, status: (updates as any)[`status_${who}`] } },
+      { eventType: "task_answered", sourceTable: "did_therapist_tasks", sourceRowId: freshTask.id,
+        safeSummary: `${who} → ${(updates as any)[`status_${who}`]}`,
+        dedupeKey: buildDedupeKey(["task_status", freshTask.id, who, (updates as any)[`status_${who}`], Date.now()]) },
+    );
 
     if (bothDone) {
       const assigned = normalizeAssignedTo(freshTask.assigned_to);
@@ -896,6 +904,11 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
     const dateStr = new Date().toLocaleDateString("cs-CZ");
     const updatedNote = existingNote ? `${existingNote}\n[${dateStr}] ${note}` : `[${dateStr}] ${note}`;
     await supabase.from("did_therapist_tasks").update({ completed_note: updatedNote, updated_at: new Date().toISOString() }).eq("id", taskId);
+    void recordSurfaceSubmission(
+      { surface: "therapist_tasks", surfaceId: taskId, surfaceType: "therapist_task_answer" },
+      { eventType: "task_answered", sourceTable: "did_therapist_tasks", sourceRowId: taskId,
+        safeSummary: "note added", dedupeKey: buildDedupeKey(["task_note", taskId, note.length, Date.now()]) },
+    );
     setNoteInputs((prev) => ({ ...prev, [taskId]: "" }));
     await loadTasks();
     toast.success("Poznámka přidána");
