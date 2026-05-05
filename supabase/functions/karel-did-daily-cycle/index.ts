@@ -13,6 +13,7 @@ import {
 } from "../_shared/pantryB.ts";
 import { runGlobalDidEventIngestion } from "../_shared/didEventIngestion.ts";
 import { snapshotProtectedMutation } from "../_shared/mutationSnapshotGuard.ts";
+import { enqueuePhaseJob, summarizePhaseJobsForCycle } from "../_shared/dailyCyclePhaseJobs.ts";
 import {
   buildTherapistTaskInsert,
   buildPendingQuestionInsert,
@@ -5359,186 +5360,27 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
       });
       const dateStr = reportDatePrague;
 
-      // ═══ PSYCHOLOGICAL PROFILING — update part profiles ═══
-      // P29B HARDENING: hard time budget + per-part heartbeat. Previously this
-      // block could spend 10+ minutes calling AI gateway sequentially with NO
-      // heartbeat, which is what made the daily-cycle die in `update_cards`
-      // with `daily_cycle_stuck_timeout`. Profiling is non-critical — if we
-      // run out of budget, we skip remaining parts and continue to phase 5.
-      const PROFILING_BUDGET_MS = 90_000;
-      const profilingStart = Date.now();
-      let profilingProcessed = 0;
-      let profilingSkipped = 0;
-      await setPhase("update_cards_profiling", `budget=${PROFILING_BUDGET_MS}ms`);
+      // ═══ PSYCHOLOGICAL PROFILING — DETACHED via P29B phase worker ═══
+      // P29B effort-max: profiling is NOT run synchronously inside main cycle.
+      // We enqueue a phase4_card_profiling job and continue immediately.
+      // The detached worker handles the AI calls, heartbeats, and budgets.
+      let profilingEnqueued = false;
       try {
-        console.log("[daily-cycle] Starting psychological profiling...");
-        
-        // Get all active parts from registry
-        const { data: activeParts } = await sb.from("did_part_registry")
-          .select("part_name, display_name")
-          .eq("user_id", resolvedUserId)
-          .in("status", ["active", "warning"]);
-
-        if (activeParts && activeParts.length > 0) {
-          // Collect recent conversations per part
-          const cutoff7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-          const { data: recentThreads } = await sb.from("did_threads")
-            .select("part_name, messages, sub_mode")
-            .eq("user_id", resolvedUserId)
-            .gte("last_activity_at", cutoff7d)
-            .order("last_activity_at", { ascending: false })
-            .limit(50);
-
-          // Get theme preferences
-          const { data: themePrefs } = await sb.from("did_part_theme_preferences")
-            .select("part_name, theme_preset, theme_config, chosen_at")
-            .eq("user_id", resolvedUserId)
-            .gte("chosen_at", cutoff7d);
-
-          // Get existing profiles
-          const { data: existingProfiles } = await sb.from("did_part_profiles")
-            .select("*")
-            .eq("user_id", resolvedUserId);
-
-          const existingMap = new Map((existingProfiles || []).map((p: any) => [p.part_name, p]));
-
-          // Process each active part
-          for (const part of activeParts.slice(0, 10)) {
-            // P29B: hard time-budget guard. AI gateway can stall — bail and continue.
-            if (Date.now() - profilingStart > PROFILING_BUDGET_MS) {
-              profilingSkipped = activeParts.length - profilingProcessed;
-              console.warn(`[daily-cycle] Profiling budget exhausted (${PROFILING_BUDGET_MS}ms) — skipping ${profilingSkipped} remaining parts`);
-              break;
-            }
-            // Heartbeat per part — proves the cycle is alive even during AI calls.
-            void setPhase("update_cards_profiling", `part=${part.part_name} processed=${profilingProcessed}`);
-
-            const partThreads = (recentThreads || []).filter((t: any) => 
-              t.part_name.toLowerCase() === part.part_name.toLowerCase()
-            );
-            const partThemePrefs = (themePrefs || []).filter((t: any) => 
-              t.part_name.toLowerCase() === part.part_name.toLowerCase()
-            );
-
-            if (partThreads.length === 0 && partThemePrefs.length === 0) continue;
-
-            const existingProfile = existingMap.get(part.part_name);
-            const conversationSummary = partThreads.map((t: any) => {
-              const msgs = Array.isArray(t.messages) ? t.messages : [];
-              return `[${t.sub_mode}] ${msgs.slice(-6).map((m: any) => `${m.role}: ${(m.content || "").slice(0, 200)}`).join(" | ")}`;
-            }).join("\n").slice(0, 3000);
-
-            const themeSummary = partThemePrefs.map((t: any) => `${t.theme_preset} (${new Date(t.chosen_at).toLocaleDateString("cs-CZ")})`).join(", ");
-
-            const profilePrompt = `Analyzuj komunikaci DID části "${part.display_name || part.part_name}" a aktualizuj psychologický profil.
-
-${existingProfile ? `EXISTUJÍCÍ PROFIL (merge s novými poznatky):
-Osobnostní rysy: ${JSON.stringify(existingProfile.personality_traits)}
-Kognitivní profil: ${JSON.stringify(existingProfile.cognitive_profile)}
-Emoční profil: ${JSON.stringify(existingProfile.emotional_profile)}
-Potřeby: ${JSON.stringify(existingProfile.needs)}
-Motivace: ${JSON.stringify(existingProfile.motivations)}
-Silné stránky: ${JSON.stringify(existingProfile.strengths)}
-Výzvy: ${JSON.stringify(existingProfile.challenges)}
-Zájmy: ${JSON.stringify(existingProfile.interests)}
-Komunikační styl: ${JSON.stringify(existingProfile.communication_style)}
-Terapeutický přístup: ${JSON.stringify(existingProfile.therapeutic_approach)}
-Confidence: ${existingProfile.confidence_score}
-` : "NOVÝ PROFIL — vytvoř na základě dostupných dat.\n"}
-
-NOVÉ KONVERZACE (posledních 7 dní):
-${conversationSummary || "(žádné)"}
-
-VIZUÁLNÍ PREFERENCE:
-${themeSummary || "(žádné)"}
-
-Vrať POUZE validní JSON (bez markdown):
-{
-  "personality_traits": ["rys1", "rys2"],
-  "cognitive_profile": {"learning_style": "...", "intelligence_areas": ["..."], "attention_span": "..."},
-  "emotional_profile": {"regulation": "...", "dominant_emotions": ["..."], "emotional_intelligence": "..."},
-  "needs": ["potřeba1", "potřeba2"],
-  "motivations": ["motivace1"],
-  "strengths": ["silná stránka1"],
-  "challenges": ["výzva1"],
-  "interests": ["zájem1"],
-  "communication_style": {"preferred_tone": "...", "language_complexity": "...", "humor": "...", "response_length": "..."},
-  "therapeutic_approach": {"recommended_methods": ["..."], "avoid": ["..."], "tips": ["..."]},
-  "theme_preferences": {"preferred_colors": ["..."], "preferred_themes": ["..."]},
-  "confidence_score": 0.5
-}`;
-
-            try {
-              const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-              if (!LOVABLE_API_KEY) continue;
-
-              // P29B: per-call AbortController timeout — AI gateway can hang.
-              const profileAbort = new AbortController();
-              const profileTimer = setTimeout(() => profileAbort.abort(), 25_000);
-              let aiRes: Response;
-              try {
-                aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-                  method: "POST",
-                  headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-                  signal: profileAbort.signal,
-                  body: JSON.stringify({
-                    model: "google/gemini-2.5-flash-lite",
-                    messages: [
-                      { role: "system", content: SYSTEM_RULES + "\n\nJsi klinický psycholog specializující se na DID. Analyzuješ komunikační vzorce a vytváříš psychologické profily fragmentů/částí DID systému. Odpovídej VÝHRADNĚ validním JSON." },
-                      { role: "user", content: profilePrompt },
-                    ],
-                    temperature: 0.2,
-                    max_tokens: 1500,
-                  }),
-                });
-              } finally {
-                clearTimeout(profileTimer);
-              }
-
-              if (aiRes.ok) {
-                const aiData = await aiRes.json();
-                const raw = aiData.choices?.[0]?.message?.content || "";
-                const jsonStr = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-                
-                try {
-                  const profile = JSON.parse(jsonStr);
-                  
-                  await sb.from("did_part_profiles").upsert({
-                    user_id: resolvedUserId,
-                    part_name: part.part_name,
-                    personality_traits: profile.personality_traits || [],
-                    cognitive_profile: profile.cognitive_profile || {},
-                    emotional_profile: profile.emotional_profile || {},
-                    needs: profile.needs || [],
-                    motivations: profile.motivations || [],
-                    strengths: profile.strengths || [],
-                    challenges: profile.challenges || [],
-                    interests: profile.interests || [],
-                    communication_style: profile.communication_style || {},
-                    therapeutic_approach: profile.therapeutic_approach || {},
-                    theme_preferences: profile.theme_preferences || {},
-                    confidence_score: Math.min(1, (profile.confidence_score || 0.3)),
-                    evidence_sources: [{ type: "daily_cycle", date: dateStr, threads: partThreads.length }],
-                    last_enriched_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                  } as any, { onConflict: "user_id,part_name" });
-
-                  console.log(`[daily-cycle] Profile updated for ${part.part_name}`);
-                } catch (parseErr) {
-                  console.warn(`[daily-cycle] Failed to parse profile JSON for ${part.part_name}:`, parseErr);
-                }
-              }
-            } catch (partErr) {
-              console.warn(`[daily-cycle] Profiling error for ${part.part_name}:`, partErr);
-            }
-            profilingProcessed++;
-          }
-        }
-        console.log(`[daily-cycle] Psychological profiling complete. processed=${profilingProcessed} skipped=${profilingSkipped} elapsed=${Date.now() - profilingStart}ms`);
-      } catch (profilingErr) {
-        console.warn("[daily-cycle] Profiling section error (non-fatal):", profilingErr);
+        const enq = await enqueuePhaseJob(sb as any, {
+          cycle_id: cycle.id,
+          user_id: resolvedUserId,
+          phase_name: "update_cards_profiling",
+          job_kind: "phase4_card_profiling",
+          input: { date: dateStr, source: "main_daily_cycle" },
+          priority: "normal",
+        });
+        profilingEnqueued = enq.ok;
+        console.log(`[daily-cycle] Profiling phase job enqueued: ${enq.ok} (${enq.reason ?? "ok"})`);
+      } catch (enqErr) {
+        console.warn("[daily-cycle] Profiling enqueue failed (non-fatal):", enqErr);
       }
-      await setPhase("update_cards_tail_done", `profiling_processed=${profilingProcessed} profiling_skipped=${profilingSkipped}`);
+      await setPhase("update_cards_tail_done", `profiling_detached=${profilingEnqueued}`);
+
 
       // EMAIL GENERATION REMOVED — now handled by independent karel-did-daily-email function
       // This ensures emails are sent even if Drive operations fail.
@@ -6561,24 +6403,22 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Crisis eval phase error (non-fatal):", crisisErr);
     }
 
-    await setPhase("phase_6_card_autoupdate", "Fáze 6: Autonomní aktualizace karet");
-    // ═══ FÁZE 6: AUTONOMNÍ AKTUALIZACE KARET ═══
+    await setPhase("phase_6_card_autoupdate", "Fáze 6: Autonomní aktualizace karet (detached)");
+    // ═══ FÁZE 6: AUTONOMNÍ AKTUALIZACE KARET — DETACHED via P29B phase worker ═══
     try {
-      console.log("[daily-cycle] Triggering autonomous card updates...");
-      const cardUpdateUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/run-daily-card-updates`;
-      const cardUpdateRes = await fetch(cardUpdateUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({}),
+      const enq = await enqueuePhaseJob(sb as any, {
+        cycle_id: cycle?.id ?? cycleId,
+        user_id: resolvedUserId,
+        phase_name: "phase_6_card_autoupdate",
+        job_kind: "phase6_card_autoupdate",
+        input: { source: "main_daily_cycle" },
       });
-      const cardUpdateData = await cardUpdateRes.json().catch(() => ({}));
-      console.log(`[daily-cycle] Card updates: ${cardUpdateRes.status}, processed=${cardUpdateData.partsProcessed || 0}`);
+      criticalPhaseStatus.cardPipelineOk = enq.ok;
+      console.log(`[daily-cycle] Phase 6 card autoupdate enqueued: ${enq.ok} (${enq.reason ?? "ok"})`);
     } catch (cardUpdateErr) {
-      console.warn("[daily-cycle] Card updates error (non-fatal):", cardUpdateErr);
+      console.warn("[daily-cycle] Phase 6 enqueue error (non-fatal):", cardUpdateErr);
     }
+
 
     // ═══ FÁZE 6.5: CLEANUP STARÉ PAMĚTI ═══
     try {
@@ -7298,40 +7138,24 @@ Vra\u0165 JSON:
       console.warn("[EMAIL RETRY] Error:", retryErr);
     }
 
-    await setPhase("phase_8_therapist_intel", "Fáze 8: Therapist intelligence");
-    // ═══ PHASE_3_THERAPIST_INTELLIGENCE — delegated to standalone function ═══
-    // Replaced inline profiling (was ~150 lines of raw AI + ungoverned writes)
-    // with delegation to karel-daily-therapist-intelligence which uses
-    // encodeGovernedWrite + normalizeSignal + proper dedup markers
-    let tpTimeout: number | undefined;
+    await setPhase("phase_8_therapist_intel", "Fáze 8: Therapist intelligence (detached)");
+    // ═══ PHASE_8 THERAPIST INTELLIGENCE — DETACHED via P29B phase worker ═══
     try {
-      const tpUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-daily-therapist-intelligence`;
-      const tpController = new AbortController();
-      tpTimeout = setTimeout(() => tpController.abort(), 30000) as unknown as number;
-      const tpRes = await fetch(tpUrl, {
-        method: "POST",
-        signal: tpController.signal,
-        headers: {
-          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ source: "daily-cycle" }),
+      const enq = await enqueuePhaseJob(sb as any, {
+        cycle_id: cycle?.id ?? cycleId,
+        user_id: resolvedUserId,
+        phase_name: "phase_8_therapist_intel",
+        job_kind: "phase8_therapist_intel",
+        input: { source: "main_daily_cycle" },
       });
-      if (tpRes.ok) {
-        const tpBody = await tpRes.json();
-        criticalPhaseStatus.therapistIntelligenceOk = tpBody.ok !== false;
-        console.log(`[PHASE_3] Therapist intelligence: HTTP ${tpRes.status}, ok=${tpBody.ok}, results=${JSON.stringify(tpBody.results || {})}`);
-      } else {
-        const errText = await tpRes.text().catch(() => "");
-        console.error(`[PHASE_3] Therapist intelligence FAILED: HTTP ${tpRes.status} — ${errText.slice(0, 200)}`);
-        // criticalPhaseStatus.therapistIntelligenceOk remains false
-      }
+      // Detached: don't block is_processed on this. Mark as ok if enqueue succeeded
+      // (worker handles real success/failure via job row).
+      criticalPhaseStatus.therapistIntelligenceOk = enq.ok;
+      console.log(`[PHASE_8] therapist_intel detached enqueue: ${enq.ok} (${enq.reason ?? "ok"})`);
     } catch (tpErr) {
-      console.error("[PHASE_3] Therapist intelligence FAILED (timeout or network):", tpErr);
-      // criticalPhaseStatus.therapistIntelligenceOk remains false
-    } finally {
-      if (tpTimeout !== undefined) clearTimeout(tpTimeout);
+      console.error("[PHASE_8] therapist_intel enqueue failed:", tpErr);
     }
+
 
     // ═══ FÁZE 6.5: PAMET_KAREL — krizová profilace terapeutek ═══
     try {
@@ -7542,17 +7366,15 @@ Vra\u0165 JSON:
               console.log(`[PHASE_8A5] Plan ${(plan as any).id} (${(plan as any).selected_part}, ${(plan as any).plan_date}): planned_not_started, skipped evaluator`);
               continue;
             }
-            const evalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-did-session-finalize`;
-            const evalCtl = new AbortController();
-            evalTo = setTimeout(() => evalCtl.abort(), 60000) as unknown as number;
-            const evalRes = await fetch(evalUrl, {
-              method: "POST",
-              signal: evalCtl.signal,
-              headers: {
-                Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
+            // P29B: detach evaluator call into a phase job (one job per stale plan).
+            const enq = await enqueuePhaseJob(sb as any, {
+              cycle_id: cycle?.id ?? cycleId,
+              user_id: resolvedUserId,
+              phase_name: "phase_8a5_session_eval_safety_net",
+              job_kind: "phase8a5_session_eval_safety_net",
+              idempotency_suffix: String((plan as any).id),
+              input: {
+                plan_id: (plan as any).id,
                 planId: (plan as any).id,
                 source: "auto_safety_net",
                 reason: "calendar_day_safety_net",
@@ -7560,11 +7382,10 @@ Vra\u0165 JSON:
                 totalBlocks: (liveProgress as any)?.total_blocks,
                 turnsByBlock: (liveProgress as any)?.turns_by_block ?? {},
                 observationsByBlock,
-              }),
+              },
             });
-            const okText = evalRes.ok ? "OK" : `HTTP ${evalRes.status}`;
-            console.log(`[PHASE_8A5] Plan ${(plan as any).id} (${(plan as any).selected_part}, ${(plan as any).plan_date}): ${okText}`);
-            if (evalRes.ok) phase8a5ProcessedSessions++;
+            console.log(`[PHASE_8A5] Plan ${(plan as any).id} eval detached: ${enq.ok} (${enq.reason ?? "ok"})`);
+            if (enq.ok) phase8a5ProcessedSessions++;
             if (((liveProgress as any)?.completed_blocks ?? 0) < ((liveProgress as any)?.total_blocks ?? 1)) phase8a5PartialSessions++;
           } catch (evalErr) {
             console.warn(`[PHASE_8A5] Evaluator failed for plan ${(plan as any).id}:`, (evalErr as any)?.message ?? evalErr);
@@ -7847,39 +7668,39 @@ Vra\u0165 JSON:
       console.error("[PHASE_8B] Pantry B flush failed (non-fatal):", pbErr);
     }
 
-    await setPhase("phase_9_queue_flush", "Fáze 9: Drive queue flush");
-    // ═══ PHASE_9_QUEUE_FLUSH_AND_POST_ACTIONS ═══
-    // Moved here so ALL write-producing phases (therapist intelligence, PAMET_KAREL, crisis escalation)
-    // have already inserted their did_pending_drive_writes before we flush.
+    await setPhase("phase_9_queue_flush", "Fáze 9: Drive queue flush (detached)");
+    // ═══ PHASE_9 DRIVE QUEUE FLUSH — DETACHED via P29B phase worker ═══
     try {
       const { count: pendingWriteCount } = await sb.from("did_pending_drive_writes")
         .select("id", { count: "exact", head: true })
         .eq("status", "pending");
-
-      if ((pendingWriteCount || 0) > 0) {
-        console.log(`[PHASE_9] ${pendingWriteCount} pending Drive writes, triggering queue processor`);
-        const qpUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-drive-queue-processor`;
-        const qpRes = await fetch(qpUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-          },
-          body: JSON.stringify({ triggered_by: "daily-cycle" }),
-        });
-        if (qpRes.ok) {
-          criticalPhaseStatus.queueFlushTriggeredOk = true;
-          console.log(`[PHASE_9] Queue processor triggered: ${qpRes.status}`);
-        } else {
-          console.error(`[PHASE_9] Queue processor FAILED: HTTP ${qpRes.status}`);
-        }
-      } else {
-        criticalPhaseStatus.queueFlushTriggeredOk = true;
-        console.log("[PHASE_9] No pending Drive writes, skipping flush");
-      }
+      const enq = await enqueuePhaseJob(sb as any, {
+        cycle_id: cycle?.id ?? cycleId,
+        user_id: resolvedUserId,
+        phase_name: "phase_9_queue_flush",
+        job_kind: "phase9_drive_queue_flush",
+        input: { pending_writes_count: pendingWriteCount ?? 0, source: "main_daily_cycle" },
+        priority: "high",
+      });
+      criticalPhaseStatus.queueFlushTriggeredOk = enq.ok;
+      console.log(`[PHASE_9] Drive queue flush detached: ${enq.ok} pending=${pendingWriteCount ?? 0}`);
     } catch (flushErr) {
-      console.error("[PHASE_9] Queue flush FAILED:", flushErr);
+      console.error("[PHASE_9] Queue flush enqueue FAILED:", flushErr);
     }
+
+    // P29B Phase 8B detached too (pantry flush) — enqueue worker job (the inline flush above
+    // already mutated DB rows synchronously but the heavy Drive writes are deferred via the queue).
+    try {
+      const enq8b = await enqueuePhaseJob(sb as any, {
+        cycle_id: cycle?.id ?? cycleId,
+        user_id: resolvedUserId,
+        phase_name: "phase_8b_pantry_b_flush",
+        job_kind: "phase8b_pantry_flush",
+        input: { source: "main_daily_cycle" },
+      });
+      console.log(`[PHASE_8B] pantry flush worker enqueued: ${enq8b.ok}`);
+    } catch (e) { console.warn("[PHASE_8B] enqueue err:", e); }
+
 
     await setPhase("phase_10_cleanup", "Fáze 10: Závěrečný cleanup");
     // ═══ PHASE_10_CLEANUP_AND_LOGGING ═══
@@ -7929,6 +7750,29 @@ Vra\u0165 JSON:
     } else {
       console.warn(`[PHASE_10] ⚠️ NOT marking ${threadIds.length} threads + ${convIds.length} conversations as processed — critical phases incomplete`);
     }
+
+    // P29B: write completion semantics to cycle context_data
+    try {
+      const phaseJobsSummary = await summarizePhaseJobsForCycle(sb as any, cycle?.id ?? cycleId);
+      const criticalFailures = Object.entries(phaseJobsSummary.by_kind)
+        .filter(([, status]) => status === "failed_permanent")
+        .map(([kind]) => kind);
+      const controlledSkips = Object.entries(phaseJobsSummary.by_kind)
+        .filter(([, status]) => status === "controlled_skipped")
+        .map(([kind]) => kind);
+      await sb.from("did_update_cycles").update({
+        context_data: {
+          phase_jobs: phaseJobsSummary,
+          daily_cycle_completion_semantics: {
+            main_phases_completed: true,
+            detached_jobs_summary: phaseJobsSummary,
+            critical_failures: criticalFailures,
+            controlled_skips: controlledSkips,
+            architecture: "p29b_effortmax_detached_phase_jobs",
+          },
+        },
+      }).eq("id", cycle?.id ?? cycleId);
+    } catch (e) { console.warn("[P29B] completion_semantics write failed:", e); }
 
     if (consolidationRunId) {
       await sb.from("did_daily_consolidation_runs").update({

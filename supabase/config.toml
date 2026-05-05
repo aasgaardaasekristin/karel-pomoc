@@ -39,6 +39,9 @@ verify_jwt = false
 [functions.karel-did-daily-cycle]
 verify_jwt = false
 
+[functions.karel-did-daily-cycle-phase-worker]
+verify_jwt = false
+
 [functions.karel-did-weekly-cycle]
 verify_jwt = false
 

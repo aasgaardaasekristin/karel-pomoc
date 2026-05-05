@@ -2220,6 +2220,80 @@ export type Database = {
         }
         Relationships: []
       }
+      did_daily_cycle_phase_jobs: {
+        Row: {
+          attempt_count: number
+          completed_at: string | null
+          created_at: string
+          cycle_id: string | null
+          error_message: string | null
+          id: string
+          idempotency_key: string
+          input: Json
+          job_kind: string
+          last_heartbeat_at: string | null
+          max_attempts: number
+          next_retry_at: string | null
+          phase_name: string
+          priority: string
+          result: Json
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempt_count?: number
+          completed_at?: string | null
+          created_at?: string
+          cycle_id?: string | null
+          error_message?: string | null
+          id?: string
+          idempotency_key: string
+          input?: Json
+          job_kind: string
+          last_heartbeat_at?: string | null
+          max_attempts?: number
+          next_retry_at?: string | null
+          phase_name: string
+          priority?: string
+          result?: Json
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempt_count?: number
+          completed_at?: string | null
+          created_at?: string
+          cycle_id?: string | null
+          error_message?: string | null
+          id?: string
+          idempotency_key?: string
+          input?: Json
+          job_kind?: string
+          last_heartbeat_at?: string | null
+          max_attempts?: number
+          next_retry_at?: string | null
+          phase_name?: string
+          priority?: string
+          result?: Json
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "did_daily_cycle_phase_jobs_cycle_id_fkey"
+            columns: ["cycle_id"]
+            isOneToOne: false
+            referencedRelation: "did_update_cycles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       did_daily_report_dispatches: {
         Row: {
           created_at: string
@@ -7220,6 +7294,7 @@ export type Database = {
         }[]
       }
       did_p4_acceptance_inventory: { Args: never; Returns: Json }
+      did_phase_jobs_sweep_stale: { Args: never; Returns: Json }
       did_record_slo_run: {
         Args: {
           p_evidence?: Json
