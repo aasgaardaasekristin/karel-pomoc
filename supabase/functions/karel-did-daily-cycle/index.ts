@@ -5852,8 +5852,12 @@ ESKALACE: level ${task.escalation_level || 0}`,
         context_data: {
           auditAlerts: auditAlerts.length > 0 ? auditAlerts : undefined,
           phase4: {
-            mode: "async_enqueue_v3",
+            mode: "async_enqueue_v3_p29b_hardened",
             elapsedMs: Date.now() - phase4Start,
+            enqueue_completed_at: new Date(phase4Start + (Date.now() - phase4Start)).toISOString(),
+            writes_enqueued: cardsEnqueued.length + centrumEnqueued.length,
+            writes_blocked_by_governance: cardEnqueueErrors,
+            phase_step_marker: "update_cards_tail_done",
             cardsEnqueuedCount: cardsEnqueued.length,
             cardsEnqueued: cardsEnqueued.length > 0 ? cardsEnqueued : undefined,
             cardsDeferredCount: cardsDeferred.length,
