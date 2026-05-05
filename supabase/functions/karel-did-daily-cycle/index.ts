@@ -7668,39 +7668,39 @@ Vra\u0165 JSON:
       console.error("[PHASE_8B] Pantry B flush failed (non-fatal):", pbErr);
     }
 
-    await setPhase("phase_9_queue_flush", "Fáze 9: Drive queue flush");
-    // ═══ PHASE_9_QUEUE_FLUSH_AND_POST_ACTIONS ═══
-    // Moved here so ALL write-producing phases (therapist intelligence, PAMET_KAREL, crisis escalation)
-    // have already inserted their did_pending_drive_writes before we flush.
+    await setPhase("phase_9_queue_flush", "Fáze 9: Drive queue flush (detached)");
+    // ═══ PHASE_9 DRIVE QUEUE FLUSH — DETACHED via P29B phase worker ═══
     try {
       const { count: pendingWriteCount } = await sb.from("did_pending_drive_writes")
         .select("id", { count: "exact", head: true })
         .eq("status", "pending");
-
-      if ((pendingWriteCount || 0) > 0) {
-        console.log(`[PHASE_9] ${pendingWriteCount} pending Drive writes, triggering queue processor`);
-        const qpUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-drive-queue-processor`;
-        const qpRes = await fetch(qpUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-          },
-          body: JSON.stringify({ triggered_by: "daily-cycle" }),
-        });
-        if (qpRes.ok) {
-          criticalPhaseStatus.queueFlushTriggeredOk = true;
-          console.log(`[PHASE_9] Queue processor triggered: ${qpRes.status}`);
-        } else {
-          console.error(`[PHASE_9] Queue processor FAILED: HTTP ${qpRes.status}`);
-        }
-      } else {
-        criticalPhaseStatus.queueFlushTriggeredOk = true;
-        console.log("[PHASE_9] No pending Drive writes, skipping flush");
-      }
+      const enq = await enqueuePhaseJob(sb as any, {
+        cycle_id: cycle?.id ?? cycleId,
+        user_id: resolvedUserId,
+        phase_name: "phase_9_queue_flush",
+        job_kind: "phase9_drive_queue_flush",
+        input: { pending_writes_count: pendingWriteCount ?? 0, source: "main_daily_cycle" },
+        priority: "high",
+      });
+      criticalPhaseStatus.queueFlushTriggeredOk = enq.ok;
+      console.log(`[PHASE_9] Drive queue flush detached: ${enq.ok} pending=${pendingWriteCount ?? 0}`);
     } catch (flushErr) {
-      console.error("[PHASE_9] Queue flush FAILED:", flushErr);
+      console.error("[PHASE_9] Queue flush enqueue FAILED:", flushErr);
     }
+
+    // P29B Phase 8B detached too (pantry flush) — enqueue worker job (the inline flush above
+    // already mutated DB rows synchronously but the heavy Drive writes are deferred via the queue).
+    try {
+      const enq8b = await enqueuePhaseJob(sb as any, {
+        cycle_id: cycle?.id ?? cycleId,
+        user_id: resolvedUserId,
+        phase_name: "phase_8b_pantry_b_flush",
+        job_kind: "phase8b_pantry_flush",
+        input: { source: "main_daily_cycle" },
+      });
+      console.log(`[PHASE_8B] pantry flush worker enqueued: ${enq8b.ok}`);
+    } catch (e) { console.warn("[PHASE_8B] enqueue err:", e); }
+
 
     await setPhase("phase_10_cleanup", "Fáze 10: Závěrečný cleanup");
     // ═══ PHASE_10_CLEANUP_AND_LOGGING ═══
