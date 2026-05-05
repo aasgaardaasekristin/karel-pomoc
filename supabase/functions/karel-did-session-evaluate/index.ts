@@ -2644,14 +2644,15 @@ async function persistEvaluation(
       .ilike("content", `%did_session_review:${reviewId}%`)
       .limit(1);
     if (!existingWrites || existingWrites.length === 0 || force) {
-      await sb.from("did_pending_drive_writes").insert({
+      const { safeEnqueueDriveWrite } = await import("../_shared/documentGovernance.ts");
+      await safeEnqueueDriveWrite(sb, {
         user_id: userId,
         target_document: projectionTarget,
         content: projectionContent,
         write_type: "append",
         priority: "high",
         status: "pending",
-      });
+      }, { source: "karel-did-session-evaluate:projection" });
       await sb
         .from("did_session_reviews")
         .update({ projection_status: "queued", updated_at: now })
