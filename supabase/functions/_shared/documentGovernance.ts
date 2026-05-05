@@ -330,6 +330,8 @@ export function isGovernedTarget(target: string): boolean {
     "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG",
     "KARTOTEKA_DID/00_CENTRUM/05E_TEAM_DECISIONS_LOG",
     "KARTOTEKA_DID/00_CENTRUM/DASHBOARD",
+    // P28 A+B.2 D1: safe-notes destination for Hana personal threads (no raw text — only safe summaries).
+    "KARTOTEKA_DID/00_CENTRUM/Bezpecne_DID_poznamky_z_osobniho_vlakna",
   ];
   if (centrumDocs.includes(target)) return true;
 
