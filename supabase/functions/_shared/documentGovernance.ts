@@ -366,9 +366,11 @@ export const TARGET_REROUTE_MAP: Record<string, string> = {
     "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
   "KARTOTEKA_DID/00_CENTRUM/05D_HERNY_LOG":
     "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
-  // Removed kontexty doc → KDO_JE_KDO (closest authoritative target)
-  "PAMET_KAREL/DID/KONTEXTY/SUPERVIZNI_POZNATKY":
-    "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
+  // P29A closeout-fix: SUPERVIZNI_POZNATKY is NOT auto-rerouted to KDO_JE_KDO.
+  // It is semantically a different document; mechanical rewrite into the
+  // people directory would corrupt that target. Such writes must be
+  // blocked_by_governance and require explicit manual mapping. Therefore
+  // intentionally NOT present in TARGET_REROUTE_MAP.
 
   // Default fallback for Bezpecne_DID_poznamky_z_osobniho_vlakna
   // (when content-aware routing is not available, e.g. legacy queue row).
