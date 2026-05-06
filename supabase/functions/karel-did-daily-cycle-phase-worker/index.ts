@@ -287,6 +287,7 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
         next_retry_at: exhausted ? null : new Date(Date.now() + Math.min(60_000 * Math.pow(2, job.attempt_count), 30 * 60_000)).toISOString(),
       }).eq("id", job.id);
       return { id: job.id, kind: job.job_kind, outcome: exhausted ? "failed_permanent" : "failed_retry", error: e?.message ?? String(e) };
+    }
   }
 
   // ── In-process dispatch for phase76b_auto_feedback_ai (P29B.3-H4) ──
@@ -323,7 +324,6 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
       }).eq("id", job.id);
       return { id: job.id, kind: job.job_kind, outcome: exhausted ? "failed_permanent" : "failed_retry", error: e?.message ?? String(e) };
     }
-  }
   }
 
   const target = dispatchTarget(job);
