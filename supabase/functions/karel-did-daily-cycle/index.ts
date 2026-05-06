@@ -2751,7 +2751,7 @@ serve(async (req) => {
   // user's morning cycle.
   // Manual admin trigger (source="manual") bypasses dedup so the harness
   // can prove an end-to-end run on demand.
-  if (!isManualTriggerEarly && !forceFullPathEarly && !isBackgroundOrchestrator && resolvedUserId) {
+  if (!isManualTriggerEarly && !forceFullPathEarly && !isInternalForceFullBypass && !isBackgroundOrchestrator && resolvedUserId) {
     const dedupSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const recentCycle = await dedupSb
       .from('did_update_cycles')
