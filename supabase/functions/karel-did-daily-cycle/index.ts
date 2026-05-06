@@ -6780,6 +6780,7 @@ Vra\u0165 JSON:
     } catch (retryErr) {
       console.warn("[EMAIL RETRY] Error:", retryErr);
     }
+    } // P29B.3-S0: end inline phase 6.5–7.6a guard
 
     await setPhase("phase_8_therapist_intel", "Fáze 8: Therapist intelligence (detached)");
     // ═══ PHASE_8 THERAPIST INTELLIGENCE — DETACHED via P29B phase worker ═══
