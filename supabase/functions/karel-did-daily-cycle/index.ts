@@ -2498,7 +2498,7 @@ serve(async (req) => {
   // can prove an end-to-end run on demand.
   // P29B.3-H8: forceFullPath (internal/cron only) also bypasses 3h dedup so
   // runtime acceptance can prove enqueue integrity on demand.
-  const forceFullPathEarly = (requestBody?.forceFullAnalysis === true || requestBody?.forceFullPath === true);
+  const forceFullPathEarly = (requestBody?.forceFullAnalysis === true || requestBody?.forceFullPath === true) && isCronCall;
   if (!isManualTriggerEarly && !forceFullPathEarly && resolvedUserId) {
     const dedupSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const recentCycle = await dedupSb
