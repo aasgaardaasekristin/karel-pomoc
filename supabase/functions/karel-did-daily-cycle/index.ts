@@ -4979,8 +4979,8 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       } catch (eeErr: any) {
         console.error("[P29B3_S0] early enqueue failed (non-fatal):", eeErr?.message ?? eeErr);
       }
-      // Stash for completion semantics later in the function.
-      (globalThis as any).__p29b3_s0_early_enqueue = p29b3EarlyEnqueueResult;
+      // (no globalThis stash — completion semantics derives state from
+      //  summarizePhaseJobsForCycle at end of run.)
       await setPhase("p29b3_s0_required_jobs_enqueued",
         `enqueued=${p29b3EarlyEnqueueResult.enqueued.length} skipped=${p29b3EarlyEnqueueResult.skipped.length} errors=${p29b3EarlyEnqueueResult.errors.length}`);
 
