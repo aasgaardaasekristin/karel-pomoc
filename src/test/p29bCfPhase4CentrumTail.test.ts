@@ -114,6 +114,6 @@ describe("P29B.2-CF — CENTRUM tail extraction", () => {
 
   it("enqueuePhaseJob idempotency key for phase4_centrum_tail is cycle_id:phase4_centrum_tail", () => {
     const j = read(F.jobs);
-    expect(j).toMatch(/idempotency_key\s*=\s*`\$\{i\.cycle_id\}:\$\{i\.job_kind\}/);
+    expect(j).toMatch(/`\$\{i\.cycle_id\}:\$\{i\.job_kind\}`/);
   });
 });

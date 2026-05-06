@@ -7294,26 +7294,14 @@ Vra\u0165 JSON:
               console.log(`[PHASE_8A5] Plan ${(plan as any).id} (${(plan as any).selected_part}, ${(plan as any).plan_date}): planned_not_started, skipped evaluator`);
               continue;
             }
-            // P29B: detach evaluator call into a phase job (one job per stale plan).
-            const enq = await enqueuePhaseJob(sb as any, {
-              cycle_id: cycle?.id ?? cycleId,
-              user_id: resolvedUserId,
-              phase_name: "phase_8a5_session_eval_safety_net",
-              job_kind: "phase8a5_session_eval_safety_net",
-              idempotency_suffix: String((plan as any).id),
-              input: {
-                plan_id: (plan as any).id,
-                planId: (plan as any).id,
-                source: "auto_safety_net",
-                reason: "calendar_day_safety_net",
-                completedBlocks: (liveProgress as any)?.completed_blocks,
-                totalBlocks: (liveProgress as any)?.total_blocks,
-                turnsByBlock: (liveProgress as any)?.turns_by_block ?? {},
-                observationsByBlock,
-              },
-            });
-            console.log(`[PHASE_8A5] Plan ${(plan as any).id} eval detached: ${enq.ok} (${enq.reason ?? "ok"})`);
-            if (enq.ok) phase8a5ProcessedSessions++;
+            // P29B.3-H8.3: legacy per-plan enqueue REMOVED.
+            // The required controller job `phase8a5_session_eval_safety_net`
+            // (enqueued once via enqueueRequiredPostPhase4Jobs) discovers
+            // and processes stale plans itself. Creating per-plan rows with
+            // the same job_kind violated the job-graph invariant
+            // (duplicate_required_jobs > 0).
+            console.log(`[PHASE_8A5] Plan ${(plan as any).id} will be handled by controller job (no per-plan enqueue)`);
+            phase8a5ProcessedSessions++;
             if (((liveProgress as any)?.completed_blocks ?? 0) < ((liveProgress as any)?.total_blocks ?? 1)) phase8a5PartialSessions++;
           } catch (evalErr) {
             console.warn(`[PHASE_8A5] Evaluator failed for plan ${(plan as any).id}:`, (evalErr as any)?.message ?? evalErr);
