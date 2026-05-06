@@ -18,6 +18,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { resolveCanonicalDidUserId } from "../_shared/canonicalUserResolver.ts";
 import { runPhase4CentrumTail, type CentrumTailResult } from "../_shared/dailyCyclePhase4CentrumTail.ts";
+import {
+  P29B3_S0_UNIMPLEMENTED_HELPER_KINDS,
+  P29B3_S0_HELPER_NOT_IMPLEMENTED_REASON,
+  type PhaseJobKind,
+} from "../_shared/dailyCyclePhaseJobs.ts";
+
+const P29B3_S0_UNIMPLEMENTED_SET = new Set<string>(P29B3_S0_UNIMPLEMENTED_HELPER_KINDS);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
