@@ -182,6 +182,8 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
     return { id: job.id, kind: job.job_kind, outcome: "skipped_already_claimed" };
   }
 
+  const target = dispatchTarget(job);
+
   // ── In-process dispatch for phase4_centrum_tail (no HTTP self-call) ──
   if (job.job_kind === "phase4_centrum_tail") {
     const ref = (job.input as any)?.payload_ref;
