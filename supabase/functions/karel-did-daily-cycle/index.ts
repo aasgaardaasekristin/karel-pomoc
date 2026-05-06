@@ -2498,6 +2498,15 @@ serve(async (req) => {
     typeof requestBody?.existing_cycle_id === "string" && requestBody.existing_cycle_id.length > 0
       ? requestBody.existing_cycle_id
       : null;
+  // P29B.3-H8.4: explicit internal force-full bypass marker. Requires
+  // (a) cron auth, (b) forceFullPath/forceFullAnalysis, (c) bypassDispatchCheck.
+  // When all three hold, the request bypasses recent_success dedup, dispatch
+  // slot cooldown and quiet-day branch — but NEVER the canonical user guard,
+  // Drive governance, P29A governance or phase-job idempotency.
+  const isInternalForceFullBypass =
+    isCronCall &&
+    forceFullPathEarly &&
+    requestBody?.bypassDispatchCheck === true;
 
   // ═══ P29B.3-H8.2: BACKGROUND ENTERED MARKER ═══
   // For background_orchestrator requests, write an entered marker BEFORE any
