@@ -3173,8 +3173,10 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
     // Catch-up crony (15:30, 17:00 CET) re-spouštějí cyklus pokud 14:00 selhal (503 apod.),
     // ale reserveDispatchSlot VŽDY zkontroluje, zda mail pro daný den už nebyl odeslán.
     const isManualTrigger = !isCronCall || requestBody?.source === "manual";
+    // P29B.3-H8.1: force-full + bypassDispatchCheck (internal proof) also skips slot cooldown.
+    const forceFullBypass = forceFullPathEarly && requestBody?.bypassDispatchCheck === true;
 
-    if (!isManualTrigger) {
+    if (!isManualTrigger && !forceFullBypass) {
       const pragueHour = parseInt(
         new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Prague", hour: "numeric", hour12: false }).format(new Date()),
         10
