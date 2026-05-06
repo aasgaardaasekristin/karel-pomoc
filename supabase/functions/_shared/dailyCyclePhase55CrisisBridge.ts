@@ -7,7 +7,7 @@
  *   - applied phase transitions,
  *   - called karel-crisis-daily-assessment via HTTP (AI heavy),
  *   - inserted "escalation" notes into did_pending_drive_writes,
- *   - and queued crisis emails via sendOrQueueEmail.
+ *   - and queued crisis emails via queue an email.
  *
  * H7 SCOPE:
  *   This helper is a **read-only / planning** crisis bridge. It only
