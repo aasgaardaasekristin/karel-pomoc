@@ -18,6 +18,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { resolveCanonicalDidUserId } from "../_shared/canonicalUserResolver.ts";
 import { runPhase4CentrumTail, type CentrumTailResult } from "../_shared/dailyCyclePhase4CentrumTail.ts";
+import {
+  P29B3_S0_UNIMPLEMENTED_HELPER_KINDS,
+  P29B3_S0_HELPER_NOT_IMPLEMENTED_REASON,
+  type PhaseJobKind,
+} from "../_shared/dailyCyclePhaseJobs.ts";
+
+const P29B3_S0_UNIMPLEMENTED_SET = new Set<string>(P29B3_S0_UNIMPLEMENTED_HELPER_KINDS);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -119,6 +126,31 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
       completed_at: new Date().toISOString(),
     }).eq("id", job.id);
     return { id: job.id, kind: job.job_kind, outcome: "controlled_skipped", reason: "non_canonical_user" };
+  }
+
+  // P29B.3-S0: known-but-not-yet-implemented helpers are marked
+  // controlled_skipped so they never stay queued/running and never 500.
+  if (P29B3_S0_UNIMPLEMENTED_SET.has(job.job_kind)) {
+    try {
+      await admin.from("did_daily_cycle_phase_jobs").update({
+        status: "controlled_skipped",
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+        error_message: P29B3_S0_HELPER_NOT_IMPLEMENTED_REASON,
+        result: {
+          outcome: "controlled_skipped",
+          reason: P29B3_S0_HELPER_NOT_IMPLEMENTED_REASON,
+          job_kind: job.job_kind,
+          p29b3_s0: true,
+        },
+      }).eq("id", job.id);
+    } catch (e) {
+      console.warn("[phase-worker] p29b3_s0 controlled_skip update failed (non-fatal):", e);
+    }
+    return {
+      id: job.id, kind: job.job_kind, outcome: "controlled_skipped",
+      reason: P29B3_S0_HELPER_NOT_IMPLEMENTED_REASON,
+    };
   }
 
   // Claim job: queued/failed_retry → running (only if still in expected state)

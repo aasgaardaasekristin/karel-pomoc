@@ -13,7 +13,8 @@ import {
 } from "../_shared/pantryB.ts";
 import { runGlobalDidEventIngestion } from "../_shared/didEventIngestion.ts";
 import { snapshotProtectedMutation } from "../_shared/mutationSnapshotGuard.ts";
-import { enqueuePhaseJob, summarizePhaseJobsForCycle } from "../_shared/dailyCyclePhaseJobs.ts";
+import { enqueuePhaseJob, summarizePhaseJobsForCycle, P29B3_REQUIRED_PHASE_JOB_KINDS } from "../_shared/dailyCyclePhaseJobs.ts";
+import { enqueueRequiredPostPhase4Jobs, isInlinePhase5To7Disabled } from "../_shared/dailyCycleEarlyEnqueue.ts";
 import {
   buildTherapistTaskInsert,
   buildPendingQuestionInsert,
@@ -4941,6 +4942,48 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       await setPhase("phase4_centrum_tail_enqueued",
         `enqueued=${centrumTailEnqueued} payload_id=${centrumTailPayloadId ?? "none"}`);
 
+      // ═══════════════════════════════════════════════════════════════════
+      // P29B.3-S0: EARLY ENQUEUE of all remaining required phase jobs.
+      // After this point the main HTTP request must NOT do long inline
+      // work for phases 5–7.x. Detached worker handles them. Helpers that
+      // are not implemented yet are marked controlled_skipped by worker.
+      // ═══════════════════════════════════════════════════════════════════
+      let p29b3EarlyEnqueueResult: { enqueued: string[]; skipped: any[]; errors: any[] } = {
+        enqueued: [], skipped: [], errors: [],
+      };
+      try {
+        let pendingDriveWritesCount = 0;
+        try {
+          const { count } = await sb.from("did_pending_drive_writes")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "pending");
+          pendingDriveWritesCount = count ?? 0;
+        } catch (_) { /* non-fatal */ }
+        const ref = centrumTailPayloadId
+          ? { payload_id: centrumTailPayloadId, payload_hash: "see_phase4_tail_enqueue" }
+          : null;
+        const res = await enqueueRequiredPostPhase4Jobs({
+          sb,
+          cycleId: cycle.id,
+          userId: resolvedUserId,
+          centrumTailPayloadRef: ref,
+          pendingDriveWritesCount,
+          source: "main_daily_cycle_p29b3_s0",
+        });
+        p29b3EarlyEnqueueResult = {
+          enqueued: res.enqueued.slice(),
+          skipped: res.skipped.slice(),
+          errors: res.errors.slice(),
+        };
+        console.log(`[P29B3_S0] early enqueue: enqueued=${res.enqueued.length} skipped=${res.skipped.length} errors=${res.errors.length}`);
+      } catch (eeErr: any) {
+        console.error("[P29B3_S0] early enqueue failed (non-fatal):", eeErr?.message ?? eeErr);
+      }
+      // (no globalThis stash — completion semantics derives state from
+      //  summarizePhaseJobsForCycle at end of run.)
+      await setPhase("p29b3_s0_required_jobs_enqueued",
+        `enqueued=${p29b3EarlyEnqueueResult.enqueued.length} skipped=${p29b3EarlyEnqueueResult.skipped.length} errors=${p29b3EarlyEnqueueResult.errors.length}`);
+
       // Daily report (deterministic, only actually performed changes)
       // RULE: Daily reports are EMAIL-ONLY, never saved as standalone files.
       const reportMatch = analysisText.match(/\[REPORT\]([\s\S]*?)\[\/REPORT\]/);
@@ -5747,6 +5790,9 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Health check error:", healthErr);
     }
 
+    if (isInlinePhase5To7Disabled()) {
+      await setPhase("p29b3_inline_phase_5_5_disabled", "detached jobs scheduled");
+    } else {
     await setPhase("crisis_bridge", "Fáze 5.5: Bridge a vyhodnocení krizí");
     // ═══ FÁZE 5.5: BRIDGE crisis_alerts → crisis_events + VYHODNOCENÍ AKTIVNÍCH KRIZÍ ═══
     try {
@@ -5995,6 +6041,7 @@ Pokud nejsou žádné nové claims, vrať: []`;
     } catch (crisisErr) {
       console.warn("[daily-cycle] Crisis eval phase error (non-fatal):", crisisErr);
     }
+    } // P29B.3-S0: end inline phase 5.5 guard
 
     await setPhase("phase_6_card_autoupdate", "Fáze 6: Autonomní aktualizace karet (detached)");
     // ═══ FÁZE 6: AUTONOMNÍ AKTUALIZACE KARET — DETACHED via P29B phase worker ═══
@@ -6012,6 +6059,9 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Phase 6 enqueue error (non-fatal):", cardUpdateErr);
     }
 
+    if (isInlinePhase5To7Disabled()) {
+      await setPhase("p29b3_inline_phase_65_to_76a_disabled", "detached jobs scheduled");
+    } else {
 
     // ═══ FÁZE 6.5: CLEANUP STARÉ PAMĚTI ═══
     try {
@@ -6730,6 +6780,7 @@ Vra\u0165 JSON:
     } catch (retryErr) {
       console.warn("[EMAIL RETRY] Error:", retryErr);
     }
+    } // P29B.3-S0: end inline phase 6.5–7.6a guard
 
     await setPhase("phase_8_therapist_intel", "Fáze 8: Therapist intelligence (detached)");
     // ═══ PHASE_8 THERAPIST INTELLIGENCE — DETACHED via P29B phase worker ═══
@@ -7370,11 +7421,18 @@ Vra\u0165 JSON:
         ...existingContext,
         phase_jobs: phaseJobsSummary,
         daily_cycle_completion_semantics: {
+          main_orchestrator_completed: true,
           main_phases_completed: true,
+          detached_jobs_required: [...P29B3_REQUIRED_PHASE_JOB_KINDS],
+          detached_jobs_enqueued: Object.keys(phaseJobsSummary.by_kind),
           detached_jobs_summary: phaseJobsSummary,
           critical_failures: criticalFailures,
           controlled_skips: controlledSkips,
-          architecture: "p29b_effortmax_detached_phase_jobs",
+          helper_coverage_partial: true,
+          p29b_accepted: false,
+          p29b3_s0_scaffold: true,
+          inline_phase_5_7_disabled: isInlinePhase5To7Disabled(),
+          architecture: "p29b3_staged_hard_architecture_no_false_green",
           merged_at: new Date().toISOString(),
           preserved_keys: Object.keys(existingContext),
         },
