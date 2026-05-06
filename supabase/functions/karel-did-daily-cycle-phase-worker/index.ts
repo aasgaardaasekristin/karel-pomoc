@@ -101,6 +101,9 @@ function dispatchTarget(job: Job): { fn: string; body: Record<string, unknown>; 
       return { fn: "run-daily-card-updates", body: { source: "p29b_phase_worker", cycle_id: job.cycle_id }, timeoutMs: 180_000 };
     case "phase6_card_autoupdate":
       return { fn: "run-daily-card-updates", body: { source: "p29b_phase_worker_phase6", cycle_id: job.cycle_id }, timeoutMs: 180_000 };
+    case "phase7_operative_plan":
+      // P29B.3-H1: detached operative-plan update (was inline in main daily-cycle).
+      return { fn: "update-operative-plan", body: { source: "p29b_phase_worker_phase7", cycle_id: job.cycle_id }, timeoutMs: 90_000 };
     case "phase8_therapist_intel":
       return { fn: "karel-daily-therapist-intelligence", body: { source: "p29b_phase_worker" }, timeoutMs: 90_000 };
     case "phase8a5_session_eval_safety_net": {
