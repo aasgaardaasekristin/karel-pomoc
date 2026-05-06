@@ -1,11 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/auth.ts";
-import {
-  getAccessToken, resolveKartotekaRoot, findFolder, listFiles,
-  readFileContent, overwriteDoc, createBackup,
-  FOLDER_MIME, GDOC_MIME,
-} from "../_shared/driveHelpers.ts";
+import { safeEnqueueDriveWrite } from "../_shared/documentGovernance.ts";
+
+// P29B.3-H1.1: canonical Drive target governed by P29A registry.
+// We never look up the legacy `05_PLAN` folder; all writes are enqueued
+// through the governance gate to KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN
+// and physically materialized by karel-drive-queue-processor.
+const CANONICAL_OPERATIVE_PLAN_TARGET =
+  "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const futureDate = (days: number) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
@@ -186,24 +189,25 @@ serve(async (req) => {
 
     const planContent = lines.join("\n");
 
-    // === WRITE TO DRIVE ===
-    const token = await getAccessToken();
-    const root = await resolveKartotekaRoot(token);
-    if (!root) throw new Error("KARTOTEKA_DID not found");
+    // === ENQUEUE GOVERNED DRIVE WRITE (P29B.3-H1.1) ===
+    // No legacy `05_PLAN` folder lookup. The write is enqueued through the
+    // P29A governance gate and physically materialized by the
+    // karel-drive-queue-processor onto the canonical 05A document.
+    const enqueue = await safeEnqueueDriveWrite(sb, {
+      target_document: CANONICAL_OPERATIVE_PLAN_TARGET,
+      content: planContent,
+      write_type: "replace",
+      priority: "high",
+      status: "pending",
+      dedupe_key: `operative_plan:05A:${today()}`,
+    }, { source: "update-operative-plan" });
 
-    const centrumId = await findFolder(token, "00_CENTRUM", root);
-    if (!centrumId) throw new Error("00_CENTRUM not found");
-    const planFolderId = await findFolder(token, "05_PLAN", centrumId);
-    if (!planFolderId) throw new Error("05_PLAN not found");
-
-    const planFiles = await listFiles(token, planFolderId);
-    const planFile = planFiles.find(f => f.name.includes("05A") || f.name.includes("Operativni"));
-    if (!planFile) throw new Error("05A_Operativni_Plan not found");
-
-    const currentPlan = await readFileContent(token, planFile.id, planFile.mimeType);
-    await createBackup(token, planFolderId, planFile.name, currentPlan);
-    await overwriteDoc(token, planFile.id, planContent);
-    console.log(`[operative-plan] Written ${planContent.length} chars to 05A`);
+    if (!enqueue.inserted) {
+      throw new Error(
+        `governance_enqueue_failed: ${enqueue.reason ?? "unknown"} (target=${enqueue.target ?? CANONICAL_OPERATIVE_PLAN_TARGET})`,
+      );
+    }
+    console.log(`[operative-plan] Enqueued ${planContent.length} chars → ${enqueue.target}`);
 
     // === LOG ===
     const totalSessionsCount = dailyPlans.length + midTermPlanned.length;
