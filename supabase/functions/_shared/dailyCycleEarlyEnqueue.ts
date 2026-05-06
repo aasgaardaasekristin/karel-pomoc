@@ -77,7 +77,9 @@ export async function enqueueRequiredPostPhase4Jobs(
 }
 
 /** Default-ON kill switch for inline phase 5–7.x blocks. */
+// deno-lint-ignore no-explicit-any
+declare const Deno: any;
 export function isInlinePhase5To7Disabled(): boolean {
-  const v = Deno.env.get("P29B_DISABLE_INLINE_PHASE_5_7") ?? "true";
-  return v.toLowerCase() !== "false";
+  const v = (typeof Deno !== "undefined" ? Deno.env.get("P29B_DISABLE_INLINE_PHASE_5_7") : undefined) ?? "true";
+  return String(v).toLowerCase() !== "false";
 }
