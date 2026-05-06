@@ -84,8 +84,9 @@ describe("P29B.3-H6 — phase65_memory_cleanup helper", () => {
       "aiCallWrapper",
       "sendEmail",
       "api.resend.com",
-      "did_pending_drive_writes",
-      "safeEnqueueDriveWrite",
+      // did_pending_drive_writes appears only in SENSITIVE_TABLES guard list.
+      // safeEnqueueDriveWrite is the real write path:
+      "safeEnqueueDriveWrite(",
       "drive.googleapis.com",
       "session_signoff",
       "playroom_session",
