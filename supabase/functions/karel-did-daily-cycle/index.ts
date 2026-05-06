@@ -2559,45 +2559,89 @@ serve(async (req) => {
       }
       const launchedCycleId = launchedCycle.id as string;
 
-      // Schedule background orchestration AFTER cycle row is durably written.
+      // P29B.3-H8.2: durable background scheduler via pg_net RPC.
+      // waitUntil(self-fetch) is kept ONLY as fallback; the RPC gives us a
+      // pg_net request id we can audit in net._http_response and persist
+      // into did_update_cycles.context_data.background_request_id.
+      let backgroundRequestId: number | null = null;
+      let backgroundSchedulerError: string | null = null;
       try {
-        const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-        const bgBody = {
-          ...requestBody,
-          existing_cycle_id: launchedCycleId,
-          background_orchestrator: true,
-          _bg: true,
-          source: requestBody?.source || "p29b3_h8_1_force_full_launcher",
-        };
-        const bgPromise = fetch(`${supabaseUrl}/functions/v1/karel-did-daily-cycle`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${serviceKey}`,
-            "x-detached": "1",
+        const rpcRes = await launcherSb.rpc("did_schedule_daily_cycle_background", {
+          p_cycle_id: launchedCycleId,
+          p_body: {
+            ...requestBody,
+            source: requestBody?.source || "p29b3_h8_2_force_full_launcher",
           },
-          body: JSON.stringify(bgBody),
-        }).then(async (r) => {
-          try { await r.text(); } catch {}
-          console.log(`[daily-cycle] H8.1 background orchestrator status=${r.status} cycle=${launchedCycleId}`);
-        }).catch(async (e) => {
-          console.warn("[daily-cycle] H8.1 background self-invoke failed:", (e as Error)?.message || e);
-          try {
-            await launcherSb.from("did_update_cycles").update({
-              status: "failed",
-              completed_at: new Date().toISOString(),
-              last_error: `force_full_background_invoke_failed:${(e as Error)?.message || String(e)}`.slice(0, 480),
-            }).eq("id", launchedCycleId);
-          } catch {}
         });
-        // @ts-ignore — EdgeRuntime is provided by Supabase edge runtime.
-        if (typeof EdgeRuntime !== "undefined" && (EdgeRuntime as any)?.waitUntil) {
-          // @ts-ignore
-          (EdgeRuntime as any).waitUntil(bgPromise);
+        if (rpcRes.error) {
+          backgroundSchedulerError = rpcRes.error.message || String(rpcRes.error);
+          console.warn("[daily-cycle] H8.2 durable scheduler RPC failed:", backgroundSchedulerError);
+        } else {
+          const rid = (rpcRes.data as any)?.request_id;
+          if (typeof rid === "number" || typeof rid === "bigint") {
+            backgroundRequestId = Number(rid);
+          } else if (typeof rid === "string" && /^\d+$/.test(rid)) {
+            backgroundRequestId = Number(rid);
+          }
         }
-      } catch (schedErr) {
-        console.warn("[daily-cycle] H8.1 background scheduling threw:", schedErr);
+      } catch (rpcErr) {
+        backgroundSchedulerError = (rpcErr as Error)?.message || String(rpcErr);
+        console.warn("[daily-cycle] H8.2 durable scheduler threw:", backgroundSchedulerError);
+      }
+      // Persist background_request_id + scheduler outcome to context_data.
+      try {
+        await launcherSb.from("did_update_cycles").update({
+          context_data: {
+            ...launcherContext,
+            background_request_id: backgroundRequestId,
+            background_scheduler: {
+              durable_scheduler_used: backgroundRequestId !== null,
+              request_id: backgroundRequestId,
+              error: backgroundSchedulerError,
+              scheduled_at: new Date().toISOString(),
+            },
+          },
+        }).eq("id", launchedCycleId);
+      } catch (_) { /* non-fatal */ }
+
+      // Fallback only: if durable scheduler did not return a request id,
+      // also try waitUntil(self-fetch). This preserves H8.1 behavior.
+      if (backgroundRequestId === null) {
+        try {
+          const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+          const cronSecret = Deno.env.get("KAREL_CRON_SECRET") || "";
+          const bgBody = {
+            ...requestBody,
+            existing_cycle_id: launchedCycleId,
+            background_orchestrator: true,
+            forceFullPath: true,
+            forceFullAnalysis: true,
+            _bg: true,
+            _bg_fallback: true,
+            source: requestBody?.source || "p29b3_h8_2_force_full_launcher",
+          };
+          const bgPromise = fetch(`${supabaseUrl}/functions/v1/karel-did-daily-cycle`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Karel-Cron-Secret": cronSecret,
+              "x-detached": "1",
+            },
+            body: JSON.stringify(bgBody),
+          }).then(async (r) => {
+            try { await r.text(); } catch {}
+            console.log(`[daily-cycle] H8.2 fallback waitUntil bg status=${r.status} cycle=${launchedCycleId}`);
+          }).catch((e) => {
+            console.warn("[daily-cycle] H8.2 fallback waitUntil failed:", (e as Error)?.message || e);
+          });
+          // @ts-ignore — EdgeRuntime is provided by Supabase edge runtime.
+          if (typeof EdgeRuntime !== "undefined" && (EdgeRuntime as any)?.waitUntil) {
+            // @ts-ignore
+            (EdgeRuntime as any).waitUntil(bgPromise);
+          }
+        } catch (schedErr) {
+          console.warn("[daily-cycle] H8.2 fallback scheduling threw:", schedErr);
+        }
       }
 
       return new Response(
@@ -2606,9 +2650,12 @@ serve(async (req) => {
           accepted: true,
           mode: "detached_force_full_orchestrator",
           cycle_id: launchedCycleId,
+          background_request_id: backgroundRequestId,
+          durable_scheduler_used: backgroundRequestId !== null,
+          background_scheduler_error: backgroundSchedulerError,
           canonical_user_id: resolvedUserId,
           force_full_path: true,
-          message: "cycle row created and background orchestration scheduled",
+          message: "cycle row created and background orchestration scheduled (durable pg_net + waitUntil fallback)",
         }),
         { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
