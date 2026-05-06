@@ -17,7 +17,7 @@
  *   - NO live session start, NO playroom start, NO signoff mutation
  *   - NO direct Drive API call; Drive only via post-intervention-sync which
  *     itself goes through P29A governance (safeEnqueueDriveWrite). The helper
- *     must NEVER touch did_pending_drive_writes directly.
+ *     must NEVER touch the pending-drive-writes table directly.
  *   - NO AI call in this helper. (phase5 inline never used AI; H5 keeps it
  *     deterministic.)
  *   - phase5.5 crisis_bridge is intentionally NOT part of H5 — it is split to
@@ -341,7 +341,7 @@ export async function runPhase5Revize05ab(
 
     // 4e. Drive flush via governed sync function (fire-and-forget,
     // post-intervention-sync internally uses safeEnqueueDriveWrite — we never
-    // touch did_pending_drive_writes directly here).
+    // touch the pending-drive-writes table directly here).
     if (result.db_updates_count > 0) {
       try {
         const url = `${(globalThis as any).Deno?.env?.get?.("SUPABASE_URL")}/functions/v1/post-intervention-sync`;
