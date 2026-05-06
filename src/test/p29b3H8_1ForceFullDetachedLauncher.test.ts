@@ -80,7 +80,7 @@ describe("P29B.3-H8.1 force-full detached launcher", () => {
 
   it("dedup (3h recent_success) is bypassed by forceFullPathEarly OR background orchestrator", () => {
     expect(SRC).toMatch(
-      /!isManualTriggerEarly && !forceFullPathEarly && !isBackgroundOrchestrator && resolvedUserId/,
+      /!isManualTriggerEarly && !forceFullPathEarly && !isInternalForceFullBypass && !isBackgroundOrchestrator && resolvedUserId/,
     );
   });
 
