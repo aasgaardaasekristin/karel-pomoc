@@ -62,7 +62,7 @@ describe("P29B.3-S0 orchestrator safety scaffold", () => {
   it("phase worker imports the unimplemented set and short-circuits to controlled_skipped", () => {
     expect(workerSrc).toContain("P29B3_S0_UNIMPLEMENTED_SET");
     expect(workerSrc).toContain('"controlled_skipped"');
-    expect(workerSrc).toContain("helper_not_implemented_yet_p29b3_staged_refactor");
+    expect(workerSrc).toContain("P29B3_S0_HELPER_NOT_IMPLEMENTED_REASON");
     // Must use try/catch (not .catch on PostgrestBuilder)
     expect(workerSrc).not.toMatch(/\.from\(["'][^"']+["']\)\.update\([\s\S]*?\)\.catch\(/);
   });
