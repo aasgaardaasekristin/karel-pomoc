@@ -12,11 +12,55 @@ export type PhaseJobKind =
   | "phase4_card_profiling"
   | "phase4_card_update_tail"
   | "phase4_centrum_tail"
+  | "phase5_revize_05ab"
   | "phase6_card_autoupdate"
+  | "phase65_memory_cleanup"
+  | "phase7_operative_plan"
+  | "phase75_escalation_emails"
+  | "phase76_feedback_retry"
+  | "phase76b_auto_feedback_ai"
   | "phase8_therapist_intel"
   | "phase8a5_session_eval_safety_net"
   | "phase8b_pantry_flush"
   | "phase9_drive_queue_flush";
+
+/**
+ * P29B.3-S0: list of phase jobs the main daily-cycle MUST enqueue
+ * immediately after `update_cards_enqueued`. Used by the orchestrator
+ * helper, the completion-semantics writer and the test suite.
+ */
+export const P29B3_REQUIRED_PHASE_JOB_KINDS: readonly PhaseJobKind[] = [
+  "phase4_centrum_tail",
+  "phase4_card_profiling",
+  "phase5_revize_05ab",
+  "phase6_card_autoupdate",
+  "phase65_memory_cleanup",
+  "phase7_operative_plan",
+  "phase75_escalation_emails",
+  "phase76_feedback_retry",
+  "phase76b_auto_feedback_ai",
+  "phase8_therapist_intel",
+  "phase8b_pantry_flush",
+  "phase9_drive_queue_flush",
+] as const;
+
+/**
+ * P29B.3-S0: helper kinds that have NOT yet been implemented as detached
+ * workers. The phase worker MUST mark them as `controlled_skipped` with
+ * the reason below — they must never stay queued/running and must never
+ * cause a 500.
+ */
+export const P29B3_S0_UNIMPLEMENTED_HELPER_KINDS: readonly PhaseJobKind[] = [
+  "phase5_revize_05ab",
+  "phase65_memory_cleanup",
+  "phase7_operative_plan",
+  "phase75_escalation_emails",
+  "phase76_feedback_retry",
+  "phase76b_auto_feedback_ai",
+] as const;
+
+export const P29B3_S0_HELPER_NOT_IMPLEMENTED_REASON =
+  "helper_not_implemented_yet_p29b3_staged_refactor";
 
 export interface EnqueuePhaseJobInput {
   cycle_id: string;
