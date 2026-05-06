@@ -3328,9 +3328,36 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const cycleInsertPayload: any = { cycle_type: "daily", status: "running" };
-    if (resolvedUserId) cycleInsertPayload.user_id = resolvedUserId;
-    const { data: cycle, error: cycleErr } = await sb.from("did_update_cycles").insert(cycleInsertPayload).select().single();
+    // P29B.3-H8.1: if launcher already created the cycle row and we're in
+    // background_orchestrator mode, reuse that row instead of creating a
+    // second one. This preserves audit continuity for force-full launches.
+    let cycle: { id: string } | null = null;
+    let cycleErr: { message: string } | null = null;
+    if (existingCycleIdFromBody && isBackgroundOrchestrator) {
+      const reuseRes = await sb.from("did_update_cycles")
+        .select("id, user_id, status")
+        .eq("id", existingCycleIdFromBody)
+        .maybeSingle();
+      if (reuseRes.data?.id) {
+        cycle = { id: reuseRes.data.id };
+        // refresh phase + heartbeat to mark background orchestrator started
+        await sb.from("did_update_cycles").update({
+          phase: "p29b3_force_full_background_orchestrator_started",
+          phase_step: "background_orchestrator_started",
+          heartbeat_at: new Date().toISOString(),
+          last_heartbeat_at: new Date().toISOString(),
+        }).eq("id", reuseRes.data.id);
+      } else {
+        console.warn(`[daily-cycle] H8.1 background: existing_cycle_id ${existingCycleIdFromBody} not found, creating new row`);
+      }
+    }
+    if (!cycle) {
+      const cycleInsertPayload: any = { cycle_type: "daily", status: "running" };
+      if (resolvedUserId) cycleInsertPayload.user_id = resolvedUserId;
+      const ins = await sb.from("did_update_cycles").insert(cycleInsertPayload).select().single();
+      cycle = ins.data as any;
+      cycleErr = ins.error as any;
+    }
     if (cycleErr) console.error("[daily-cycle] Failed to create cycle record:", cycleErr.message);
     cycleId = cycle?.id || null;
     try {
