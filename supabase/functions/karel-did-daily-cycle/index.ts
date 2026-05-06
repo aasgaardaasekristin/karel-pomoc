@@ -5790,6 +5790,9 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Health check error:", healthErr);
     }
 
+    if (isInlinePhase5To7Disabled()) {
+      await setPhase("p29b3_inline_phase_5_5_disabled", "detached jobs scheduled");
+    } else {
     await setPhase("crisis_bridge", "Fáze 5.5: Bridge a vyhodnocení krizí");
     // ═══ FÁZE 5.5: BRIDGE crisis_alerts → crisis_events + VYHODNOCENÍ AKTIVNÍCH KRIZÍ ═══
     try {
