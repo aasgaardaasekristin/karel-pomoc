@@ -6059,6 +6059,9 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Phase 6 enqueue error (non-fatal):", cardUpdateErr);
     }
 
+    if (isInlinePhase5To7Disabled()) {
+      await setPhase("p29b3_inline_phase_65_to_76a_disabled", "detached jobs scheduled");
+    } else {
 
     // ═══ FÁZE 6.5: CLEANUP STARÉ PAMĚTI ═══
     try {
