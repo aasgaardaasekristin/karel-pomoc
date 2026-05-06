@@ -199,18 +199,7 @@ serve(async (req) => {
       write_type: "replace",
       priority: "high",
       status: "pending",
-      content_type: "operative_plan",
-      source_type: "update_operative_plan",
-      source_ref: `operative_plan:${today()}`,
       dedupe_key: `operative_plan:05A:${today()}`,
-      metadata: {
-        parts_count: parts.length,
-        crises_count: crises.length,
-        canonical_sessions_count: dailyPlans.length,
-        midterm_sessions_count: midTermPlanned.length,
-        content_length: planContent.length,
-        generated_at: new Date().toISOString(),
-      },
     }, { source: "update-operative-plan" });
 
     if (!enqueue.inserted) {
