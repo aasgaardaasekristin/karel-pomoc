@@ -1,10 +1,10 @@
 /**
- * P29B.3-S0: orchestrator helper that enqueues all required phase jobs
+ * P29B.3-S0/H8: orchestrator helper that enqueues all required phase jobs
  * immediately after `update_cards_enqueued` in the main daily-cycle.
  *
- * This MUST be called as early as possible after Phase 4 enqueue. It is
- * idempotent (every enqueuePhaseJob call uses cycle_id+job_kind as the
- * idempotency key).
+ * Idempotent: every enqueuePhaseJob call uses cycle_id+job_kind as the
+ * idempotency key. Iterates strictly over P29B3_REQUIRED_PHASE_JOB_KINDS so
+ * coverage is loop-driven, not literal-string driven.
  */
 import {
   enqueuePhaseJob,
@@ -12,12 +12,20 @@ import {
   type PhaseJobKind,
 } from "./dailyCyclePhaseJobs.ts";
 
+export interface CentrumTailPayloadRef {
+  payload_id: string;
+  payload_hash: string;
+  /** P29B.3-H8: optional discriminators for explicit ref shape. */
+  payload_table?: string;
+  job_kind?: PhaseJobKind;
+}
+
 export interface EarlyEnqueueInput {
   sb: any;
   cycleId: string;
   userId: string;
-  /** Optional payload ref for phase4_centrum_tail (created by main cycle). */
-  centrumTailPayloadRef?: { payload_id: string; payload_hash: string } | null;
+  /** Optional payload ref for phase4_centrum_tail. */
+  centrumTailPayloadRef?: CentrumTailPayloadRef | null;
   /** Optional pending drive write count for phase9 dispatch metadata. */
   pendingDriveWritesCount?: number;
   source: string;
@@ -34,10 +42,14 @@ export async function enqueueRequiredPostPhase4Jobs(
 ): Promise<EarlyEnqueueResult> {
   const out: EarlyEnqueueResult = { enqueued: [], skipped: [], errors: [] };
   for (const kind of P29B3_REQUIRED_PHASE_JOB_KINDS) {
-    const input: Record<string, unknown> = { source: i.source };
+    const input: Record<string, unknown> = {
+      source: i.source,
+      p29b3_required_job: true,
+    };
     if (kind === "phase4_centrum_tail") {
       if (!i.centrumTailPayloadRef) {
-        // payload missing → leave to runtime tail logic to enqueue with payload
+        // Only this job legitimately requires a payload ref. All other
+        // required jobs MUST be enqueued unconditionally.
         out.skipped.push({ kind, reason: "missing_centrum_payload_ref" });
         continue;
       }
