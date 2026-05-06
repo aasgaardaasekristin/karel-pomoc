@@ -3432,11 +3432,15 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
 
     if (runningDailyCycle && !(isBackgroundOrchestrator && existingCycleIdFromBody && runningDailyCycle.id === existingCycleIdFromBody)) {
       console.log(`[daily-cycle] Already running (live): cycle ${runningDailyCycle.id} since ${runningDailyCycle.started_at}, hb=${runningDailyCycle.heartbeat_at}, phase=${(runningDailyCycle as any).phase}, skipping.`);
+      // H8.2: if this was a background orchestrator request blocked because a
+      // *different* cycle is running, audit the guard exit on OUR cycle row.
+      await recordBackgroundGuardExit(`already_running_other_cycle:${runningDailyCycle.id}`);
       return new Response(JSON.stringify({
         success: true,
         skipped: true,
         reason: "already_running",
         cycleId: runningDailyCycle.id,
+        existing_cycle_id: existingCycleIdFromBody,
         liveDefinition: "coalesce(heartbeat_at, started_at) >= now() - 30min",
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
