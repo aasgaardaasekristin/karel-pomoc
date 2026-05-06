@@ -85,11 +85,30 @@ export interface EnqueuePhaseJobResult {
   reason?: string;
 }
 
+/**
+ * P29B.3-H8.3: Required job kinds MUST NOT use idempotency_suffix.
+ * Allowing a suffix on a required kind would create duplicate rows for the
+ * same job_kind in a cycle (idempotency keys differ but the canonical
+ * required-job loop also inserts one row), violating the job-graph invariant.
+ */
+const REQUIRED_KIND_SET = new Set<string>(P29B3_REQUIRED_PHASE_JOB_KINDS as readonly string[]);
+
 export async function enqueuePhaseJob(
   admin: any,
   i: EnqueuePhaseJobInput,
 ): Promise<EnqueuePhaseJobResult> {
-  const idempotency_key = `${i.cycle_id}:${i.job_kind}${i.idempotency_suffix ? `:${i.idempotency_suffix}` : ""}`;
+  const rawSuffix = typeof i.idempotency_suffix === "string" ? i.idempotency_suffix.trim() : "";
+  if (rawSuffix && REQUIRED_KIND_SET.has(i.job_kind)) {
+    return {
+      ok: false,
+      inserted: false,
+      idempotency_key: `${i.cycle_id}:${i.job_kind}`,
+      reason: "idempotency_suffix_for_required_job_forbidden",
+    };
+  }
+  const idempotency_key = rawSuffix
+    ? `${i.cycle_id}:${i.job_kind}:${rawSuffix}`
+    : `${i.cycle_id}:${i.job_kind}`;
   try {
     const { data, error } = await admin
       .from("did_daily_cycle_phase_jobs")
