@@ -2498,6 +2498,15 @@ serve(async (req) => {
     typeof requestBody?.existing_cycle_id === "string" && requestBody.existing_cycle_id.length > 0
       ? requestBody.existing_cycle_id
       : null;
+  // P29B.3-H8.4: explicit internal force-full bypass marker. Requires
+  // (a) cron auth, (b) forceFullPath/forceFullAnalysis, (c) bypassDispatchCheck.
+  // When all three hold, the request bypasses recent_success dedup, dispatch
+  // slot cooldown and quiet-day branch — but NEVER the canonical user guard,
+  // Drive governance, P29A governance or phase-job idempotency.
+  const isInternalForceFullBypass =
+    isCronCall &&
+    forceFullPathEarly &&
+    requestBody?.bypassDispatchCheck === true;
 
   // ═══ P29B.3-H8.2: BACKGROUND ENTERED MARKER ═══
   // For background_orchestrator requests, write an entered marker BEFORE any
@@ -2742,7 +2751,7 @@ serve(async (req) => {
   // user's morning cycle.
   // Manual admin trigger (source="manual") bypasses dedup so the harness
   // can prove an end-to-end run on demand.
-  if (!isManualTriggerEarly && !forceFullPathEarly && !isBackgroundOrchestrator && resolvedUserId) {
+  if (!isManualTriggerEarly && !forceFullPathEarly && !isInternalForceFullBypass && !isBackgroundOrchestrator && resolvedUserId) {
     const dedupSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const recentCycle = await dedupSb
       .from('did_update_cycles')
@@ -3284,8 +3293,8 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
     // Catch-up crony (15:30, 17:00 CET) re-spouštějí cyklus pokud 14:00 selhal (503 apod.),
     // ale reserveDispatchSlot VŽDY zkontroluje, zda mail pro daný den už nebyl odeslán.
     const isManualTrigger = !isCronCall || requestBody?.source === "manual";
-    // P29B.3-H8.1: force-full + bypassDispatchCheck (internal proof) also skips slot cooldown.
-    const forceFullBypass = forceFullPathEarly && requestBody?.bypassDispatchCheck === true;
+    // P29B.3-H8.1/H8.4: force-full + bypassDispatchCheck (internal proof) skips slot cooldown.
+    const forceFullBypass = isInternalForceFullBypass || (forceFullPathEarly && requestBody?.bypassDispatchCheck === true);
 
     if (!isManualTrigger && !forceFullBypass) {
       const pragueHour = parseInt(
