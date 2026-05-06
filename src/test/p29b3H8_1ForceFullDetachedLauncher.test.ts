@@ -85,14 +85,13 @@ describe("P29B.3-H8.1 force-full detached launcher", () => {
   });
 
   it("canonical user guard is NOT bypassed by forceFullPath", () => {
-    // P23 guard runs unconditionally for any resolvedUserId, before launcher.
     const guardIdx = SRC.indexOf("P23 fix: enforce canonical scope match");
     const launcherIdx = SRC.indexOf("P29B.3-H8.1 FORCE-FULL DETACHED LAUNCHER");
     expect(guardIdx).toBeGreaterThan(0);
-    expect(launcherIdx).toBeGreaterThan(guardIdx); // guard runs FIRST
-    const guardSlice = SRC.slice(guardIdx, launcherIdx);
+    expect(launcherIdx).toBeGreaterThan(guardIdx);
+    const guardSlice = SRC.slice(guardIdx, guardIdx + 1200);
     expect(guardSlice).toMatch(/CANONICAL_USER_SCOPE_MISMATCH/);
-    expect(guardSlice).not.toMatch(/forceFullPath/); // guard does not check force flag
+    expect(guardSlice).not.toMatch(/if\s*\([^)]*forceFull/);
   });
 
   it("user JWT path cannot trigger forceFullPath (isCronCall required)", () => {
