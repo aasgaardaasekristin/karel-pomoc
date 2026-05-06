@@ -54,7 +54,7 @@ export const P29B3_S0_UNIMPLEMENTED_HELPER_KINDS: readonly PhaseJobKind[] = [
   "phase5_revize_05ab",
   "phase65_memory_cleanup",
   // P29B.3-H1: phase7_operative_plan now implemented in phase worker.
-  "phase75_escalation_emails",
+  // P29B.3-H2: phase75_escalation_emails now implemented in phase worker.
   "phase76_feedback_retry",
   "phase76b_auto_feedback_ai",
 ] as const;
