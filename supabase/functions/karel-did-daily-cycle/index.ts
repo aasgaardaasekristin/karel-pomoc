@@ -13,7 +13,8 @@ import {
 } from "../_shared/pantryB.ts";
 import { runGlobalDidEventIngestion } from "../_shared/didEventIngestion.ts";
 import { snapshotProtectedMutation } from "../_shared/mutationSnapshotGuard.ts";
-import { enqueuePhaseJob, summarizePhaseJobsForCycle } from "../_shared/dailyCyclePhaseJobs.ts";
+import { enqueuePhaseJob, summarizePhaseJobsForCycle, P29B3_REQUIRED_PHASE_JOB_KINDS } from "../_shared/dailyCyclePhaseJobs.ts";
+import { enqueueRequiredPostPhase4Jobs, isInlinePhase5To7Disabled } from "../_shared/dailyCycleEarlyEnqueue.ts";
 import {
   buildTherapistTaskInsert,
   buildPendingQuestionInsert,
