@@ -327,6 +327,45 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
     }
   }
 
+  // ── In-process dispatch for phase5_revize_05ab (P29B.3-H5) ──
+  // Deterministic plan revision (expire/downgrade/demote/promote 05A↔05B).
+  // No AI, no live session start, no playroom, no signoff mutation, no
+  // ungoverned Drive write. Drive flush goes through post-intervention-sync
+  // which itself uses safeEnqueueDriveWrite (P29A governance).
+  if (job.job_kind === "phase5_revize_05ab") {
+    try {
+      const r = await withHeartbeat(admin, job.id, () =>
+        runPhase5Revize05ab({
+          sb: admin,
+          cycleId: job.cycle_id ?? "",
+          userId: job.user_id,
+          input: (job.input as any) ?? {},
+          setHeartbeat: async () => {
+            await admin.from("did_daily_cycle_phase_jobs")
+              .update({ last_heartbeat_at: new Date().toISOString() })
+              .eq("id", job.id);
+          },
+        }),
+      );
+      const status = r.outcome === "controlled_skipped" ? "controlled_skipped" : "completed";
+      await admin.from("did_daily_cycle_phase_jobs").update({
+        status,
+        completed_at: new Date().toISOString(),
+        result: r as unknown as Record<string, unknown>,
+        error_message: r.errors.length ? r.errors.slice(0, 3).join(" | ").slice(0, 500) : null,
+      }).eq("id", job.id);
+      return { id: job.id, kind: job.job_kind, outcome: status, candidates: r.candidates_count, evaluated: r.evaluated_count, would_update: r.would_update_count, db_updates: r.db_updates_count, drive_writes: r.drive_writes_enqueued, dry_run: r.dry_run, apply_output: r.apply_output };
+    } catch (e: any) {
+      const exhausted = job.attempt_count + 1 >= job.max_attempts;
+      await admin.from("did_daily_cycle_phase_jobs").update({
+        status: exhausted ? "failed_permanent" : "failed_retry",
+        error_message: (e?.message ?? String(e)).slice(0, 500),
+        next_retry_at: exhausted ? null : new Date(Date.now() + Math.min(60_000 * Math.pow(2, job.attempt_count), 30 * 60_000)).toISOString(),
+      }).eq("id", job.id);
+      return { id: job.id, kind: job.job_kind, outcome: exhausted ? "failed_permanent" : "failed_retry", error: e?.message ?? String(e) };
+    }
+  }
+
   const target = dispatchTarget(job);
   if ("skip" in target) {
     await admin.from("did_daily_cycle_phase_jobs").update({
