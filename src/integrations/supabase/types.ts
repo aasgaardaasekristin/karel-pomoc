@@ -7321,7 +7321,6 @@ export type Database = {
       }
       did_count_visible_dirty_fields: { Args: never; Returns: number }
       did_daily_cycles_sweep_stale: { Args: never; Returns: Json }
-      did_h8_3_trigger_force_full_proof: { Args: never; Returns: Json }
       did_lifecycle_state_for_thread: {
         Args: { p_thread_id: string }
         Returns: {

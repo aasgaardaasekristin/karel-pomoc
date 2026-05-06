@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.did_h8_3_trigger_force_full_proof();
