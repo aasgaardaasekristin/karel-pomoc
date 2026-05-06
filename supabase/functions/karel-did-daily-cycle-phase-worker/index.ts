@@ -367,7 +367,51 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
     }
   }
 
-  const target = dispatchTarget(job);
+  // ── In-process dispatch for phase65_memory_cleanup (P29B.3-H6) ──
+  // Cache cleanup + retention. NO AI, NO email, NO Drive write,
+  // NO sensitive-table delete. Defaults dry_run=true, apply_output=false.
+  if (job.job_kind === "phase65_memory_cleanup") {
+    try {
+      const r = await withHeartbeat(admin, job.id, () =>
+        runPhase65MemoryCleanup({
+          sb: admin,
+          cycleId: job.cycle_id ?? "",
+          userId: job.user_id,
+          input: (job.input as any) ?? {},
+          setHeartbeat: async () => {
+            await admin.from("did_daily_cycle_phase_jobs")
+              .update({ last_heartbeat_at: new Date().toISOString() })
+              .eq("id", job.id);
+          },
+        }),
+      );
+      const status = r.outcome === "controlled_skipped" ? "controlled_skipped" : "completed";
+      await admin.from("did_daily_cycle_phase_jobs").update({
+        status,
+        completed_at: new Date().toISOString(),
+        result: r as unknown as Record<string, unknown>,
+        error_message: r.errors.length ? r.errors.slice(0, 3).join(" | ").slice(0, 500) : null,
+      }).eq("id", job.id);
+      return {
+        id: job.id, kind: job.job_kind, outcome: status,
+        candidates: r.candidates_count,
+        would_archive: r.would_archive_count,
+        would_delete_cache: r.would_delete_cache_count,
+        archived: r.archived_count,
+        deleted_cache: r.deleted_cache_count,
+        dry_run: r.dry_run, apply_output: r.apply_output,
+      };
+    } catch (e: any) {
+      const exhausted = job.attempt_count + 1 >= job.max_attempts;
+      await admin.from("did_daily_cycle_phase_jobs").update({
+        status: exhausted ? "failed_permanent" : "failed_retry",
+        error_message: (e?.message ?? String(e)).slice(0, 500),
+        next_retry_at: exhausted ? null : new Date(Date.now() + Math.min(60_000 * Math.pow(2, job.attempt_count), 30 * 60_000)).toISOString(),
+      }).eq("id", job.id);
+      return { id: job.id, kind: job.job_kind, outcome: exhausted ? "failed_permanent" : "failed_retry", error: e?.message ?? String(e) };
+    }
+  }
+
   if ("skip" in target) {
     await admin.from("did_daily_cycle_phase_jobs").update({
       status: "controlled_skipped",
