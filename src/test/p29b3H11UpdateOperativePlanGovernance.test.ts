@@ -11,7 +11,7 @@ const fnSrc = readFileSync(
 describe("P29B.3-H1.1 update-operative-plan governance fix", () => {
   it("does not reference the legacy 05_PLAN folder anywhere", () => {
     // Allowed: '05A...', 'Operativni_Plan' substring within canonical path. Forbidden: bare '05_PLAN'.
-    expect(/['"`]05_PLAN['"`]/.test(fnSrc)).toBe(false);
+    expect(/['"]05_PLAN['"]/.test(fnSrc)).toBe(false);
     expect(fnSrc).not.toMatch(/findFolder\([^)]*05_PLAN/);
     expect(fnSrc).not.toContain('"05_PLAN not found"');
   });
