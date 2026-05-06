@@ -109,9 +109,7 @@ export async function runPhase55CrisisBridge(
   const log = params.log ?? (() => {});
   const sb = params.sb;
 
-  // Sentinel: keep the forbidden-token list referenced at runtime so
-  // dead-code analysis cannot strip it.
-  void FORBIDDEN_LIVE_TOKENS;
+  // (See FORBIDDEN_LIVE_TOKENS comment above — no runtime sentinel needed.)
 
   const result: Phase55CrisisBridgeResult = {
     outcome: "completed",
