@@ -85,16 +85,12 @@ const DEFAULT_MAX_CANDIDATES = 20;
 const HARD_MAX_CANDIDATES = 100;
 
 /**
- * H7 invariants — the helper must NEVER perform any of these operations.
- * Listed as a sentinel so source audits can confirm we declared them.
+ * H7 invariants — the helper must NEVER perform any live-session,
+ * playroom, signoff, email, Drive, or AI mutation. We rely on the
+ * absence of those identifiers in this file (verified by
+ * src/test/p29b3H7Phase55CrisisBridgeHelper.test.ts) instead of a
+ * runtime sentinel array, so source audits stay deterministic.
  */
-const FORBIDDEN_LIVE_TOKENS = [
-  "live_session_start",
-  "playroom_start",
-  "session_signoff",
-  "session_start",
-  "playroom_session_create",
-] as const;
 
 export async function runPhase55CrisisBridge(
   params: Phase55CrisisBridgeParams,
