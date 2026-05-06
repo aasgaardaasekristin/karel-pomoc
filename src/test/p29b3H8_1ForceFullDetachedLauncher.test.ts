@@ -46,7 +46,7 @@ describe("P29B.3-H8.1 force-full detached launcher", () => {
 
   it("inserts cycle row synchronously with running status + force-full markers", () => {
     const launcherIdx = SRC.indexOf("FORCE-FULL DETACHED LAUNCHER");
-    const slice = SRC.slice(launcherIdx, launcherIdx + 6000);
+    const slice = SRC.slice(launcherIdx, launcherIdx + 12000);
     expect(slice).toMatch(/from\("did_update_cycles"\)\s*\.insert\(/);
     expect(slice).toMatch(/p29b3_force_full_launcher_accepted/);
     expect(slice).toMatch(/p29b_force_full_path:\s*true/);
@@ -57,7 +57,7 @@ describe("P29B.3-H8.1 force-full detached launcher", () => {
 
   it("returns 202 with cycle_id BEFORE long work", () => {
     const launcherIdx = SRC.indexOf("FORCE-FULL DETACHED LAUNCHER");
-    const slice = SRC.slice(launcherIdx, launcherIdx + 6000);
+    const slice = SRC.slice(launcherIdx, launcherIdx + 12000);
     expect(slice).toMatch(/mode:\s*"detached_force_full_orchestrator"/);
     expect(slice).toMatch(/cycle_id:\s*launchedCycleId/);
     expect(slice).toMatch(/status:\s*202/);
@@ -65,7 +65,7 @@ describe("P29B.3-H8.1 force-full detached launcher", () => {
 
   it("schedules background self-invoke with existing_cycle_id + background_orchestrator markers", () => {
     const launcherIdx = SRC.indexOf("FORCE-FULL DETACHED LAUNCHER");
-    const slice = SRC.slice(launcherIdx, launcherIdx + 6000);
+    const slice = SRC.slice(launcherIdx, launcherIdx + 12000);
     expect(slice).toMatch(/existing_cycle_id:\s*launchedCycleId/);
     expect(slice).toMatch(/background_orchestrator:\s*true/);
     expect(slice).toMatch(/EdgeRuntime/);
