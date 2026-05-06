@@ -7422,20 +7422,27 @@ Vra\u0165 JSON:
       const existingContext = (existingRow?.context_data && typeof existingRow.context_data === "object")
         ? existingRow.context_data as Record<string, unknown>
         : {};
+      const detachedRequired = [...P29B3_REQUIRED_PHASE_JOB_KINDS];
+      const detachedEnqueued = Object.keys(phaseJobsSummary.by_kind);
+      const detachedMissing = detachedRequired.filter(k => !detachedEnqueued.includes(k));
       const mergedContext = {
         ...existingContext,
         phase_jobs: phaseJobsSummary,
         daily_cycle_completion_semantics: {
           main_orchestrator_completed: true,
           main_phases_completed: true,
-          detached_jobs_required: [...P29B3_REQUIRED_PHASE_JOB_KINDS],
-          detached_jobs_enqueued: Object.keys(phaseJobsSummary.by_kind),
+          detached_jobs_required: detachedRequired,
+          detached_jobs_enqueued: detachedEnqueued,
+          detached_jobs_missing: detachedMissing,
           detached_jobs_summary: phaseJobsSummary,
           critical_failures: criticalFailures,
           controlled_skips: controlledSkips,
           helper_coverage_partial: true,
+          force_full_path_used: typeof forceFullPath !== "undefined" ? !!forceFullPath : false,
+          quiet_day_branch_taken: typeof quietDayBranchTaken !== "undefined" ? !!quietDayBranchTaken : false,
           p29b_accepted: false,
           p29b3_s0_scaffold: true,
+          p29b3_h8_enqueue_integrity: true,
           inline_phase_5_7_disabled: isInlinePhase5To7Disabled(),
           architecture: "p29b3_staged_hard_architecture_no_false_green",
           merged_at: new Date().toISOString(),
