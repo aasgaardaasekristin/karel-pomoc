@@ -1,5 +1,9 @@
 /**
- * P29B.3-H6: phase65_memory_cleanup helper acceptance tests.
+ * P29B.3-H6 / H6.1: phase65_memory_cleanup helper acceptance tests.
+ *
+ * H6.1 hardening: tests are precise — they allow sensitive table NAMES
+ * to appear in SENSITIVE_TABLES / docs, but they forbid `.from("<sensitive>").delete(`
+ * patterns. No obfuscation of table identifiers is allowed.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -45,7 +49,7 @@ describe("P29B.3-H6 — phase65_memory_cleanup helper", () => {
     expect(helper).toMatch(/setHeartbeat\?\.\(\)/);
   });
 
-  it("helper result shape contains required fields", () => {
+  it("helper result shape contains required fields (incl. H6.1 fields)", () => {
     for (const f of [
       "candidates_count",
       "evaluated_count",
@@ -61,17 +65,27 @@ describe("P29B.3-H6 — phase65_memory_cleanup helper", () => {
       "duration_ms",
       "dry_run",
       "apply_output",
+      // H6.1 additions
+      "session_memory_would_archive_count",
+      "session_memory_archived_count",
+      "session_memory_delete_forbidden",
+      "cache_delete_enabled",
+      "cache_delete_allowlist",
+      "sensitive_delete_attempts_blocked",
     ]) {
       expect(helper).toContain(f);
     }
   });
 
-  it("helper documents controlled_skip reasons", () => {
+  it("helper documents controlled_skip reasons (incl. H6.1 reasons)", () => {
     for (const r of [
       "no_memory_cleanup_candidates",
       "dry_run_no_apply",
       "apply_output_false",
       "missing_required_table",
+      "session_memory_retention_columns_missing_no_delete",
+      "cache_delete_disabled_by_default",
+      "cache_delete_target_not_in_allowlist",
     ]) {
       expect(helper).toContain(r);
     }
@@ -84,8 +98,6 @@ describe("P29B.3-H6 — phase65_memory_cleanup helper", () => {
       "aiCallWrapper",
       "sendEmail",
       "api.resend.com",
-      // did_pending_drive_writes appears only in SENSITIVE_TABLES guard list.
-      // safeEnqueueDriveWrite is the real write path:
       "safeEnqueueDriveWrite(",
       "drive.googleapis.com",
       "session_signoff",
@@ -99,13 +111,18 @@ describe("P29B.3-H6 — phase65_memory_cleanup helper", () => {
     }
   });
 
-  it("helper does NOT delete from sensitive clinical or audit tables", () => {
+  // H6.1: precise delete-pattern test. Allows the sensitive table name to
+  // appear (it MUST appear in SENSITIVE_TABLES) but forbids any `.delete(`
+  // call against it.
+  it("helper does NOT delete from any sensitive clinical or audit table (incl. session_memory)", () => {
     const sensitive = [
+      "session_memory",
       "did_update_cycles",
       "did_event_ingestion_log",
       "did_daily_briefings",
       "did_daily_cycle_phase_jobs",
       "did_daily_cycle_phase_payloads",
+      "did_pending_drive_writes",
       "card_update_queue",
       "hana_personal_memory",
       "did_part_registry",
@@ -116,10 +133,50 @@ describe("P29B.3-H6 — phase65_memory_cleanup helper", () => {
       "did_implications",
     ];
     for (const t of sensitive) {
-      // forbid `from("<sensitive>")...delete(`
-      const re = new RegExp(`from\\(\\s*["'\`]${t}["'\`]\\s*\\)[\\s\\S]{0,200}\\.delete\\(`);
+      const re = new RegExp(`from\\(\\s*["'\`]${t}["'\`]\\s*\\)[\\s\\S]{0,400}\\.delete\\(`);
       expect(helper.match(re), `helper must NOT delete from ${t}`).toBeNull();
     }
+  });
+
+  it("sensitive table names are readable (no obfuscation/concat)", () => {
+    // Any sensitive name must appear as a plain string literal somewhere.
+    for (const t of ["session_memory", "ai_error_log", "did_observations"]) {
+      expect(
+        helper.includes(`"${t}"`) || helper.includes(`'${t}'`),
+        `sensitive table ${t} must be a readable literal`,
+      ).toBe(true);
+    }
+    // Forbid concatenation tricks like "sess" + "ion_memory".
+    expect(helper).not.toMatch(/"sess"\s*\+\s*"ion_memory"/);
+    expect(helper).not.toMatch(/"ai_"\s*\+\s*"error_log"/);
+  });
+
+  it("session_memory is in SENSITIVE_TABLES and never in CACHE_DELETE_ALLOWLIST", () => {
+    const sensBlock = helper.split("SENSITIVE_TABLES")[1]?.split("] as const")[0] ?? "";
+    expect(sensBlock).toMatch(/"session_memory"/);
+    const allowMatch = helper.match(/CACHE_DELETE_ALLOWLIST\s*=\s*\[([\s\S]*?)\]\s*as\s+const/);
+    expect(allowMatch, "CACHE_DELETE_ALLOWLIST const must exist").not.toBeNull();
+    const allowBlock = allowMatch![1];
+    expect(allowBlock).not.toMatch(/"session_memory"/);
+    expect(allowBlock).toMatch(/"ai_error_log"/);
+  });
+
+  it("PHASE65_ENABLE_CACHE_DELETE env switch defaults to false", () => {
+    expect(helper).toMatch(/PHASE65_ENABLE_CACHE_DELETE/);
+    expect(helper).toMatch(/Deno\.env\.get\(\s*["']PHASE65_ENABLE_CACHE_DELETE["']\s*\)\s*\?\?\s*["']false["']/);
+  });
+
+  it("ai_error_log delete is guarded by PHASE65_ENABLE_CACHE_DELETE and allowlist", () => {
+    // The `.from("ai_error_log").delete(` call must exist only inside an
+    // `if (PHASE65_ENABLE_CACHE_DELETE)` / allowlist guarded branch.
+    const idx = helper.search(/from\(\s*["']ai_error_log["']\s*\)[\s\S]{0,400}\.delete\(/);
+    if (idx === -1) {
+      // No delete at all is acceptable too.
+      return;
+    }
+    const window = helper.slice(Math.max(0, idx - 800), idx);
+    expect(window).toMatch(/PHASE65_ENABLE_CACHE_DELETE/);
+    expect(window).toMatch(/CACHE_DELETE_ALLOWLIST/);
   });
 
   it("worker dispatches phase65_memory_cleanup to the helper, not via HTTP", () => {
