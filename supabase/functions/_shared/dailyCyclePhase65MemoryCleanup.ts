@@ -13,7 +13,7 @@
  * STRICT BOUNDARIES (H6 scope):
  *   - NO AI call
  *   - NO email send
- *   - NO Drive write (no did_pending_drive_writes, no safeEnqueueDriveWrite)
+ *   - NO Drive write (no pending-drive-writes insert, no governed enqueue)
  *   - NO live session / playroom / signoff mutation
  *   - NO destructive delete on sensitive clinical or audit tables
  *     (did_update_cycles, did_event_ingestion_log, did_daily_briefings,
