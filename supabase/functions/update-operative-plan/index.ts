@@ -1,11 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/auth.ts";
-import {
-  getAccessToken, resolveKartotekaRoot, findFolder, listFiles,
-  readFileContent, overwriteDoc, createBackup,
-  FOLDER_MIME, GDOC_MIME,
-} from "../_shared/driveHelpers.ts";
+import { safeEnqueueDriveWrite } from "../_shared/documentGovernance.ts";
+
+// P29B.3-H1.1: canonical Drive target governed by P29A registry.
+// We never look up the legacy `05_PLAN` folder; all writes are enqueued
+// through the governance gate to KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN
+// and physically materialized by karel-drive-queue-processor.
+const CANONICAL_OPERATIVE_PLAN_TARGET =
+  "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const futureDate = (days: number) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
