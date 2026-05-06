@@ -6041,6 +6041,7 @@ Pokud nejsou žádné nové claims, vrať: []`;
     } catch (crisisErr) {
       console.warn("[daily-cycle] Crisis eval phase error (non-fatal):", crisisErr);
     }
+    } // P29B.3-S0: end inline phase 5.5 guard
 
     await setPhase("phase_6_card_autoupdate", "Fáze 6: Autonomní aktualizace karet (detached)");
     // ═══ FÁZE 6: AUTONOMNÍ AKTUALIZACE KARET — DETACHED via P29B phase worker ═══
