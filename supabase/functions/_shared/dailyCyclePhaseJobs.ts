@@ -13,6 +13,7 @@ export type PhaseJobKind =
   | "phase4_card_update_tail"
   | "phase4_centrum_tail"
   | "phase5_revize_05ab"
+  | "phase55_crisis_bridge"
   | "phase6_card_autoupdate"
   | "phase65_memory_cleanup"
   | "phase7_operative_plan"
