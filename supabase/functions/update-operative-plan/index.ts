@@ -189,24 +189,36 @@ serve(async (req) => {
 
     const planContent = lines.join("\n");
 
-    // === WRITE TO DRIVE ===
-    const token = await getAccessToken();
-    const root = await resolveKartotekaRoot(token);
-    if (!root) throw new Error("KARTOTEKA_DID not found");
+    // === ENQUEUE GOVERNED DRIVE WRITE (P29B.3-H1.1) ===
+    // No legacy `05_PLAN` folder lookup. The write is enqueued through the
+    // P29A governance gate and physically materialized by the
+    // karel-drive-queue-processor onto the canonical 05A document.
+    const enqueue = await safeEnqueueDriveWrite(sb, {
+      target_document: CANONICAL_OPERATIVE_PLAN_TARGET,
+      content: planContent,
+      write_type: "replace",
+      priority: "high",
+      status: "pending",
+      content_type: "operative_plan",
+      source_type: "update_operative_plan",
+      source_ref: `operative_plan:${today()}`,
+      dedupe_key: `operative_plan:05A:${today()}`,
+      metadata: {
+        parts_count: parts.length,
+        crises_count: crises.length,
+        canonical_sessions_count: dailyPlans.length,
+        midterm_sessions_count: midTermPlanned.length,
+        content_length: planContent.length,
+        generated_at: new Date().toISOString(),
+      },
+    }, { source: "update-operative-plan" });
 
-    const centrumId = await findFolder(token, "00_CENTRUM", root);
-    if (!centrumId) throw new Error("00_CENTRUM not found");
-    const planFolderId = await findFolder(token, "05_PLAN", centrumId);
-    if (!planFolderId) throw new Error("05_PLAN not found");
-
-    const planFiles = await listFiles(token, planFolderId);
-    const planFile = planFiles.find(f => f.name.includes("05A") || f.name.includes("Operativni"));
-    if (!planFile) throw new Error("05A_Operativni_Plan not found");
-
-    const currentPlan = await readFileContent(token, planFile.id, planFile.mimeType);
-    await createBackup(token, planFolderId, planFile.name, currentPlan);
-    await overwriteDoc(token, planFile.id, planContent);
-    console.log(`[operative-plan] Written ${planContent.length} chars to 05A`);
+    if (!enqueue.inserted) {
+      throw new Error(
+        `governance_enqueue_failed: ${enqueue.reason ?? "unknown"} (target=${enqueue.target ?? CANONICAL_OPERATIVE_PLAN_TARGET})`,
+      );
+    }
+    console.log(`[operative-plan] Enqueued ${planContent.length} chars → ${enqueue.target}`);
 
     // === LOG ===
     const totalSessionsCount = dailyPlans.length + midTermPlanned.length;
