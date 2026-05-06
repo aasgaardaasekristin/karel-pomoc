@@ -2499,7 +2499,71 @@ serve(async (req) => {
       ? requestBody.existing_cycle_id
       : null;
 
-  // ═══ P29B.3-H8.1 FORCE-FULL DETACHED LAUNCHER ═══
+  // ═══ P29B.3-H8.2: BACKGROUND ENTERED MARKER ═══
+  // For background_orchestrator requests, write an entered marker BEFORE any
+  // running/recent_success/quiet-day/dispatch guards run. This guarantees
+  // that even if the background path is later blocked by a guard, we have
+  // an audit trail in did_update_cycles.context_data.background_orchestrator.
+  if (isBackgroundOrchestrator && existingCycleIdFromBody && resolvedUserId) {
+    try {
+      const markerSb = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+      const enteredAt = new Date().toISOString();
+      const { data: existingRow } = await markerSb
+        .from("did_update_cycles")
+        .select("context_data")
+        .eq("id", existingCycleIdFromBody)
+        .maybeSingle();
+      const prevContext = (existingRow?.context_data as any) || {};
+      await markerSb.from("did_update_cycles").update({
+        phase: "p29b3_background_orchestrator_entered",
+        phase_step: "background_entered_before_guards",
+        last_heartbeat_at: enteredAt,
+        heartbeat_at: enteredAt,
+        context_data: {
+          ...prevContext,
+          background_orchestrator: {
+            ...(prevContext.background_orchestrator || {}),
+            entered_at: enteredAt,
+            existing_cycle_id: existingCycleIdFromBody,
+            auth_ok: true,
+            canonical_user_id: resolvedUserId,
+            source: requestBody?.source || "p29b3_h8_2_background",
+            durable_scheduler: requestBody?.p29b3_h8_2_durable_scheduler === true,
+          },
+        },
+      }).eq("id", existingCycleIdFromBody);
+    } catch (mErr) {
+      console.warn("[daily-cycle] H8.2 background entered marker failed:", (mErr as Error)?.message);
+    }
+  }
+
+  // Helper to record guard exit on the existing background cycle (H8.2).
+  async function recordBackgroundGuardExit(reason: string) {
+    if (!isBackgroundOrchestrator || !existingCycleIdFromBody) return;
+    try {
+      const sbX = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+      const { data: row } = await sbX.from("did_update_cycles")
+        .select("context_data").eq("id", existingCycleIdFromBody).maybeSingle();
+      const prev = (row?.context_data as any) || {};
+      await sbX.from("did_update_cycles").update({
+        context_data: {
+          ...prev,
+          background_orchestrator: {
+            ...(prev.background_orchestrator || {}),
+            guard_exit: { reason, at: new Date().toISOString() },
+          },
+        },
+      }).eq("id", existingCycleIdFromBody);
+    } catch { /* non-fatal */ }
+  }
+
+  // ═══ P29B.3-H8.1/H8.2 FORCE-FULL DETACHED LAUNCHER ═══
   // Internal force-full requests must (a) be authenticated as cron/service,
   // (b) have a canonical user resolved, (c) create a did_update_cycles row
   // SYNCHRONOUSLY, (d) return HTTP 202 with cycle_id, and (e) schedule the
