@@ -468,6 +468,88 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
     }
   }
 
+  // ── In-process controller dispatch for phase8a5_session_eval_safety_net (P29B.3-H8.3) ──
+  // Single REQUIRED controller job per cycle. Discovers stale yesterday plans
+  // and processes a bounded list (max 5). NO live session start, NO AI here —
+  // delegation per plan goes to karel-did-session-finalize via HTTP, but only
+  // when this is the controller pass (no plan_id in input). Legacy single-plan
+  // jobs (input.plan_id present) fall through to the generic dispatchTarget path.
+  if (job.job_kind === "phase8a5_session_eval_safety_net" && !(job.input as any)?.plan_id) {
+    const startedAt = Date.now();
+    const MAX_PLANS = 5;
+    const result: Record<string, any> = {
+      mode: "controller",
+      dry_run: false,
+      plans_found_count: 0,
+      plans_processed_count: 0,
+      plans_skipped_count: 0,
+      failed_count: 0,
+      controlled_skips: [] as Array<{ plan_id: string; reason: string }>,
+      errors: [] as string[],
+    };
+    try {
+      const pragueToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+      const yesterdayDate = new Date(`${pragueToday}T12:00:00Z`);
+      yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+      const pragueYesterday = yesterdayDate.toISOString().slice(0, 10);
+      const { data: stalePlans, error: spErr } = await admin
+        .from("did_daily_session_plans")
+        .select("id, plan_date, selected_part, status, did_session_reviews!left(id)")
+        .eq("plan_date", pragueYesterday)
+        .in("status", ["in_progress", "approved", "active", "completed", "done", "generated"])
+        .is("did_session_reviews.id", null)
+        .limit(MAX_PLANS);
+      if (spErr) {
+        result.errors.push(`stale_plans_query_failed:${spErr.message}`);
+      }
+      const plans = (stalePlans ?? []) as Array<{ id: string }>;
+      result.plans_found_count = plans.length;
+      if (plans.length === 0) {
+        await admin.from("did_daily_cycle_phase_jobs").update({
+          status: "controlled_skipped",
+          completed_at: new Date().toISOString(),
+          error_message: "no_stale_session_eval_plans",
+          result: { ...result, outcome: "controlled_skipped", reason: "no_stale_session_eval_plans", duration_ms: Date.now() - startedAt },
+        }).eq("id", job.id);
+        return { id: job.id, kind: job.job_kind, outcome: "controlled_skipped", reason: "no_stale_session_eval_plans", ...result };
+      }
+      for (const plan of plans) {
+        try {
+          const r = await callEdgeFunction("karel-did-session-finalize", {
+            plan_id: plan.id,
+            planId: plan.id,
+            source: "auto_safety_net",
+            reason: "calendar_day_safety_net_controller",
+          }, 90_000);
+          if (r.ok) result.plans_processed_count++;
+          else {
+            result.failed_count++;
+            result.errors.push(`plan_${plan.id}_http_${r.status}`);
+          }
+        } catch (e: any) {
+          result.failed_count++;
+          result.errors.push(`plan_${plan.id}:${e?.message ?? String(e)}`.slice(0, 200));
+        }
+      }
+      const status = result.failed_count > 0 && result.plans_processed_count === 0 ? "failed_retry" : "completed";
+      await admin.from("did_daily_cycle_phase_jobs").update({
+        status,
+        completed_at: new Date().toISOString(),
+        result: { ...result, outcome: status, duration_ms: Date.now() - startedAt },
+        error_message: result.errors.length ? result.errors.slice(0, 3).join(" | ").slice(0, 500) : null,
+      }).eq("id", job.id);
+      return { id: job.id, kind: job.job_kind, outcome: status, ...result };
+    } catch (e: any) {
+      const exhausted = job.attempt_count + 1 >= job.max_attempts;
+      await admin.from("did_daily_cycle_phase_jobs").update({
+        status: exhausted ? "failed_permanent" : "failed_retry",
+        error_message: (e?.message ?? String(e)).slice(0, 500),
+        next_retry_at: exhausted ? null : new Date(Date.now() + Math.min(60_000 * Math.pow(2, job.attempt_count), 30 * 60_000)).toISOString(),
+      }).eq("id", job.id);
+      return { id: job.id, kind: job.job_kind, outcome: exhausted ? "failed_permanent" : "failed_retry", error: e?.message ?? String(e) };
+    }
+  }
+
   if ("skip" in target) {
     await admin.from("did_daily_cycle_phase_jobs").update({
       status: "controlled_skipped",
