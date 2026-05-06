@@ -2490,16 +2490,148 @@ serve(async (req) => {
     }
   }
 
+  // P29B.3-H8: forceFullPath (internal/cron only) also bypasses 3h dedup so
+  // runtime acceptance can prove enqueue integrity on demand.
+  const forceFullPathEarly = (requestBody?.forceFullAnalysis === true || requestBody?.forceFullPath === true) && isCronCall;
+  const isBackgroundOrchestrator = requestBody?.background_orchestrator === true && isCronCall;
+  const existingCycleIdFromBody: string | null =
+    typeof requestBody?.existing_cycle_id === "string" && requestBody.existing_cycle_id.length > 0
+      ? requestBody.existing_cycle_id
+      : null;
+
+  // ═══ P29B.3-H8.1 FORCE-FULL DETACHED LAUNCHER ═══
+  // Internal force-full requests must (a) be authenticated as cron/service,
+  // (b) have a canonical user resolved, (c) create a did_update_cycles row
+  // SYNCHRONOUSLY, (d) return HTTP 202 with cycle_id, and (e) schedule the
+  // long-running orchestration in the background. This guarantees that even
+  // if the long path is later context-canceled by the runtime, the cycle row
+  // exists for audit + sweepers can pick it up.
+  if (forceFullPathEarly && !isBackgroundOrchestrator && !existingCycleIdFromBody) {
+    if (!resolvedUserId) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error_code: "CANONICAL_USER_SCOPE_UNRESOLVED",
+          message: "force-full launcher requires a canonical DID user",
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    try {
+      const launcherSb = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+      const launcherAcceptedAt = new Date().toISOString();
+      const launcherContext = {
+        source: requestBody?.source || "p29b3_h8_1_force_full_launcher",
+        p29b_force_full_path: true,
+        p29b_force_full_launcher: true,
+        launcher_accepted_at: launcherAcceptedAt,
+        quiet_day_bypass_only: true,
+        bypassDispatchCheck: requestBody?.bypassDispatchCheck === true,
+      };
+      const { data: launchedCycle, error: launchedErr } = await launcherSb
+        .from("did_update_cycles")
+        .insert({
+          user_id: resolvedUserId,
+          cycle_type: "daily",
+          status: "running",
+          phase: "p29b3_force_full_launcher_accepted",
+          phase_step: "cycle_row_created",
+          started_at: launcherAcceptedAt,
+          heartbeat_at: launcherAcceptedAt,
+          last_heartbeat_at: launcherAcceptedAt,
+          context_data: launcherContext,
+        })
+        .select("id")
+        .single();
+      if (launchedErr || !launchedCycle?.id) {
+        console.error("[daily-cycle] H8.1 launcher: cycle row insert failed:", launchedErr?.message);
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error_code: "FORCE_FULL_CYCLE_ROW_INSERT_FAILED",
+            message: launchedErr?.message || "could not create did_update_cycles row",
+          }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const launchedCycleId = launchedCycle.id as string;
+
+      // Schedule background orchestration AFTER cycle row is durably written.
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+        const bgBody = {
+          ...requestBody,
+          existing_cycle_id: launchedCycleId,
+          background_orchestrator: true,
+          _bg: true,
+          source: requestBody?.source || "p29b3_h8_1_force_full_launcher",
+        };
+        const bgPromise = fetch(`${supabaseUrl}/functions/v1/karel-did-daily-cycle`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${serviceKey}`,
+            "x-detached": "1",
+          },
+          body: JSON.stringify(bgBody),
+        }).then(async (r) => {
+          try { await r.text(); } catch {}
+          console.log(`[daily-cycle] H8.1 background orchestrator status=${r.status} cycle=${launchedCycleId}`);
+        }).catch(async (e) => {
+          console.warn("[daily-cycle] H8.1 background self-invoke failed:", (e as Error)?.message || e);
+          try {
+            await launcherSb.from("did_update_cycles").update({
+              status: "failed",
+              completed_at: new Date().toISOString(),
+              last_error: `force_full_background_invoke_failed:${(e as Error)?.message || String(e)}`.slice(0, 480),
+            }).eq("id", launchedCycleId);
+          } catch {}
+        });
+        // @ts-ignore — EdgeRuntime is provided by Supabase edge runtime.
+        if (typeof EdgeRuntime !== "undefined" && (EdgeRuntime as any)?.waitUntil) {
+          // @ts-ignore
+          (EdgeRuntime as any).waitUntil(bgPromise);
+        }
+      } catch (schedErr) {
+        console.warn("[daily-cycle] H8.1 background scheduling threw:", schedErr);
+      }
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          accepted: true,
+          mode: "detached_force_full_orchestrator",
+          cycle_id: launchedCycleId,
+          canonical_user_id: resolvedUserId,
+          force_full_path: true,
+          message: "cycle row created and background orchestration scheduled",
+        }),
+        { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    } catch (launcherErr) {
+      console.error("[daily-cycle] H8.1 launcher fatal:", launcherErr);
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error_code: "FORCE_FULL_LAUNCHER_FATAL",
+          message: (launcherErr as Error)?.message || String(launcherErr),
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+  }
+
   // === DEDUP: Skip if a successful daily cycle completed in last 3 hours ===
   // P13: Dedup is now USER-SCOPED. Previously this was global, so a recent
   // successful run for a different (legacy) user blocked the canonical
   // user's morning cycle.
   // Manual admin trigger (source="manual") bypasses dedup so the harness
   // can prove an end-to-end run on demand.
-  // P29B.3-H8: forceFullPath (internal/cron only) also bypasses 3h dedup so
-  // runtime acceptance can prove enqueue integrity on demand.
-  const forceFullPathEarly = (requestBody?.forceFullAnalysis === true || requestBody?.forceFullPath === true) && isCronCall;
-  if (!isManualTriggerEarly && !forceFullPathEarly && resolvedUserId) {
+  if (!isManualTriggerEarly && !forceFullPathEarly && !isBackgroundOrchestrator && resolvedUserId) {
     const dedupSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const recentCycle = await dedupSb
       .from('did_update_cycles')
