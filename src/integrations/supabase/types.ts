@@ -7355,6 +7355,10 @@ export type Database = {
         Args: { p_snapshot_id: string }
         Returns: Json
       }
+      did_schedule_daily_cycle_background: {
+        Args: { p_body?: Json; p_cycle_id: string }
+        Returns: Json
+      }
       did_snapshot_protected_mutation: {
         Args: {
           p_actor: string

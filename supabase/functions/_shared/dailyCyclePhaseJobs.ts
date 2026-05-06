@@ -42,6 +42,7 @@ export const P29B3_REQUIRED_PHASE_JOB_KINDS: readonly PhaseJobKind[] = [
   "phase76_feedback_retry",
   "phase76b_auto_feedback_ai",
   "phase8_therapist_intel",
+  "phase8a5_session_eval_safety_net",
   "phase8b_pantry_flush",
   "phase9_drive_queue_flush",
 ] as const;

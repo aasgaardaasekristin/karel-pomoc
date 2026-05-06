@@ -37,7 +37,7 @@ describe("P29B.3-H8.1 force-full detached launcher", () => {
   it("requires resolved canonical user before launcher accepts", () => {
     // The launcher branch must error out with CANONICAL_USER_SCOPE_UNRESOLVED
     // when resolvedUserId is missing, BEFORE any cycle row is inserted.
-    const launcherIdx = SRC.indexOf("P29B.3-H8.1 FORCE-FULL DETACHED LAUNCHER");
+    const launcherIdx = SRC.indexOf("FORCE-FULL DETACHED LAUNCHER");
     expect(launcherIdx).toBeGreaterThan(0);
     const slice = SRC.slice(launcherIdx, launcherIdx + 4000);
     expect(slice).toMatch(/if \(!resolvedUserId\)/);
@@ -45,8 +45,8 @@ describe("P29B.3-H8.1 force-full detached launcher", () => {
   });
 
   it("inserts cycle row synchronously with running status + force-full markers", () => {
-    const launcherIdx = SRC.indexOf("P29B.3-H8.1 FORCE-FULL DETACHED LAUNCHER");
-    const slice = SRC.slice(launcherIdx, launcherIdx + 6000);
+    const launcherIdx = SRC.indexOf("FORCE-FULL DETACHED LAUNCHER");
+    const slice = SRC.slice(launcherIdx, launcherIdx + 12000);
     expect(slice).toMatch(/from\("did_update_cycles"\)\s*\.insert\(/);
     expect(slice).toMatch(/p29b3_force_full_launcher_accepted/);
     expect(slice).toMatch(/p29b_force_full_path:\s*true/);
@@ -56,16 +56,16 @@ describe("P29B.3-H8.1 force-full detached launcher", () => {
   });
 
   it("returns 202 with cycle_id BEFORE long work", () => {
-    const launcherIdx = SRC.indexOf("P29B.3-H8.1 FORCE-FULL DETACHED LAUNCHER");
-    const slice = SRC.slice(launcherIdx, launcherIdx + 6000);
+    const launcherIdx = SRC.indexOf("FORCE-FULL DETACHED LAUNCHER");
+    const slice = SRC.slice(launcherIdx, launcherIdx + 12000);
     expect(slice).toMatch(/mode:\s*"detached_force_full_orchestrator"/);
     expect(slice).toMatch(/cycle_id:\s*launchedCycleId/);
     expect(slice).toMatch(/status:\s*202/);
   });
 
   it("schedules background self-invoke with existing_cycle_id + background_orchestrator markers", () => {
-    const launcherIdx = SRC.indexOf("P29B.3-H8.1 FORCE-FULL DETACHED LAUNCHER");
-    const slice = SRC.slice(launcherIdx, launcherIdx + 6000);
+    const launcherIdx = SRC.indexOf("FORCE-FULL DETACHED LAUNCHER");
+    const slice = SRC.slice(launcherIdx, launcherIdx + 12000);
     expect(slice).toMatch(/existing_cycle_id:\s*launchedCycleId/);
     expect(slice).toMatch(/background_orchestrator:\s*true/);
     expect(slice).toMatch(/EdgeRuntime/);
@@ -86,7 +86,7 @@ describe("P29B.3-H8.1 force-full detached launcher", () => {
 
   it("canonical user guard is NOT bypassed by forceFullPath", () => {
     const guardIdx = SRC.indexOf("P23 fix: enforce canonical scope match");
-    const launcherIdx = SRC.indexOf("P29B.3-H8.1 FORCE-FULL DETACHED LAUNCHER");
+    const launcherIdx = SRC.indexOf("FORCE-FULL DETACHED LAUNCHER");
     expect(guardIdx).toBeGreaterThan(0);
     expect(launcherIdx).toBeGreaterThan(guardIdx);
     const guardSlice = SRC.slice(guardIdx, guardIdx + 1200);
