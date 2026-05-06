@@ -413,6 +413,56 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
     }
   }
 
+  // ── In-process dispatch for phase55_crisis_bridge (P29B.3-H7) ──
+  // Crisis bridge / planning. NO AI, NO email, NO Drive, NO live-session
+  // mutation. Defaults dry_run=true, apply_output=false, generate_ai=false,
+  // send_alert=false. Weak hints never auto-task.
+  if (job.job_kind === "phase55_crisis_bridge") {
+    try {
+      const r = await withHeartbeat(admin, job.id, () =>
+        runPhase55CrisisBridge({
+          sb: admin,
+          cycleId: job.cycle_id ?? "",
+          userId: job.user_id,
+          input: (job.input as any) ?? {},
+          setHeartbeat: async () => {
+            await admin.from("did_daily_cycle_phase_jobs")
+              .update({ last_heartbeat_at: new Date().toISOString() })
+              .eq("id", job.id);
+          },
+        }),
+      );
+      const status = r.outcome === "controlled_skipped" ? "controlled_skipped" : "completed";
+      await admin.from("did_daily_cycle_phase_jobs").update({
+        status,
+        completed_at: new Date().toISOString(),
+        result: r as unknown as Record<string, unknown>,
+        error_message: r.errors.length ? r.errors.slice(0, 3).join(" | ").slice(0, 500) : null,
+      }).eq("id", job.id);
+      return {
+        id: job.id, kind: job.job_kind, outcome: status,
+        candidates: r.candidates_count,
+        evidence_supported: r.evidence_supported_count,
+        weak_hints: r.weak_hints_count,
+        would_create_task: r.would_create_task_count,
+        tasks_created: r.tasks_created_count,
+        ai_calls_made: r.ai_calls_made,
+        alerts_sent: r.alerts_sent_count,
+        drive_writes_enqueued: r.drive_writes_enqueued,
+        dry_run: r.dry_run, apply_output: r.apply_output,
+        generate_ai: r.generate_ai, send_alert: r.send_alert,
+      };
+    } catch (e: any) {
+      const exhausted = job.attempt_count + 1 >= job.max_attempts;
+      await admin.from("did_daily_cycle_phase_jobs").update({
+        status: exhausted ? "failed_permanent" : "failed_retry",
+        error_message: (e?.message ?? String(e)).slice(0, 500),
+        next_retry_at: exhausted ? null : new Date(Date.now() + Math.min(60_000 * Math.pow(2, job.attempt_count), 30 * 60_000)).toISOString(),
+      }).eq("id", job.id);
+      return { id: job.id, kind: job.job_kind, outcome: exhausted ? "failed_permanent" : "failed_retry", error: e?.message ?? String(e) };
+    }
+  }
+
   if ("skip" in target) {
     await admin.from("did_daily_cycle_phase_jobs").update({
       status: "controlled_skipped",
