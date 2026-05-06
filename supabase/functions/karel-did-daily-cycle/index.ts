@@ -3317,7 +3317,7 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
       .limit(1)
       .maybeSingle();
 
-    if (runningDailyCycle) {
+    if (runningDailyCycle && !(isBackgroundOrchestrator && existingCycleIdFromBody && runningDailyCycle.id === existingCycleIdFromBody)) {
       console.log(`[daily-cycle] Already running (live): cycle ${runningDailyCycle.id} since ${runningDailyCycle.started_at}, hb=${runningDailyCycle.heartbeat_at}, phase=${(runningDailyCycle as any).phase}, skipping.`);
       return new Response(JSON.stringify({
         success: true,
