@@ -154,7 +154,9 @@ describe("P29B.3-H6 — phase65_memory_cleanup helper", () => {
   it("session_memory is in SENSITIVE_TABLES and never in CACHE_DELETE_ALLOWLIST", () => {
     const sensBlock = helper.split("SENSITIVE_TABLES")[1]?.split("] as const")[0] ?? "";
     expect(sensBlock).toMatch(/"session_memory"/);
-    const allowBlock = helper.split("CACHE_DELETE_ALLOWLIST")[1]?.split("] as const")[0] ?? "";
+    const allowMatch = helper.match(/CACHE_DELETE_ALLOWLIST\s*=\s*\[([\s\S]*?)\]\s*as\s+const/);
+    expect(allowMatch, "CACHE_DELETE_ALLOWLIST const must exist").not.toBeNull();
+    const allowBlock = allowMatch![1];
     expect(allowBlock).not.toMatch(/"session_memory"/);
     expect(allowBlock).toMatch(/"ai_error_log"/);
   });
