@@ -18,7 +18,7 @@
  *   - NO destructive delete on sensitive clinical or audit tables
  *     (did_update_cycles, did_event_ingestion_log, did_daily_briefings,
  *      did_daily_cycle_phase_jobs, did_daily_cycle_phase_payloads,
- *      did_pending_drive_writes (sentinel only — never written from here),
+ *      pending-drive-writes (sentinel only — never written from here),
  *      card_update_queue, hana_personal_memory,
  *      did_part_registry, did_part_profiles, did_daily_session_plans,
  *      did_team_deliberations, did_observations, did_implications)
