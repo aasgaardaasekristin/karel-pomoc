@@ -239,13 +239,18 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("[operative-plan] Error:", error);
-    await sb.from("plan_update_log").insert({
-      plan_type: "operative",
-      error: error instanceof Error ? error.message : String(error),
-      processing_time_ms: Date.now() - startTime,
-    }).catch(() => {});
+    try {
+      await sb.from("plan_update_log").insert({
+        plan_type: "operative",
+        error: error instanceof Error ? error.message : String(error),
+        processing_time_ms: Date.now() - startTime,
+      });
+    } catch (logErr) {
+      console.warn("[operative-plan] log insert failed:", logErr);
+    }
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  }
   }
 });
