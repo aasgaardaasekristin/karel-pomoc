@@ -22,6 +22,7 @@ import { runPhase75EscalationEmails } from "../_shared/dailyCyclePhase75Escalati
 import { runPhase76FeedbackRetry } from "../_shared/dailyCyclePhase76FeedbackRetry.ts";
 import { runPhase76bAutoFeedbackAi } from "../_shared/dailyCyclePhase76bAutoFeedbackAi.ts";
 import { runPhase5Revize05ab } from "../_shared/dailyCyclePhase5Revize05ab.ts";
+import { runPhase65MemoryCleanup } from "../_shared/dailyCyclePhase65MemoryCleanup.ts";
 import {
   P29B3_S0_UNIMPLEMENTED_HELPER_KINDS,
   P29B3_S0_HELPER_NOT_IMPLEMENTED_REASON,
