@@ -2,20 +2,19 @@
  * P29B.3-H7: phase55_crisis_bridge helper.
  *
  * Detached, safety-hardened version of the inline FÁZE 5.5 crisis bridge
- * block from karel-did-daily-cycle. The original block:
- *   - bridged crisis_alerts → crisis_events,
- *   - applied phase transitions,
- *   - called karel-crisis-daily-assessment via HTTP (AI heavy),
- *   - inserted "escalation" notes into did_pending_drive_writes,
- *   - and queued crisis emails via queue an email.
+ * block from karel-did-daily-cycle. The original block bridged crisis
+ * alerts to crisis events, applied phase transitions, called the AI
+ * assessment edge function over HTTP, queued governed escalation notes
+ * via the Drive write pipeline, and queued crisis emails.
  *
  * H7 SCOPE:
- *   This helper is a **read-only / planning** crisis bridge. It only
+ *   This helper is a read-only / planning crisis bridge. It only
  *   evaluates evidence and reports what it WOULD do. It NEVER:
  *     - calls AI by default,
  *     - sends or queues an email,
  *     - writes to Drive (governed or not),
- *     - mutates session/playroom/signoff/therapy plan rows,
+ *     - mutates live-session, playroom, signoff or therapy-plan rows,
+ *     - upgrades evidence levels, diagnoses, or invents conclusions.
  *     - upgrades evidence levels, diagnoses, or invents conclusions.
  *
  * Triple safety guards (all default to OFF / safe):
