@@ -20,6 +20,7 @@ import { resolveCanonicalDidUserId } from "../_shared/canonicalUserResolver.ts";
 import { runPhase4CentrumTail, type CentrumTailResult } from "../_shared/dailyCyclePhase4CentrumTail.ts";
 import { runPhase75EscalationEmails } from "../_shared/dailyCyclePhase75EscalationEmails.ts";
 import { runPhase76FeedbackRetry } from "../_shared/dailyCyclePhase76FeedbackRetry.ts";
+import { runPhase76bAutoFeedbackAi } from "../_shared/dailyCyclePhase76bAutoFeedbackAi.ts";
 import {
   P29B3_S0_UNIMPLEMENTED_HELPER_KINDS,
   P29B3_S0_HELPER_NOT_IMPLEMENTED_REASON,
@@ -278,6 +279,42 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
         error_message: r.errors.length ? r.errors.slice(0, 3).join(" | ").slice(0, 500) : null,
       }).eq("id", job.id);
       return { id: job.id, kind: job.job_kind, outcome: status, candidates: r.candidates_count, would_retry: r.would_retry_count, dry_run: r.dry_run };
+    } catch (e: any) {
+      const exhausted = job.attempt_count + 1 >= job.max_attempts;
+      await admin.from("did_daily_cycle_phase_jobs").update({
+        status: exhausted ? "failed_permanent" : "failed_retry",
+        error_message: (e?.message ?? String(e)).slice(0, 500),
+        next_retry_at: exhausted ? null : new Date(Date.now() + Math.min(60_000 * Math.pow(2, job.attempt_count), 30 * 60_000)).toISOString(),
+      }).eq("id", job.id);
+      return { id: job.id, kind: job.job_kind, outcome: exhausted ? "failed_permanent" : "failed_retry", error: e?.message ?? String(e) };
+    }
+  }
+
+  // ── In-process dispatch for phase76b_auto_feedback_ai (P29B.3-H4) ──
+  // Triple-guarded: dry_run=true, generate_ai=false, apply_output=false by default.
+  if (job.job_kind === "phase76b_auto_feedback_ai") {
+    try {
+      const r = await withHeartbeat(admin, job.id, () =>
+        runPhase76bAutoFeedbackAi({
+          sb: admin,
+          cycleId: job.cycle_id ?? "",
+          userId: job.user_id,
+          input: (job.input as any) ?? {},
+          setHeartbeat: async () => {
+            await admin.from("did_daily_cycle_phase_jobs")
+              .update({ last_heartbeat_at: new Date().toISOString() })
+              .eq("id", job.id);
+          },
+        }),
+      );
+      const status = r.outcome === "controlled_skipped" ? "controlled_skipped" : "completed";
+      await admin.from("did_daily_cycle_phase_jobs").update({
+        status,
+        completed_at: new Date().toISOString(),
+        result: r as unknown as Record<string, unknown>,
+        error_message: r.errors.length ? r.errors.slice(0, 3).join(" | ").slice(0, 500) : null,
+      }).eq("id", job.id);
+      return { id: job.id, kind: job.job_kind, outcome: status, candidates: r.candidates_count, would_generate: r.would_generate_count, ai_calls: r.ai_calls_made, generated: r.generated_count, applied: r.applied_count, dry_run: r.dry_run, generate_ai: r.generate_ai, apply_output: r.apply_output };
     } catch (e: any) {
       const exhausted = job.attempt_count + 1 >= job.max_attempts;
       await admin.from("did_daily_cycle_phase_jobs").update({
