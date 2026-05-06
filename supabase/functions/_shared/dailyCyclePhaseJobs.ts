@@ -34,6 +34,7 @@ export const P29B3_REQUIRED_PHASE_JOB_KINDS: readonly PhaseJobKind[] = [
   "phase4_centrum_tail",
   "phase4_card_profiling",
   "phase5_revize_05ab",
+  "phase55_crisis_bridge",
   "phase6_card_autoupdate",
   "phase65_memory_cleanup",
   "phase7_operative_plan",
