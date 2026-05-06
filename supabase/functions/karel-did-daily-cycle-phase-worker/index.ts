@@ -113,8 +113,11 @@ function dispatchTarget(job: Job): { fn: string; body: Record<string, unknown>; 
     case "phase8_therapist_intel":
       return { fn: "karel-daily-therapist-intelligence", body: { source: "p29b_phase_worker" }, timeoutMs: 90_000 };
     case "phase8a5_session_eval_safety_net": {
+      // P29B.3-H8.3: controller-mode (no plan_id) is handled in-process
+      // before reaching this switch via dispatchTarget. This branch only
+      // fires for legacy per-plan jobs still on the queue.
       const planId = (job.input as any)?.plan_id;
-      if (!planId) return { skip: "missing_plan_id" };
+      if (!planId) return { skip: "controller_mode_handled_in_process" };
       return { fn: "karel-did-session-finalize", body: { ...(job.input as any), source: "auto_safety_net" }, timeoutMs: 90_000 };
     }
     case "phase8b_pantry_flush":
