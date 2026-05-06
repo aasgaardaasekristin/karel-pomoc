@@ -4942,6 +4942,48 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       await setPhase("phase4_centrum_tail_enqueued",
         `enqueued=${centrumTailEnqueued} payload_id=${centrumTailPayloadId ?? "none"}`);
 
+      // ═══════════════════════════════════════════════════════════════════
+      // P29B.3-S0: EARLY ENQUEUE of all remaining required phase jobs.
+      // After this point the main HTTP request must NOT do long inline
+      // work for phases 5–7.x. Detached worker handles them. Helpers that
+      // are not implemented yet are marked controlled_skipped by worker.
+      // ═══════════════════════════════════════════════════════════════════
+      let p29b3EarlyEnqueueResult: { enqueued: string[]; skipped: any[]; errors: any[] } = {
+        enqueued: [], skipped: [], errors: [],
+      };
+      try {
+        let pendingDriveWritesCount = 0;
+        try {
+          const { count } = await sb.from("did_pending_drive_writes")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "pending");
+          pendingDriveWritesCount = count ?? 0;
+        } catch (_) { /* non-fatal */ }
+        const ref = centrumTailPayloadId
+          ? { payload_id: centrumTailPayloadId, payload_hash: "see_phase4_tail_enqueue" }
+          : null;
+        const res = await enqueueRequiredPostPhase4Jobs({
+          sb,
+          cycleId: cycle.id,
+          userId: resolvedUserId,
+          centrumTailPayloadRef: ref,
+          pendingDriveWritesCount,
+          source: "main_daily_cycle_p29b3_s0",
+        });
+        p29b3EarlyEnqueueResult = {
+          enqueued: res.enqueued.slice(),
+          skipped: res.skipped.slice(),
+          errors: res.errors.slice(),
+        };
+        console.log(`[P29B3_S0] early enqueue: enqueued=${res.enqueued.length} skipped=${res.skipped.length} errors=${res.errors.length}`);
+      } catch (eeErr: any) {
+        console.error("[P29B3_S0] early enqueue failed (non-fatal):", eeErr?.message ?? eeErr);
+      }
+      // Stash for completion semantics later in the function.
+      (globalThis as any).__p29b3_s0_early_enqueue = p29b3EarlyEnqueueResult;
+      await setPhase("p29b3_s0_required_jobs_enqueued",
+        `enqueued=${p29b3EarlyEnqueueResult.enqueued.length} skipped=${p29b3EarlyEnqueueResult.skipped.length} errors=${p29b3EarlyEnqueueResult.errors.length}`);
+
       // Daily report (deterministic, only actually performed changes)
       // RULE: Daily reports are EMAIL-ONLY, never saved as standalone files.
       const reportMatch = analysisText.match(/\[REPORT\]([\s\S]*?)\[\/REPORT\]/);
