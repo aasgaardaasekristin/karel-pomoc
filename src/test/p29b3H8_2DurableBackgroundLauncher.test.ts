@@ -88,7 +88,7 @@ describe("P29B.3-H8.2 durable background launcher", () => {
 
   it("recent_success dedup still bypassed by background orchestrator", () => {
     expect(SRC).toMatch(
-      /!isManualTriggerEarly && !forceFullPathEarly && !isBackgroundOrchestrator && resolvedUserId/,
+      /!isManualTriggerEarly && !forceFullPathEarly && !isInternalForceFullBypass && !isBackgroundOrchestrator && resolvedUserId/,
     );
   });
 
