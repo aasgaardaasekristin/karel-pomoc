@@ -63,8 +63,8 @@ describe("P29B.3-S0 orchestrator safety scaffold", () => {
     expect(workerSrc).toContain("P29B3_S0_UNIMPLEMENTED_SET");
     expect(workerSrc).toContain('"controlled_skipped"');
     expect(workerSrc).toContain("P29B3_S0_HELPER_NOT_IMPLEMENTED_REASON");
-    // Must use try/catch (not .catch on PostgrestBuilder)
-    expect(workerSrc).not.toMatch(/\.from\(["'][^"']+["']\)\.update\([\s\S]*?\)\.catch\(/);
+    // Must use try/catch (not .catch on PostgrestBuilder) for sweep RPC
+    expect(workerSrc).toMatch(/try\s*\{\s*await admin\.rpc\("did_phase_jobs_sweep_stale"\)/);
   });
 
   it("kill switch P29B_DISABLE_INLINE_PHASE_5_7 default is true", () => {
