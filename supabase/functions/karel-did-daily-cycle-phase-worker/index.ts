@@ -20,6 +20,7 @@ import { resolveCanonicalDidUserId } from "../_shared/canonicalUserResolver.ts";
 import { runPhase4CentrumTail, type CentrumTailResult } from "../_shared/dailyCyclePhase4CentrumTail.ts";
 import { runPhase75EscalationEmails } from "../_shared/dailyCyclePhase75EscalationEmails.ts";
 import { runPhase76FeedbackRetry } from "../_shared/dailyCyclePhase76FeedbackRetry.ts";
+import { runPhase76bAutoFeedbackAi } from "../_shared/dailyCyclePhase76bAutoFeedbackAi.ts";
 import {
   P29B3_S0_UNIMPLEMENTED_HELPER_KINDS,
   P29B3_S0_HELPER_NOT_IMPLEMENTED_REASON,
