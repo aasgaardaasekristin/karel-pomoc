@@ -23,6 +23,10 @@ export interface GenerateBriefsInput {
     | "provider_not_configured"
     | "provider_error"
     | "not_run";
+  /** P30.3 — matrix row id per part_name for weekly_matrix_ref backfill. */
+  matrixIdsByPart?: Record<string, string>;
+  /** P30.3 — query plan version recorded into evidence_summary. */
+  queryPlanVersion?: string;
 }
 
 export interface GenerateBriefsResult {
