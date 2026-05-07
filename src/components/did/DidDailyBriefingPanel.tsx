@@ -1569,7 +1569,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   // Replaces the old `briefingMethodBadge` + freshness banner + limited
   // banner trio that could produce contradictions like
   // "Aktuální (SLA záplata)" + "starý přehled" + "Dnešní přehled zatím nevznikl".
-  const truth = getBriefingTruthStatus(
+  const truthRaw = getBriefingTruthStatus(
     {
       briefing_date: briefing.briefing_date,
       is_stale: briefing.is_stale,
@@ -1583,6 +1583,20 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     },
     viewerToday,
   );
+  // P33.3 — when the actual row is a full renderable briefing (truth-gated,
+  // human_ok, 9 sections, clean audit), the UI must NOT show "Náhradní omezený"
+  // or "Ruční přehled" badge/banner just because of generation_method label.
+  const isFullRenderable = isFullRenderableBriefing(briefing as any);
+  const truth = isFullRenderable
+    ? {
+        ...truthRaw,
+        level: "fresh_full" as const,
+        badgeLabel: "Aktuální",
+        bannerText: null,
+        canShowCurrent: true,
+        detail: { ...truthRaw.detail, isLimited: false, isManual: false },
+      }
+    : truthRaw;
   const truthBadgeTone =
     truth.level === "fresh_full"
       ? "border-primary/30 text-primary/80"
