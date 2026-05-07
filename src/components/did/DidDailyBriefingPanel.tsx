@@ -1715,15 +1715,13 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         );
       })()}
 
+      {/* Strukturované sekce — primární jen když není human ok=true.
+          Když je human vrstva primární, ukazujeme jen jako "Technické
+          podklady" toggle, který odkrývá strukturovaný layout. */}
       {(() => {
         const hb: any = (p as any).karel_human_briefing;
-        const humanOk = !!(hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0);
-        if (!humanOk) return null;
-        // Když human vrstva drží primární displej, schovej duplicitní
-        // strukturovaný "main" obsah do collapsed details. Operativní
-        // bloky (porady, sezení, otázky terapeutek) zůstávají vidět
-        // přes Pracovna dashboard, takže tady jen přidáváme tichou
-        // technickou kotvu pro audit.
+        const humanPrimary = !!(hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0);
+        if (!humanPrimary) return null;
         return (
           <details
             className="mt-2 rounded-md border border-border/40 bg-muted/10"
@@ -1732,22 +1730,13 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             <summary className="cursor-pointer px-3 py-1.5 text-[11px] uppercase tracking-wide text-muted-foreground hover:text-foreground">
               Technické podklady
             </summary>
-            <div className="px-3 py-2 space-y-3">
-              <BriefingStructuredSections
-                p={p}
-                visibleRealityContext={visibleRealityContext}
-                yesterdayPlayroomReview={yesterdayPlayroomReview}
-                playroomSectionTitle={playroomSectionTitle}
-                playroomRecencyBadge={playroomRecencyBadge}
-                playRecency={playRecency}
-                filteredWaiting={filteredWaiting}
-              />
-            </div>
+            <p className="px-3 py-2 text-[11px] text-muted-foreground italic">
+              Strukturovaný přehled je dostupný v Pracovně (porady, plán dne, otázky terapeutek). Karlův přehled výše je primární vrstva.
+            </p>
           </details>
         );
       })()}
 
-      {/* Strukturované sekce — primární jen když není human ok=true. */}
       {!((p as any).karel_human_briefing?.ok === true) && visibleRealityContext && (
         <>
           <NarrativeDivider />
