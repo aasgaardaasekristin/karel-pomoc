@@ -1647,53 +1647,97 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       )}
 
 
-      {/* 1. Karlův ranní terapeutický monolog */}
-      <div className="rounded-xl border border-primary/15 bg-card/35 p-3.5 space-y-2">
-        <p className="text-[14px] leading-relaxed text-foreground/90 whitespace-pre-line">
-          {openingMonologueText}
-        </p>
-        {technicalNote && (
-          <p className="pt-2 border-t border-border/40 text-[11px] leading-relaxed text-muted-foreground italic">
-            Technická poznámka: {technicalNote}
-          </p>
-        )}
-      </div>
-
-      {/* P31.1 — truth-locked Karel voice (human briefing layer). */}
+      {/* P31.1b — když je k dispozici truth-locked human voice (ok=true),
+          je primární vrstvou. Strukturovaný payload se schová do
+          collapsed "Technické podklady", aby nevznikla duplicita.
+          Když ok=false, ukáže se fallback warning a strukturovaný layout
+          zůstává primární. Když chybí úplně, chová se jako dřív. */}
       {(() => {
         const hb: any = (p as any).karel_human_briefing;
-        if (hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0) {
+        const humanOk = !!(hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0);
+        const humanBroken = !!(hb && hb.ok === false);
+        if (humanOk) {
           return (
             <div
-              className="rounded-xl border border-primary/15 bg-card/30 p-3.5 mt-2 space-y-3"
+              className="rounded-xl border border-primary/15 bg-card/30 p-3.5 mt-1 space-y-3"
               data-testid="karel-human-briefing"
               data-human-ok="true"
               data-renderer-version={hb.renderer_version}
             >
-              {hb.sections.map((s: any) => (
-                <div key={s.section_id} className="space-y-1">
-                  <h3 className="text-[12px] font-medium text-foreground/70 uppercase tracking-wide">{s.title}</h3>
-                  <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{s.karel_text}</p>
-                </div>
-              ))}
+              {hb.sections.map((s: any, idx: number) => {
+                const text = typeof s?.karel_text === "string" ? s.karel_text : "";
+                if (!text.trim()) return null;
+                return (
+                  <div key={s?.section_id || idx} className="space-y-1">
+                    {s?.title && (
+                      <h3 className="text-[12px] font-medium text-foreground/70 uppercase tracking-wide">
+                        {s.title}
+                      </h3>
+                    )}
+                    <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
+                      {text}
+                    </p>
+                  </div>
+                );
+              })}
+              {technicalNote && (
+                <p className="pt-2 border-t border-border/40 text-[11px] leading-relaxed text-muted-foreground italic">
+                  Technická poznámka: {technicalNote}
+                </p>
+              )}
             </div>
           );
         }
-        if (hb && hb.ok === false) {
-          return (
-            <p
-              className="mt-2 text-[11px] italic text-muted-foreground"
-              data-testid="karel-human-briefing-fallback"
-              data-human-ok="false"
-            >
-              Humanizovaná vrstva není dostupná; zobrazuji strukturovaný přehled.
-            </p>
-          );
-        }
-        return null;
+        // strukturovaný režim — humanOk = false nebo chybí
+        return (
+          <>
+            {humanBroken && (
+              <p
+                className="mt-1 mb-2 text-[11px] italic text-muted-foreground"
+                data-testid="karel-human-briefing-fallback"
+                data-human-ok="false"
+              >
+                Humanizovaná vrstva není dostupná; zobrazuji strukturovaný přehled.
+              </p>
+            )}
+            {/* 1. Karlův ranní terapeutický monolog (strukturovaný režim) */}
+            <div className="rounded-xl border border-primary/15 bg-card/35 p-3.5 space-y-2">
+              <p className="text-[14px] leading-relaxed text-foreground/90 whitespace-pre-line">
+                {openingMonologueText}
+              </p>
+              {technicalNote && (
+                <p className="pt-2 border-t border-border/40 text-[11px] leading-relaxed text-muted-foreground italic">
+                  Technická poznámka: {technicalNote}
+                </p>
+              )}
+            </div>
+          </>
+        );
       })()}
 
-      {visibleRealityContext && (
+      {/* Strukturované sekce — primární jen když není human ok=true.
+          Když je human vrstva primární, ukazujeme jen jako "Technické
+          podklady" toggle, který odkrývá strukturovaný layout. */}
+      {(() => {
+        const hb: any = (p as any).karel_human_briefing;
+        const humanPrimary = !!(hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0);
+        if (!humanPrimary) return null;
+        return (
+          <details
+            className="mt-2 rounded-md border border-border/40 bg-muted/10"
+            data-testid="briefing-structured-collapsed"
+          >
+            <summary className="cursor-pointer px-3 py-1.5 text-[11px] uppercase tracking-wide text-muted-foreground hover:text-foreground">
+              Technické podklady
+            </summary>
+            <p className="px-3 py-2 text-[11px] text-muted-foreground italic">
+              Strukturovaný přehled je dostupný v Pracovně (porady, plán dne, otázky terapeutek). Karlův přehled výše je primární vrstva.
+            </p>
+          </details>
+        );
+      })()}
+
+      {!((p as any).karel_human_briefing?.ok === true) && visibleRealityContext && (
         <>
           <NarrativeDivider />
           <SectionHead>Důležitý kontext z posledních dní</SectionHead>
@@ -1703,6 +1747,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
+      {!((p as any).karel_human_briefing?.ok === true) && (<>
       {/* 2. Co se změnilo za poslední 3 dny */}
       {p.last_3_days && (
         <>
@@ -2199,6 +2244,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           </p>
         </>
       )}
+      </>)}
     </div>
   );
 };
