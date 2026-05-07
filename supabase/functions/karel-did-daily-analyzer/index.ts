@@ -650,7 +650,11 @@ Proveď analýzu a vrať JSON.`;
 
     return new Response(JSON.stringify({
       success: true,
+      ok: true,
       date: today,
+      analyzer_status: fallbackUsed ? "controlled_fallback" : "ok",
+      fallback_used: fallbackUsed,
+      validation_errors: fallbackErrors,
       stats: {
         parts_analyzed: analysisJson.parts?.length || 0,
         threads_reviewed: (recentThreads || []).length,
@@ -659,6 +663,7 @@ Proveď analýzu a vrať JSON.`;
         drive_index_loaded: driveIndexSummary.length > 0,
       },
       analysis: analysisJson,
+      result: analysisJson,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
