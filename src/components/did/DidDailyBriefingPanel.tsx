@@ -48,6 +48,7 @@ import { useDidThreads } from "@/hooks/useDidThreads";
 import type { DeliberationType } from "@/types/teamDeliberation";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import ExternalLoadWarning from "@/components/did/ExternalLoadWarning";
+import AiPolishCanaryPreviewPanel from "@/components/did/AiPolishCanaryPreviewPanel";
 import { getBriefingTruthStatus, pluralizeDays } from "@/lib/briefingTruthStatus";
 
 interface BriefingDecision {
@@ -1736,6 +1737,14 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           </details>
         );
       })()}
+
+      {/* P31.2C — read-only AI polish canary preview, collapsed audit panel.
+          Hlavní text Karlova přehledu zůstává deterministic. */}
+      <AiPolishCanaryPreviewPanel
+        briefingId={briefing?.id || null}
+        humanOk={!!((p as any).karel_human_briefing?.ok === true)}
+      />
+
 
       {!((p as any).karel_human_briefing?.ok === true) && visibleRealityContext && (
         <>
