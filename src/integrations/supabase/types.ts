@@ -5515,6 +5515,57 @@ export type Database = {
           },
         ]
       }
+      hana_personal_response_guard_audit: {
+        Row: {
+          blocked_reason: string | null
+          created_at: string
+          id: string
+          identity_audit_id: string | null
+          input_hash: string | null
+          marker: string | null
+          resolution_kind: string | null
+          response_guard_status: string
+          response_hash: string | null
+          speaker_identity: string | null
+          thread_id: string | null
+          used_fallback: boolean
+          user_id: string
+          warnings: Json
+        }
+        Insert: {
+          blocked_reason?: string | null
+          created_at?: string
+          id?: string
+          identity_audit_id?: string | null
+          input_hash?: string | null
+          marker?: string | null
+          resolution_kind?: string | null
+          response_guard_status: string
+          response_hash?: string | null
+          speaker_identity?: string | null
+          thread_id?: string | null
+          used_fallback?: boolean
+          user_id: string
+          warnings?: Json
+        }
+        Update: {
+          blocked_reason?: string | null
+          created_at?: string
+          id?: string
+          identity_audit_id?: string | null
+          input_hash?: string | null
+          marker?: string | null
+          resolution_kind?: string | null
+          response_guard_status?: string
+          response_hash?: string | null
+          speaker_identity?: string | null
+          thread_id?: string | null
+          used_fallback?: boolean
+          user_id?: string
+          warnings?: Json
+        }
+        Relationships: []
+      }
       karel_action_jobs: {
         Row: {
           attempt_count: number
