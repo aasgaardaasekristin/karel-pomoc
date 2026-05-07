@@ -3040,11 +3040,26 @@ Deno.serve(async (req) => {
         : 0;
       const cachedAfterCycle =
         gateCompletedAtMs > 0 && cachedGeneratedAtMs >= gateCompletedAtMs;
+      // P30.2b — A cached row also requires the external_reality_watch block.
+      const cachedExt = existing?.payload?.external_reality_watch ?? null;
+      const ALLOWED_PROVIDER_STATUSES = [
+        "configured",
+        "provider_not_configured",
+        "provider_error",
+        "not_run",
+      ];
+      const cachedExternalRealityOk =
+        !!cachedExt &&
+        typeof cachedExt === "object" &&
+        ALLOWED_PROVIDER_STATUSES.includes(String(cachedExt.provider_status ?? "")) &&
+        cachedExt.active_part_daily_brief_count !== undefined &&
+        cachedExt.active_part_daily_brief_count !== null;
       const cachedIsReady =
         existing &&
         cachedGateOk &&
         !!cachedSourceCycleId &&
-        cachedAfterCycle;
+        cachedAfterCycle &&
+        cachedExternalRealityOk;
 
       if (existing && cachedIsReady) {
         await finishBriefingAttempt(supabase, attemptId, { status: "succeeded", created_briefing_id: existing.id, metadata: { cached: true } });
@@ -3778,7 +3793,7 @@ Deno.serve(async (req) => {
         const { data: briefRows } = await supabase
           .from("did_active_part_daily_brief")
           .select(
-            "part_name, activity_status, known_sensitive_patterns, internet_triggers_today, anniversaries_today, recommended_prevention, evidence_summary, source_refs",
+            "part_name, activity_status, known_sensitive_patterns, internet_triggers_today, anniversaries_today, recommended_prevention, evidence_summary, source_refs, brief_date",
           )
           .eq("user_id", scopedUserId)
           .eq("brief_date", today)
@@ -3797,11 +3812,43 @@ Deno.serve(async (req) => {
             sourceBacked += r.source_refs.length;
           }
         }
+
+        // P30.2b — find latest matching orchestrator run
+        let orchestratorRunId: string | null = null;
+        let internetWatchRunId: string | null = null;
+        try {
+          const orchQuery = supabase
+            .from("external_reality_daily_orchestrator_runs")
+            .select("id, internet_watch_run_id, provider_status, status, completed_at, source_cycle_id")
+            .eq("user_id", scopedUserId)
+            .eq("run_date", today)
+            .in("status", ["ok", "ok_provider_not_configured", "ok_provider_error"])
+            .order("completed_at", { ascending: false })
+            .limit(1);
+          const sourceCycleId = truthGateResult?.source_cycle_id ?? null;
+          const { data: orchRows } = sourceCycleId
+            ? await orchQuery.eq("source_cycle_id", sourceCycleId)
+            : await orchQuery;
+          const orch = (orchRows ?? [])[0] ?? null;
+          if (orch) {
+            orchestratorRunId = orch.id ?? null;
+            internetWatchRunId = orch.internet_watch_run_id ?? null;
+            if (orch.provider_status) providerStatus = orch.provider_status;
+          } else if (rows.length === 0) {
+            providerStatus = "not_run";
+          }
+        } catch (_) { /* non-fatal */ }
+
         payload.external_reality_watch = {
           provider_status: providerStatus,
           active_part_daily_brief_count: rows.length,
           internet_events_used_count: internetEventsUsed,
           source_backed_events_count: sourceBacked,
+          source_cycle_id: truthGateResult?.source_cycle_id ?? null,
+          orchestrator_run_id: orchestratorRunId,
+          internet_watch_run_id: internetWatchRunId,
+          active_part_daily_brief_date: today,
+          generated_from_rows_at: new Date().toISOString(),
           not_configured_reason: providerStatus === "provider_not_configured"
             ? "no_external_search_provider_configured"
             : null,
@@ -3821,6 +3868,11 @@ Deno.serve(async (req) => {
           active_part_daily_brief_count: 0,
           internet_events_used_count: 0,
           source_backed_events_count: 0,
+          source_cycle_id: truthGateResult?.source_cycle_id ?? null,
+          orchestrator_run_id: null,
+          internet_watch_run_id: null,
+          active_part_daily_brief_date: today,
+          generated_from_rows_at: new Date().toISOString(),
           not_configured_reason: null,
           parts: [],
           read_error: String((e as Error)?.message ?? e).slice(0, 200),
