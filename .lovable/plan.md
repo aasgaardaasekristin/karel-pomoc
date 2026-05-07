@@ -1,140 +1,302 @@
+# P30.3 — External Reality Watch: Personal Anchor + General Trigger + Weekly Matrix
 
-# P28_CDI_2b — Remaining surfaces, resume state, dashboard proof
+## Absolute red-line — DO NOT TURN EXAMPLES INTO QUERIES
 
-Goal: extend the server-side dynamic pipeline to all remaining submission surfaces, add resume_state writes, prove dashboard refetch paths, resolve the legacy `queued=1` event, and run a safe DID part-chat smoke. The old global ingest cron stays untouched as a safety net.
+The following strings are **examples / forbidden defaults**, never valid daily queries:
 
-Out of scope (later passes): reducing the global ingest cron, Jung persona, Hana memory, Drive lifecycle.
+- `Arthur Labinjo-Hughes aktuální zpráva`
+- `Timmy aktuální zpráva`
+- `Arthur aktuální zpráva`
+- `Tundrupek aktuální zpráva`
+- `Gustík aktuální zpráva`
+- `velryba aktuální zpráva` (when only from an `example_term`)
+- any concrete case/person/animal/story name appearing only as an `example_term`
 
----
+These must NOT appear in production query builder output, `external_event_watch_runs.payload.queries`, `external_event_watch_runs.payload.query_plan[].query`, `external_reality_events.raw_payload.search_query`, `did_active_part_daily_brief.evidence_summary`, or weekly matrix `query_plan[].query` — unless explicitly present as a reviewed `query_terms[]` item with `example_terms_query_enabled = true` OR `query_policy = "explicit_query_terms"`, `last_reviewed_at IS NOT NULL`, and the query_plan records `query_source = "explicit_query_terms"`.
 
-## Part A — Resolve legacy `queued_for_consumption=1`
+If any forbidden example string appears as a default query after fresh runtime: **P30.3 = NOT_ACCEPTED**.
 
-1. Run `read_query`:
-   ```sql
-   select id, surface_type, surface_id, event_type, pipeline_state, consumed_by, metadata, created_at
-   from dynamic_pipeline_events
-   where pipeline_state='queued_for_consumption'
-   order by created_at desc;
-   ```
-2. Decision tree:
-   - If row is the failed fake-task smoke from 2a → migration UPDATE → `pipeline_state='superseded'`, `consumed_by = consumed_by || {superseded_by:'P28_CDI_2a_retry', superseded_at: now()}`.
-   - If genuinely consumable → re-trigger active processor with `force_surface_id`.
-   - Otherwise → report blocker.
-3. Acceptance: `stale_queued_smoke_events = 0`.
+All examples in this plan are tests/fixtures only, never production query seeds.
 
-## Part B — REMAINING_SURFACE_MATRIX
+## Scope explicitly excludes
 
-Produce a `docs/P28_CDI_2B_SURFACE_MATRIX.md` with one row per surface:
-
-| surface | frontend_component | submit_handler | edge_function_or_rpc | db_table_written | server_pipeline_event_written | active_activity_session_written | resume_state_written | dashboard_refetch_or_realtime | status | gap |
-
-Surfaces (10): `playroom_deliberation_answer`, `session_approval_answer`, `pending_question_answer`, `card_update_discussion`, `daily_plan_edit`, `live_session_block_update`, `playroom_block_update`, `did_part_chat_thread`, `session_resume`, `playroom_resume`.
-
-Sources to inspect: `DidKidsPlayroom.tsx`, `DeliberationRoom.tsx`, `PendingQuestionsPanel.tsx`, `DidKartotekaTab.tsx`, `KarelDailyPlan.tsx`, `DidLiveSessionPanel.tsx`, `DidDailySessionPlan.tsx`, `Chat.tsx` (DID part chat), and the matching edge functions (`karel-did-playroom-evaluate`, `karel-team-deliberation-iterate`, `karel-daily-plan-sync-start`, `karel-did-card-update`, `karel-live-session-feedback`, `karel-live-session-produce`, `karel-did-chat`).
-
-## Part C — Server-side `recordServerSubmission` for each remaining surface
-
-For every gap found in Part B, edit the matching edge function to call `recordServerSubmission(...)` from `_shared/dynamicPipelineServer.ts` after the persisted write succeeds. Mappings:
-
-1. **playroom_deliberation_answer** — `karel-team-deliberation-iterate` (when deliberation_type=playroom) or `karel-did-playroom-evaluate`. Event `deliberation_answered`. Resume: `last_open_question`, `last_therapist_answer`, `next_resume_point`.
-2. **session_approval_answer** — `karel-daily-plan-sync-start` and the deliberation sign-off path. Event `approval_answered` (extend ServerEventType union). Resume: `approval_stage`, `last_pending_decision`, `next_resume_point`.
-3. **pending_question_answer** — wherever `PendingQuestionsPanel` posts answers (likely `karel-task-feedback` or a dedicated handler — confirm via rg). Event `pending_question_answered`. Resume: `question_id`, `answered_by`, `answer_summary`.
-4. **card_update_discussion** — `karel-did-card-update` / `update-part-card`. Event `card_update_discussed`. Resume: `card_update_id`, `decision_status`, `next_resume_point`.
-5. **daily_plan_edit** — `karel-daily-plan-sync-start` non-start branch + plan UPDATE handlers. Event `plan_edited`. Resume: `changed_fields`, `previous_status`, `next_status`.
-6. **live_session_block_update / playroom_block_update** — `karel-live-session-produce`, `karel-live-session-feedback`, `karel-block-followup`. Event `block_updated`. Resume: `current_block_index`, `last_completed_block`, `skipped_blocks`, `changed_blocks`, `reason_for_change`, `next_resume_point`, `what_changed_since_plan`.
-
-Extend `ServerSurfaceType` and `ServerEventType` unions in `dynamicPipelineServer.ts` with `approval_answered`, `pending_question_answered`, `card_update_discussed`.
-
-Also add corresponding dispatch branches in `karel-active-session-processor/index.ts` (mostly `updated_at` bumps so dashboards refetch; pending_question dispatches `emitPendingQuestionsChanged` realtime by bumping the row).
-
-## Part D — DID part chat safe smoke
-
-Add `supabase/functions/_shared/p28CdiSafeSmoke.ts` with a helper that injects a synthetic event:
-```
-surface_type=did_part_chat_thread
-event_type=message_sent
-safe_summary='[P28_CDI_2B_SMOKE] DID safe synthetic marker'
-raw_allowed=false
-metadata={p28_cdi_2b_smoke:true, no_child_raw_text:true}
-```
-Trigger `karel-active-session-processor` with `force_surface_id`. Acceptance: `dispatch_kind=did_part_chat_ingest`, `dispatch_ok=true`, `pipeline_state=consumed`.
-
-## Part E — Resume-state proof
-
-After Parts C+D, query:
-```sql
-select surface_type, surface_id, last_open_question, last_therapist_answer,
-       next_resume_point, what_changed_since_plan, updated_at
-from surface_resume_state
-where updated_at >= now() - interval '2 hours'
-order by updated_at desc;
-```
-Acceptance: ≥3 rows across team_deliberation_answer, playroom_deliberation_answer, and a block_update surface; `next_resume_point` non-null; `what_changed_since_plan` populated for block updates. May require a one-time migration to add the missing columns (`what_changed_since_plan`, `approval_stage`, etc.) to `surface_resume_state` if absent.
-
-## Part F — Dashboard update proof
-
-Build `docs/P28_CDI_2B_DASHBOARD_PROOF.md` enumerating for each remaining surface the realtime/invalidate path. Use rg over `src/components`, `src/hooks` for `invalidateQueries|refetch|reload|subscribe|postgres_changes|emitPendingQuestionsChanged`. If any panel lacks a refetch trigger, wire a `supabase.channel(...).on('postgres_changes', { table })` subscriber or invalidate the relevant React Query key.
-
-## Part G — Forced safe smokes
-
-Run smoke for each surface via direct insert (synthetic, `raw_allowed=false`) and force `karel-active-session-processor`. Verify:
-```sql
-select surface_type, event_type, pipeline_state, consumed_by, raw_allowed, metadata, created_at
-from dynamic_pipeline_events
-where created_at >= now() - interval '2 hours'
-order by created_at desc;
-```
-All consumed (or explicit `skipped_safe_fixture`); `raw_allowed=false` for synthetic child/Hana surfaces.
-
-## Part H — Cron audit (no changes)
-
-Read-only:
-```sql
-select jobname, schedule, active, command from cron.job
-where command ilike '%karel-did-event-ingest%' or command ilike '%karel-active-session-processor%';
-```
-Document `old_global_ingest_cron_kept_as_safety_net=true`, `active_processor_cron_exists=true`. **No cron edits.**
-
-## Part I — Tests (`src/test/p28CdiRemainingSurfaces.test.ts`)
-
-Vitest cases:
-- playroom_deliberation_answer server-event dedupe key shape
-- session_approval_answer event type valid in union
-- pending_question_answer event type valid
-- card_update_discussion event type valid
-- daily_plan_edit event type valid
-- live_session_block_update resume state shape (zod-style)
-- did_part_chat safe synthetic event passes guards
-- dashboard refetch matrix non-empty (parses the doc)
-- legacy queued smoke marked superseded
-- raw_allowed=false default for synthetic safe smoke
-
-Run `bunx vitest run --reporter=basic` (auto-run by harness).
+P31, P32, P33.4, UI polish, AI polish canary, any automatic clinical write from external watch.
 
 ---
 
-## Acceptance gate
+## Part A — Forensic audit (READ-ONLY)
+
+Produce `docs/P30_3_QUERY_ORIGIN_AUDIT.md` mapping today's exact queries (`Arthur Labinjo-Hughes aktuální zpráva`, `Timmy aktuální zpráva`, `velryba aktuální zpráva`, `týrání zvířat aktuální zpráva`, `týrání dítěte aktuální zpráva`).
+
+For each query record: query, origin_file_or_table, origin_column_or_code_path, part_name, was_part_relevant_today, card_was_read, personal_trigger_source, sensitivity_id, sensitivity_types, event_pattern, query_terms, example_terms, is_example_term, is_category_term, is_explicit_query_term, should_be_daily_query, decision (keep | quarantine | reroute_via_category | manual_review_required).
+
+Audit paths:
+- `supabase/functions/karel-external-reality-sentinel/index.ts`
+- `supabase/functions/_shared/externalRealitySearchProvider.ts`
+- `supabase/functions/_shared/activePartDailyBrief.ts`
+- `part_external_event_sensitivities`, `external_event_watch_runs.payload.queries`, `external_reality_events.raw_payload`
+- `did_active_part_daily_brief`, `did_part_registry`, `did_part_profiles`
+- `CARD_PHYSICAL_MAP` / Drive card resolver
+- seed/migration/test fixtures
+
+**Acceptance flags:** `current_query_origin_audit_complete`, `hardcoded_or_example_query_sources_identified`, `card_read_gap_identified`, `weekly_matrix_gap_identified`.
+
+**No code written until Part A done.**
+
+> **Part A must be printed in the assistant response before any migration or code edit.**
+>
+> Do not silently create the audit file only. Return the audit table in the chat response AND write it to `docs/P30_3_QUERY_ORIGIN_AUDIT.md`.
+>
+> If Part A is incomplete: STOP. Do not run migration. Do not edit code. **P30.3 = NOT_ACCEPTED.**
+
+---
+
+## Part B — DB migration
+
+1. Create `public.part_external_anchor_facts` (anchor fact cache) with unique index on `(user_id, part_name, anchor_label, fact_type, COALESCE(fact_date,'1900-01-01'), source_url)`.
+2. Create `public.part_external_reality_weekly_matrix` (one row per relevant part per Prague day) with `UNIQUE(user_id, date_prague, part_name)`.
+3. `ALTER TABLE part_external_event_sensitivities ADD COLUMN IF NOT EXISTS`: `query_terms jsonb`, `negative_terms jsonb`, `example_terms jsonb`, `query_enabled bool default true`, `example_terms_query_enabled bool default false`, `query_policy text default 'category_template'`, `last_reviewed_at timestamptz`, `last_reviewed_by text`.
+4. RLS: canonical user reads own; service role writes; no anon writes.
+
+**Acceptance:** anchor cache exists, weekly matrix exists, sensitivity schema distinguishes query_terms vs example_terms, `example_terms_query_enabled` defaults false.
+
+---
+
+## Part C — Detect today's relevant parts
+
+`detectTodayRelevantParts({userId, datePrague, maxParts?})` in `supabase/functions/_shared/todayRelevantParts.ts`.
+
+**Sources:** today_part_proposal, daily/session/playroom selected_part, live progress selected_part, recent threads (24–72h), explicit watchlist where `query_enabled=true`, recent active_part_daily_brief (active_thread/recent_thread/watchlist).
+
+**Forbidden:** all `did_part_registry.status='active'` blindly; Hana/Hanka/Hanička/Karel/Káťa as parts; Tundrupek when only Arthur+Gustík relevant; Arthur when only Hana self.
+
+Return `TodayRelevantPartContext[]` with `{part_name, source, confidence, reason}`.
+
+**Acceptance:** detector exists, no blind registry-active, Hana/Karel excluded, runtime matches today's context.
+
+---
+
+## Part D — Read cards/profiles only for today's relevant parts
+
+`loadPartPersonalTriggerProfile({userId, partName, datePrague})` in `supabase/functions/_shared/partPersonalTriggerProfile.ts`.
+
+Source order: canonical Drive card via CARD_PHYSICAL_MAP/resolver → did_part_profiles → did_part_registry → recent active_part_daily_brief → source-backed fact cache.
+
+Return `PartPersonalTriggerProfile` with `card_read_status` (`read_ok|profile_only|card_missing|manual_approval_required|not_mapped`), `source_refs`, `personal_triggers[]`, `biographical_anchors[]` (with `anchor_type`, `canonical_entity_name?`, `known_dates[]` w/ verification_status), `recommended_guards[]`, `controlled_skips[]`.
+
+Rules: read card if exists; missing = controlled_skip; never send raw card text to provider; never read for irrelevant parts; concrete card names = anchors not default queries.
+
+**Acceptance:** loader exists, reads card only for relevant, missing = controlled_skip, raw text not sent, anchor extraction exists.
+
+---
+
+## Part E — Source-backed anchor fact discovery + cache
+
+`discoverAndCacheMissingPartAnchorFacts({userId, partName, profile, allowedLookupHints})` in `supabase/functions/_shared/partAnchorFactDiscovery.ts`.
+
+Rules: never lookup by partName alone (Arthur ≠ Arthur Labinjo-Hughes; Tundrupek ≠ Timmy); requires explicit anchor hint; discovered fact must have real URL; store as `source_backed_unverified` or `pending_review`; never auto clinical-confirm.
+
+**Card backfill:** optional, append-only, review-labeled (`SOURCE-BACKED_FACTS_TO_REVIEW`), via `safeEnqueueDriveWrite`. Hard review-mode — never auto-modify card body.
+
+**Acceptance:** discovery exists, no lookup by part_name alone, requires source_url, cached for reuse, backfill governed and review-labeled.
+
+---
+
+## Part F — Date / anniversary risk
+
+`evaluatePartAnchorDateRisk({datePrague, profile, anchorFacts, lookaheadDays?})` in `supabase/functions/_shared/partAnchorDateRisk.ts`.
+
+Compare Prague-local date; exact day, ±3, ±7 windows; uncertain dates → "možné citlivostní okno", never "anniversary"; write into weekly matrix.
+
+**Acceptance:** risk checker exists, anniversary detected when source-backed, uncertain not presented as fact.
+
+---
+
+## Part G — General daily external trigger sweep (instantiated on demand)
+
+`buildGeneralExternalTriggerSweepQueries({datePrague, relevantParts, profiles, anchorFacts, maxQueries})` in `supabase/functions/_shared/externalRealityCategorySweep.ts`.
+
+**Category templates instantiated only when at least one today-relevant part has a matching trigger_category** extracted from card/profile/source-backed anchor/reviewed sensitivity/weekly matrix history. Templates never run globally, never run for unrelated parts, never run just because the template exists.
+
+Allowed templates (only when matched):
+```
+týrání zvířat aktuální zprávy
+uvízlé zvíře záchrana aktuální zprávy
+záchrana zvířete aktuální zprávy
+násilí na dětech aktuální zprávy
+selhání ochrany dítěte aktuální zprávy
+soud týrání dítěte aktuální zprávy
+katastrofa děti aktuální zprávy
+```
+
+Forbidden defaults: Timmy / Arthur Labinjo-Hughes / Arthur / Tundrupek / Gustík `aktuální zpráva`.
+
+**Acceptance:** sweep exists, queries derived from trigger_categories, no concrete example defaults, template not run when no part has matching category.
+
+---
+
+## Part H — Unified dynamic query plan
+
+`buildExternalRealityQueryPlan(...)` in `supabase/functions/_shared/externalRealityQueryPlan.ts`.
+
+Each query: `{query, part_name, trigger_source, anchor_label?, sensitivity_id?, personal_trigger_label?, sensitivity_type?, trigger_category, query_policy, query_source, used_terms, ignored_example_terms, negative_terms, reason}`.
+
+Rules: never use part name as query; never use example_terms by default; external anchor only if source-backed; date risk only if source-backed; dedupe by (part_name, trigger_category, normalized_query); record ignored_example_terms; controlled_skip/manual_review_required if unsafe.
+
+**Acceptance:** combines personal+general layers; uses card triggers; uses source-backed anchors; uses date risk when source-backed; uses general sweep; never uses part_name; example_terms ignored by default; records ignored.
+
+---
+
+## Part I — Weekly trigger matrix
+
+Upsert one row per relevant part per Prague day in `part_external_reality_weekly_matrix` with all fields populated (relevance source, card_read_status, personal_triggers, biographical_anchors, anchor_date_risks, sensitivity_triggers, query_plan, ignored_example_terms, external_events, source_refs, recommended_guards, provider_status).
+
+**Acceptance:** all matrix fields populated daily.
+
+---
+
+## Part J — Quarantine legacy/example events
+
+Do **not** delete. Mark legacy events `excluded_from_briefing=true`, `exclusion_reason=legacy_example_query_p30_3`, `requires_revalidation=true`. Active part daily brief ignores: `excluded_from_briefing=true`, missing/legacy `query_plan_version`, missing `source_url`, `auto_verified`.
+
+---
+
+## Part K — Watch run payload
+
+Every `external_event_watch_runs.payload` includes: `query_plan_version: "p30.3_personal_anchor_general_trigger_weekly_matrix"`, `date_prague`, `relevant_parts`, `card_reads`, `anchor_facts_used`, `date_risks`, `queries`, `query_plan`, `legacy_example_terms_blocked`, `controlled_skips`.
+
+---
+
+## Part L — Active part daily brief + briefing output
+
+`did_active_part_daily_brief` evidence_summary includes `provider_status`, `query_plan_version`, `trigger_source`, `weekly_matrix_ref`; arrays for `personal_triggers_today`, `biographical_anchors`, `anchor_date_risks`, `internet_triggers_today`, `source_refs`, `recommended_prevention`.
+
+Briefing voice (`karelBriefingVoiceRenderer.ts`) speaks categories + guards + date windows, not raw counts.
+
+**Use these examples exactly as output-shape examples, NOT as search queries:**
+
+> U Tundrupka se dnes v externím kontextu objevily zdrojované zprávy z okruhu bezmocného nebo ohroženého zvířete. Beru to jen jako možný vnější spouštěč, ne jako diagnózu. Doporučený rámec: bez explicitních detailů, držet bezpečí, sledovat tělesnou reakci.
+
+> U Arthura se dnes objevují zdrojované zprávy z okruhu ochrany dětí / násilí na dětech. Pracovat jen nepřímo, bez detailů, jako s možným bezpečnostním kontextem.
+
+> U Arthura je dnes blízko zdrojovaného významného data. Beru to jako citlivostní okno, ne jako jistotu reakce.
+
+If no events:
+
+> Externí watch dnes pro tuto část nepřinesl relevantní zdrojovaný podklad.
+
+**No DID observations, no card_update_queue, no KARTA writes from external watch** — anchor fact backfill only via governance, append-only, review-labeled.
+
+---
+
+## Part M — Tests
+
+Create:
 
 ```
-stale_queued_smoke_events = 0
-remaining_surface_matrix_complete = true
-server_pipeline_events_for_remaining_surfaces = true
-resume_state_count >= 3
-did_part_chat_safe_smoke = pass_or_explicit_safe_skip
-dashboard_update_paths_proven = true
-old_global_cron_still_safety_net = true
-tests_pass = true
+src/test/p30_3ExternalRealityPersonalAnchorAndWeeklyMatrix.test.ts
 ```
 
-If any item fails → `P28_CDI_2b = not_accepted`, report gaps. Reducing the global cron (`P28_CDI_3`) only after 2b is green.
+Do not summarize or reduce the test list. Add at least these 47 tests:
 
-## Files to be touched (summary)
+1. relevant part detector: Arthur + Tundrupek → reads exactly Arthur and Tundrupek cards.
+2. relevant part detector: Gustík + Arthur → reads exactly Gustík and Arthur, not Tundrupek.
+3. relevant part detector does not include all registry_active rows blindly.
+4. Hana/Karel/Hanička/Káťa excluded as non-parts.
+5. part card loader returns controlled_skip when card missing.
+6. part card loader extracts personal_triggers.
+7. part card loader extracts biographical_anchors.
+8. part card loader extracts date anchors.
+9. missing anchor fact discovery does not lookup by part_name alone.
+10. missing anchor fact discovery requires explicit lookup hint.
+11. discovered anchor fact requires source_url.
+12. discovered anchor fact cached for reuse.
+13. card backfill is review-labeled and uses safeEnqueueDriveWrite.
+14. date risk checker detects exact source-backed anniversary.
+15. date risk checker detects ±3 / ±7 window.
+16. date risk checker does not assert uncertain date as fact.
+17. buildExternalRealityQueryPlan does not include "Arthur Labinjo-Hughes aktuální zpráva" when it is only example_terms.
+18. buildExternalRealityQueryPlan does not include "Timmy aktuální zpráva" when it is only example_terms.
+19. buildExternalRealityQueryPlan does not include "Arthur aktuální zpráva" when it is only part_name or example_terms.
+20. buildExternalRealityQueryPlan does not include "Tundrupek aktuální zpráva" when it is only part_name or example_terms.
+21. buildExternalRealityQueryPlan does not include "Gustík aktuální zpráva" when it is only part_name or example_terms.
+22. buildExternalRealityQueryPlan may include "týrání zvířat aktuální zprávy" from a matching animal_suffering / helpless_animal trigger category.
+23. buildExternalRealityQueryPlan may include "násilí na dětech aktuální zprávy" from Arthur's matching personal trigger category.
+24. Category template "týrání zvířat aktuální zprávy" is NOT instantiated when no today-relevant part has animal_suffering / helpless_animal / animal_rescue / animal_abuse trigger category.
+25. Category template "násilí na dětech aktuální zprávy" is NOT instantiated when no today-relevant part has child_abuse / child_protection_failure trigger category.
+26. query plan records trigger_source=card_personal_trigger.
+27. query plan records trigger_source=biographical_anchor.
+28. query plan records trigger_source=date_risk.
+29. query plan records trigger_source=general_trigger_sweep.
+30. query plan records ignored_example_terms.
+31. query plan never uses part_name itself as query.
+32. query builder deterministic for same inputs.
+33. weekly matrix row created per relevant part.
+34. weekly matrix contains personal_triggers.
+35. weekly matrix contains biographical_anchors.
+36. weekly matrix contains date_risks.
+37. weekly matrix contains query_plan.
+38. weekly matrix contains ignored_example_terms.
+39. weekly matrix contains source_refs.
+40. active_part_daily_brief excludes legacy_example_query events.
+41. external watch creates no event without source_url.
+42. external watch does not auto-verify events.
+43. external watch does not create card_update_queue.
+44. external watch does not create did_observations.
+45. external watch does not create KARTA writes.
+46. source audit: no hardcoded "Arthur Labinjo-Hughes aktuální zpráva" in production code outside tests/fixtures.
+47. source audit: no hardcoded "Timmy aktuální zpráva" or "velryba aktuální zpráva" in production query-builder code outside tests/fixtures.
 
-- New migration: extend `surface_resume_state` columns; mark legacy queued event superseded.
-- `supabase/functions/_shared/dynamicPipelineServer.ts` — extend unions.
-- `supabase/functions/_shared/p28CdiSafeSmoke.ts` — new helper.
-- `supabase/functions/karel-active-session-processor/index.ts` — dispatch branches for new surfaces.
-- Edge functions: `karel-team-deliberation-iterate`, `karel-did-playroom-evaluate`, `karel-daily-plan-sync-start`, `karel-did-card-update`, `karel-live-session-produce`, `karel-live-session-feedback`, `karel-block-followup`, `karel-did-chat`, `karel-task-feedback` (pending question).
-- Frontend: minimal — only add missing realtime/invalidate subscribers where Part F finds gaps.
-- `docs/P28_CDI_2B_SURFACE_MATRIX.md`, `docs/P28_CDI_2B_DASHBOARD_PROOF.md`.
-- `src/test/p28CdiRemainingSurfaces.test.ts`.
+Run `bunx vitest run --reporter=basic`. Must pass.
+
+**Acceptance:** `p30_3_query_builder_tests_pass`, `p30_3_personal_anchor_tests_pass`, `p30_3_date_risk_tests_pass`, `p30_3_weekly_matrix_tests_pass`, `full_vitest_pass` = true.
+
+---
+
+## Part N — Runtime proof
+
+`docs/P30_3_RUNTIME_PROOF.md` with results from the four SQL queries (watch runs, events, active_part_daily_brief, weekly matrix, side-effect counts) for user `8a7816ee-4fd1-43d4-8d83-4230d7517ae1`.
+
+**Date parameterization:** Use today's Prague-local date as `:today_prague`. For this run, if the current Prague date is `2026-05-07`, use `2026-05-07`. Do not hardcode the date in code or tests except runtime SQL proof. SQL: `and brief_date = '2026-05-07'` (today only) or `:today_prague`.
+
+Verify: `query_plan_version=p30.3_personal_anchor_general_trigger_weekly_matrix`; `card_reads` exactly match relevant parts; no exact forbidden queries; concrete examples only in `ignored_example_terms`/`legacy_example_terms_blocked`; date_risk source-backed or absent; events source-backed; brief uses dynamic policy; weekly matrix populated; zero side-effect writes (card_update_queue/did_observations/KARTA pending writes from external).
+
+---
+
+## Part O — Final verdict
+
+P30.3 accepted only if all acceptance flags evaluate true (full list in original brief). If anything missing: `P30.3 = NOT_ACCEPTED`.
+
+### Additional hard fail conditions
+
+If any of these exact strings appears in a fresh production query after P30.3:
+- `Arthur Labinjo-Hughes aktuální zpráva`
+- `Timmy aktuální zpráva`
+- `Arthur aktuální zpráva`
+- `Tundrupek aktuální zpráva`
+- `Gustík aktuální zpráva`
+
+and the query_plan does not explicitly show:
+```
+query_policy = "explicit_query_terms"
+query_source = "explicit_query_terms"
+last_reviewed_at IS NOT NULL
+example_terms_query_enabled = true
+```
+then: **P30.3 = NOT_ACCEPTED.**
+
+If `velryba aktuální zpráva` appears only because `Timmy` was an example term: **P30.3 = NOT_ACCEPTED.**
+
+If `velryba / uvízlé zvíře / záchrana zvířete` appears because Tundrupek has a source-backed `animal_suffering / helpless_animal` trigger category: **allowed**, but query_plan must show the trigger category and source.
+
+**Stop after verdict.** Do not start P31, P32, P33.4, or UI polish.
+
+---
+
+## Technical notes
+
+- New shared modules under `supabase/functions/_shared/`: `todayRelevantParts.ts`, `partPersonalTriggerProfile.ts`, `partAnchorFactDiscovery.ts`, `partAnchorDateRisk.ts`, `externalRealityCategorySweep.ts`, `externalRealityQueryPlan.ts`.
+- `karel-external-reality-sentinel/index.ts` `internet_watch` action refactored to: detect relevant parts → load profiles (read-only for irrelevant) → discover anchor facts (gated) → eval date risks → build query plan → run provider → persist events tagged with `query_plan_version` + `query_source` + `trigger_source` → upsert weekly matrix.
+- `_shared/activePartDailyBrief.ts` refactored to filter by dynamic-policy events only and read weekly matrix.
+- `karelBriefingVoiceRenderer.ts` extended to humanize categorical + date-window context (no raw counts).
+- DB migration requires user approval before code changes per workflow rules.
