@@ -3759,6 +3759,17 @@ Deno.serve(async (req) => {
       method: generationMethod,
     };
 
+    // P29C.1 — stamp the truth-gate proof onto every successful briefing
+    // payload so the UI / readers can prove this row is tied to a completed
+    // P29B daily-cycle. For manual regenerations the gate may be ok=false;
+    // we still record it so the row carries an honest ready/not-ready signal.
+    if (truthGateResult) {
+      payload.briefing_truth_gate = truthGateResult;
+      payload.source_cycle_id = truthGateResult.source_cycle_id;
+      payload.source_cycle_completed_at = truthGateResult.cycle_completed_at;
+      payload.phase_jobs_snapshot = truthGateResult.job_graph_snapshot;
+      payload.do_not_present_as_daily_ready = truthGateResult.ok !== true;
+    }
     // 6) Insert nový briefing
     const { data: inserted, error: insertErr } = await supabase
       .from("did_daily_briefings")
