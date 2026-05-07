@@ -50,6 +50,8 @@ import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import ExternalLoadWarning from "@/components/did/ExternalLoadWarning";
 import AiPolishCanaryPreviewPanel from "@/components/did/AiPolishCanaryPreviewPanel";
 import { getBriefingTruthStatus, pluralizeDays } from "@/lib/briefingTruthStatus";
+import { selectBestBriefing, isFullRenderableBriefing } from "@/lib/briefingSelection";
+import { sanitizeKarelVisibleText } from "@/lib/karelBriefingVisibleSanitizer";
 
 interface BriefingDecision {
   /** SLICE 3 — stabilní serverové UUID briefing itemu (linked_briefing_item_id). */
