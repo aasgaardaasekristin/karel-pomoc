@@ -40,6 +40,10 @@ import {
   type ClinicalActivityEvidence,
 } from "../_shared/clinicalActivityEvidence.ts";
 import { runP20ClinicalTruthGate } from "../_shared/p20FullPayloadTruthGate.ts";
+import {
+  evaluateDailyBriefingTruthGate,
+  type DailyBriefingTruthGateResult,
+} from "../_shared/dailyBriefingTruthGate.ts";
 
 /**
  * SLA generation methods (added 2026-04-30, morning_operational_integrity_e2e):
