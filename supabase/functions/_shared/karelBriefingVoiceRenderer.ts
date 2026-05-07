@@ -506,18 +506,15 @@ function validateSectionClaims(
     }
   }
 
-  // Rule: part names mentioned in part-related sections must be known
+  // Rule: part-name-like tokens (proper name suffixes) must match a known part.
+  // We deliberately use a narrow regex to avoid false positives on ordinary
+  // capitalized Czech sentence-starting words.
   if (section.section_id === "today_parts" || section.section_id === "risks_sensitivities") {
-    PART_NAME_CANDIDATE.lastIndex = 0;
+    const partLikePattern = /\b([A-ZÁČĎÉĚÍĽĹŇÓŘŠŤÚŮÝŽ][a-záčďéěíľĺňóřšťúůýž]{2,}(?:ek|ka|ko|ík|ík|ina|inka|oušek|ánek|ouš))\b/g;
     let m: RegExpExecArray | null;
-    while ((m = PART_NAME_CANDIDATE.exec(text)) !== null) {
+    while ((m = partLikePattern.exec(text)) !== null) {
       const tokenLower = m[1].toLocaleLowerCase("cs");
       if (KNOWN_NON_PART_TOKENS.has(tokenLower)) continue;
-      // Heuristic: only flag names that look like proper names AND appear in the
-      // sentence in a "part" context. To avoid false positives, only enforce
-      // when the section explicitly used a part name from payload — i.e., we
-      // check that the candidate token starts with the same first 4 chars as
-      // a known part. If it doesn't match any known part prefix, flag.
       let matched = false;
       for (const known of knownParts) {
         if (tokenLower.startsWith(known.slice(0, Math.min(4, known.length)))) {
@@ -525,7 +522,7 @@ function validateSectionClaims(
           break;
         }
       }
-      if (!matched && knownParts.size > 0) {
+      if (!matched) {
         unsupported += 1;
         warnings.push(`unsupported_part_name:${m[1]}`);
       }
