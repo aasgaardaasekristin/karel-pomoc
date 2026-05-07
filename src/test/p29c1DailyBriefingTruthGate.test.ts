@@ -86,7 +86,7 @@ function buildSb(opts: {
   };
 }
 
-function fullyCompletedJobs() {
+function fullyCompletedJobs(): Array<any> {
   return P29B3_REQUIRED_PHASE_JOB_KINDS.map((k) => ({
     job_kind: k,
     status: "completed",
