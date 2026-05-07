@@ -122,7 +122,7 @@ describe("P31.2B canary AI polish", () => {
     }
   });
 
-  it("UI surfaces (components/pages/hooks) must not read polished_text or p31_ai_polish_canary_runs", () => {
+  it("UI surfaces must not read polished_text or canary table outside the P31.2C read-only preview", () => {
     function* walk(dir: string): Generator<string> {
       for (const name of readdirSync(dir)) {
         const p = join(dir, name);
@@ -131,11 +131,17 @@ describe("P31.2B canary AI polish", () => {
         else if (/\.(ts|tsx)$/.test(name)) yield p;
       }
     }
+    // P31.2C — explicit allowlist for the dedicated read-only audit preview.
+    const ALLOWED = new Set([
+      "src/components/did/AiPolishCanaryPreviewPanel.tsx",
+    ]);
     const offenders: string[] = [];
     const uiRoots = ["src/components", "src/pages", "src/hooks", "src/contexts", "src/lib"];
     for (const root of uiRoots) {
       try {
         for (const f of walk(root)) {
+          const norm = f.replace(/\\/g, "/");
+          if (ALLOWED.has(norm)) continue;
           const txt = readFileSync(f, "utf8");
           if (/polished_text/.test(txt)) offenders.push(`${f}:polished_text`);
           if (/p31_ai_polish_canary_runs/.test(txt)) offenders.push(`${f}:canary_table`);
