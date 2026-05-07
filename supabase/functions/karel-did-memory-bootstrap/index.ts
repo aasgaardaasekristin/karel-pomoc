@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { corsHeaders } from "../_shared/auth.ts";
+import { blockHanaAliasPartWrite } from "../_shared/hanaPersonalIdentityResolver.ts";
 
 /**
  * Karel DID Memory Bootstrap
@@ -307,6 +308,8 @@ serve(async (req) => {
 
       console.log(`[bootstrap] Processing: ${card.partName} (${card.status}, folder: ${folderLabel})`);
 
+      const __mbGuard = blockHanaAliasPartWrite({ target_kind: "did_part_registry", part_name: card.partName, source: "karel-did-memory-bootstrap" });
+      if (__mbGuard.blocked) { console.warn(`[memory-bootstrap] registry blocked: ${__mbGuard.reason}`); continue; }
       // Upsert into did_part_registry
       const { error: regErr } = await sb.from("did_part_registry").upsert({
         user_id: user.id,

@@ -449,3 +449,107 @@ export function renderIdentityContextBlock(r: HanaPersonalIdentityResolution): s
     `- Response instruction: ${r.response_instruction}`,
   ].join("\n");
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// P32.1 — Forbidden Hana/Karel part identity guard (end-to-end)
+// ═══════════════════════════════════════════════════════════════════
+// Used by every write path to ensure Hana / Hanka / Hanička / Karel
+// can NEVER be created or referenced as a DID part.
+//
+// Aliases are matched after Czech normalization (lowercase, no diacritics,
+// non-alphanumerics stripped).
+// ═══════════════════════════════════════════════════════════════════
+
+const FORBIDDEN_HANA_PART_ALIASES = new Set([
+  // Hana / therapist family
+  "hana", "hanka", "hani", "hanicka", "hanicko", "hanko",
+  "mama", "mamka", "maminka",
+  // Karel / AI agent
+  "karel", "karle", "karla", "karlovi", "karlu", "karlik",
+]);
+
+/** Normalize a Czech identity token: lowercase, strip diacritics, keep [a-z0-9_]. */
+export function normalizeCzechIdentityToken(value: string): string {
+  if (!value) return "";
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+/** Extract the KARTA_<NAME> name (lowercase, normalized) from any target string. */
+function extractKartaName(target: string): string | null {
+  const norm = normalizeCzechIdentityToken(target);
+  const m = norm.match(/karta_([a-z0-9_]+)/);
+  return m?.[1] ?? null;
+}
+
+/** Returns true if `name` is a Hana-therapist or Karel alias (forbidden as DID part). */
+export function isForbiddenHanaPartName(name: string | null | undefined): boolean {
+  if (!name) return false;
+  const tok = normalizeCzechIdentityToken(name);
+  if (!tok) return false;
+  // Direct alias hit
+  if (FORBIDDEN_HANA_PART_ALIASES.has(tok)) return true;
+  // KARTA_<alias> form
+  const karta = extractKartaName(name);
+  if (karta && FORBIDDEN_HANA_PART_ALIASES.has(karta)) return true;
+  return false;
+}
+
+/** Throws if `name` is a forbidden part identity. Use at hot insert paths. */
+export function assertNotForbiddenHanaPartName(name: string | null | undefined, context: string): void {
+  if (isForbiddenHanaPartName(name)) {
+    throw new Error(`[hana-identity-guard] forbidden part identity "${name}" rejected in ${context}`);
+  }
+}
+
+export type GuardedTargetKind =
+  | "did_part_registry"
+  | "card_update_queue"
+  | "did_observations"
+  | "did_pending_drive_writes"
+  | "part_profile"
+  | "unknown";
+
+export interface BlockHanaAliasInput {
+  target_kind: GuardedTargetKind;
+  part_name?: string | null;
+  part_id?: string | null;
+  target_document?: string | null;
+  source?: string | null;
+}
+
+export interface BlockHanaAliasResult {
+  blocked: boolean;
+  reason?: string;
+  normalized_hits: string[];
+}
+
+/**
+ * Hard guard for any write that could create a forbidden Hana/Karel part record.
+ * Returns blocked=true if any of part_name / part_id / target_document maps to
+ * a Hana-therapist or Karel alias (incl. KARTA_HANA / KARTA_KAREL targets).
+ *
+ * Pure function — never throws, no I/O.
+ */
+export function blockHanaAliasPartWrite(input: BlockHanaAliasInput): BlockHanaAliasResult {
+  const hits: string[] = [];
+  if (isForbiddenHanaPartName(input.part_name)) hits.push(`part_name:${input.part_name}`);
+  if (isForbiddenHanaPartName(input.part_id)) hits.push(`part_id:${input.part_id}`);
+  if (input.target_document) {
+    const karta = extractKartaName(input.target_document);
+    if (karta && FORBIDDEN_HANA_PART_ALIASES.has(karta)) {
+      hits.push(`target_document:${input.target_document}`);
+    } else if (FORBIDDEN_HANA_PART_ALIASES.has(normalizeCzechIdentityToken(input.target_document))) {
+      hits.push(`target_document:${input.target_document}`);
+    }
+  }
+  if (hits.length === 0) return { blocked: false, normalized_hits: [] };
+  return {
+    blocked: true,
+    reason: `blocked_by_identity_guard (${input.target_kind}; src=${input.source ?? "?"})`,
+    normalized_hits: hits,
+  };
+}

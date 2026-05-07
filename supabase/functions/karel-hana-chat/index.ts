@@ -1059,6 +1059,16 @@ serve(async (req) => {
 
     // ═══ P32 — Hana personal identity resolution (BEFORE AI call) ═══
     let p32Resolution: HanaPersonalIdentityResolution | null = null;
+    // P32.1: identity guard block must ALWAYS be present, even if resolver fails.
+    const HANA_IDENTITY_HARD_GUARD =
+      `═══ HANA IDENTITY HARD GUARD ═══\n` +
+      `- Hana / Hanka / Hanička / Hani je lidská terapeutka, NE DID část.\n` +
+      `- V osobním vlákně odpovídej Hance jako člověku.\n` +
+      `- Pokud Hana mluví v první osobě, nereaguj jako by šlo o DID část.\n` +
+      `- Pokud zmiňuje kluky nebo konkrétní část (Gustík/Tundrupek/Arthur), ber to jako její report o části; speaker zůstává Hana.\n` +
+      `- Nepřepínej mluvčího na část bez explicitní citace.\n` +
+      `- Nikdy nezakládej KARTA_HANA ani KARTA_KAREL.\n` +
+      `- Pokud je nejasné, kdo mluví, jemně se zeptej; nevytvářej záznam o části.`;
     try {
       const knownPartsForResolver = await loadHanaResolverKnownParts(sb);
       const lastUserTextForResolver = lastUserTextForSafety || extractFirstUserText(messages);
@@ -1067,14 +1077,7 @@ serve(async (req) => {
         knownParts: knownPartsForResolver,
         surface: "hana_personal",
       });
-      systemPrompt += `\n\n${renderIdentityContextBlock(p32Resolution)}\n\n` +
-        `═══ HANA IDENTITY HARD GUARD ═══\n` +
-        `- Hana / Hanka / Hanička / Hani je lidská terapeutka, NE DID část.\n` +
-        `- V osobním vlákně odpovídej Hance jako člověku.\n` +
-        `- Pokud Hana mluví v první osobě, nereaguj jako by šlo o DID část.\n` +
-        `- Pokud zmiňuje kluky nebo konkrétní část, ber to jako její report nebo obavu.\n` +
-        `- Nepřepínej mluvčího na část bez explicitní citace.\n` +
-        `- Pokud je nejasné, kdo mluví, jemně se zeptej.`;
+      systemPrompt += `\n\n${renderIdentityContextBlock(p32Resolution)}\n\n${HANA_IDENTITY_HARD_GUARD}`;
       // fire-and-forget audit
       logHanaIdentityAudit(sb, {
         userId: user.id,
@@ -1084,7 +1087,12 @@ serve(async (req) => {
         marker: lastUserTextForResolver.includes("[P32_SAFE_IDENTITY_SMOKE]") ? "P32_SAFE_IDENTITY_SMOKE" : null,
       }).catch(() => {});
     } catch (e) {
-      console.warn("[hana-chat][p32] identity resolver failed (non-fatal):", (e as Error)?.message);
+      console.warn("[hana-chat][p32] identity resolver failed — applying safe fallback:", (e as Error)?.message);
+      // Safe fallback: prompt guard MUST still be present.
+      systemPrompt += `\n\n═══ IDENTITY CONTEXT (Hana/osobní, FALLBACK) ═══\n` +
+        `- Resolver selhal. Aplikuj nejbezpečnější pravidlo:\n` +
+        `- resolution_kind = hana_self_or_ambiguous_no_part_write\n` +
+        `- Žádný záznam o části, žádný KARTA_* zápis, žádný card_update_queue.\n\n${HANA_IDENTITY_HARD_GUARD}`;
     }
 
     // P28 EFGH — deep Hana memory + persona + opening strategy

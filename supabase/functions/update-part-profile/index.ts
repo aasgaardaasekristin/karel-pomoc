@@ -7,6 +7,7 @@ import {
   type GovernanceRequest,
 } from "../_shared/documentGovernance.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
+import { blockHanaAliasPartWrite } from "../_shared/hanaPersonalIdentityResolver.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -528,6 +529,14 @@ serve(async (req) => {
     if (!part_name || !claims || !Array.isArray(claims)) {
       return new Response(JSON.stringify({ error: "part_name and claims[] required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // P32.1 hard identity guard: never allow profile updates for Hana/Karel aliases
+    const __profGuard = blockHanaAliasPartWrite({ target_kind: "part_profile", part_name, source: "update-part-profile" });
+    if (__profGuard.blocked) {
+      return new Response(JSON.stringify({ blocked: true, reason: __profGuard.reason, normalized_hits: __profGuard.normalized_hits }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 

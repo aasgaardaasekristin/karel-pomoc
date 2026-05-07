@@ -1,4 +1,5 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { blockHanaAliasPartWrite } from "./hanaPersonalIdentityResolver.ts";
 
 export interface ObservationParams {
   subject_type: 'part' | 'therapist' | 'system' | 'context' | 'crisis' | 'logistics';
@@ -13,12 +14,25 @@ export interface ObservationParams {
 
 /**
  * Vloží nové pozorování do did_observations.
- * Vrací UUID nového záznamu.
+ * Vrací UUID nového záznamu (nebo prázdný řetězec při blokaci P32.1 guardem).
  */
 export async function createObservation(
   sb: SupabaseClient,
   params: ObservationParams
 ): Promise<string> {
+  // ── P32.1 hard identity guard: never create part observation for Hana/Karel alias ──
+  if (params.subject_type === 'part') {
+    const guard = blockHanaAliasPartWrite({
+      target_kind: 'did_observations',
+      part_name: params.subject_id,
+      source: 'createObservation',
+    });
+    if (guard.blocked) {
+      console.warn(`[observations] blocked_by_identity_guard: ${guard.reason} (${guard.normalized_hits.join(',')})`);
+      return '';
+    }
+  }
+
   const { data, error } = await sb
     .from('did_observations')
     .insert({

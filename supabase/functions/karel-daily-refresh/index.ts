@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/auth.ts";
+import { blockHanaAliasPartWrite } from "../_shared/hanaPersonalIdentityResolver.ts";
 import {
   composeCanonicalContext,
   validateCanonicalContext,
@@ -193,6 +194,8 @@ serve(async (req) => {
             if (rawStatus.includes("aktiv") || rawStatus === "active") dbStatus = "active";
             else if (rawStatus.includes("spi") || rawStatus.includes("dormant") || rawStatus === "sleeping") dbStatus = "sleeping";
 
+            const __regGuard = blockHanaAliasPartWrite({ target_kind: "did_part_registry", part_name: entry.primaryName, source: "karel-daily-refresh" });
+            if (__regGuard.blocked) { console.warn(`[daily-refresh] registry blocked: ${__regGuard.reason}`); continue; }
             const { error: upsErr } = await sb.from("did_part_registry").upsert(
               {
                 user_id: userId,
