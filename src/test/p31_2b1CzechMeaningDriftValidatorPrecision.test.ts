@@ -259,6 +259,8 @@ describe("P31.2B.1 integration via generateKarelAiPolishCandidate", () => {
     expect(r.attempted).toBe(true);
     // No section should be rejected purely due to Czech morphology / Herna.
     for (const s of r.sections) {
+      // eslint-disable-next-line no-console
+      console.log("DBG", s.section_id, s.polish_status, s.warnings, "ORIG=", s.original_text, "POL=", s.polished_text);
       const hasMorphologyFalsePositive =
         s.warnings.some((w) =>
           /missing_part_name:Tundrupek/.test(w) ||
