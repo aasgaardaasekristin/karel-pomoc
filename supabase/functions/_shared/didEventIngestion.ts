@@ -650,6 +650,18 @@ export async function createCardUpdateProposalIfNeeded(sb: SupabaseClient, event
   const safeSummary = classification.clinical_implication?.slice(0, 1500) || "Bezpečné shrnutí z osobního vlákna Hany; ověřit s částí.";
   const reason = `did_event_ingestion: hana_personal -> ${partId}`;
 
+  // P32.1 hard identity guard
+  const cuqGuard = blockHanaAliasPartWrite({
+    target_kind: "card_update_queue",
+    part_id: partId,
+    part_name: partId,
+    source: "didEventIngestion.createCardUpdateProposalIfNeeded",
+  });
+  if (cuqGuard.blocked) {
+    console.warn(`[did-event-ingestion] card_update_queue blocked_by_identity_guard: ${cuqGuard.reason}`);
+    return null;
+  }
+
   // dedupe by (part_id, source_thread_id, section, action)
   const sourceThreadId = event.source_id ?? null;
   const section = "Aktuální citlivosti / vnější zátěž (návrh z Hana/osobní)";
