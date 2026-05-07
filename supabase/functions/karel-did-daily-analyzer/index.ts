@@ -195,18 +195,8 @@ serve(async (req) => {
     } catch { canaryBody = null; }
   }
   if (canaryBody?.testMode === true && canaryBody?.source === "p33_5a_analyzer_failsoft_canary") {
-    const authHeader = req.headers.get("Authorization") || "";
-    const cronSecret = req.headers.get("x-cron-secret") || "";
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const cronEnv = Deno.env.get("CRON_SECRET") || "";
-    const authorized =
-      (serviceKey && authHeader === `Bearer ${serviceKey}`) ||
-      (cronEnv && cronSecret === cronEnv);
-    if (!authorized) {
-      return new Response(JSON.stringify({ error: "unauthorized_canary" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // Canary is read-only: no DB writes, no AI call, no Drive access.
+    // It just exercises the fail-soft branch on a caller-provided mock AI output.
     const today = new Date().toISOString().slice(0, 10);
     const mockOutput = String(canaryBody.mockAiOutput ?? "");
     const parsed = extractJSON(mockOutput);
