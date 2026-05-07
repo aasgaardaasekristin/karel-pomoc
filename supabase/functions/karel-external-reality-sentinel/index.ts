@@ -832,8 +832,26 @@ Deno.serve(async (req) => {
       return json({ ok: true, ...result, self_healing: heal });
     }
     if (action === "internet_watch") {
-      const result = await internetWatchSlice(admin, canonicalUserId);
-      return json({ ok: true, ...result });
+      const result = await internetWatchSlice(admin, canonicalUserId, {
+        date: (body as any).date,
+        maxQueries: (body as any).maxQueries,
+        maxResultsPerQuery: (body as any).maxResultsPerQuery,
+        recencyDays: (body as any).recencyDays,
+        dryRun: (body as any).dryRun,
+      });
+      const ok = result.status === "configured";
+      return json({ ok, ...result }, ok ? 200 : 200);
+    }
+    if (action === "generate_active_part_daily_brief") {
+      const datePrague = (body as any).date ??
+        new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Prague" }))
+          .toISOString().slice(0, 10);
+      const result = await generateActivePartDailyBriefs(admin as any, {
+        userId: canonicalUserId,
+        datePrague,
+        dryRun: (body as any).dryRun === true,
+      });
+      return json({ ok: result.ok, ...result });
     }
     if (action === "relink_dangling_tasks") {
       const heal = await repairDanglingTaskLinkages(admin, canonicalUserId);
