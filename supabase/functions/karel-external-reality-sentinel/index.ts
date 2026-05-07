@@ -857,26 +857,50 @@ Deno.serve(async (req) => {
       return json({ ok: true, ...result, self_healing: heal });
     }
     if (action === "internet_watch") {
-      const result = await internetWatchSlice(admin, canonicalUserId, {
-        date: (body as any).date,
+      const datePrague = (body as any).date ??
+        new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Prague" }))
+          .toISOString().slice(0, 10);
+      const result = await runP303ExternalRealityPipeline(admin as any, {
+        userId: canonicalUserId,
+        datePrague,
         maxQueries: (body as any).maxQueries,
         maxResultsPerQuery: (body as any).maxResultsPerQuery,
         recencyDays: (body as any).recencyDays,
-        dryRun: (body as any).dryRun,
+        dryRun: (body as any).dryRun === true,
       });
-      const ok = result.status === "configured";
-      return json({ ok, ...result }, ok ? 200 : 200);
+      return json({ ok: result.ok, ...result }, 200);
     }
     if (action === "generate_active_part_daily_brief") {
       const datePrague = (body as any).date ??
         new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Prague" }))
           .toISOString().slice(0, 10);
+      const pipeline = await runP303ExternalRealityPipeline(admin as any, {
+        userId: canonicalUserId,
+        datePrague,
+        maxQueries: (body as any).maxQueries,
+        maxResultsPerQuery: (body as any).maxResultsPerQuery,
+        recencyDays: (body as any).recencyDays,
+        dryRun: (body as any).dryRun === true,
+      });
       const result = await generateActivePartDailyBriefs(admin as any, {
         userId: canonicalUserId,
         datePrague,
         dryRun: (body as any).dryRun === true,
+        providerStatus: pipeline.provider_status as any,
+        matrixIdsByPart: pipeline.matrix_ids_by_part,
+        queryPlanVersion: pipeline.query_plan_version,
       });
-      return json({ ok: result.ok, ...result });
+      return json({
+        ok: result.ok,
+        ...result,
+        p30_3: {
+          relevant_parts: pipeline.relevant_parts,
+          query_plan_version: pipeline.query_plan_version,
+          legacy_example_terms_blocked: pipeline.legacy_example_terms_blocked,
+          matrix_rows_upserted: pipeline.matrix_rows_upserted,
+          watch_run_id: pipeline.watch_run_id,
+        },
+      });
     }
     if (action === "relink_dangling_tasks") {
       const heal = await repairDanglingTaskLinkages(admin, canonicalUserId);
