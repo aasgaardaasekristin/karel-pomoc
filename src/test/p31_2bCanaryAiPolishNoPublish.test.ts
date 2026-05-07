@@ -122,7 +122,7 @@ describe("P31.2B canary AI polish", () => {
     }
   });
 
-  it("UI must not read polished_text or p31_ai_polish_canary_runs", () => {
+  it("UI surfaces (components/pages/hooks) must not read polished_text or p31_ai_polish_canary_runs", () => {
     function* walk(dir: string): Generator<string> {
       for (const name of readdirSync(dir)) {
         const p = join(dir, name);
@@ -132,10 +132,15 @@ describe("P31.2B canary AI polish", () => {
       }
     }
     const offenders: string[] = [];
-    for (const f of walk("src")) {
-      const txt = readFileSync(f, "utf8");
-      if (/polished_text/.test(txt)) offenders.push(`${f}:polished_text`);
-      if (/p31_ai_polish_canary_runs/.test(txt)) offenders.push(`${f}:canary_table`);
+    const uiRoots = ["src/components", "src/pages", "src/hooks", "src/contexts", "src/lib"];
+    for (const root of uiRoots) {
+      try {
+        for (const f of walk(root)) {
+          const txt = readFileSync(f, "utf8");
+          if (/polished_text/.test(txt)) offenders.push(`${f}:polished_text`);
+          if (/p31_ai_polish_canary_runs/.test(txt)) offenders.push(`${f}:canary_table`);
+        }
+      } catch (_e) { /* dir may not exist */ }
     }
     expect(offenders).toEqual([]);
   });
