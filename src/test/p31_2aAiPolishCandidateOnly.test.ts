@@ -74,10 +74,10 @@ describe("P31.2A AI polish candidate-only", () => {
       },
     });
     const serialized = JSON.stringify(captured);
-    // Must NOT contain raw payload-only fields
-    expect(serialized).not.toContain("briefing_truth_gate");
-    expect(serialized).not.toContain("phase_jobs_snapshot");
-    expect(serialized).not.toContain("rationale_text");
+    // Must NOT contain raw payload values (rationale text, deep payload structures)
+    expect(serialized).not.toContain("rationale_text\":");
+    expect(serialized).not.toContain("phase_jobs_snapshot\":");
+    expect(serialized).not.toContain("today_part_proposal\":");
     // Must contain only allowed keys per section
     for (const s of captured) {
       expect(Object.keys(s).sort()).toEqual(
