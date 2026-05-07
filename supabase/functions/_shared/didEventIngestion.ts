@@ -474,6 +474,18 @@ function observationEvidenceKind(classification: DidEventClassification): string
 
 export async function createObservationIfNeeded(sb: SupabaseClient, event: NormalizedDidEvent, classification: DidEventClassification): Promise<{ observationId?: string | null; implicationId?: string | null }> {
   if (!isClinicalBridgeEligible(classification)) return {};
+  // P32.1 hard identity guard: never create part observation for Hana/Karel alias
+  if (classification.related_part_name) {
+    const guard = blockHanaAliasPartWrite({
+      target_kind: "did_observations",
+      part_name: classification.related_part_name,
+      source: "didEventIngestion.createObservationIfNeeded",
+    });
+    if (guard.blocked) {
+      console.warn(`[did-event-ingestion] observation blocked_by_identity_guard: ${guard.reason}`);
+      return {};
+    }
+  }
   const fact = `${classification.clinical_implication} Zdroj: ${event.source_ref}`.slice(0, 1200);
   const evidenceMap: Record<string, string> = {
     direct_child_evidence: "D1",
