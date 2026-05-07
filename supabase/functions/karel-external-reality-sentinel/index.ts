@@ -35,6 +35,12 @@ import {
   assertCanonicalDidScopeOrThrow,
   CanonicalUserScopeError,
 } from "../_shared/canonicalUserScopeGuard.ts";
+import {
+  detectProviderFromEnv,
+  runExternalRealitySearchProvider,
+} from "../_shared/externalRealitySearchProvider.ts";
+import { normalizeExternalSearchResultToEvent } from "../_shared/externalRealityEvents.ts";
+import { generateActivePartDailyBriefs } from "../_shared/activePartDailyBrief.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
