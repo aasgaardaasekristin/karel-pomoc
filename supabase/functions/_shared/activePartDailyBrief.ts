@@ -1,14 +1,34 @@
 /**
  * P30.1 — Active-part Daily Brief generator.
+ * P30.4 — Canonicalization + matrix-ref hardening.
  *
  * Builds one row per "active or watchlist" DID part for a given Prague date,
  * upserting into `did_active_part_daily_brief`. NEVER hallucinates biographical
  * facts, anniversaries, or internet news. If no provider ran, internet-related
  * arrays stay empty and `evidence_summary.provider_status` is recorded.
+ *
+ * P30.4 contract:
+ *   - Every candidate part is run through canonicalizeDidPartName().
+ *   - forbidden_non_part / placeholder / unmapped → row written with
+ *     evidence_summary.excluded_from_briefing = true (no clinical mutation).
+ *   - case_alias rows collapse to the canonical part_name and are excluded
+ *     so the briefing layer never sees lowercase/uppercase duplicates.
+ *   - displayable rows REQUIRE evidence_summary.weekly_matrix_ref AND
+ *     evidence_summary.query_plan_version. Otherwise the row is written
+ *     with excluded_from_briefing=true and reason missing_weekly_matrix_ref_p30_4.
  */
+
+import {
+  canonicalizeDidPartName,
+  normalizeCzechPartKey,
+  type CanonicalPartNameResult,
+} from "./didPartCanonicalization.ts";
 
 // deno-lint-ignore no-explicit-any
 type SB = any;
+
+const PRESENTATION_QUERY_PLAN_VERSION =
+  "p30.3_personal_anchor_general_trigger_weekly_matrix";
 
 export interface GenerateBriefsInput {
   userId: string;
