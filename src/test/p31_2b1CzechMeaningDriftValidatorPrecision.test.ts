@@ -173,7 +173,7 @@ describe("P31.2B.1 validateMeaningDrift — security preserved", () => {
   it("Uncertainty → certainty still rejected", () => {
     const w = validateMeaningDrift(
       "Nemám dost podkladů.",
-      "Vím to jistě.",
+      "Potvrzuji to bez váhání.",
       {},
     );
     expect(w).toContain("turned_uncertainty_into_certainty");
