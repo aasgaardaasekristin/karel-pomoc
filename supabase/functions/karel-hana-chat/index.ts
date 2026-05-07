@@ -1251,6 +1251,57 @@ serve(async (req) => {
           metadata: { sources: continuityContext.sources, mode_id: persistencePolicy.mode_id, no_save_context: persistencePolicy.no_save },
         });
       }
+      // P32.2 — last-line response identity guard (after content guards, before return)
+      try {
+        const respGuard = validateHanaPersonalResponseIdentity({
+          responseText: fullResponse,
+          identityResolution: p32Resolution,
+          userText: lastUserTextForSafety,
+        });
+        if (respGuard.blocked) {
+          const fallback = respGuard.safe_fallback_text || renderSafeHanaPersonalFallback(p32Resolution);
+          console.warn("[hana-response-guard] replaced", respGuard.reason, respGuard.warnings);
+          await logHanaResponseGuardAudit(sb, {
+            userId: user.id,
+            threadId: conversationId || null,
+            resolution: p32Resolution,
+            inputText: lastUserTextForSafety,
+            responseText: fullResponse,
+            status: "blocked_and_replaced",
+            blockedReason: respGuard.reason,
+            warnings: respGuard.warnings,
+            usedFallback: true,
+          });
+          fullResponse = fallback;
+        } else {
+          await logHanaResponseGuardAudit(sb, {
+            userId: user.id,
+            threadId: conversationId || null,
+            resolution: p32Resolution,
+            inputText: lastUserTextForSafety,
+            responseText: fullResponse,
+            status: "passed",
+            warnings: respGuard.warnings,
+            usedFallback: false,
+          });
+        }
+      } catch (e) {
+        console.warn("[hana-response-guard] failure → safe fallback", (e as any)?.message || e);
+        const safeText = renderSafeHanaPersonalFallback(p32Resolution);
+        await logHanaResponseGuardAudit(sb, {
+          userId: user.id,
+          threadId: conversationId || null,
+          resolution: p32Resolution,
+          inputText: lastUserTextForSafety,
+          responseText: fullResponse,
+          status: "blocked_and_replaced",
+          blockedReason: "response_guard_exception",
+          warnings: [String((e as any)?.message || e)],
+          usedFallback: true,
+        });
+        fullResponse = safeText;
+      }
+
       runHanaBackgroundProcessing({ user, sb, messages, conversationId, analysis, fullResponse, safety, persistencePolicy, lastUserTextForSafety, LOVABLE_API_KEY })
         .catch((e) => console.error("[hana-background] failed:", e));
       return new Response(sseFromText(fullResponse), {
