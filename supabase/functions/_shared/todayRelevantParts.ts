@@ -182,16 +182,21 @@ export async function detectTodayRelevantParts(
     }
   } catch { /* */ }
 
-  // 6) recent active_part_daily_brief
+  // 6) recent active_part_daily_brief — P30.4 presentation-safe filter
   try {
     const { data } = await sb
       .from("did_active_part_daily_brief")
-      .select("part_name, activity_status, brief_date")
+      .select("part_name, activity_status, brief_date, evidence_summary")
       .eq("user_id", input.userId)
       .gte("brief_date", input.datePrague)
       .in("activity_status", ["active_thread", "recent_thread", "watchlist"])
-      .limit(20);
+      .limit(40);
+    const PRESENTATION_QPV = "p30.3_personal_anchor_general_trigger_weekly_matrix";
     for (const row of (data ?? []) as Array<any>) {
+      const ev = row?.evidence_summary ?? {};
+      if (ev.excluded_from_briefing === true) continue;
+      if (!ev.weekly_matrix_ref) continue;
+      if (ev.query_plan_version !== PRESENTATION_QPV) continue;
       if (row?.part_name) {
         add({
           part_name: row.part_name,

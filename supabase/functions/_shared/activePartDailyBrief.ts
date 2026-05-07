@@ -1,14 +1,34 @@
 /**
  * P30.1 — Active-part Daily Brief generator.
+ * P30.4 — Canonicalization + matrix-ref hardening.
  *
  * Builds one row per "active or watchlist" DID part for a given Prague date,
  * upserting into `did_active_part_daily_brief`. NEVER hallucinates biographical
  * facts, anniversaries, or internet news. If no provider ran, internet-related
  * arrays stay empty and `evidence_summary.provider_status` is recorded.
+ *
+ * P30.4 contract:
+ *   - Every candidate part is run through canonicalizeDidPartName().
+ *   - forbidden_non_part / placeholder / unmapped → row written with
+ *     evidence_summary.excluded_from_briefing = true (no clinical mutation).
+ *   - case_alias rows collapse to the canonical part_name and are excluded
+ *     so the briefing layer never sees lowercase/uppercase duplicates.
+ *   - displayable rows REQUIRE evidence_summary.weekly_matrix_ref AND
+ *     evidence_summary.query_plan_version. Otherwise the row is written
+ *     with excluded_from_briefing=true and reason missing_weekly_matrix_ref_p30_4.
  */
+
+import {
+  canonicalizeDidPartName,
+  normalizeCzechPartKey,
+  type CanonicalPartNameResult,
+} from "./didPartCanonicalization.ts";
 
 // deno-lint-ignore no-explicit-any
 type SB = any;
+
+const PRESENTATION_QUERY_PLAN_VERSION =
+  "p30.3_personal_anchor_general_trigger_weekly_matrix";
 
 export interface GenerateBriefsInput {
   userId: string;
@@ -166,7 +186,68 @@ export async function generateActivePartDailyBriefs(
   const now = input.now ?? new Date();
   const { startUtc, endUtc } = pragueDayWindow(input.datePrague);
 
-  const parts = await detectActiveParts(sb, input.userId);
+  const rawParts = await detectActiveParts(sb, input.userId);
+
+  // P30.4 — load registry and canonicalize candidates
+  const { data: registryRows } = await sb
+    .from("did_part_registry")
+    .select("part_name, status")
+    .eq("user_id", input.userId);
+  const registryParts = ((registryRows ?? []) as Array<any>).map((r) => ({
+    part_name: r?.part_name ?? "",
+    status: r?.status ?? null,
+  }));
+
+  // P30.4 — build a normalized-key index of matrix ids so case variants of
+  // an input part still resolve to the canonical matrix row.
+  const matrixIdsByNormalizedKey = new Map<string, string>();
+  for (const [k, v] of Object.entries(input.matrixIdsByPart ?? {})) {
+    const nk = normalizeCzechPartKey(k);
+    if (nk && v && !matrixIdsByNormalizedKey.has(nk)) {
+      matrixIdsByNormalizedKey.set(nk, String(v));
+    }
+  }
+
+  // Canonicalize every candidate. Group by normalized_key so case variants
+  // collapse into a single displayable canonical row + N excluded aliases.
+  type Candidate = (typeof rawParts)[number] & {
+    canonical: CanonicalPartNameResult;
+  };
+  const candidates: Candidate[] = rawParts.map((p) => ({
+    ...p,
+    canonical: canonicalizeDidPartName(p.part_name, registryParts),
+  }));
+
+  const groupsByKey = new Map<string, Candidate[]>();
+  for (const c of candidates) {
+    const key = c.canonical.normalized_key || `__raw__${c.part_name}`;
+    const arr = groupsByKey.get(key) ?? [];
+    arr.push(c);
+    groupsByKey.set(key, arr);
+  }
+
+  // Decide displayable target name per group: must be canonical status,
+  // and the canonical name itself becomes the part_name we upsert under.
+  const groupDecisions = new Map<
+    string,
+    {
+      canonical_part_name: string | null;
+      displayable_used: boolean;
+    }
+  >();
+  for (const [key, group] of groupsByKey.entries()) {
+    const canonicalRow = group.find(
+      (g) => g.canonical.status === "canonical" && g.canonical.canonical_part_name,
+    );
+    const aliasRow = canonicalRow ?? group.find(
+      (g) => g.canonical.status === "case_alias" && g.canonical.canonical_part_name,
+    );
+    groupDecisions.set(key, {
+      canonical_part_name: aliasRow?.canonical.canonical_part_name ?? null,
+      displayable_used: false,
+    });
+  }
+
   let briefs = 0;
   let totalInternetEvents = 0;
   let totalSourceRefs = 0;
@@ -204,8 +285,46 @@ export async function generateActivePartDailyBriefs(
     }
   }
 
-  for (const part of parts) {
-    // External events linked to this part name in the last 7 days.
+  for (const cand of candidates) {
+    const part = cand;
+    const canon = cand.canonical;
+    const groupKey = canon.normalized_key || `__raw__${part.part_name}`;
+    const groupDecision = groupDecisions.get(groupKey);
+    const canonicalName = groupDecision?.canonical_part_name ?? null;
+
+    // P30.4 — decide whether this candidate becomes the displayable row.
+    // Only ONE candidate per group becomes displayable, and only if it is
+    // canonical/case_alias AND a matrix ref exists.
+    const matrixRef =
+      (canonicalName ? matrixIdsByNormalizedKey.get(normalizeCzechPartKey(canonicalName)) : null) ??
+      matrixIdsByNormalizedKey.get(canon.normalized_key) ??
+      null;
+
+    let exclusionReason: string | null = null;
+    let upsertPartName = part.part_name;
+
+    if (canon.status === "forbidden_non_part") {
+      exclusionReason = "p30_4_forbidden_non_part";
+    } else if (canon.status === "placeholder") {
+      exclusionReason = "p30_4_placeholder";
+    } else if (canon.status === "unmapped") {
+      exclusionReason = "p30_4_unmapped_part_name";
+    } else if (!canonicalName) {
+      exclusionReason = "p30_4_no_canonical_target";
+    } else if (canon.status === "case_alias") {
+      // case alias collapses; the canonical row will carry display
+      exclusionReason = "p30_4_case_duplicate";
+    } else if (groupDecision?.displayable_used) {
+      exclusionReason = "p30_4_case_duplicate";
+    } else if (!matrixRef) {
+      exclusionReason = "p30_4_missing_weekly_matrix_ref";
+    } else {
+      // Becomes the displayable row, written under canonical name.
+      upsertPartName = canonicalName!;
+      groupDecision!.displayable_used = true;
+    }
+
+    // External events linked (use original part name for matching legacy data)
     let externalEvents: Array<any> = [];
     try {
       const since = new Date(Date.now() - 7 * DAY_MS).toISOString();
@@ -218,14 +337,11 @@ export async function generateActivePartDailyBriefs(
         .gte("last_seen_at", since)
         .order("last_seen_at", { ascending: false })
         .limit(100);
-      // Filter for ones related to this part via raw_payload.related_part_name
-      // OR via classifier hit_terms (best-effort).
       externalEvents = ((evRows ?? []) as Array<any>).filter((e) => {
         const rp = e.raw_payload ?? {};
         const relPart = rp.related_part_name ?? null;
-        if (relPart && relPart === part.part_name) return true;
+        if (relPart && normalizeCzechPartKey(relPart) === canon.normalized_key) return true;
         const terms: string[] = Array.isArray(rp.hit_terms) ? rp.hit_terms : [];
-        // Heuristic only: rely on therapist sensitivity matching for richer link.
         const sensList = sensByPart.get(part.part_name) ?? [];
         return sensList.some((s: any) =>
           terms.some((t) =>
@@ -246,8 +362,10 @@ export async function generateActivePartDailyBriefs(
       verification_status: e.verification_status,
       last_seen_at: e.last_seen_at,
     }));
-    totalInternetEvents += internetTriggers.length;
-    totalSourceRefs += sourceRefs.length;
+    if (!exclusionReason) {
+      totalInternetEvents += internetTriggers.length;
+      totalSourceRefs += sourceRefs.length;
+    }
 
     const sensList = sensByPart.get(part.part_name) ?? [];
     const knownPatterns = sensList.map((s: any) => ({
@@ -257,17 +375,14 @@ export async function generateActivePartDailyBriefs(
       recommended_guard: s.recommended_guard ?? null,
       safe_opening_style: s.safe_opening_style ?? null,
     }));
-
-    // Recommended prevention is framed as caution, never as factual diagnosis.
     const recommended = sensList.map((s: any) => ({
       sensitivity_id: s.id,
-      caution: `Pokud se dnes objeví téma "${s.event_pattern}", u části ${part.part_name} volit nízkou intenzitu, validaci bezpečí, žádné explicitní detaily.`,
+      caution: `Pokud se dnes objeví téma "${s.event_pattern}", u části ${upsertPartName} volit nízkou intenzitu, validaci bezpečí, žádné explicitní detaily.`,
       guard: s.recommended_guard ?? null,
       opening_style: s.safe_opening_style ?? null,
     }));
 
-    const matrixRef = input.matrixIdsByPart?.[part.part_name] ?? null;
-    const evidenceSummary = {
+    const evidenceSummary: Record<string, unknown> = {
       provider_status: providerStatus,
       detected_via:
         part.activity_status === "watchlist"
@@ -276,14 +391,21 @@ export async function generateActivePartDailyBriefs(
       sensitivity_count: sensList.length,
       external_events_total: externalEvents.length,
       source_backed_event_count: internetTriggers.length,
-      // P30.3 — matrix linkage + plan version
-      weekly_matrix_ref: matrixRef,
-      query_plan_version: input.queryPlanVersion ?? null,
-      trigger_source: matrixRef ? "p30.3_weekly_matrix" : "legacy_sensitivity_only",
+      weekly_matrix_ref: exclusionReason ? null : matrixRef,
+      query_plan_version: exclusionReason ? null : (input.queryPlanVersion ?? PRESENTATION_QUERY_PLAN_VERSION),
+      trigger_source: !exclusionReason && matrixRef ? "p30.3_weekly_matrix" : "legacy_sensitivity_only",
+      // P30.4 fields
+      canonicalization_status: canon.status,
+      canonical_part_name: canonicalName,
+      normalized_part_key: canon.normalized_key,
+      input_part_name: part.part_name,
+      matrix_link_status: !exclusionReason && matrixRef ? "linked" : "unlinked",
+      excluded_from_briefing: exclusionReason ? true : false,
+      exclusion_reason: exclusionReason,
     };
 
     if (input.dryRun) {
-      briefs++;
+      if (!exclusionReason) briefs++;
       continue;
     }
 
@@ -294,11 +416,10 @@ export async function generateActivePartDailyBriefs(
         {
           user_id: input.userId,
           brief_date: input.datePrague,
-          part_name: part.part_name,
+          part_name: upsertPartName,
           activity_status: part.activity_status,
           anamnesis_excerpt: { notes: part.notes ?? null },
           known_sensitive_patterns: knownPatterns,
-          // Anniversaries deliberately empty: we never invent dates.
           anniversaries_today: [],
           internet_triggers_today: internetTriggers.map((e) => ({
             event_id: e.id,
@@ -327,17 +448,17 @@ export async function generateActivePartDailyBriefs(
       );
     if (upsert.error) {
       errors.push(
-        `upsert_failed:${part.part_name}:${upsert.error.message ?? upsert.error}`,
+        `upsert_failed:${upsertPartName}:${upsert.error.message ?? upsert.error}`,
       );
       continue;
     }
-    briefs++;
+    if (!exclusionReason) briefs++;
   }
 
   return {
     ok: errors.length === 0,
     datePrague: input.datePrague,
-    parts_considered: parts.length,
+    parts_considered: candidates.length,
     briefs_upserted: briefs,
     provider_status: providerStatus,
     internet_events_used_count: totalInternetEvents,

@@ -3792,7 +3792,7 @@ Deno.serve(async (req) => {
     // P29C truth gate is OK. NEVER invents events. Empty table → not_run.
     if (truthGateResult?.ok === true) {
       try {
-        const { data: briefRows } = await supabase
+        const { data: briefRowsAll } = await supabase
           .from("did_active_part_daily_brief")
           .select(
             "part_name, activity_status, known_sensitive_patterns, internet_triggers_today, anniversaries_today, recommended_prevention, evidence_summary, source_refs, brief_date",
@@ -3800,7 +3800,17 @@ Deno.serve(async (req) => {
           .eq("user_id", scopedUserId)
           .eq("brief_date", today)
           .eq("status", "active");
-        const rows = (briefRows ?? []) as Array<any>;
+        // P30.4 — presentation-safe filter: only canonical rows with
+        // matrix ref and the correct query plan version reach the briefing.
+        const PRESENTATION_QPV = "p30.3_personal_anchor_general_trigger_weekly_matrix";
+        const briefRows = ((briefRowsAll ?? []) as Array<any>).filter((r) => {
+          const ev = r?.evidence_summary ?? {};
+          if (ev.excluded_from_briefing === true) return false;
+          if (!ev.weekly_matrix_ref) return false;
+          if (ev.query_plan_version !== PRESENTATION_QPV) return false;
+          return true;
+        });
+        const rows = briefRows;
         let providerStatus = "not_run";
         let internetEventsUsed = 0;
         let sourceBacked = 0;
