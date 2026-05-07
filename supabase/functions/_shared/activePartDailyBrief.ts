@@ -448,17 +448,17 @@ export async function generateActivePartDailyBriefs(
       );
     if (upsert.error) {
       errors.push(
-        `upsert_failed:${part.part_name}:${upsert.error.message ?? upsert.error}`,
+        `upsert_failed:${upsertPartName}:${upsert.error.message ?? upsert.error}`,
       );
       continue;
     }
-    briefs++;
+    if (!exclusionReason) briefs++;
   }
 
   return {
     ok: errors.length === 0,
     datePrague: input.datePrague,
-    parts_considered: parts.length,
+    parts_considered: candidates.length,
     briefs_upserted: briefs,
     provider_status: providerStatus,
     internet_events_used_count: totalInternetEvents,
