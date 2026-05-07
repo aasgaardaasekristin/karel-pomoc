@@ -109,6 +109,57 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
   return data.choices?.[0]?.message?.content || "";
 }
 
+// ── Canonical empty fallback for daily analyzer (P33.5A) ──
+export function buildEmptyDailyAnalyzerFallback(input: {
+  datePrague: string;
+  reason: string;
+  validationErrors?: string[];
+  rawModelOutputPreview?: string;
+}): any {
+  return {
+    date: input.datePrague,
+    therapists: {
+      Hanka: {
+        long_term: { traits: [], style: "", reliability: "", experience_notes: "" },
+        situational: { energy: "", health: "", current_stressors: [], notes: "" },
+      },
+      Kata: {
+        long_term: { traits: [], style: "", reliability: "", experience_notes: "" },
+        situational: { energy: "", health: "", current_stressors: [], notes: "" },
+      },
+    },
+    parts: [],
+    team_observations: { cooperation: "", warnings: [], praise: [] },
+    sessions: [],
+    observations: [],
+    tasks: [],
+    risks: [],
+    recommendations: [],
+    external_context: [],
+    metadata: {
+      analyzer_status: "controlled_fallback",
+      fallback_used: true,
+      fallback_reason: input.reason,
+      validation_errors: input.validationErrors ?? [],
+      raw_model_output_preview: (input.rawModelOutputPreview || "").slice(0, 500),
+      generated_at: new Date().toISOString(),
+    },
+  };
+}
+
+// ── Fail-soft validator (P33.5A) ──
+export function validateDailyAnalyzerResult(parsed: any): { ok: boolean; errors: string[] } {
+  const errors: string[] = [];
+  if (!parsed || typeof parsed !== "object") {
+    return { ok: false, errors: ["result_not_object"] };
+  }
+  if (!parsed.date || typeof parsed.date !== "string") errors.push("missing_date");
+  if (!parsed.therapists || typeof parsed.therapists !== "object") errors.push("missing_therapists");
+  if (parsed.parts === undefined || parsed.parts === null) errors.push("missing_parts");
+  else if (!Array.isArray(parsed.parts)) errors.push("parts_not_array");
+  return { ok: errors.length === 0, errors };
+}
+
 // ── Extract JSON from AI response ──
 function extractJSON(text: string): any {
   // Strip thinking tags if present
