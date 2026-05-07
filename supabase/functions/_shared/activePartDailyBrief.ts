@@ -186,7 +186,68 @@ export async function generateActivePartDailyBriefs(
   const now = input.now ?? new Date();
   const { startUtc, endUtc } = pragueDayWindow(input.datePrague);
 
-  const parts = await detectActiveParts(sb, input.userId);
+  const rawParts = await detectActiveParts(sb, input.userId);
+
+  // P30.4 — load registry and canonicalize candidates
+  const { data: registryRows } = await sb
+    .from("did_part_registry")
+    .select("part_name, status")
+    .eq("user_id", input.userId);
+  const registryParts = ((registryRows ?? []) as Array<any>).map((r) => ({
+    part_name: r?.part_name ?? "",
+    status: r?.status ?? null,
+  }));
+
+  // P30.4 — build a normalized-key index of matrix ids so case variants of
+  // an input part still resolve to the canonical matrix row.
+  const matrixIdsByNormalizedKey = new Map<string, string>();
+  for (const [k, v] of Object.entries(input.matrixIdsByPart ?? {})) {
+    const nk = normalizeCzechPartKey(k);
+    if (nk && v && !matrixIdsByNormalizedKey.has(nk)) {
+      matrixIdsByNormalizedKey.set(nk, String(v));
+    }
+  }
+
+  // Canonicalize every candidate. Group by normalized_key so case variants
+  // collapse into a single displayable canonical row + N excluded aliases.
+  type Candidate = (typeof rawParts)[number] & {
+    canonical: CanonicalPartNameResult;
+  };
+  const candidates: Candidate[] = rawParts.map((p) => ({
+    ...p,
+    canonical: canonicalizeDidPartName(p.part_name, registryParts),
+  }));
+
+  const groupsByKey = new Map<string, Candidate[]>();
+  for (const c of candidates) {
+    const key = c.canonical.normalized_key || `__raw__${c.part_name}`;
+    const arr = groupsByKey.get(key) ?? [];
+    arr.push(c);
+    groupsByKey.set(key, arr);
+  }
+
+  // Decide displayable target name per group: must be canonical status,
+  // and the canonical name itself becomes the part_name we upsert under.
+  const groupDecisions = new Map<
+    string,
+    {
+      canonical_part_name: string | null;
+      displayable_used: boolean;
+    }
+  >();
+  for (const [key, group] of groupsByKey.entries()) {
+    const canonicalRow = group.find(
+      (g) => g.canonical.status === "canonical" && g.canonical.canonical_part_name,
+    );
+    const aliasRow = canonicalRow ?? group.find(
+      (g) => g.canonical.status === "case_alias" && g.canonical.canonical_part_name,
+    );
+    groupDecisions.set(key, {
+      canonical_part_name: aliasRow?.canonical.canonical_part_name ?? null,
+      displayable_used: false,
+    });
+  }
+
   let briefs = 0;
   let totalInternetEvents = 0;
   let totalSourceRefs = 0;
