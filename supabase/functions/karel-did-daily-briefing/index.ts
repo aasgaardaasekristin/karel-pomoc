@@ -40,6 +40,10 @@ import {
   type ClinicalActivityEvidence,
 } from "../_shared/clinicalActivityEvidence.ts";
 import { runP20ClinicalTruthGate } from "../_shared/p20FullPayloadTruthGate.ts";
+import {
+  evaluateDailyBriefingTruthGate,
+  type DailyBriefingTruthGateResult,
+} from "../_shared/dailyBriefingTruthGate.ts";
 
 /**
  * SLA generation methods (added 2026-04-30, morning_operational_integrity_e2e):
@@ -2910,7 +2914,107 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Pokud existuje fresh briefing pro dnešek a nechceme force, vrať ho
+    // ───────────────────────────────────────────────────────────
+    // P29C.1 — BRIEFING TRUTH GATE
+    // ───────────────────────────────────────────────────────────
+    // The briefing must NOT claim to be today's ready briefing unless the
+    // P29B daily-cycle is fully completed AND all 14 required phase jobs
+    // are in terminal states. Manual UI regeneration still proceeds (the
+    // user explicitly asked), but its payload still records the gate
+    // result so the UI can flag the briefing as not-canonically-ready.
+    let truthGateResult: DailyBriefingTruthGateResult | null = null;
+    try {
+      truthGateResult = await evaluateDailyBriefingTruthGate(supabase, {
+        userId: scopedUserId!,
+        briefingDatePrague: today,
+        now: new Date(),
+      });
+    } catch (gateErr) {
+      console.error("[briefing-truth-gate] evaluation failed:", gateErr);
+      truthGateResult = {
+        ok: false,
+        status: "no_completed_daily_cycle",
+        source_cycle_id: null,
+        cycle_started_at: null,
+        cycle_completed_at: null,
+        required_jobs_count: 0,
+        distinct_required_jobs_count: 0,
+        missing_required_jobs: [],
+        duplicate_required_jobs: [],
+        queued_jobs: 0,
+        running_jobs: 0,
+        failed_retry_jobs: 0,
+        failed_permanent_jobs: 0,
+        controlled_skipped_jobs: 0,
+        completed_jobs: 0,
+        job_graph_snapshot: [],
+        explanation: `gate_evaluation_error:${(gateErr as Error)?.message ?? gateErr}`,
+        checked_at: new Date().toISOString(),
+      };
+    }
+
+    // For non-manual (auto / SLA) callers: if the gate fails, do NOT generate
+    // a normal briefing. Insert an explicit degraded `truth_gate_blocked` row
+    // that the UI must NOT render as "today's ready briefing".
+    const isNonManualCall = generationMethod === "auto" || isSlaMethod(generationMethod);
+    if (isNonManualCall && truthGateResult && !truthGateResult.ok) {
+      const blockedPayload: any = {
+        briefing_truth_gate: truthGateResult,
+        source_cycle_id: truthGateResult.source_cycle_id,
+        source_cycle_completed_at: truthGateResult.cycle_completed_at,
+        phase_jobs_snapshot: truthGateResult.job_graph_snapshot,
+        do_not_present_as_daily_ready: true,
+        limited: true,
+        limited_reason: `truth_gate_blocked:${truthGateResult.status}`,
+        visible_status:
+          "Denní cyklus ještě není pravdivě dokončen; tento přehled není aktuální.",
+        generation_method_intended: generationMethod,
+        generation_runtime_audit: {
+          started_at: new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+          duration_ms: 0,
+          source: "truth_gate_blocked",
+          method: "truth_gate_blocked",
+        },
+      };
+      const { data: blockedRow, error: blockedErr } = await supabase
+        .from("did_daily_briefings")
+        .insert({
+          briefing_date: today,
+          user_id: scopedUserId,
+          payload: blockedPayload,
+          decisions_count: 0,
+          generation_method: "truth_gate_blocked",
+          generation_duration_ms: 0,
+          model_used: null,
+          is_stale: true,
+        })
+        .select()
+        .single();
+      if (blockedErr) {
+        console.error("[briefing-truth-gate] degraded insert failed:", blockedErr);
+      }
+      await finishBriefingAttempt(supabase, attemptId, {
+        status: "skipped",
+        error_code: `truth_gate_blocked:${truthGateResult.status}`,
+        error_message: truthGateResult.explanation,
+        cycle_id: truthGateResult.source_cycle_id ?? null,
+        cycle_status: truthGateResult.status,
+      });
+      return jsonResponse(
+        {
+          skipped: true,
+          truth_gate_blocked: true,
+          truth_gate: truthGateResult,
+          briefing_id: blockedRow?.id ?? null,
+          briefing_date: today,
+          note:
+            "Briefing není považován za dnešní hotový — denní cyklus / phase jobs nejsou pravdivě terminal.",
+        },
+        409,
+      );
+    }
+
     if (!forceRegenerate) {
       const { data: existing } = await supabase
         .from("did_daily_briefings")
@@ -2922,12 +3026,28 @@ Deno.serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-      if (existing) {
+      // P29C.1 — A cached row counts as "today's ready briefing" only if it
+      // carries a passed truth gate AND was generated AFTER the source cycle
+      // completed. Anything else is treated as missing → regenerate.
+      const cachedGate = existing?.payload?.briefing_truth_gate ?? null;
+      const cachedGateOk = cachedGate?.ok === true;
+      const cachedSourceCycleId = existing?.payload?.source_cycle_id ?? null;
+      const cachedGeneratedAtMs = existing?.generated_at
+        ? new Date(existing.generated_at).getTime()
+        : 0;
+      const gateCompletedAtMs = truthGateResult?.cycle_completed_at
+        ? new Date(truthGateResult.cycle_completed_at).getTime()
+        : 0;
+      const cachedAfterCycle =
+        gateCompletedAtMs > 0 && cachedGeneratedAtMs >= gateCompletedAtMs;
+      const cachedIsReady =
+        existing &&
+        cachedGateOk &&
+        !!cachedSourceCycleId &&
+        cachedAfterCycle;
+
+      if (existing && cachedIsReady) {
         await finishBriefingAttempt(supabase, attemptId, { status: "succeeded", created_briefing_id: existing.id, metadata: { cached: true } });
-        // KALENDÁŘNÍ INTEGRITA: i čerstvý cached briefing dostane viewer_meta
-        // a re-validovaná recency, aby UI dostalo konzistentní strukturu
-        // (i když dnes briefing_date === viewer_date, frontend si stále
-        // přepočítává recency proti aktuálnímu času).
         const revalidatedFresh = revalidateCachedBriefingForViewer(existing, today);
         return jsonResponse({ briefing: revalidatedFresh, cached: true });
       }
@@ -3639,6 +3759,17 @@ Deno.serve(async (req) => {
       method: generationMethod,
     };
 
+    // P29C.1 — stamp the truth-gate proof onto every successful briefing
+    // payload so the UI / readers can prove this row is tied to a completed
+    // P29B daily-cycle. For manual regenerations the gate may be ok=false;
+    // we still record it so the row carries an honest ready/not-ready signal.
+    if (truthGateResult) {
+      payload.briefing_truth_gate = truthGateResult;
+      payload.source_cycle_id = truthGateResult.source_cycle_id;
+      payload.source_cycle_completed_at = truthGateResult.cycle_completed_at;
+      payload.phase_jobs_snapshot = truthGateResult.job_graph_snapshot;
+      payload.do_not_present_as_daily_ready = truthGateResult.ok !== true;
+    }
     // 6) Insert nový briefing
     const { data: inserted, error: insertErr } = await supabase
       .from("did_daily_briefings")
