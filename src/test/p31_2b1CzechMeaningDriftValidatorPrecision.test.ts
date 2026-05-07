@@ -250,6 +250,7 @@ describe("P31.2B.1 integration via generateKarelAiPolishCandidate", () => {
           // Inject Czech inflection of Tundrupek + an allowlisted word; otherwise keep original.
           const polished = s.original_text
             .replace(/Tundrupek/g, "Tundrupkou")
+            .replace(/sezením/g, "Hernou")
             .replace(/sezení/g, "Hernu");
           out[s.section_id] = polished;
         }
