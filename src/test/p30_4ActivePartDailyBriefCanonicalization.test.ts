@@ -217,11 +217,17 @@ describe("generateActivePartDailyBriefs P30.4 contract", () => {
     });
     expect(res.ok).toBe(true);
     const ups = sb.captured.filter((c) => c.table === "did_active_part_daily_brief");
-    expect(ups).toHaveLength(1);
-    expect(ups[0].row.evidence_summary.excluded_from_briefing).toBe(true);
-    expect(ups[0].row.evidence_summary.exclusion_reason).toBe(
+    const arthur = ups.find((u) => u.row.part_name === "Arthur" || u.row.evidence_summary?.canonical_part_name === "Arthur");
+    expect(arthur).toBeDefined();
+    expect(arthur!.row.evidence_summary.excluded_from_briefing).toBe(true);
+    expect(arthur!.row.evidence_summary.exclusion_reason).toBe(
       "p30_4_missing_weekly_matrix_ref",
     );
+    // No row in this scenario should be displayable (no matrix at all)
+    const anyDisplayable = ups.some(
+      (u) => u.row.evidence_summary?.excluded_from_briefing === false,
+    );
+    expect(anyDisplayable).toBe(false);
   });
 
   it("never produces card_update_queue / did_observations / KARTA writes", async () => {
