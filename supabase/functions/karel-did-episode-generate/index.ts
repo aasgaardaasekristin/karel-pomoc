@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { corsHeaders } from "../_shared/auth.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
+import { blockHanaAliasPartWrite } from "../_shared/hanaPersonalIdentityResolver.ts";
 
 /**
  * Karel DID Episode Generator
@@ -244,6 +245,15 @@ INSTRUKCE:
         
         // Auto-populate did_part_registry
         try {
+          // P32.1 hard identity guard
+          const __regGuard = blockHanaAliasPartWrite({
+            target_kind: "did_part_registry",
+            part_name: thread.part_name,
+            source: "karel-did-episode-generate",
+          });
+          if (__regGuard.blocked) {
+            console.warn(`[episode-generate] registry upsert blocked: ${__regGuard.reason}`);
+          } else {
           await sb.from("did_part_registry").upsert({
             user_id: userId,
             part_name: thread.part_name.toLowerCase(),
