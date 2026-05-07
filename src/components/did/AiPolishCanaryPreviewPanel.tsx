@@ -8,10 +8,10 @@
  *
  * Pravidla:
  *  - Pouze SELECT z `p31_ai_polish_canary_runs`.
- *  - Žádné .insert/.update/.delete/.upsert/.rpc/.functions.invoke.
+ *  - Žádné write metody ani edge function volání.
  *  - Žádné tlačítko publish/accept/replace/save.
  *  - Rejected kandidáti se NEzobrazují jako primární text — pouze
- *    v collapsed `<details>` jako audit-only.
+ *    v collapsed audit-only details.
  */
 
 import { useEffect, useState } from "react";
