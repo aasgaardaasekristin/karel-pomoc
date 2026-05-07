@@ -47,6 +47,16 @@ export interface AiPolishInput {
   payload: any;
   deterministic: KarelBriefingVoiceRenderResult;
   mode?: "candidate_only";
+  /**
+   * P31.2B — internal server-side-only override. When true, enables real AI
+   * call regardless of the global P31_2_ENABLE_AI_POLISH env flag. This must
+   * NEVER be wired from a UI surface; it is intended exclusively for the
+   * canary edge function (`karel-ai-polish-canary`) running under the
+   * service-role / cron-secret guard.
+   */
+  forceEnableForCanary?: boolean;
+  /** Optional canary correlation id stored in the audit row for traceability. */
+  canaryRunId?: string;
   // Test seam: inject AI response synchronously for unit tests.
   // Must return mapping { [section_id]: polished_text }.
   __testFetcher?: (
@@ -249,6 +259,7 @@ export async function generateKarelAiPolishCandidate(
   const enabled =
     (typeof Deno !== "undefined" &&
       (Deno as any)?.env?.get?.("P31_2_ENABLE_AI_POLISH") === "true") ||
+    input.forceEnableForCanary === true ||
     !!input.__testFetcher;
 
   if (!enabled) {
