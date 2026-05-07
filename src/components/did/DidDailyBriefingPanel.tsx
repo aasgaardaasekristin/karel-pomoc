@@ -1747,6 +1747,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
+      {!((p as any).karel_human_briefing?.ok === true) && (<>
       {/* 2. Co se změnilo za poslední 3 dny */}
       {p.last_3_days && (
         <>
