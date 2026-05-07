@@ -86,7 +86,7 @@ function renderSystemMorningState(payload: any): RenderedBriefingSection {
   const warnings: string[] = [];
 
   if (ok && cycleId) {
-    text = `Ranní podklady jsou připravené a vázané na dokončený denní cyklus z ${cycleCompleted || "dnešního rána"}. Můžeme z nich dnes vycházet.`;
+    text = `Ranní podklady jsou připravené a vázané na dnešní dokončený ranní cyklus. Můžeme z nich dnes vycházet.`;
     confidence = "high";
   } else if (ok) {
     text = "Ranní podklady prošly kontrolou a jsou připravené k použití.";
@@ -173,7 +173,8 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
     const hypoNote = isHypothesis
       ? " Beru to ale jen jako pracovní hypotézu, dokud to nepotvrdí Hanička s Káťou."
       : "";
-    const evNote = evidence ? ` Síla podkladů je ${evidence}.` : "";
+    const evCz = evidence === "low" ? "nízká" : evidence === "medium" ? "střední" : evidence === "high" ? "vyšší" : "";
+    const evNote = evCz ? ` Opora v podkladech je ${evCz}.` : "";
     const why = rationale ? ` Vychází to z toho, že ${rationale.charAt(0).toLocaleLowerCase("cs")}${rationale.slice(1)}` : "";
     text = `Pro dnešek se mi jako možná část pro práci nabízí ${partName}.${hypoNote}${evNote}${why ? "\n\n" + why : ""}`;
     confidence = isHypothesis || evidence === "low" ? "low" : "medium";

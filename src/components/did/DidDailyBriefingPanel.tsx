@@ -50,6 +50,8 @@ import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import ExternalLoadWarning from "@/components/did/ExternalLoadWarning";
 import AiPolishCanaryPreviewPanel from "@/components/did/AiPolishCanaryPreviewPanel";
 import { getBriefingTruthStatus, pluralizeDays } from "@/lib/briefingTruthStatus";
+import { selectBestBriefing, isFullRenderableBriefing } from "@/lib/briefingSelection";
+import { sanitizeKarelVisibleText } from "@/lib/karelBriefingVisibleSanitizer";
 
 interface BriefingDecision {
   /** SLICE 3 — stabilní serverové UUID briefing itemu (linked_briefing_item_id). */
@@ -990,20 +992,24 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     setLoading(true);
     try {
       const today = pragueTodayISO();
-      const [{ data, error }, { data: lastBriefing }, { data: lastAttempt }] = await Promise.all([
+      // P33.3 — fetch the latest 20 rows for today and let selectBestBriefing
+      // pick the best valid full row. Backend may write fallback / sla_watchdog
+      // rows newer than a fully-rendered briefing; the UI must NOT take the
+      // newest blindly.
+      const [{ data: todayRows, error }, { data: lastBriefing }, { data: lastAttempt }] = await Promise.all([
         supabase
-        .from("did_daily_briefings")
-        .select("*")
-        .eq("is_stale", false)
-        .eq("briefing_date", today)
-        .order("generated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+          .from("did_daily_briefings")
+          .select("*")
+          .eq("is_stale", false)
+          .eq("briefing_date", today)
+          .order("generated_at", { ascending: false })
+          .limit(20),
         supabase.from("did_daily_briefings").select("*").eq("is_stale", false).order("generated_at", { ascending: false }).limit(1).maybeSingle(),
         (supabase as any).from("did_daily_briefing_attempts").select("status,error_code,error_message,cycle_status,briefing_date,created_at").order("created_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
 
       if (error) throw error;
+      const data = selectBestBriefing<any>(todayRows ?? []);
       setBriefing((data as unknown as BriefingRow) ?? ((lastBriefing as unknown as BriefingRow) ?? null));
       if (!data) {
         const code = (lastAttempt as any)?.error_code ?? null;
@@ -1563,7 +1569,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   // Replaces the old `briefingMethodBadge` + freshness banner + limited
   // banner trio that could produce contradictions like
   // "Aktuální (SLA záplata)" + "starý přehled" + "Dnešní přehled zatím nevznikl".
-  const truth = getBriefingTruthStatus(
+  const truthRaw = getBriefingTruthStatus(
     {
       briefing_date: briefing.briefing_date,
       is_stale: briefing.is_stale,
@@ -1577,6 +1583,20 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     },
     viewerToday,
   );
+  // P33.3 — when the actual row is a full renderable briefing (truth-gated,
+  // human_ok, 9 sections, clean audit), the UI must NOT show "Náhradní omezený"
+  // or "Ruční přehled" badge/banner just because of generation_method label.
+  const isFullRenderable = isFullRenderableBriefing(briefing as any);
+  const truth = isFullRenderable
+    ? {
+        ...truthRaw,
+        level: "fresh_full" as const,
+        badgeLabel: "Aktuální",
+        bannerText: null,
+        canShowCurrent: true,
+        detail: { ...truthRaw.detail, isLimited: false, isManual: false },
+      }
+    : truthRaw;
   const truthBadgeTone =
     truth.level === "fresh_full"
       ? "border-primary/30 text-primary/80"
@@ -1666,7 +1686,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               data-renderer-version={hb.renderer_version}
             >
               {hb.sections.map((s: any, idx: number) => {
-                const text = typeof s?.karel_text === "string" ? s.karel_text : "";
+                const rawText = typeof s?.karel_text === "string" ? s.karel_text : "";
+                const text = sanitizeKarelVisibleText(rawText);
                 if (!text.trim()) return null;
                 return (
                   <div key={s?.section_id || idx} className="space-y-1">
