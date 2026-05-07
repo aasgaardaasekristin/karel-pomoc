@@ -347,40 +347,336 @@ async function ingestText(
   return { events_created, impacts_created, tasks_created, warnings };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// P30.1 — Source-truth internet watch.
+// HARD: never invent a verified internet source. If no provider is configured
+// the run row records provider_not_configured and zero events are created.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface InternetWatchInput {
+  date?: string;
+  maxQueries?: number;
+  maxResultsPerQuery?: number;
+  recencyDays?: number;
+  dryRun?: boolean;
+}
+
+interface InternetWatchResult {
+  status:
+    | "configured"
+    | "provider_not_configured"
+    | "provider_error";
+  provider: string | null;
+  watch_run_id: string | null;
+  queries_run: number;
+  raw_results_count: number;
+  events_created: number;
+  events_deduped: number;
+  source_backed_events_count: number;
+  reason?: string;
+  warnings: string[];
+}
+
 async function internetWatchSlice(
   admin: ReturnType<typeof createClient>,
   userId: string,
-): Promise<{ status: string; message: string }> {
-  // Honest not_implemented — no fake browsing.
-  await admin.from("external_event_watch_runs").insert({
-    user_id: userId,
-    source_type: "internet_news",
-    sources_checked: 0,
-    new_events: 0,
-    matched_events: 0,
-    warnings_created: 0,
-    failures: 0,
-    internet_watch_status: "not_implemented",
-    notes: "Internet watch is intentionally not implemented in this slice. No fake verification.",
-    payload: {},
+  input: InternetWatchInput,
+): Promise<InternetWatchResult> {
+  const warnings: string[] = [];
+  const maxQueries = Math.max(1, Math.min(20, input.maxQueries ?? 10));
+  const maxResultsPerQuery = Math.max(
+    1,
+    Math.min(10, input.maxResultsPerQuery ?? 5),
+  );
+  const recencyDays = Math.max(1, Math.min(30, input.recencyDays ?? 7));
+  const dryRun = input.dryRun === true;
+
+  const { data: sensRows } = await admin
+    .from("part_external_event_sensitivities")
+    .select("id, part_name, event_pattern, sensitivity_types")
+    .eq("user_id", userId)
+    .eq("active", true);
+  const sens = (sensRows ?? []) as Array<{
+    id: string;
+    part_name: string;
+    event_pattern: string;
+    sensitivity_types: string[];
+  }>;
+
+  const queries: Array<{
+    query: string;
+    sensitivity_id: string;
+    part_name: string;
+    sensitivity_kind: string;
+  }> = [];
+  for (const s of sens) {
+    const kind = s.sensitivity_types?.[0] ?? "other";
+    queries.push({
+      query: `${s.event_pattern} aktuální zpráva`,
+      sensitivity_id: s.id,
+      part_name: s.part_name,
+      sensitivity_kind: kind,
+    });
+    if (queries.length >= maxQueries) break;
+  }
+
+  const providerInfo = detectProviderFromEnv();
+
+  if (queries.length === 0) {
+    const { data: runRow } = await admin
+      .from("external_event_watch_runs")
+      .insert({
+        user_id: userId,
+        source_type: "internet_news",
+        sources_checked: 0,
+        new_events: 0,
+        matched_events: 0,
+        warnings_created: 0,
+        failures: 0,
+        internet_watch_status: providerInfo.provider
+          ? "configured"
+          : "provider_not_configured",
+        notes:
+          "Internet watch: no active part sensitivities — nothing to query.",
+        payload: { reason: "no_sensitivities", provider: providerInfo.provider },
+      })
+      .select("id")
+      .single();
+    return {
+      status: providerInfo.provider ? "configured" : "provider_not_configured",
+      provider: providerInfo.provider,
+      watch_run_id: runRow?.id ?? null,
+      queries_run: 0,
+      raw_results_count: 0,
+      events_created: 0,
+      events_deduped: 0,
+      source_backed_events_count: 0,
+      reason: "no_sensitivities",
+      warnings,
+    };
+  }
+
+  const providerResp = await runExternalRealitySearchProvider({
+    queries: queries.map((q) => q.query),
+    maxResultsPerQuery,
+    recencyDays,
   });
 
-  // Create a follow-up task asking therapists for verified links
-  try {
-    await admin.from("did_therapist_tasks").insert({
-      user_id: userId,
-      task: "Doplnit ověřené odkazy ke sledovaným externím tématům",
-      note: "Internet sentinel zatím není napojen na ověřený zdroj. Pokud máte odkaz na článek/zprávu, který se týká částí (Arthur, Tundrupek, Timmy), přidejte ho ručně.",
-      assigned_to: "hanka",
-      priority: "low",
-      status: "pending",
-      source: "external_reality_sentinel",
-      category: "external_reality",
-      task_tier: "operative",
-    });
-  } catch { /* tabulka může mít jiné schéma */ }
+  if (providerResp.status === "not_configured") {
+    const { data: runRow } = await admin
+      .from("external_event_watch_runs")
+      .insert({
+        user_id: userId,
+        source_type: "internet_news",
+        sources_checked: queries.length,
+        new_events: 0,
+        matched_events: 0,
+        warnings_created: 0,
+        failures: 0,
+        internet_watch_status: "provider_not_configured",
+        notes: "no_external_search_provider_configured",
+        payload: {
+          reason: "no_external_search_provider_configured",
+          queries: queries.map((q) => q.query),
+        },
+      })
+      .select("id")
+      .single();
+    return {
+      status: "provider_not_configured",
+      provider: null,
+      watch_run_id: runRow?.id ?? null,
+      queries_run: queries.length,
+      raw_results_count: 0,
+      events_created: 0,
+      events_deduped: 0,
+      source_backed_events_count: 0,
+      reason: "no_external_search_provider_configured",
+      warnings,
+    };
+  }
 
-  return { status: "not_implemented", message: "Internet watch slice is honestly marked not_implemented. Task created for manual verification." };
+  if (!providerResp.ok || providerResp.status === "error") {
+    const { data: runRow } = await admin
+      .from("external_event_watch_runs")
+      .insert({
+        user_id: userId,
+        source_type: "internet_news",
+        sources_checked: queries.length,
+        new_events: 0,
+        matched_events: 0,
+        warnings_created: 0,
+        failures: 1,
+        internet_watch_status: "provider_error",
+        notes:
+          `provider_error:${providerResp.raw_error ?? providerResp.reason ?? "unknown"}`
+            .slice(0, 480),
+        payload: {
+          provider: providerResp.provider,
+          reason: providerResp.reason,
+          raw_error: providerResp.raw_error,
+          queries: queries.map((q) => q.query),
+        },
+      })
+      .select("id")
+      .single();
+    return {
+      status: "provider_error",
+      provider: providerResp.provider,
+      watch_run_id: runRow?.id ?? null,
+      queries_run: queries.length,
+      raw_results_count: 0,
+      events_created: 0,
+      events_deduped: 0,
+      source_backed_events_count: 0,
+      reason: providerResp.reason ?? "provider_error",
+      warnings,
+    };
+  }
+
+  const queryMeta = new Map(queries.map((q) => [q.query, q]));
+  let eventsCreated = 0;
+  let eventsDeduped = 0;
+  const sourceBackedCount = providerResp.results.length;
+
+  for (const result of providerResp.results) {
+    const meta = queryMeta.get(result.query);
+    if (!meta) continue;
+    const sensRow = sens.find((s) => s.id === meta.sensitivity_id);
+    if (!sensRow) continue;
+
+    const inferredType = sensRow.sensitivity_types?.[0] ?? "other";
+    const allowedTypes = new Set([
+      "animal_suffering",
+      "child_abuse",
+      "public_trial",
+      "disaster",
+      "war",
+      "rescue_failure",
+      "death",
+      "anniversary",
+      "other",
+    ]);
+    const safeType = allowedTypes.has(inferredType) ? inferredType : "other";
+
+    const normalized = await normalizeExternalSearchResultToEvent(result, {
+      partName: meta.part_name,
+      sensitivityId: meta.sensitivity_id,
+      sensitivityKind: meta.sensitivity_kind,
+      inferredEventType: safeType,
+      childExposureRisk: "high",
+      graphicContentRisk: "medium",
+      aiSummarized: providerResp.provider === "perplexity",
+    });
+
+    const { data: existing } = await admin
+      .from("external_reality_events")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("source_url", normalized.source_url)
+      .limit(1);
+    if (existing && existing.length > 0) {
+      eventsDeduped++;
+      if (!dryRun) {
+        await admin
+          .from("external_reality_events")
+          .update({ last_seen_at: new Date().toISOString() })
+          .eq("id", existing[0].id);
+      }
+      continue;
+    }
+
+    if (dryRun) {
+      eventsCreated++;
+      continue;
+    }
+
+    const { error: insErr } = await admin
+      .from("external_reality_events")
+      .insert({
+        user_id: userId,
+        event_title: normalized.event_title,
+        event_type: normalized.event_type,
+        source_type: "internet_news",
+        source_url: normalized.source_url,
+        source_domain: normalized.source_name,
+        source_reliability: "unknown",
+        // P30.1 maps source-truth states onto the existing DB enum: anything
+        // automated stays at "single_source" until a therapist verifies it.
+        verification_status: "single_source",
+        graphic_content_risk: normalized.graphic_content_risk,
+        child_exposure_risk: normalized.child_exposure_risk,
+        summary_for_therapists: normalized.event_summary,
+        do_not_show_child_text: true,
+        raw_payload: {
+          provider: normalized.provider,
+          search_query: normalized.search_query,
+          related_part_name: normalized.related_part_name,
+          related_sensitivity_id: normalized.related_sensitivity_id,
+          sensitivity_kind: normalized.sensitivity_kind,
+          dedupe_key: normalized.dedupe_key,
+          semantic_dedupe_key: normalized.semantic_dedupe_key,
+          source_backed_verification_status: normalized.verification_status,
+          fetched_at: normalized.fetched_at,
+          source_published_at: normalized.source_published_at,
+        },
+      });
+    if (insErr) {
+      warnings.push(`insert_event_failed:${insErr.message?.slice(0, 120)}`);
+      continue;
+    }
+    eventsCreated++;
+  }
+
+  const { data: runRow } = await admin
+    .from("external_event_watch_runs")
+    .insert({
+      user_id: userId,
+      source_type: "internet_news",
+      sources_checked: queries.length,
+      new_events: eventsCreated,
+      matched_events: eventsCreated,
+      warnings_created: 0,
+      failures: warnings.length,
+      internet_watch_status: "configured",
+      notes:
+        `provider=${providerResp.provider} created=${eventsCreated} deduped=${eventsDeduped}`,
+      payload: {
+        provider: providerResp.provider,
+        queries: queries.map((q) => q.query),
+        raw_results_count: providerResp.results.length,
+        events_deduped: eventsDeduped,
+        warnings,
+      },
+    })
+    .select("id")
+    .single();
+
+  try {
+    await admin.rpc("did_record_slo_run", {
+      p_pipeline_name: "external_reality_watch",
+      p_status: "ok",
+      p_evidence: {
+        events_created: eventsCreated,
+        events_deduped: eventsDeduped,
+        provider: providerResp.provider,
+      },
+      p_evidence_ref: `internet_watch:${providerResp.provider}`,
+      p_next_action: null,
+    });
+  } catch { /* swallow */ }
+
+  return {
+    status: "configured",
+    provider: providerResp.provider,
+    watch_run_id: runRow?.id ?? null,
+    queries_run: queries.length,
+    raw_results_count: providerResp.results.length,
+    events_created: eventsCreated,
+    events_deduped: eventsDeduped,
+    source_backed_events_count: sourceBackedCount,
+    warnings,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
