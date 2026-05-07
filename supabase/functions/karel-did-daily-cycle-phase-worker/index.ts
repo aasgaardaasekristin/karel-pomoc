@@ -17,6 +17,7 @@
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { resolveCanonicalDidUserId } from "../_shared/canonicalUserResolver.ts";
+import { buildInternalEdgeHeaders } from "../_shared/internalEdgeAuth.ts";
 import { runPhase4CentrumTail, type CentrumTailResult } from "../_shared/dailyCyclePhase4CentrumTail.ts";
 import { runPhase75EscalationEmails } from "../_shared/dailyCyclePhase75EscalationEmails.ts";
 import { runPhase76FeedbackRetry } from "../_shared/dailyCyclePhase76FeedbackRetry.ts";
@@ -80,13 +81,15 @@ async function callEdgeFunction(fnName: string, body: Record<string, unknown>, t
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
+    // P33.5B: send BOTH service-role bearer AND X-Karel-Cron-Secret so
+    // every downstream auth gate (gateway verify_jwt, in-code service
+    // check, in-code cron secret check) has a reliable accept path.
+    const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+    const { headers } = await buildInternalEdgeHeaders(admin);
     const res = await fetch(url, {
       method: "POST",
       signal: ctrl.signal,
-      headers: {
-        Authorization: `Bearer ${SERVICE_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(body),
     });
     const text = await res.text().catch(() => "");
