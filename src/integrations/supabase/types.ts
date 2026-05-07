@@ -5372,6 +5372,66 @@ export type Database = {
           },
         ]
       }
+      hana_personal_identity_audit: {
+        Row: {
+          created_at: string
+          id: string
+          input_hash: string
+          marker: string | null
+          memory_targets: Json
+          mentioned_groups: Json
+          mentioned_parts: Json
+          message_ref: string | null
+          resolution_kind: string
+          should_create_hana_memory: boolean | null
+          should_create_part_card_update: boolean | null
+          should_create_part_observation: boolean | null
+          speaker_identity: string
+          surface: string
+          thread_id: string | null
+          user_id: string
+          warnings: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          input_hash: string
+          marker?: string | null
+          memory_targets?: Json
+          mentioned_groups?: Json
+          mentioned_parts?: Json
+          message_ref?: string | null
+          resolution_kind: string
+          should_create_hana_memory?: boolean | null
+          should_create_part_card_update?: boolean | null
+          should_create_part_observation?: boolean | null
+          speaker_identity: string
+          surface?: string
+          thread_id?: string | null
+          user_id: string
+          warnings?: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          input_hash?: string
+          marker?: string | null
+          memory_targets?: Json
+          mentioned_groups?: Json
+          mentioned_parts?: Json
+          message_ref?: string | null
+          resolution_kind?: string
+          should_create_hana_memory?: boolean | null
+          should_create_part_card_update?: boolean | null
+          should_create_part_observation?: boolean | null
+          speaker_identity?: string
+          surface?: string
+          thread_id?: string | null
+          user_id?: string
+          warnings?: Json
+        }
+        Relationships: []
+      }
       hana_personal_memory: {
         Row: {
           consumed_at: string | null

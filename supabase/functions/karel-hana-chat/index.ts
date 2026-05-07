@@ -36,6 +36,58 @@ import {
   type HanaDeepMemory,
   type OpeningSelection,
 } from "../_shared/hanaPersonaLayer.ts";
+import {
+  resolveHanaPersonalIdentity,
+  renderIdentityContextBlock,
+  type HanaPersonalIdentityResolution,
+} from "../_shared/hanaPersonalIdentityResolver.ts";
+
+async function loadHanaResolverKnownParts(sb: any): Promise<Array<{ canonical_part_name: string; aliases?: string[] }>> {
+  try {
+    const { data } = await sb.from("did_part_registry")
+      .select("part_name, status")
+      .neq("status", "quarantined_wrong_identity_p32");
+    return (data || [])
+      .filter((r: any) => r?.part_name && !["hana","hanka","hani","hanicka","hanička","hanicko","hanko","mamka","mama","maminka"]
+        .includes(String(r.part_name).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()))
+      .map((r: any) => ({ canonical_part_name: r.part_name }));
+  } catch (_) {
+    return [];
+  }
+}
+
+async function logHanaIdentityAudit(sb: any, args: {
+  userId: string;
+  threadId: string | null;
+  inputText: string;
+  resolution: HanaPersonalIdentityResolution;
+  marker?: string;
+}): Promise<void> {
+  try {
+    // djb2-ish input hash — no raw text persisted
+    let h = 5381;
+    for (let i = 0; i < args.inputText.length; i++) h = ((h << 5) + h) ^ args.inputText.charCodeAt(i);
+    const input_hash = `djb2:${(h >>> 0).toString(16)}:${args.inputText.length}`;
+    await sb.from("hana_personal_identity_audit").insert({
+      user_id: args.userId,
+      thread_id: args.threadId,
+      surface: "hana_personal",
+      input_hash,
+      resolution_kind: args.resolution.resolution_kind,
+      speaker_identity: args.resolution.speaker_identity,
+      mentioned_parts: args.resolution.mentioned_parts,
+      mentioned_groups: args.resolution.mentioned_groups,
+      should_create_hana_memory: args.resolution.should_create_hana_memory,
+      should_create_part_observation: args.resolution.should_create_part_observation,
+      should_create_part_card_update: args.resolution.should_create_part_card_update,
+      memory_targets: args.resolution.recommended_memory_targets,
+      warnings: args.resolution.warnings,
+      marker: args.marker || null,
+    });
+  } catch (e) {
+    console.warn("[hana-chat][p32-audit] insert failed (non-fatal):", (e as Error)?.message);
+  }
+}
 
 export async function loadHanaDeepMemory(sb: any, userId: string, sourceThreadId?: string | null): Promise<HanaDeepMemory[]> {
   let q = sb.from("hana_personal_memory")
@@ -1003,6 +1055,36 @@ serve(async (req) => {
     let systemPrompt = buildHanaSystemPrompt(situationCache, analysis);
     if (continuityContext.text) {
       systemPrompt += `\n\n${continuityContext.text}`;
+    }
+
+    // ═══ P32 — Hana personal identity resolution (BEFORE AI call) ═══
+    let p32Resolution: HanaPersonalIdentityResolution | null = null;
+    try {
+      const knownPartsForResolver = await loadHanaResolverKnownParts(sb);
+      const lastUserTextForResolver = lastUserTextForSafety || extractFirstUserText(messages);
+      p32Resolution = resolveHanaPersonalIdentity({
+        text: lastUserTextForResolver,
+        knownParts: knownPartsForResolver,
+        surface: "hana_personal",
+      });
+      systemPrompt += `\n\n${renderIdentityContextBlock(p32Resolution)}\n\n` +
+        `═══ HANA IDENTITY HARD GUARD ═══\n` +
+        `- Hana / Hanka / Hanička / Hani je lidská terapeutka, NE DID část.\n` +
+        `- V osobním vlákně odpovídej Hance jako člověku.\n` +
+        `- Pokud Hana mluví v první osobě, nereaguj jako by šlo o DID část.\n` +
+        `- Pokud zmiňuje kluky nebo konkrétní část, ber to jako její report nebo obavu.\n` +
+        `- Nepřepínej mluvčího na část bez explicitní citace.\n` +
+        `- Pokud je nejasné, kdo mluví, jemně se zeptej.`;
+      // fire-and-forget audit
+      logHanaIdentityAudit(sb, {
+        userId: user.id,
+        threadId: conversationId || null,
+        inputText: lastUserTextForResolver,
+        resolution: p32Resolution,
+        marker: lastUserTextForResolver.includes("[P32_SAFE_IDENTITY_SMOKE]") ? "P32_SAFE_IDENTITY_SMOKE" : null,
+      }).catch(() => {});
+    } catch (e) {
+      console.warn("[hana-chat][p32] identity resolver failed (non-fatal):", (e as Error)?.message);
     }
 
     // P28 EFGH — deep Hana memory + persona + opening strategy
