@@ -41,6 +41,47 @@ import {
   renderIdentityContextBlock,
   type HanaPersonalIdentityResolution,
 } from "../_shared/hanaPersonalIdentityResolver.ts";
+import {
+  validateHanaPersonalResponseIdentity,
+  renderSafeHanaPersonalFallback,
+} from "../_shared/hanaPersonalResponseGuard.ts";
+
+function djb2Hash(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+  return `djb2:${(h >>> 0).toString(16)}:${s.length}`;
+}
+
+async function logHanaResponseGuardAudit(sb: any, args: {
+  userId: string;
+  threadId: string | null;
+  resolution: HanaPersonalIdentityResolution | null;
+  inputText: string;
+  responseText: string;
+  status: "passed" | "blocked_and_replaced";
+  blockedReason?: string;
+  warnings: string[];
+  usedFallback: boolean;
+  marker?: string;
+}): Promise<void> {
+  try {
+    await sb.from("hana_personal_response_guard_audit").insert({
+      user_id: args.userId,
+      thread_id: args.threadId,
+      input_hash: djb2Hash(args.inputText || ""),
+      response_hash: djb2Hash(args.responseText || ""),
+      resolution_kind: args.resolution?.resolution_kind || null,
+      speaker_identity: args.resolution?.speaker_identity || null,
+      response_guard_status: args.status,
+      blocked_reason: args.blockedReason || null,
+      warnings: args.warnings || [],
+      used_fallback: args.usedFallback,
+      marker: args.marker || "p32_2_response_guard",
+    });
+  } catch (e) {
+    console.warn("[hana-response-guard-audit] insert failed:", (e as any)?.message || e);
+  }
+}
 
 async function loadHanaResolverKnownParts(sb: any): Promise<Array<{ canonical_part_name: string; aliases?: string[] }>> {
   try {
