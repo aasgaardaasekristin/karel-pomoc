@@ -3770,6 +3770,63 @@ Deno.serve(async (req) => {
       payload.phase_jobs_snapshot = truthGateResult.job_graph_snapshot;
       payload.do_not_present_as_daily_ready = truthGateResult.ok !== true;
     }
+
+    // P30.1 — read-only external_reality_watch hook. Only attached when the
+    // P29C truth gate is OK. NEVER invents events. Empty table → not_run.
+    if (truthGateResult?.ok === true) {
+      try {
+        const { data: briefRows } = await supabase
+          .from("did_active_part_daily_brief")
+          .select(
+            "part_name, activity_status, known_sensitive_patterns, internet_triggers_today, anniversaries_today, recommended_prevention, evidence_summary, source_refs",
+          )
+          .eq("user_id", scopedUserId)
+          .eq("brief_date", today)
+          .eq("status", "active");
+        const rows = (briefRows ?? []) as Array<any>;
+        let providerStatus = "not_run";
+        let internetEventsUsed = 0;
+        let sourceBacked = 0;
+        for (const r of rows) {
+          const ps = r?.evidence_summary?.provider_status;
+          if (ps && ps !== "not_run") providerStatus = ps;
+          if (Array.isArray(r?.internet_triggers_today)) {
+            internetEventsUsed += r.internet_triggers_today.length;
+          }
+          if (Array.isArray(r?.source_refs)) {
+            sourceBacked += r.source_refs.length;
+          }
+        }
+        payload.external_reality_watch = {
+          provider_status: providerStatus,
+          active_part_daily_brief_count: rows.length,
+          internet_events_used_count: internetEventsUsed,
+          source_backed_events_count: sourceBacked,
+          not_configured_reason: providerStatus === "provider_not_configured"
+            ? "no_external_search_provider_configured"
+            : null,
+          parts: rows.map((r) => ({
+            part_name: r.part_name,
+            activity_status: r.activity_status,
+            known_sensitive_patterns: r.known_sensitive_patterns ?? [],
+            internet_triggers_today: r.internet_triggers_today ?? [],
+            anniversaries_today: r.anniversaries_today ?? [],
+            recommended_prevention: r.recommended_prevention ?? [],
+            evidence_summary: r.evidence_summary ?? {},
+          })),
+        };
+      } catch (e) {
+        payload.external_reality_watch = {
+          provider_status: "not_run",
+          active_part_daily_brief_count: 0,
+          internet_events_used_count: 0,
+          source_backed_events_count: 0,
+          not_configured_reason: null,
+          parts: [],
+          read_error: String((e as Error)?.message ?? e).slice(0, 200),
+        };
+      }
+    }
     // 6) Insert nový briefing
     const { data: inserted, error: insertErr } = await supabase
       .from("did_daily_briefings")
