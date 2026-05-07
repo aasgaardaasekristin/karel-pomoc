@@ -541,8 +541,8 @@ export async function generateKarelAiPolishCandidate(
       status = "rejected_meaning_drift";
       warnings.push(...drift);
       driftTotal += drift.length;
-      // Drift that adds unsupported number/part counts as unsupported claim.
-      if (drift.some((d) => d.startsWith("missing_part_name:"))) {
+      // Drift that adds unsupported number/part/new-entity counts as unsupported claim.
+      if (drift.some((d) => d.startsWith("missing_part_name:") || d.startsWith("new_unvalidated_capitalized_entity:"))) {
         unsupportedTotal += 1;
       }
     }
