@@ -186,6 +186,54 @@ function extractJSON(text: string): any {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  // ── P33.5A canary: service-role-only fail-soft test path ──
+  let canaryBody: any = null;
+  if (req.method === "POST") {
+    try {
+      const cloned = req.clone();
+      canaryBody = await cloned.json().catch(() => null);
+    } catch { canaryBody = null; }
+  }
+  if (canaryBody?.testMode === true && canaryBody?.source === "p33_5a_analyzer_failsoft_canary") {
+    const authHeader = req.headers.get("Authorization") || "";
+    const cronSecret = req.headers.get("x-cron-secret") || "";
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    const cronEnv = Deno.env.get("CRON_SECRET") || "";
+    const authorized =
+      (serviceKey && authHeader === `Bearer ${serviceKey}`) ||
+      (cronEnv && cronSecret === cronEnv);
+    if (!authorized) {
+      return new Response(JSON.stringify({ error: "unauthorized_canary" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const mockOutput = String(canaryBody.mockAiOutput ?? "");
+    const parsed = extractJSON(mockOutput);
+    const validation = validateDailyAnalyzerResult(parsed);
+    if (!validation.ok) {
+      const fallback = buildEmptyDailyAnalyzerFallback({
+        datePrague: today,
+        reason: "canary_missing_required_fields",
+        validationErrors: validation.errors,
+        rawModelOutputPreview: mockOutput,
+      });
+      return new Response(JSON.stringify({
+        ok: true,
+        analyzer_status: "controlled_fallback",
+        fallback_used: true,
+        validation_errors: validation.errors,
+        result: fallback,
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    return new Response(JSON.stringify({
+      ok: true,
+      analyzer_status: "ok",
+      fallback_used: false,
+      result: parsed,
+    }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
   try {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
