@@ -285,8 +285,46 @@ export async function generateActivePartDailyBriefs(
     }
   }
 
-  for (const part of parts) {
-    // External events linked to this part name in the last 7 days.
+  for (const cand of candidates) {
+    const part = cand;
+    const canon = cand.canonical;
+    const groupKey = canon.normalized_key || `__raw__${part.part_name}`;
+    const groupDecision = groupDecisions.get(groupKey);
+    const canonicalName = groupDecision?.canonical_part_name ?? null;
+
+    // P30.4 — decide whether this candidate becomes the displayable row.
+    // Only ONE candidate per group becomes displayable, and only if it is
+    // canonical/case_alias AND a matrix ref exists.
+    const matrixRef =
+      (canonicalName ? matrixIdsByNormalizedKey.get(normalizeCzechPartKey(canonicalName)) : null) ??
+      matrixIdsByNormalizedKey.get(canon.normalized_key) ??
+      null;
+
+    let exclusionReason: string | null = null;
+    let upsertPartName = part.part_name;
+
+    if (canon.status === "forbidden_non_part") {
+      exclusionReason = "p30_4_forbidden_non_part";
+    } else if (canon.status === "placeholder") {
+      exclusionReason = "p30_4_placeholder";
+    } else if (canon.status === "unmapped") {
+      exclusionReason = "p30_4_unmapped_part_name";
+    } else if (!canonicalName) {
+      exclusionReason = "p30_4_no_canonical_target";
+    } else if (canon.status === "case_alias") {
+      // case alias collapses; the canonical row will carry display
+      exclusionReason = "p30_4_case_duplicate";
+    } else if (groupDecision?.displayable_used) {
+      exclusionReason = "p30_4_case_duplicate";
+    } else if (!matrixRef) {
+      exclusionReason = "p30_4_missing_weekly_matrix_ref";
+    } else {
+      // Becomes the displayable row, written under canonical name.
+      upsertPartName = canonicalName!;
+      groupDecision!.displayable_used = true;
+    }
+
+    // External events linked (use original part name for matching legacy data)
     let externalEvents: Array<any> = [];
     try {
       const since = new Date(Date.now() - 7 * DAY_MS).toISOString();
@@ -299,14 +337,11 @@ export async function generateActivePartDailyBriefs(
         .gte("last_seen_at", since)
         .order("last_seen_at", { ascending: false })
         .limit(100);
-      // Filter for ones related to this part via raw_payload.related_part_name
-      // OR via classifier hit_terms (best-effort).
       externalEvents = ((evRows ?? []) as Array<any>).filter((e) => {
         const rp = e.raw_payload ?? {};
         const relPart = rp.related_part_name ?? null;
-        if (relPart && relPart === part.part_name) return true;
+        if (relPart && normalizeCzechPartKey(relPart) === canon.normalized_key) return true;
         const terms: string[] = Array.isArray(rp.hit_terms) ? rp.hit_terms : [];
-        // Heuristic only: rely on therapist sensitivity matching for richer link.
         const sensList = sensByPart.get(part.part_name) ?? [];
         return sensList.some((s: any) =>
           terms.some((t) =>
@@ -327,8 +362,10 @@ export async function generateActivePartDailyBriefs(
       verification_status: e.verification_status,
       last_seen_at: e.last_seen_at,
     }));
-    totalInternetEvents += internetTriggers.length;
-    totalSourceRefs += sourceRefs.length;
+    if (!exclusionReason) {
+      totalInternetEvents += internetTriggers.length;
+      totalSourceRefs += sourceRefs.length;
+    }
 
     const sensList = sensByPart.get(part.part_name) ?? [];
     const knownPatterns = sensList.map((s: any) => ({
@@ -338,17 +375,14 @@ export async function generateActivePartDailyBriefs(
       recommended_guard: s.recommended_guard ?? null,
       safe_opening_style: s.safe_opening_style ?? null,
     }));
-
-    // Recommended prevention is framed as caution, never as factual diagnosis.
     const recommended = sensList.map((s: any) => ({
       sensitivity_id: s.id,
-      caution: `Pokud se dnes objeví téma "${s.event_pattern}", u části ${part.part_name} volit nízkou intenzitu, validaci bezpečí, žádné explicitní detaily.`,
+      caution: `Pokud se dnes objeví téma "${s.event_pattern}", u části ${upsertPartName} volit nízkou intenzitu, validaci bezpečí, žádné explicitní detaily.`,
       guard: s.recommended_guard ?? null,
       opening_style: s.safe_opening_style ?? null,
     }));
 
-    const matrixRef = input.matrixIdsByPart?.[part.part_name] ?? null;
-    const evidenceSummary = {
+    const evidenceSummary: Record<string, unknown> = {
       provider_status: providerStatus,
       detected_via:
         part.activity_status === "watchlist"
@@ -357,14 +391,21 @@ export async function generateActivePartDailyBriefs(
       sensitivity_count: sensList.length,
       external_events_total: externalEvents.length,
       source_backed_event_count: internetTriggers.length,
-      // P30.3 — matrix linkage + plan version
-      weekly_matrix_ref: matrixRef,
-      query_plan_version: input.queryPlanVersion ?? null,
-      trigger_source: matrixRef ? "p30.3_weekly_matrix" : "legacy_sensitivity_only",
+      weekly_matrix_ref: exclusionReason ? null : matrixRef,
+      query_plan_version: exclusionReason ? null : (input.queryPlanVersion ?? PRESENTATION_QUERY_PLAN_VERSION),
+      trigger_source: !exclusionReason && matrixRef ? "p30.3_weekly_matrix" : "legacy_sensitivity_only",
+      // P30.4 fields
+      canonicalization_status: canon.status,
+      canonical_part_name: canonicalName,
+      normalized_part_key: canon.normalized_key,
+      input_part_name: part.part_name,
+      matrix_link_status: !exclusionReason && matrixRef ? "linked" : "unlinked",
+      excluded_from_briefing: exclusionReason ? true : false,
+      exclusion_reason: exclusionReason,
     };
 
     if (input.dryRun) {
-      briefs++;
+      if (!exclusionReason) briefs++;
       continue;
     }
 
@@ -375,11 +416,10 @@ export async function generateActivePartDailyBriefs(
         {
           user_id: input.userId,
           brief_date: input.datePrague,
-          part_name: part.part_name,
+          part_name: upsertPartName,
           activity_status: part.activity_status,
           anamnesis_excerpt: { notes: part.notes ?? null },
           known_sensitive_patterns: knownPatterns,
-          // Anniversaries deliberately empty: we never invent dates.
           anniversaries_today: [],
           internet_triggers_today: internetTriggers.map((e) => ({
             event_id: e.id,
