@@ -532,6 +532,14 @@ serve(async (req) => {
       });
     }
 
+    // P32.1 hard identity guard: never allow profile updates for Hana/Karel aliases
+    const __profGuard = blockHanaAliasPartWrite({ target_kind: "part_profile", part_name, source: "update-part-profile" });
+    if (__profGuard.blocked) {
+      return new Response(JSON.stringify({ blocked: true, reason: __profGuard.reason, normalized_hits: __profGuard.normalized_hits }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Guardrail: max 10 claims per call
     if (claims.length > 10) {
       return new Response(JSON.stringify({ error: "Max 10 claims per call. Split into multiple calls." }), {
