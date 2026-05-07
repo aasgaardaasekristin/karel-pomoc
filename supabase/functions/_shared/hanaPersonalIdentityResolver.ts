@@ -291,7 +291,7 @@ export function resolveHanaPersonalIdentity(
   const quotesPart = detectQuotingPart(text);
 
   // Phrase like "část Hana" with no known Hana part → ambiguous
-  const explicitPartHana = /\b[čc][áa]st(?:i|í|em|ech)?\s+han(?:a|ka|i[čc]?ka|y|ou)?\b/i.test(text);
+  const explicitPartHana = /(?:^|[^\p{L}])[čc][áa]st(?:i|í|em|ech)?\s+han(?:a|ka|i[čc]?ka|y|ou)?(?:$|[^\p{L}])/iu.test(text);
   if (explicitPartHana) {
     return {
       surface: "hana_personal",
