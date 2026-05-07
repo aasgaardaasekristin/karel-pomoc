@@ -255,6 +255,15 @@ Deno.serve(async (req) => {
         provider_status: existing.provider_status,
       });
     }
+  } else if (force && sourceCycleId) {
+    // Force runs: clear any prior row for the same composite key so the
+    // idempotency UNIQUE index does not block the new insert.
+    await admin
+      .from("external_reality_daily_orchestrator_runs")
+      .delete()
+      .eq("user_id", userId)
+      .eq("run_date", date)
+      .eq("source_cycle_id", sourceCycleId);
   }
 
   // Resolve a usable cron secret for internal sentinel calls.
