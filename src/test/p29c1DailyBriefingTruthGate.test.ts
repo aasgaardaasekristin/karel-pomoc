@@ -100,13 +100,13 @@ function fullyCompletedJobs() {
   }));
 }
 
-async function evalGate(sb: any, extra: Partial<Parameters<typeof evaluateDailyBriefingTruthGate>[1]> = {}) {
+async function evalGate(sb: any, extra: Record<string, unknown> = {}) {
   return evaluateDailyBriefingTruthGate(sb, {
     userId: USER,
     briefingDatePrague: TODAY,
     now: new Date(`${TODAY}T05:30:00Z`),
     ...extra,
-  });
+  } as any);
 }
 
 describe("P29C.1 daily briefing truth gate", () => {
