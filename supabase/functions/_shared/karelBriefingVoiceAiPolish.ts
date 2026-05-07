@@ -23,6 +23,9 @@ import {
   type RenderedBriefingSection,
 } from "./karelBriefingVoiceRenderer.ts";
 
+// deno-lint-ignore no-explicit-any
+declare const Deno: any;
+
 const INTERNAL_TERMS: RegExp[] = [
   /\bpayload\b/i,
   /\btruth gate\b/i,
