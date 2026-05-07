@@ -1809,6 +1809,75 @@ export type Database = {
         }
         Relationships: []
       }
+      did_active_part_daily_brief: {
+        Row: {
+          activity_status: string
+          anamnesis_excerpt: Json
+          anniversaries_today: Json
+          brief_date: string
+          created_at: string
+          evidence_summary: Json
+          expires_at: string
+          external_events_today: Json
+          generated_at: string
+          generated_by: string
+          id: string
+          internet_triggers_today: Json
+          known_sensitive_patterns: Json
+          part_id: string | null
+          part_name: string
+          recommended_prevention: Json
+          source_refs: Json
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          activity_status: string
+          anamnesis_excerpt?: Json
+          anniversaries_today?: Json
+          brief_date: string
+          created_at?: string
+          evidence_summary?: Json
+          expires_at: string
+          external_events_today?: Json
+          generated_at?: string
+          generated_by?: string
+          id?: string
+          internet_triggers_today?: Json
+          known_sensitive_patterns?: Json
+          part_id?: string | null
+          part_name: string
+          recommended_prevention?: Json
+          source_refs?: Json
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          activity_status?: string
+          anamnesis_excerpt?: Json
+          anniversaries_today?: Json
+          brief_date?: string
+          created_at?: string
+          evidence_summary?: Json
+          expires_at?: string
+          external_events_today?: Json
+          generated_at?: string
+          generated_by?: string
+          id?: string
+          internet_triggers_today?: Json
+          known_sensitive_patterns?: Json
+          part_id?: string | null
+          part_name?: string
+          recommended_prevention?: Json
+          source_refs?: Json
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_briefing_sla_runs: {
         Row: {
           action: string
