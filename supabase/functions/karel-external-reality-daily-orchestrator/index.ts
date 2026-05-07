@@ -257,8 +257,19 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Resolve a usable cron secret for internal sentinel calls.
+  const internalCronSecret = isCronSecretCall
+    ? cronSecretHeader
+    : ((await fetchCronSecretFromVault(admin)) ?? "");
+  if (!internalCronSecret) {
+    return json(
+      { ok: false, error_code: "internal_cron_secret_unavailable" },
+      500,
+    );
+  }
+
   // ── Step 1: internet_watch ──
-  const watchResult = await callSentinelInternal(cronSecretHeader || "", {
+  const watchResult = await callSentinelInternal(internalCronSecret, {
     action: "internet_watch",
     date,
   });
@@ -271,7 +282,7 @@ Deno.serve(async (req) => {
   const sourceBacked = Number(watchResult.source_backed_events_count ?? 0);
 
   // ── Step 2: generate active-part daily briefs ──
-  const briefResult = await callSentinelInternal(cronSecretHeader || "", {
+  const briefResult = await callSentinelInternal(internalCronSecret, {
     action: "generate_active_part_daily_brief",
     date,
   });
