@@ -539,12 +539,26 @@ Proveď analýzu a vrať JSON.`;
     const aiResponse = await callAI(systemPrompt, userPrompt);
     console.log(`[daily-analyzer] AI response: ${aiResponse.length}ch`);
 
-    const analysisJson = extractJSON(aiResponse);
+    let analysisJson: any = extractJSON(aiResponse);
 
-    // Validate basic structure
-    if (!analysisJson.date || !analysisJson.therapists || !analysisJson.parts) {
-      throw new Error("AI response missing required fields (date, therapists, parts)");
+    // P33.5A: fail-soft validator — never throw on AI output problems.
+    const validation = validateDailyAnalyzerResult(analysisJson);
+    let fallbackUsed = false;
+    let fallbackErrors: string[] = [];
+    if (!validation.ok) {
+      console.warn("[daily-analyzer] controlled fallback:", validation.errors);
+      analysisJson = buildEmptyDailyAnalyzerFallback({
+        datePrague: today,
+        reason: "missing_required_fields",
+        validationErrors: validation.errors,
+        rawModelOutputPreview: aiResponse,
+      });
+      fallbackUsed = true;
+      fallbackErrors = validation.errors;
     }
+    // Coerce nullable required arrays so downstream code is safe
+    if (analysisJson.parts == null || !Array.isArray(analysisJson.parts)) analysisJson.parts = [];
+    if (analysisJson.therapists == null || typeof analysisJson.therapists !== "object") analysisJson.therapists = {};
 
     // ── POST-PROCESSING: enforce hard rules on AI output ──
     if (Array.isArray(analysisJson.parts)) {
