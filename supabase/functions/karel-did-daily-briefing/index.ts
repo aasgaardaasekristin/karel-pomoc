@@ -3026,12 +3026,28 @@ Deno.serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-      if (existing) {
+      // P29C.1 — A cached row counts as "today's ready briefing" only if it
+      // carries a passed truth gate AND was generated AFTER the source cycle
+      // completed. Anything else is treated as missing → regenerate.
+      const cachedGate = existing?.payload?.briefing_truth_gate ?? null;
+      const cachedGateOk = cachedGate?.ok === true;
+      const cachedSourceCycleId = existing?.payload?.source_cycle_id ?? null;
+      const cachedGeneratedAtMs = existing?.generated_at
+        ? new Date(existing.generated_at).getTime()
+        : 0;
+      const gateCompletedAtMs = truthGateResult?.cycle_completed_at
+        ? new Date(truthGateResult.cycle_completed_at).getTime()
+        : 0;
+      const cachedAfterCycle =
+        gateCompletedAtMs > 0 && cachedGeneratedAtMs >= gateCompletedAtMs;
+      const cachedIsReady =
+        existing &&
+        cachedGateOk &&
+        !!cachedSourceCycleId &&
+        cachedAfterCycle;
+
+      if (existing && cachedIsReady) {
         await finishBriefingAttempt(supabase, attemptId, { status: "succeeded", created_briefing_id: existing.id, metadata: { cached: true } });
-        // KALENDÁŘNÍ INTEGRITA: i čerstvý cached briefing dostane viewer_meta
-        // a re-validovaná recency, aby UI dostalo konzistentní strukturu
-        // (i když dnes briefing_date === viewer_date, frontend si stále
-        // přepočítává recency proti aktuálnímu času).
         const revalidatedFresh = revalidateCachedBriefingForViewer(existing, today);
         return jsonResponse({ briefing: revalidatedFresh, cached: true });
       }
