@@ -144,9 +144,10 @@ describe("P31.1 karelBriefingVoiceRenderer (truth-locked)", () => {
     }
   });
 
-  it("ranní stav uses cycle completed_at when available", () => {
+  it("ranní stav must NOT leak raw ISO timestamps (P33.3)", () => {
     const r = renderKarelBriefingVoice(validPayload);
     const sys = r.sections.find((s) => s.section_id === "system_morning_state")!;
-    expect(sys.karel_text).toContain("2026-05-07T05:00:00Z");
+    expect(sys.karel_text).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
+    expect(sys.karel_text).toMatch(/dnešní dokončený ranní cyklus/);
   });
 });
