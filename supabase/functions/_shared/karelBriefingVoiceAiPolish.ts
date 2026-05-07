@@ -113,7 +113,135 @@ function getCapitalizedWords(s: string): string[] {
   return s.match(re) ?? [];
 }
 
-export function validateMeaningDrift(original: string, polished: string): string[] {
+// ---------------------------------------------------------------------------
+// P31.2B.1 — Czech meaning-drift validator precision helpers.
+// These exist to reduce false positives caused by Czech inflection
+// (Tundrupek → Tundrupka/Tundrupkovi/Tundrupkem) and by ordinary capitalized
+// non-part Czech words (Herna, Sezení, sentence-initial words). They MUST NOT
+// weaken the validator against unsupported new names, changed numbers, lost
+// uncertainty markers, or provider-status flips.
+// ---------------------------------------------------------------------------
+
+export function normalizeCzechToken(token: string): string {
+  return String(token ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+// Common Czech capitalized tokens that are NOT clinical part names.
+// Must include therapist names, sentence-initial generics, generic places,
+// and the "Herna/Sezení" family observed in canary false positives.
+const NON_PART_CAPITALIZED_TOKENS = new Set<string>([
+  // Herna/Sezení family
+  "herna", "hernu", "herne", "herny", "herni", "hernou",
+  "sezeni", "sezenim", "sezenimi", "sezenich",
+  // Therapists / Karel (never a clinical DID part)
+  "karel", "karle", "karla", "karlovi", "karlem",
+  "hana", "hano", "hanka", "hanko", "hani", "hanicka", "hanicko", "hanicku",
+  "kata", "kato", "katka", "katko", "kacka",
+  // Places
+  "praha", "prahu", "praze", "prahou", "prague",
+  // Sentence-initial / generic adjectives & adverbs
+  "ranni", "ranniho", "rannim",
+  "dnesni", "dnesniho", "dnesnim",
+  "externi", "externiho", "externim",
+  "technicke", "technicky", "technickeho",
+  "opatrny", "opatrne", "opatrneho",
+  "oprit", "opirat",
+  "se", "pro", "pokud", "kdyz", "dnes", "zitra",
+  "dale", "potom", "nebo", "ale", "jen", "tedy", "take",
+  "pondeli", "utery", "streda", "ctvrtek", "patek", "sobota", "nedele",
+  // Common discourse / pronouns
+  "to", "ten", "ta", "ti", "ty", "tato", "tento", "ono",
+]);
+
+const SENTENCE_INITIAL_GENERICS = new Set<string>([
+  "pokud", "kdyz", "kdyz", "dnes", "zitra", "ranni", "dnesni",
+  "externi", "technicke", "opatrny", "se", "pro", "tedy", "take",
+  "ale", "nebo", "jen", "potom", "dale",
+]);
+
+export function isKnownNonPartCapitalizedToken(token: string): boolean {
+  const n = normalizeCzechToken(token);
+  if (!n) return true;
+  return NON_PART_CAPITALIZED_TOKENS.has(n);
+}
+
+export function isSentenceInitialGeneric(token: string): boolean {
+  return SENTENCE_INITIAL_GENERICS.has(normalizeCzechToken(token));
+}
+
+function longestCommonPrefixLength(a: string, b: string): number {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return i;
+}
+
+export function isLikelySameCzechName(original: string, candidate: string): boolean {
+  const na = normalizeCzechToken(original);
+  const nb = normalizeCzechToken(candidate);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  // Stem matching only for sufficiently long tokens to avoid Han/Kar matches.
+  if (na.length < 5 || nb.length < 5) return false;
+  const min = Math.min(na.length, nb.length);
+  const common = longestCommonPrefixLength(na, nb);
+  return common >= 6 && common / min >= 0.75;
+}
+
+function collectFromExternalReality(ext: any, out: Set<string>) {
+  if (!ext || !Array.isArray(ext.parts)) return;
+  for (const p of ext.parts) {
+    const name = typeof p?.part_name === "string" ? p.part_name.trim() : "";
+    if (name) out.add(name);
+  }
+}
+
+export function extractClinicalPartNamesFromPayload(
+  payload: any,
+  _deterministic?: KarelBriefingVoiceRenderResult,
+): Set<string> {
+  const out = new Set<string>();
+  const tpp = payload?.today_part_proposal ?? null;
+  if (tpp) {
+    const a = typeof tpp.proposed_part === "string" ? tpp.proposed_part.trim() : "";
+    const b = typeof tpp.part_name === "string" ? tpp.part_name.trim() : "";
+    if (a) out.add(a);
+    if (b) out.add(b);
+  }
+  collectFromExternalReality(payload?.external_reality_watch, out);
+  // Filter: drop entries that match the non-part allowlist (defensive — should
+  // not occur, but guards against payload contamination).
+  for (const v of [...out]) {
+    if (isKnownNonPartCapitalizedToken(v)) out.delete(v);
+  }
+  return out;
+}
+
+function textMentionsKnownName(text: string, knownName: string): boolean {
+  const tokens = getCapitalizedWords(text);
+  return tokens.some((t) => isLikelySameCzechName(knownName, t));
+}
+
+function matchesAnyKnownPartStem(token: string, knownPartNames: Set<string>): boolean {
+  for (const part of knownPartNames) {
+    if (isLikelySameCzechName(part, token)) return true;
+  }
+  return false;
+}
+
+export interface MeaningDriftContext {
+  knownPartNames?: Set<string>;
+  allowlistedCapitalizedTokens?: Set<string>;
+}
+
+export function validateMeaningDrift(
+  original: string,
+  polished: string,
+  ctx?: MeaningDriftContext,
+): string[] {
   const warnings: string[] = [];
   const numsO = getNumbers(original);
   const numsP = getNumbers(polished);
@@ -133,14 +261,34 @@ export function validateMeaningDrift(original: string, polished: string): string
     warnings.push("flipped_provider_status");
   }
 
-  // Part-name preservation (capitalized clinical names).
-  const partsO = new Set(getCapitalizedWords(original));
-  const partsP = new Set(getCapitalizedWords(polished));
-  for (const p of partsO) {
-    // Skip generic capitalized words in both → ok if also missing legitimately;
-    // strict: if original has a capitalized word, polished must keep it.
-    if (!partsP.has(p)) warnings.push(`missing_part_name:${p}`);
+  const known = ctx?.knownPartNames ?? new Set<string>();
+  const extraAllow = ctx?.allowlistedCapitalizedTokens ?? new Set<string>();
+
+  // 1) Source-based part-name preservation: only flag known part names
+  //    that disappeared (or whose Czech stem variant disappeared).
+  for (const part of known) {
+    if (textMentionsKnownName(original, part) && !textMentionsKnownName(polished, part)) {
+      warnings.push(`missing_part_name:${part}`);
+    }
   }
+
+  // 2) New unvalidated capitalized entity check: any capitalized word in
+  //    polished that is not in original, not allowlisted, not a sentence-
+  //    initial generic, and not a stem variant of a known part name.
+  const originalCaps = getCapitalizedWords(original);
+  const polishedCaps = getCapitalizedWords(polished);
+  for (const token of polishedCaps) {
+    if (isKnownNonPartCapitalizedToken(token)) continue;
+    if (extraAllow.has(normalizeCzechToken(token))) continue;
+    if (isSentenceInitialGeneric(token)) continue;
+    if (matchesAnyKnownPartStem(token, known)) continue;
+    // If original already had this exact (or stem-equivalent) capitalized
+    // token, it is not "new".
+    const seenInOriginal = originalCaps.some((o) => isLikelySameCzechName(o, token));
+    if (seenInOriginal) continue;
+    warnings.push(`new_unvalidated_capitalized_entity:${token}`);
+  }
+
   return warnings;
 }
 
