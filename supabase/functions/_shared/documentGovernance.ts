@@ -1,3 +1,5 @@
+import { blockHanaAliasPartWrite } from "./hanaPersonalIdentityResolver.ts";
+
 /**
  * Document Governance Layer — centrální routing pro všechny zápisy do Drive dokumentů.
  *
@@ -641,6 +643,22 @@ export interface DriveWriteGateResult {
  */
 export function gateDriveWriteInsert(input: DriveWriteInsertInput): DriveWriteGateResult {
   const raw = input.target_document;
+
+  // ── P32.1 hard identity guard: never allow KARTA_HANA / KARTA_KAREL writes ──
+  const identityGuard = blockHanaAliasPartWrite({
+    target_kind: "did_pending_drive_writes",
+    target_document: raw,
+    part_name: input.bezpecne_part_name ?? null,
+    source: "gateDriveWriteInsert",
+  });
+  if (identityGuard.blocked) {
+    return {
+      ok: false,
+      target: raw,
+      rerouted: false,
+      reason: `blocked_by_identity_guard:${identityGuard.normalized_hits.join(",")}`,
+    };
+  }
 
   // Bezpecne content-aware routing takes priority over the static reroute.
   if (raw === "KARTOTEKA_DID/00_CENTRUM/Bezpecne_DID_poznamky_z_osobniho_vlakna") {
