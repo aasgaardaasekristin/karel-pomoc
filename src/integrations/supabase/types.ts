@@ -6519,17 +6519,95 @@ export type Database = {
         }
         Relationships: []
       }
+      part_external_anchor_facts: {
+        Row: {
+          anchor_label: string
+          anchor_type: string
+          canonical_entity_name: string | null
+          card_backfill_status: string
+          card_backfill_write_id: string | null
+          confidence: number | null
+          created_at: string
+          fact_date: string | null
+          fact_type: string
+          fact_value: string
+          first_seen_at: string
+          id: string
+          last_checked_at: string
+          part_name: string
+          raw_payload: Json
+          source_domain: string | null
+          source_title: string | null
+          source_url: string
+          updated_at: string
+          user_id: string
+          verification_status: string
+        }
+        Insert: {
+          anchor_label: string
+          anchor_type: string
+          canonical_entity_name?: string | null
+          card_backfill_status?: string
+          card_backfill_write_id?: string | null
+          confidence?: number | null
+          created_at?: string
+          fact_date?: string | null
+          fact_type: string
+          fact_value: string
+          first_seen_at?: string
+          id?: string
+          last_checked_at?: string
+          part_name: string
+          raw_payload?: Json
+          source_domain?: string | null
+          source_title?: string | null
+          source_url: string
+          updated_at?: string
+          user_id: string
+          verification_status?: string
+        }
+        Update: {
+          anchor_label?: string
+          anchor_type?: string
+          canonical_entity_name?: string | null
+          card_backfill_status?: string
+          card_backfill_write_id?: string | null
+          confidence?: number | null
+          created_at?: string
+          fact_date?: string | null
+          fact_type?: string
+          fact_value?: string
+          first_seen_at?: string
+          id?: string
+          last_checked_at?: string
+          part_name?: string
+          raw_payload?: Json
+          source_domain?: string | null
+          source_title?: string | null
+          source_url?: string
+          updated_at?: string
+          user_id?: string
+          verification_status?: string
+        }
+        Relationships: []
+      }
       part_external_event_sensitivities: {
         Row: {
           active: boolean
           contraindications: string | null
           created_at: string
           event_pattern: string
+          example_terms: Json
+          example_terms_query_enabled: boolean
           expected_reaction: string | null
           id: string
           last_reviewed_at: string | null
           last_reviewed_by: string | null
+          negative_terms: Json
           part_name: string
+          query_enabled: boolean
+          query_policy: string
+          query_terms: Json
           recommended_guard: string | null
           safe_opening_style: string | null
           sensitivity_types: string[]
@@ -6541,11 +6619,17 @@ export type Database = {
           contraindications?: string | null
           created_at?: string
           event_pattern: string
+          example_terms?: Json
+          example_terms_query_enabled?: boolean
           expected_reaction?: string | null
           id?: string
           last_reviewed_at?: string | null
           last_reviewed_by?: string | null
+          negative_terms?: Json
           part_name: string
+          query_enabled?: boolean
+          query_policy?: string
+          query_terms?: Json
           recommended_guard?: string | null
           safe_opening_style?: string | null
           sensitivity_types?: string[]
@@ -6557,16 +6641,100 @@ export type Database = {
           contraindications?: string | null
           created_at?: string
           event_pattern?: string
+          example_terms?: Json
+          example_terms_query_enabled?: boolean
           expected_reaction?: string | null
           id?: string
           last_reviewed_at?: string | null
           last_reviewed_by?: string | null
+          negative_terms?: Json
           part_name?: string
+          query_enabled?: boolean
+          query_policy?: string
+          query_terms?: Json
           recommended_guard?: string | null
           safe_opening_style?: string | null
           sensitivity_types?: string[]
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      part_external_reality_weekly_matrix: {
+        Row: {
+          anchor_date_risks: Json
+          biographical_anchors: Json
+          card_read_status: string
+          created_at: string
+          date_prague: string
+          events_count: number
+          external_events: Json
+          id: string
+          ignored_example_terms: Json
+          part_name: string
+          part_relevance_reason: string | null
+          part_relevance_source: string
+          personal_triggers: Json
+          provider_status: string
+          query_plan: Json
+          recommended_guards: Json
+          sensitivity_triggers: Json
+          source_backed_events_count: number
+          source_refs: Json
+          updated_at: string
+          user_id: string
+          week_end: string
+          week_start: string
+        }
+        Insert: {
+          anchor_date_risks?: Json
+          biographical_anchors?: Json
+          card_read_status: string
+          created_at?: string
+          date_prague: string
+          events_count?: number
+          external_events?: Json
+          id?: string
+          ignored_example_terms?: Json
+          part_name: string
+          part_relevance_reason?: string | null
+          part_relevance_source: string
+          personal_triggers?: Json
+          provider_status?: string
+          query_plan?: Json
+          recommended_guards?: Json
+          sensitivity_triggers?: Json
+          source_backed_events_count?: number
+          source_refs?: Json
+          updated_at?: string
+          user_id: string
+          week_end: string
+          week_start: string
+        }
+        Update: {
+          anchor_date_risks?: Json
+          biographical_anchors?: Json
+          card_read_status?: string
+          created_at?: string
+          date_prague?: string
+          events_count?: number
+          external_events?: Json
+          id?: string
+          ignored_example_terms?: Json
+          part_name?: string
+          part_relevance_reason?: string | null
+          part_relevance_source?: string
+          personal_triggers?: Json
+          provider_status?: string
+          query_plan?: Json
+          recommended_guards?: Json
+          sensitivity_triggers?: Json
+          source_backed_events_count?: number
+          source_refs?: Json
+          updated_at?: string
+          user_id?: string
+          week_end?: string
+          week_start?: string
         }
         Relationships: []
       }
