@@ -11,6 +11,7 @@
 type SupabaseClient = any;
 import { encodeGovernedWrite } from "./documentWriteEnvelope.ts";
 import { gateDriveWriteInsert } from "./documentGovernance.ts";
+import { blockHanaAliasPartWrite } from "./hanaPersonalIdentityResolver.ts";
 import { appendPantryB, type PantryBEntryKind, type PantryBSourceKind, type PantryBDestination } from "./pantryB.ts";
 import { createHash } from "node:crypto";
 
