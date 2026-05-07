@@ -7,6 +7,7 @@ import {
   type GovernanceRequest,
 } from "../_shared/documentGovernance.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
+import { blockHanaAliasPartWrite } from "../_shared/hanaPersonalIdentityResolver.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

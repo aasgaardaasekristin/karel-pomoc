@@ -1,6 +1,7 @@
 /// <reference types="https://esm.sh/@supabase/functions-js/src/edge-runtime.d.ts" />
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/auth.ts";
+import { blockHanaAliasPartWrite } from "../_shared/hanaPersonalIdentityResolver.ts";
 
 /**
  * Karel Memory Mirror – Masivní analytický engine
@@ -800,6 +801,8 @@ Pozoruhodné chování: ${(profile.notable_behaviors || []).join(", ") || "–"}
           const writeResult = await writeRes.json();
           if (writeRes.ok && writeResult.success) {
             state.driveUpdates.push(`KARTOTEKA/NEW:${part.name} (01_AKTIVNI)`);
+            const __mmGuard = blockHanaAliasPartWrite({ target_kind: "did_part_registry", part_name: part.name, source: "karel-memory-mirror" });
+            if (__mmGuard.blocked) { console.warn(`[memory-mirror] registry blocked: ${__mmGuard.reason}`); continue; }
             await sb.from("did_part_registry").upsert({
               user_id: userId,
               part_name: part.name,
