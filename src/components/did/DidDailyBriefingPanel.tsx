@@ -1686,7 +1686,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               data-renderer-version={hb.renderer_version}
             >
               {hb.sections.map((s: any, idx: number) => {
-                const text = typeof s?.karel_text === "string" ? s.karel_text : "";
+                const rawText = typeof s?.karel_text === "string" ? s.karel_text : "";
+                const text = sanitizeKarelVisibleText(rawText);
                 if (!text.trim()) return null;
                 return (
                   <div key={s?.section_id || idx} className="space-y-1">
