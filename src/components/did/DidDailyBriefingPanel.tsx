@@ -990,20 +990,24 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     setLoading(true);
     try {
       const today = pragueTodayISO();
-      const [{ data, error }, { data: lastBriefing }, { data: lastAttempt }] = await Promise.all([
+      // P33.3 — fetch the latest 20 rows for today and let selectBestBriefing
+      // pick the best valid full row. Backend may write fallback / sla_watchdog
+      // rows newer than a fully-rendered briefing; the UI must NOT take the
+      // newest blindly.
+      const [{ data: todayRows, error }, { data: lastBriefing }, { data: lastAttempt }] = await Promise.all([
         supabase
-        .from("did_daily_briefings")
-        .select("*")
-        .eq("is_stale", false)
-        .eq("briefing_date", today)
-        .order("generated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+          .from("did_daily_briefings")
+          .select("*")
+          .eq("is_stale", false)
+          .eq("briefing_date", today)
+          .order("generated_at", { ascending: false })
+          .limit(20),
         supabase.from("did_daily_briefings").select("*").eq("is_stale", false).order("generated_at", { ascending: false }).limit(1).maybeSingle(),
         (supabase as any).from("did_daily_briefing_attempts").select("status,error_code,error_message,cycle_status,briefing_date,created_at").order("created_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
 
       if (error) throw error;
+      const data = selectBestBriefing<any>(todayRows ?? []);
       setBriefing((data as unknown as BriefingRow) ?? ((lastBriefing as unknown as BriefingRow) ?? null));
       if (!data) {
         const code = (lastAttempt as any)?.error_code ?? null;
