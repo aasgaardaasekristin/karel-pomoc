@@ -519,7 +519,7 @@ export async function generateKarelAiPolishCandidate(
     const lengthOk = polished.length <= s.karel_text.length * 3 + 200;
     const robotic = detectForbiddenRoboticHits(polished);
     const internalLeak = detectInternalTerms(polished);
-    const drift = validateMeaningDrift(s.karel_text, polished);
+    const drift = validateMeaningDrift(s.karel_text, polished, { knownPartNames });
 
     let status: PolishStatus = "accepted_candidate";
     const warnings: string[] = [];
