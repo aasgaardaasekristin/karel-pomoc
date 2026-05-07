@@ -267,6 +267,7 @@ INSTRUKCE:
             total_episodes: 1,
             updated_at: new Date().toISOString(),
           }, { onConflict: "user_id,part_name" });
+          } // end identity-guard else
           
           // Increment counters for existing parts
           const { data: existing } = await sb.from("did_part_registry")
