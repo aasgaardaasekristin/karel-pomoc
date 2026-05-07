@@ -109,6 +109,57 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
   return data.choices?.[0]?.message?.content || "";
 }
 
+// ── Canonical empty fallback for daily analyzer (P33.5A) ──
+export function buildEmptyDailyAnalyzerFallback(input: {
+  datePrague: string;
+  reason: string;
+  validationErrors?: string[];
+  rawModelOutputPreview?: string;
+}): any {
+  return {
+    date: input.datePrague,
+    therapists: {
+      Hanka: {
+        long_term: { traits: [], style: "", reliability: "", experience_notes: "" },
+        situational: { energy: "", health: "", current_stressors: [], notes: "" },
+      },
+      Kata: {
+        long_term: { traits: [], style: "", reliability: "", experience_notes: "" },
+        situational: { energy: "", health: "", current_stressors: [], notes: "" },
+      },
+    },
+    parts: [],
+    team_observations: { cooperation: "", warnings: [], praise: [] },
+    sessions: [],
+    observations: [],
+    tasks: [],
+    risks: [],
+    recommendations: [],
+    external_context: [],
+    metadata: {
+      analyzer_status: "controlled_fallback",
+      fallback_used: true,
+      fallback_reason: input.reason,
+      validation_errors: input.validationErrors ?? [],
+      raw_model_output_preview: (input.rawModelOutputPreview || "").slice(0, 500),
+      generated_at: new Date().toISOString(),
+    },
+  };
+}
+
+// ── Fail-soft validator (P33.5A) ──
+export function validateDailyAnalyzerResult(parsed: any): { ok: boolean; errors: string[] } {
+  const errors: string[] = [];
+  if (!parsed || typeof parsed !== "object") {
+    return { ok: false, errors: ["result_not_object"] };
+  }
+  if (!parsed.date || typeof parsed.date !== "string") errors.push("missing_date");
+  if (!parsed.therapists || typeof parsed.therapists !== "object") errors.push("missing_therapists");
+  if (parsed.parts === undefined || parsed.parts === null) errors.push("missing_parts");
+  else if (!Array.isArray(parsed.parts)) errors.push("parts_not_array");
+  return { ok: errors.length === 0, errors };
+}
+
 // ── Extract JSON from AI response ──
 function extractJSON(text: string): any {
   // Strip thinking tags if present
@@ -134,6 +185,44 @@ function extractJSON(text: string): any {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // ── P33.5A canary: service-role-only fail-soft test path ──
+  let canaryBody: any = null;
+  if (req.method === "POST") {
+    try {
+      const cloned = req.clone();
+      canaryBody = await cloned.json().catch(() => null);
+    } catch { canaryBody = null; }
+  }
+  if (canaryBody?.testMode === true && canaryBody?.source === "p33_5a_analyzer_failsoft_canary") {
+    // Canary is read-only: no DB writes, no AI call, no Drive access.
+    // It just exercises the fail-soft branch on a caller-provided mock AI output.
+    const today = new Date().toISOString().slice(0, 10);
+    const mockOutput = String(canaryBody.mockAiOutput ?? "");
+    const parsed = extractJSON(mockOutput);
+    const validation = validateDailyAnalyzerResult(parsed);
+    if (!validation.ok) {
+      const fallback = buildEmptyDailyAnalyzerFallback({
+        datePrague: today,
+        reason: "canary_missing_required_fields",
+        validationErrors: validation.errors,
+        rawModelOutputPreview: mockOutput,
+      });
+      return new Response(JSON.stringify({
+        ok: true,
+        analyzer_status: "controlled_fallback",
+        fallback_used: true,
+        validation_errors: validation.errors,
+        result: fallback,
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    return new Response(JSON.stringify({
+      ok: true,
+      analyzer_status: "ok",
+      fallback_used: false,
+      result: parsed,
+    }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
 
   try {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -440,12 +529,26 @@ Proveď analýzu a vrať JSON.`;
     const aiResponse = await callAI(systemPrompt, userPrompt);
     console.log(`[daily-analyzer] AI response: ${aiResponse.length}ch`);
 
-    const analysisJson = extractJSON(aiResponse);
+    let analysisJson: any = extractJSON(aiResponse);
 
-    // Validate basic structure
-    if (!analysisJson.date || !analysisJson.therapists || !analysisJson.parts) {
-      throw new Error("AI response missing required fields (date, therapists, parts)");
+    // P33.5A: fail-soft validator — never throw on AI output problems.
+    const validation = validateDailyAnalyzerResult(analysisJson);
+    let fallbackUsed = false;
+    let fallbackErrors: string[] = [];
+    if (!validation.ok) {
+      console.warn("[daily-analyzer] controlled fallback:", validation.errors);
+      analysisJson = buildEmptyDailyAnalyzerFallback({
+        datePrague: today,
+        reason: "missing_required_fields",
+        validationErrors: validation.errors,
+        rawModelOutputPreview: aiResponse,
+      });
+      fallbackUsed = true;
+      fallbackErrors = validation.errors;
     }
+    // Coerce nullable required arrays so downstream code is safe
+    if (analysisJson.parts == null || !Array.isArray(analysisJson.parts)) analysisJson.parts = [];
+    if (analysisJson.therapists == null || typeof analysisJson.therapists !== "object") analysisJson.therapists = {};
 
     // ── POST-PROCESSING: enforce hard rules on AI output ──
     if (Array.isArray(analysisJson.parts)) {
@@ -537,7 +640,11 @@ Proveď analýzu a vrať JSON.`;
 
     return new Response(JSON.stringify({
       success: true,
+      ok: true,
       date: today,
+      analyzer_status: fallbackUsed ? "controlled_fallback" : "ok",
+      fallback_used: fallbackUsed,
+      validation_errors: fallbackErrors,
       stats: {
         parts_analyzed: analysisJson.parts?.length || 0,
         threads_reviewed: (recentThreads || []).length,
@@ -546,6 +653,7 @@ Proveď analýzu a vrať JSON.`;
         drive_index_loaded: driveIndexSummary.length > 0,
       },
       analysis: analysisJson,
+      result: analysisJson,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
