@@ -3040,11 +3040,26 @@ Deno.serve(async (req) => {
         : 0;
       const cachedAfterCycle =
         gateCompletedAtMs > 0 && cachedGeneratedAtMs >= gateCompletedAtMs;
+      // P30.2b — A cached row also requires the external_reality_watch block.
+      const cachedExt = existing?.payload?.external_reality_watch ?? null;
+      const ALLOWED_PROVIDER_STATUSES = [
+        "configured",
+        "provider_not_configured",
+        "provider_error",
+        "not_run",
+      ];
+      const cachedExternalRealityOk =
+        !!cachedExt &&
+        typeof cachedExt === "object" &&
+        ALLOWED_PROVIDER_STATUSES.includes(String(cachedExt.provider_status ?? "")) &&
+        cachedExt.active_part_daily_brief_count !== undefined &&
+        cachedExt.active_part_daily_brief_count !== null;
       const cachedIsReady =
         existing &&
         cachedGateOk &&
         !!cachedSourceCycleId &&
-        cachedAfterCycle;
+        cachedAfterCycle &&
+        cachedExternalRealityOk;
 
       if (existing && cachedIsReady) {
         await finishBriefingAttempt(supabase, attemptId, { status: "succeeded", created_briefing_id: existing.id, metadata: { cached: true } });
