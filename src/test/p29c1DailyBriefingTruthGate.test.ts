@@ -31,12 +31,7 @@ interface FixtureCycle {
 
 function buildSb(opts: {
   cycle: FixtureCycle | null;
-  jobs: Array<{
-    job_kind: string;
-    status: string;
-    result?: any;
-    error_message?: string | null;
-  }>;
+  jobs: Array<any>;
 }) {
   return {
     from(table: string) {
