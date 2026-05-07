@@ -45,6 +45,7 @@ import {
   type DailyBriefingTruthGateResult,
 } from "../_shared/dailyBriefingTruthGate.ts";
 import { renderKarelBriefingVoice } from "../_shared/karelBriefingVoiceRenderer.ts";
+import { generateKarelAiPolishCandidate } from "../_shared/karelBriefingVoiceAiPolish.ts";
 
 /**
  * SLA generation methods (added 2026-04-30, morning_operational_integrity_e2e):
@@ -3884,7 +3885,35 @@ Deno.serve(async (req) => {
     // P31.1 — truth-locked Karel voice renderer. Deterministic, no AI calls.
     // Adds payload.karel_human_briefing without modifying the structured payload.
     try {
-      payload.karel_human_briefing = renderKarelBriefingVoice(payload);
+      const voice = renderKarelBriefingVoice(payload);
+      payload.karel_human_briefing = voice;
+      // P31.2A — claim-checked AI polish candidate (disabled by default).
+      try {
+        const polish = await generateKarelAiPolishCandidate({
+          payload,
+          deterministic: voice,
+          mode: "candidate_only",
+        });
+        (payload.karel_human_briefing as any).ai_polish_candidate = polish;
+      } catch (pe) {
+        (payload.karel_human_briefing as any).ai_polish_candidate = {
+          ok: false,
+          mode: "candidate_only",
+          attempted: false,
+          accepted_candidate_count: 0,
+          rejected_candidate_count: 0,
+          sections: [],
+          audit: {
+            unsupported_claims_count: 0,
+            robotic_phrase_count: 0,
+            meaning_drift_count: 0,
+            forbidden_phrase_hits: [],
+            preserved_section_ids: true,
+            preserved_source_fields: true,
+          },
+          errors: [`polish_threw:${String((pe as Error)?.message ?? pe).slice(0, 200)}`],
+        };
+      }
     } catch (e) {
       payload.karel_human_briefing = {
         ok: false,
