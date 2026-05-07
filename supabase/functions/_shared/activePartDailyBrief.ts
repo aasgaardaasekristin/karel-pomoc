@@ -23,6 +23,10 @@ export interface GenerateBriefsInput {
     | "provider_not_configured"
     | "provider_error"
     | "not_run";
+  /** P30.3 — matrix row id per part_name for weekly_matrix_ref backfill. */
+  matrixIdsByPart?: Record<string, string>;
+  /** P30.3 — query plan version recorded into evidence_summary. */
+  queryPlanVersion?: string;
 }
 
 export interface GenerateBriefsResult {
@@ -262,6 +266,7 @@ export async function generateActivePartDailyBriefs(
       opening_style: s.safe_opening_style ?? null,
     }));
 
+    const matrixRef = input.matrixIdsByPart?.[part.part_name] ?? null;
     const evidenceSummary = {
       provider_status: providerStatus,
       detected_via:
@@ -271,6 +276,10 @@ export async function generateActivePartDailyBriefs(
       sensitivity_count: sensList.length,
       external_events_total: externalEvents.length,
       source_backed_event_count: internetTriggers.length,
+      // P30.3 — matrix linkage + plan version
+      weekly_matrix_ref: matrixRef,
+      query_plan_version: input.queryPlanVersion ?? null,
+      trigger_source: matrixRef ? "p30.3_weekly_matrix" : "legacy_sensitivity_only",
     };
 
     if (input.dryRun) {
