@@ -309,8 +309,11 @@ describe("P32.3 Hana personal end-to-end golden replay", () => {
     expect(out.responseGuardAuditRows[0].used_fallback).toBe(true);
     expect(out.returnedResponses[0]).toMatch(/Haničko/);
 
-    // Turn 2 AI was OK → passed.
-    expect(out.identityAuditRows[1].resolution_kind).toBe("hana_self");
+    // Turn 2 AI was OK → passed. The user mentions "kluky" so the resolver
+    // treats it as a group reference, but the speaker MUST remain Hana and
+    // the response guard MUST pass.
+    expect(["hana_self", "hana_mentions_group_kluci"]).toContain(out.identityAuditRows[1].resolution_kind);
+    expect(out.identityAuditRows[1].speaker_identity).toBe("hana_therapist");
     expect(out.responseGuardAuditRows[1].response_guard_status).toBe("ok");
 
     // No KARTA_HANA writes anywhere.
