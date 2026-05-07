@@ -41,6 +41,7 @@ import {
 } from "../_shared/externalRealitySearchProvider.ts";
 import { normalizeExternalSearchResultToEvent } from "../_shared/externalRealityEvents.ts";
 import { generateActivePartDailyBriefs } from "../_shared/activePartDailyBrief.ts";
+import { runP303ExternalRealityPipeline } from "../_shared/externalRealityP303Orchestrator.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
