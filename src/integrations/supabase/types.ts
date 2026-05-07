@@ -5193,6 +5193,78 @@ export type Database = {
         }
         Relationships: []
       }
+      external_reality_daily_orchestrator_runs: {
+        Row: {
+          active_part_briefs_upserted: number
+          completed_at: string | null
+          created_at: string
+          error_code: string | null
+          error_message: string | null
+          events_created: number
+          events_deduped: number
+          forced: boolean
+          id: string
+          idempotent_skip: boolean
+          internet_watch_run_id: string | null
+          payload: Json
+          provider_status: string | null
+          run_date: string
+          source: string | null
+          source_cycle_id: string | null
+          started_at: string
+          status: string
+          truth_gate_ok: boolean
+          truth_gate_status: string | null
+          user_id: string
+        }
+        Insert: {
+          active_part_briefs_upserted?: number
+          completed_at?: string | null
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          events_created?: number
+          events_deduped?: number
+          forced?: boolean
+          id?: string
+          idempotent_skip?: boolean
+          internet_watch_run_id?: string | null
+          payload?: Json
+          provider_status?: string | null
+          run_date: string
+          source?: string | null
+          source_cycle_id?: string | null
+          started_at?: string
+          status?: string
+          truth_gate_ok?: boolean
+          truth_gate_status?: string | null
+          user_id: string
+        }
+        Update: {
+          active_part_briefs_upserted?: number
+          completed_at?: string | null
+          created_at?: string
+          error_code?: string | null
+          error_message?: string | null
+          events_created?: number
+          events_deduped?: number
+          forced?: boolean
+          id?: string
+          idempotent_skip?: boolean
+          internet_watch_run_id?: string | null
+          payload?: Json
+          provider_status?: string | null
+          run_date?: string
+          source?: string | null
+          source_cycle_id?: string | null
+          started_at?: string
+          status?: string
+          truth_gate_ok?: boolean
+          truth_gate_status?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       external_reality_events: {
         Row: {
           child_exposure_risk: string
