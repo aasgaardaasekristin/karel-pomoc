@@ -86,7 +86,7 @@ function renderSystemMorningState(payload: any): RenderedBriefingSection {
   const warnings: string[] = [];
 
   if (ok && cycleId) {
-    text = `Ranní podklady jsou připravené a vázané na dokončený denní cyklus z ${cycleCompleted || "dnešního rána"}. Můžeme z nich dnes vycházet.`;
+    text = `Ranní podklady jsou připravené a vázané na dnešní dokončený ranní cyklus. Můžeme z nich dnes vycházet.`;
     confidence = "high";
   } else if (ok) {
     text = "Ranní podklady prošly kontrolou a jsou připravené k použití.";
