@@ -44,6 +44,7 @@ import {
   evaluateDailyBriefingTruthGate,
   type DailyBriefingTruthGateResult,
 } from "../_shared/dailyBriefingTruthGate.ts";
+import { renderKarelBriefingVoice } from "../_shared/karelBriefingVoiceRenderer.ts";
 
 /**
  * SLA generation methods (added 2026-04-30, morning_operational_integrity_e2e):
@@ -3879,7 +3880,30 @@ Deno.serve(async (req) => {
         };
       }
     }
-    // 6) Insert nový briefing
+
+    // P31.1 — truth-locked Karel voice renderer. Deterministic, no AI calls.
+    // Adds payload.karel_human_briefing without modifying the structured payload.
+    try {
+      payload.karel_human_briefing = renderKarelBriefingVoice(payload);
+    } catch (e) {
+      payload.karel_human_briefing = {
+        ok: false,
+        renderer_version: "p31.1.0",
+        source_cycle_id: null,
+        briefing_truth_gate_ok: payload?.briefing_truth_gate?.ok === true,
+        sections: [],
+        render_audit: {
+          source_fields_used: [],
+          missing_expected_fields: [],
+          unsupported_claims_count: 0,
+          robotic_phrase_count: 0,
+          forbidden_phrase_hits: [],
+          empty_sections_count: 0,
+        },
+        errors: [String((e as Error)?.message ?? e).slice(0, 200)],
+      };
+    }
+
     const { data: inserted, error: insertErr } = await supabase
       .from("did_daily_briefings")
       .insert({
