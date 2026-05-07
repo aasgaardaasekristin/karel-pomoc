@@ -496,6 +496,7 @@ export async function generateKarelAiPolishCandidate(
   let roboticTotal = 0;
   let driftTotal = 0;
   const forbiddenHits: string[] = [];
+  const knownPartNames = extractClinicalPartNamesFromPayload(input.payload, input.deterministic);
 
   for (const s of sections) {
     const polished = aiMap[s.section_id];
