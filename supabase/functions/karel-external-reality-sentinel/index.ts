@@ -794,19 +794,43 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, message: "Method not allowed" }, 405);
 
-  const auth = await requireAuth(req);
-  if (auth instanceof Response) return auth;
-
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
-  let canonicalUserId: string;
-  try {
-    canonicalUserId = await assertCanonicalDidScopeOrThrow(admin as never, auth.user.id);
-  } catch (err) {
-    if (err instanceof CanonicalUserScopeError) {
-      return json({ ok: false, error_code: err.code, message: err.message }, 403);
+  // P30.2: accept X-Karel-Cron-Secret as an internal/cron auth path so the
+  // daily orchestrator can call this function without an end-user JWT.
+  const cronSecretHeader = req.headers.get("X-Karel-Cron-Secret") || "";
+  let isCronSecretCall = false;
+  if (cronSecretHeader) {
+    try {
+      const { data: ok } = await admin.rpc("verify_karel_cron_secret", { p_secret: cronSecretHeader });
+      isCronSecretCall = ok === true;
+    } catch (e) {
+      console.warn("[ext-reality-sentinel] cron secret rpc failed:", (e as Error).message);
     }
-    return json({ ok: false, error_code: "scope_check_failed", message: String(err) }, 500);
+  }
+
+  let canonicalUserId: string;
+  if (isCronSecretCall) {
+    try {
+      const { data: canonicalId } = await admin.rpc("get_canonical_did_user_id");
+      if (typeof canonicalId !== "string" || !canonicalId) {
+        return json({ ok: false, error_code: "canonical_user_unresolved" }, 500);
+      }
+      canonicalUserId = canonicalId;
+    } catch (e) {
+      return json({ ok: false, error_code: "canonical_user_unresolved", message: String((e as Error)?.message ?? e) }, 500);
+    }
+  } else {
+    const auth = await requireAuth(req);
+    if (auth instanceof Response) return auth;
+    try {
+      canonicalUserId = await assertCanonicalDidScopeOrThrow(admin as never, auth.user.id);
+    } catch (err) {
+      if (err instanceof CanonicalUserScopeError) {
+        return json({ ok: false, error_code: err.code, message: err.message }, 403);
+      }
+      return json({ ok: false, error_code: "scope_check_failed", message: String(err) }, 500);
+    }
   }
 
   let body: {
