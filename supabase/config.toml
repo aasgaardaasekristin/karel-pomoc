@@ -231,6 +231,24 @@ verify_jwt = false
 [functions.karel-follow-through]
 verify_jwt = false
 
+# P33.5B: phase-worker delegate targets must accept service-role bearer
+# and X-Karel-Cron-Secret without the platform gateway intercepting them.
+[functions.run-daily-card-updates]
+verify_jwt = false
+
+[functions.karel-pantry-flush-to-drive]
+verify_jwt = false
+
+[functions.karel-drive-queue-processor]
+verify_jwt = false
+
+[functions.update-operative-plan]
+verify_jwt = false
+
+[functions.karel-daily-therapist-intelligence]
+verify_jwt = false
+
+
 # ═══ Cron schedule (set via pg_cron in DB) ═══
 # karel-did-daily-cycle: 0 5 * * * (daily 5:00 UTC / 7:00 CET)
 # karel-weekly-review: 0 20 * * 0 (Sunday 20:00 UTC / 22:00 CET)

@@ -18,7 +18,18 @@ serve(async (req) => {
 
   const authHeader = req.headers.get("Authorization") || "";
   const srvKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "__never__";
-  if (authHeader !== `Bearer ${srvKey}`) {
+  const isServiceCall = authHeader === `Bearer ${srvKey}`;
+  // P33.5B: also accept X-Karel-Cron-Secret for internal phase-worker calls.
+  const cronSecretHeader = req.headers.get("X-Karel-Cron-Secret") || req.headers.get("x-karel-cron-secret") || "";
+  let isCronSecretCall = false;
+  if (cronSecretHeader) {
+    try {
+      const probe = createClient(Deno.env.get("SUPABASE_URL")!, srvKey);
+      const { data: ok } = await probe.rpc("verify_karel_cron_secret", { p_secret: cronSecretHeader });
+      isCronSecretCall = ok === true;
+    } catch (_) { /* ignore */ }
+  }
+  if (!isServiceCall && !isCronSecretCall) {
     const auth = await requireAuth(req);
     if (auth instanceof Response) return auth;
   }
