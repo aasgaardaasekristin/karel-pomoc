@@ -1659,6 +1659,40 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         )}
       </div>
 
+      {/* P31.1 — truth-locked Karel voice (human briefing layer). */}
+      {(() => {
+        const hb: any = (p as any).karel_human_briefing;
+        if (hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0) {
+          return (
+            <div
+              className="rounded-xl border border-primary/15 bg-card/30 p-3.5 mt-2 space-y-3"
+              data-testid="karel-human-briefing"
+              data-human-ok="true"
+              data-renderer-version={hb.renderer_version}
+            >
+              {hb.sections.map((s: any) => (
+                <div key={s.section_id} className="space-y-1">
+                  <h3 className="text-[12px] font-medium text-foreground/70 uppercase tracking-wide">{s.title}</h3>
+                  <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{s.karel_text}</p>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        if (hb && hb.ok === false) {
+          return (
+            <p
+              className="mt-2 text-[11px] italic text-muted-foreground"
+              data-testid="karel-human-briefing-fallback"
+              data-human-ok="false"
+            >
+              Humanizovaná vrstva není dostupná; zobrazuji strukturovaný přehled.
+            </p>
+          );
+        }
+        return null;
+      })()}
+
       {visibleRealityContext && (
         <>
           <NarrativeDivider />
