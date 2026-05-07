@@ -65,6 +65,11 @@ const HANA_THERAPIST_ALIASES = new Set([
   "hana", "hanka", "hani", "hanicka", "hanicko", "hanko", "maminka", "mama", "mamka",
 ]);
 
+// Names that are NEVER DID parts on the Hana surface (AI agent, therapists, family).
+const NON_PART_NAMES = new Set([
+  "karel", "kata", "katka", "kaca", "jiri", "amalka", "tonicka", "locik",
+]);
+
 // ── Czech-stemmed roots for known DID parts (no diacritics, lowercase) ──
 // These are conservative stems used for inflection matching.
 const BUILTIN_PART_STEMS: Array<{ canonical: string; stems: string[]; minLen: number }> = [
@@ -102,8 +107,8 @@ const QUOTING_PART_TOKENS = [
 ];
 
 const AMBIGUOUS_PHRASES = [
-  /nev[ií]m,?\s+(?:jestli\s+)?(?:to\s+)?(?:[rř][ií]k[áa]m|jsem|m[ií]n[ií]m|c[ií]t[ií]m)\s+j[aá]\s+nebo/i,
-  /jestli\s+(?:to\s+)?(?:[rř][ií]k[áa]m|m[ií]n[ií]m)\s+j[aá]\s+nebo/i,
+  /nev[ií]m,?\s+(?:jestli|zda)\s+(?:to\s+)?(?:[rř][ií]k[áa]m|jsem|m[ií]n[ií]m|mysl[ií]m|c[ií]t[ií]m)\s+j[aá](?:\b|\s|,)/i,
+  /jestli\s+(?:to\s+)?(?:[rř][ií]k[áa]m|m[ií]n[ií]m|mysl[ií]m)\s+j[aá]\s+nebo/i,
 ];
 
 function stripDiacritics(value: string): string {
@@ -151,6 +156,7 @@ function matchPartFromToken(
   knownParts: HanaResolverInput["knownParts"],
 ): MentionedPart | null {
   if (HANA_THERAPIST_ALIASES.has(token)) return null;
+  if (NON_PART_NAMES.has(token)) return null;
   if (token.length < 4) return null;
 
   // 1) registry aliases first (highest confidence)
