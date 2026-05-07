@@ -44,6 +44,7 @@ import {
   evaluateDailyBriefingTruthGate,
   type DailyBriefingTruthGateResult,
 } from "../_shared/dailyBriefingTruthGate.ts";
+import { renderKarelBriefingVoice } from "../_shared/karelBriefingVoiceRenderer.ts";
 
 /**
  * SLA generation methods (added 2026-04-30, morning_operational_integrity_e2e):
