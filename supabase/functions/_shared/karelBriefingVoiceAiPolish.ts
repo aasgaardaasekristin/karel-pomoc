@@ -277,6 +277,19 @@ export function validateMeaningDrift(
   //    initial generic, and not a stem variant of a known part name.
   const originalCaps = getCapitalizedWords(original);
   const polishedCaps = getCapitalizedWords(polished);
+  // Pre-compute sentence-initial token positions in polished. A token is
+  // sentence-initial if it appears at the start of polished or right after a
+  // sentence-ending punctuation (`. ! ?`) and optional whitespace. These are
+  // skipped only when the same word (lowercased, normalized) already appears
+  // somewhere in the original — meaning it is the same Czech word merely
+  // recapitalized at a new sentence boundary, not a new named entity.
+  const sentenceInitialTokens = new Set<string>();
+  const sentInitRe = /(?:^|[.!?]\s+)([A-ZÁČĎÉĚÍĽĹŇÓŘŠŤÚŮÝŽ][a-záčďéěíľĺňóřšťúůýž]{2,})\b/g;
+  for (let m: RegExpExecArray | null; (m = sentInitRe.exec(polished));) {
+    sentenceInitialTokens.add(m[1]);
+  }
+  const originalNormalizedLower = normalizeCzechToken(original.toLowerCase());
+  const originalLower = original.toLowerCase();
   for (const token of polishedCaps) {
     if (isKnownNonPartCapitalizedToken(token)) continue;
     if (extraAllow.has(normalizeCzechToken(token))) continue;
@@ -286,6 +299,14 @@ export function validateMeaningDrift(
     // token, it is not "new".
     const seenInOriginal = originalCaps.some((o) => isLikelySameCzechName(o, token));
     if (seenInOriginal) continue;
+    // Positional bypass: sentence-initial token whose lowercase form already
+    // appears as a regular word in the original is just recapitalization,
+    // not a new named entity.
+    if (sentenceInitialTokens.has(token)) {
+      const lower = token.toLowerCase();
+      const norm = normalizeCzechToken(token);
+      if (originalLower.includes(lower) || originalNormalizedLower.includes(norm)) continue;
+    }
     warnings.push(`new_unvalidated_capitalized_entity:${token}`);
   }
 
