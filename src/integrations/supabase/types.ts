@@ -6342,6 +6342,72 @@ export type Database = {
         }
         Relationships: []
       }
+      p31_ai_polish_canary_runs: {
+        Row: {
+          accepted_candidate_count: number
+          attempted: boolean
+          briefing_date: string
+          briefing_id: string | null
+          created_at: string
+          errors: Json
+          forbidden_phrase_hits: Json
+          id: string
+          meaning_drift_count: number
+          model: string | null
+          payload: Json
+          rejected_candidate_count: number
+          renderer_version: string | null
+          robotic_phrase_count: number
+          sections: Json
+          source_cycle_id: string | null
+          status: string
+          unsupported_claims_count: number
+          user_id: string
+        }
+        Insert: {
+          accepted_candidate_count?: number
+          attempted?: boolean
+          briefing_date: string
+          briefing_id?: string | null
+          created_at?: string
+          errors?: Json
+          forbidden_phrase_hits?: Json
+          id?: string
+          meaning_drift_count?: number
+          model?: string | null
+          payload?: Json
+          rejected_candidate_count?: number
+          renderer_version?: string | null
+          robotic_phrase_count?: number
+          sections?: Json
+          source_cycle_id?: string | null
+          status: string
+          unsupported_claims_count?: number
+          user_id: string
+        }
+        Update: {
+          accepted_candidate_count?: number
+          attempted?: boolean
+          briefing_date?: string
+          briefing_id?: string | null
+          created_at?: string
+          errors?: Json
+          forbidden_phrase_hits?: Json
+          id?: string
+          meaning_drift_count?: number
+          model?: string | null
+          payload?: Json
+          rejected_candidate_count?: number
+          renderer_version?: string | null
+          robotic_phrase_count?: number
+          sections?: Json
+          source_cycle_id?: string | null
+          status?: string
+          unsupported_claims_count?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       part_external_event_sensitivities: {
         Row: {
           active: boolean
