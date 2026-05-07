@@ -65,7 +65,6 @@ async function callSentinelInternal(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${SERVICE_KEY}`,
         "X-Karel-Cron-Secret": cronSecret,
       },
       body: JSON.stringify(body),
@@ -79,6 +78,21 @@ async function callSentinelInternal(
   }
   if (!parsed.ok && res.ok) parsed.ok = true;
   return parsed;
+}
+
+async function fetchCronSecretFromVault(
+  admin: ReturnType<typeof createClient>,
+): Promise<string | null> {
+  try {
+    const { data } = await admin.rpc("get_karel_cron_secret");
+    if (typeof data === "string" && data.length > 0) return data;
+  } catch (e) {
+    console.warn(
+      "[ext-reality-orchestrator] vault cron secret read failed",
+      (e as Error)?.message,
+    );
+  }
+  return null;
 }
 
 async function recordSlo(
