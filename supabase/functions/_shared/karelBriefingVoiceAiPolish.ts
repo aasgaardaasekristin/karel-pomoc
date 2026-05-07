@@ -259,6 +259,7 @@ export async function generateKarelAiPolishCandidate(
   const enabled =
     (typeof Deno !== "undefined" &&
       (Deno as any)?.env?.get?.("P31_2_ENABLE_AI_POLISH") === "true") ||
+    input.forceEnableForCanary === true ||
     !!input.__testFetcher;
 
   if (!enabled) {
