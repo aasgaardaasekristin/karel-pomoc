@@ -260,6 +260,21 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // P33.5B.3: bounded mode for phase-worker delegate. Always returns
+    // HTTP 200 quickly with controlled_skipped on no-work / already-claimed,
+    // and respects an explicit max_items / timeout_budget_ms.
+    const isPhaseWorkerCall =
+      body?.source === "daily_cycle_phase_worker" ||
+      body?.source === "p29b_phase_worker" ||
+      body?.p33_5b2_db_transport === true;
+    const maxItems = isPhaseWorkerCall
+      ? Math.min(Math.max(Number(body?.max_items ?? 10), 1), MAX_BATCH)
+      : MAX_BATCH;
+    const timeoutBudgetMs = isPhaseWorkerCall
+      ? Math.min(Math.max(Number(body?.timeout_budget_ms ?? 90_000), 5_000), 170_000)
+      : Number.POSITIVE_INFINITY;
+    const deadline = startedAt + timeoutBudgetMs;
+
     const cutoff = new Date(Date.now() - 60_000).toISOString();
     const { data: pending, error: fetchErr } = await admin
       .from("did_pantry_packages")
@@ -267,18 +282,33 @@ Deno.serve(async (req: Request) => {
       .eq("status", "pending_drive")
       .lte("created_at", cutoff)
       .order("created_at", { ascending: true })
-      .limit(MAX_BATCH);
+      .limit(maxItems);
 
     if (fetchErr) throw fetchErr;
     const list = (pending ?? []) as PantryPackage[];
     if (list.length === 0) {
+      if (isPhaseWorkerCall) {
+        return json({
+          ok: true,
+          mode: "phase_worker_bounded",
+          outcome: "controlled_skipped",
+          reason: "no_pantry_items_to_flush",
+          processed: 0,
+          duration_ms: Date.now() - startedAt,
+        });
+      }
       return json({ ok: true, flushed: 0, message: "Žádné balíky k propsání.", duration_ms: Date.now() - startedAt });
     }
 
     let flushed = 0;
     let failed = 0;
+    let budgetExhausted = false;
 
     for (const pkg of list) {
+      if (isPhaseWorkerCall && Date.now() >= deadline) {
+        budgetExhausted = true;
+        break;
+      }
       try {
         const result = await processPackage(admin, pkg, false);
         if (result.status === "enqueued" || result.status === "deduped") flushed++;
@@ -299,6 +329,19 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    if (isPhaseWorkerCall) {
+      return json({
+        ok: true,
+        mode: "phase_worker_bounded",
+        outcome: budgetExhausted ? "partial_budget_exhausted" : "completed",
+        processed: flushed + failed,
+        flushed,
+        failed,
+        total_seen: list.length,
+        budget_exhausted: budgetExhausted,
+        duration_ms: Date.now() - startedAt,
+      });
+    }
     return json({ ok: true, mode: "batch", flushed, failed, total_seen: list.length, duration_ms: Date.now() - startedAt });
   } catch (e: any) {
     console.error("[pantry-flush] fatal:", e);

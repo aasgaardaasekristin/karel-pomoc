@@ -147,13 +147,26 @@ async function waitForPgNetResponse(
   };
 }
 
+type DbTransportResult = {
+  ok: boolean;
+  status: number;
+  body: unknown;
+  request_id?: number;
+  error_msg?: string | null;
+  started_at?: string;
+  completed_at?: string;
+  target_function?: string;
+  timed_out?: boolean;
+};
+
 async function callEdgeFunctionViaDbTransport(
   admin: any,
   fnName: string,
   body: Record<string, unknown>,
   timeoutMs: number,
   meta: { jobId: string; cycleId: string | null; jobKind: string },
-): Promise<{ ok: boolean; status: number; body: unknown; request_id?: number }> {
+): Promise<DbTransportResult> {
+  const startedAt = new Date().toISOString();
   const enrichedBody = {
     ...body,
     source: "daily_cycle_phase_worker",
@@ -173,11 +186,57 @@ async function callEdgeFunctionViaDbTransport(
       ok: false,
       status: 0,
       body: { error: "db_transport_schedule_failed", message: error?.message ?? null },
+      started_at: startedAt,
+      completed_at: new Date().toISOString(),
+      target_function: fnName,
     };
   }
-  const result = await waitForPgNetResponse(admin, requestId, timeoutMs + 10_000);
-  return { ...result, request_id: requestId };
+  // P33.5B.3: align poll window with pg_net timeout.
+  const result = await waitForPgNetResponse(admin, requestId, timeoutMs);
+  const timedOut = result.status === 599 && !result.ok && (result.body as any)?.error === "pg_net_response_timeout";
+  return {
+    ...result,
+    request_id: requestId,
+    started_at: startedAt,
+    completed_at: new Date().toISOString(),
+    target_function: fnName,
+    timed_out: timedOut,
+  };
 }
+
+/**
+ * P33.5B.3: late-response reconciliation. If a previously failed/timed-out
+ * DB-transport job has a stored request_id and net._http_response now shows
+ * a 2xx, complete the job using that response without scheduling a new call.
+ */
+async function reconcilePreviousDbTransportResponse(
+  admin: any,
+  job: Job & { result?: any },
+): Promise<null | { ok: boolean; status: number; body: unknown; request_id: number }> {
+  const prev = (job as any).result ?? null;
+  const requestId = Number(prev?.db_transport_request_id ?? 0);
+  if (!requestId || !Number.isFinite(requestId)) return null;
+  const { data } = await admin
+    .schema("net")
+    .from("_http_response")
+    .select("status_code, content, error_msg")
+    .eq("id", requestId)
+    .maybeSingle();
+  if (!data) return null;
+  const status = Number(data.status_code ?? 0);
+  if (!(status >= 200 && status < 300)) return null;
+  let parsed: unknown = data.content ?? null;
+  try { parsed = data.content ? JSON.parse(data.content) : null; } catch { /* keep raw */ }
+  return { ok: true, status, body: parsed, request_id: requestId };
+}
+
+const DB_TRANSPORT_TIMEOUTS_MS: Record<string, number> = {
+  phase4_card_profiling: 120_000,
+  phase4_card_update_tail: 120_000,
+  phase6_card_autoupdate: 120_000,
+  phase8b_pantry_flush: 180_000,
+  phase9_drive_queue_flush: 180_000,
+};
 
 function dispatchTarget(job: Job): { fn: string; body: Record<string, unknown>; timeoutMs: number } | { skip: string } {
   switch (job.job_kind) {
@@ -202,9 +261,9 @@ function dispatchTarget(job: Job): { fn: string; body: Record<string, unknown>; 
       return { fn: "karel-did-session-finalize", body: { ...(job.input as any), source: "auto_safety_net" }, timeoutMs: 90_000 };
     }
     case "phase8b_pantry_flush":
-      return { fn: "karel-pantry-flush-to-drive", body: { source: "p29b_phase_worker" }, timeoutMs: 90_000 };
+      return { fn: "karel-pantry-flush-to-drive", body: { source: "p29b_phase_worker", max_items: 10, timeout_budget_ms: 150_000 }, timeoutMs: 180_000 };
     case "phase9_drive_queue_flush":
-      return { fn: "karel-drive-queue-processor", body: { triggered_by: "p29b_phase_worker" }, timeoutMs: 90_000 };
+      return { fn: "karel-drive-queue-processor", body: { triggered_by: "p29b_phase_worker", max_items: 10, timeout_budget_ms: 150_000 }, timeoutMs: 180_000 };
     default:
       return { skip: `unknown_job_kind:${job.job_kind}` };
   }
@@ -642,29 +701,80 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
 
   try {
     const useDbTransport = DB_TRANSPORT_KINDS.has(job.job_kind);
+    const perTargetTimeoutMs = useDbTransport
+      ? (DB_TRANSPORT_TIMEOUTS_MS[job.job_kind] ?? target.timeoutMs)
+      : target.timeoutMs;
+
+    // P33.5B.3: late-response reconciliation. If a previous attempt stored
+    // a request_id that has since produced a 2xx in net._http_response,
+    // complete the job from that response without scheduling a duplicate call.
+    if (useDbTransport) {
+      const reconciled = await reconcilePreviousDbTransportResponse(admin, job as any);
+      if (reconciled) {
+        await admin.from("did_daily_cycle_phase_jobs").update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+          result: {
+            transport: "db",
+            db_transport_request_id: reconciled.request_id,
+            target_function: target.fn,
+            http_status: reconciled.status,
+            body: reconciled.body,
+            reconciled_late_response: true,
+          },
+          error_message: null,
+        }).eq("id", job.id);
+        return { id: job.id, kind: job.job_kind, outcome: "completed", http: reconciled.status, transport: "db", reconciled_late_response: true };
+      }
+    }
+
     const result = await withHeartbeat(admin, job.id, () =>
       useDbTransport
-        ? callEdgeFunctionViaDbTransport(admin, target.fn, target.body, target.timeoutMs, {
+        ? callEdgeFunctionViaDbTransport(admin, target.fn, target.body, perTargetTimeoutMs, {
             jobId: job.id, cycleId: job.cycle_id, jobKind: job.job_kind,
           })
-        : callEdgeFunction(target.fn, target.body, target.timeoutMs),
+        : callEdgeFunction(target.fn, target.body, perTargetTimeoutMs),
     );
+    const dbResult = useDbTransport ? (result as DbTransportResult) : null;
+    const observability = dbResult
+      ? {
+          transport: "db" as const,
+          db_transport_request_id: dbResult.request_id ?? null,
+          target_function: target.fn,
+          db_transport_started_at: dbResult.started_at ?? null,
+          db_transport_completed_at: dbResult.completed_at ?? null,
+          pg_net_status_code: typeof result.status === "number" ? result.status : null,
+          pg_net_error_msg: dbResult.error_msg ?? null,
+        }
+      : { transport: "edge" as const };
+
     if (result.ok) {
       await admin.from("did_daily_cycle_phase_jobs").update({
         status: "completed",
         completed_at: new Date().toISOString(),
-        result: { http_status: result.status, body: result.body, transport: useDbTransport ? "db" : "edge" },
+        result: { http_status: result.status, body: result.body, ...observability },
+        error_message: null,
       }).eq("id", job.id);
-      return { id: job.id, kind: job.job_kind, outcome: "completed", http: result.status, transport: useDbTransport ? "db" : "edge" };
+      return { id: job.id, kind: job.job_kind, outcome: "completed", http: result.status, transport: observability.transport };
     }
     const exhausted = job.attempt_count + 1 >= job.max_attempts;
-    const errPrefix = useDbTransport ? "delegate_db_http_" : "delegate_http_";
+    let errPrefix: string;
+    if (useDbTransport) {
+      if ((dbResult?.body as any)?.error === "db_transport_schedule_failed") errPrefix = "delegate_db_schedule_failed_";
+      else if (dbResult?.timed_out) errPrefix = "delegate_db_timeout_";
+      else if (result.status === 401) errPrefix = "delegate_db_http_401_";
+      else errPrefix = `delegate_db_http_${result.status}_`;
+    } else {
+      errPrefix = `delegate_http_${result.status}_`;
+    }
     await admin.from("did_daily_cycle_phase_jobs").update({
       status: exhausted ? "failed_permanent" : "failed_retry",
       error_message: `${errPrefix}${result.status}: ${typeof result.body === "string" ? result.body : JSON.stringify(result.body).slice(0, 400)}`,
+      // P33.5B.3: preserve request_id even on timeout so reconciliation can recover.
+      result: { http_status: result.status, body: result.body, ...observability },
       next_retry_at: exhausted ? null : new Date(Date.now() + Math.min(60_000 * Math.pow(2, job.attempt_count), 30 * 60_000)).toISOString(),
     }).eq("id", job.id);
-    return { id: job.id, kind: job.job_kind, outcome: exhausted ? "failed_permanent" : "failed_retry", http: result.status, transport: useDbTransport ? "db" : "edge" };
+    return { id: job.id, kind: job.job_kind, outcome: exhausted ? "failed_permanent" : "failed_retry", http: result.status, transport: observability.transport };
   } catch (e: any) {
     const exhausted = job.attempt_count + 1 >= job.max_attempts;
     const msg = (e?.name === "AbortError") ? "timeout" : (e?.message ?? String(e));
@@ -705,7 +815,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: jobs, error: pickErr } = await admin
       .from("did_daily_cycle_phase_jobs")
-      .select("id, cycle_id, user_id, phase_name, job_kind, attempt_count, max_attempts, input")
+      .select("id, cycle_id, user_id, phase_name, job_kind, attempt_count, max_attempts, input, result")
       .in("status", ["queued", "failed_retry"])
       .or(`next_retry_at.is.null,next_retry_at.lte.${new Date().toISOString()}`)
       .order("created_at", { ascending: true })
