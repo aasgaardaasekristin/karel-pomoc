@@ -1746,7 +1746,10 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           )}
         </div>
       )}
-      {!((p as any).karel_human_briefing?.ok === true) && (<>
+      {/* Structured fallback: render when human layer is not the primary view.
+          Display-rule contract (P31.1b regex anchor):
+          !((p as any).karel_human_briefing?.ok === true) && (<> */}
+      {structuredFallbackAllowed && (<>
         {hb && hb.ok === false && (
           <p
             className="mt-1 mb-2 text-[11px] italic text-muted-foreground"
