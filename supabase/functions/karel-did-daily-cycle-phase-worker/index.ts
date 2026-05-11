@@ -101,6 +101,84 @@ async function callEdgeFunction(fnName: string, body: Record<string, unknown>, t
   }
 }
 
+// ── P33.5B.2: DB-backed internal delegate transport ──
+// Bypasses edge-runtime fetch header propagation by scheduling the
+// downstream call through a service-role-only RPC that uses pg_net +
+// vault-backed cron secret. Polls net._http_response for the result.
+const DB_TRANSPORT_KINDS = new Set([
+  "phase4_card_profiling",
+  "phase4_card_update_tail",
+  "phase6_card_autoupdate",
+  "phase8b_pantry_flush",
+  "phase9_drive_queue_flush",
+]);
+
+async function waitForPgNetResponse(
+  admin: any,
+  requestId: number,
+  timeoutMs: number,
+): Promise<{ ok: boolean; status: number; body: unknown; error_msg?: string | null }> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const { data } = await admin
+      .schema("net")
+      .from("_http_response")
+      .select("status_code, content, error_msg")
+      .eq("id", requestId)
+      .maybeSingle();
+    if (data) {
+      const status = Number(data.status_code ?? 0);
+      const content = data.content ?? "";
+      let parsed: unknown = content;
+      try { parsed = content ? JSON.parse(content) : null; } catch { /* keep raw */ }
+      return {
+        ok: status >= 200 && status < 300,
+        status,
+        body: parsed,
+        error_msg: data.error_msg ?? null,
+      };
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return {
+    ok: false,
+    status: 599,
+    body: { error: "pg_net_response_timeout", request_id: requestId },
+  };
+}
+
+async function callEdgeFunctionViaDbTransport(
+  admin: any,
+  fnName: string,
+  body: Record<string, unknown>,
+  timeoutMs: number,
+  meta: { jobId: string; cycleId: string | null; jobKind: string },
+): Promise<{ ok: boolean; status: number; body: unknown; request_id?: number }> {
+  const enrichedBody = {
+    ...body,
+    source: "daily_cycle_phase_worker",
+    phase_worker_job_id: meta.jobId,
+    cycle_id: meta.cycleId,
+    job_kind: meta.jobKind,
+    p33_5b2_db_transport: true,
+  };
+  const { data: requestId, error } = await admin.rpc("did_internal_edge_function_post", {
+    p_function_name: fnName,
+    p_body: enrichedBody,
+    p_source: "daily_cycle_phase_worker",
+    p_timeout_ms: timeoutMs,
+  });
+  if (error || typeof requestId !== "number") {
+    return {
+      ok: false,
+      status: 0,
+      body: { error: "db_transport_schedule_failed", message: error?.message ?? null },
+    };
+  }
+  const result = await waitForPgNetResponse(admin, requestId, timeoutMs + 10_000);
+  return { ...result, request_id: requestId };
+}
+
 function dispatchTarget(job: Job): { fn: string; body: Record<string, unknown>; timeoutMs: number } | { skip: string } {
   switch (job.job_kind) {
     case "phase4_card_profiling":
@@ -563,24 +641,30 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
   }
 
   try {
+    const useDbTransport = DB_TRANSPORT_KINDS.has(job.job_kind);
     const result = await withHeartbeat(admin, job.id, () =>
-      callEdgeFunction(target.fn, target.body, target.timeoutMs),
+      useDbTransport
+        ? callEdgeFunctionViaDbTransport(admin, target.fn, target.body, target.timeoutMs, {
+            jobId: job.id, cycleId: job.cycle_id, jobKind: job.job_kind,
+          })
+        : callEdgeFunction(target.fn, target.body, target.timeoutMs),
     );
     if (result.ok) {
       await admin.from("did_daily_cycle_phase_jobs").update({
         status: "completed",
         completed_at: new Date().toISOString(),
-        result: { http_status: result.status, body: result.body },
+        result: { http_status: result.status, body: result.body, transport: useDbTransport ? "db" : "edge" },
       }).eq("id", job.id);
-      return { id: job.id, kind: job.job_kind, outcome: "completed", http: result.status };
+      return { id: job.id, kind: job.job_kind, outcome: "completed", http: result.status, transport: useDbTransport ? "db" : "edge" };
     }
     const exhausted = job.attempt_count + 1 >= job.max_attempts;
+    const errPrefix = useDbTransport ? "delegate_db_http_" : "delegate_http_";
     await admin.from("did_daily_cycle_phase_jobs").update({
       status: exhausted ? "failed_permanent" : "failed_retry",
-      error_message: `delegate_http_${result.status}: ${typeof result.body === "string" ? result.body : JSON.stringify(result.body).slice(0, 400)}`,
+      error_message: `${errPrefix}${result.status}: ${typeof result.body === "string" ? result.body : JSON.stringify(result.body).slice(0, 400)}`,
       next_retry_at: exhausted ? null : new Date(Date.now() + Math.min(60_000 * Math.pow(2, job.attempt_count), 30 * 60_000)).toISOString(),
     }).eq("id", job.id);
-    return { id: job.id, kind: job.job_kind, outcome: exhausted ? "failed_permanent" : "failed_retry", http: result.status };
+    return { id: job.id, kind: job.job_kind, outcome: exhausted ? "failed_permanent" : "failed_retry", http: result.status, transport: useDbTransport ? "db" : "edge" };
   } catch (e: any) {
     const exhausted = job.attempt_count + 1 >= job.max_attempts;
     const msg = (e?.name === "AbortError") ? "timeout" : (e?.message ?? String(e));
