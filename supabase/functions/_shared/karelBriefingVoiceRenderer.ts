@@ -167,7 +167,7 @@ function renderDailyCycleVerified(payload: any): RenderedBriefingSection {
         : `Z dnešní ranní přípravy je uzavřených ${terminal} ze ${total} kroků. Beru to jako rozpracovaný základ pro dnešek.`;
       confidence = terminal >= total ? "high" : "medium";
     } else {
-      text = "Dnešní ranní příprava sice proběhla, ale nemám u sebe podrobnější přehled jejích jednotlivých kroků.";
+      text = "Dnešní ranní příprava proběhla, ale přehled kroků je dnes uložený bez počitatelné položkové struktury.";
       warnings.push("phase_jobs_snapshot_empty");
     }
   } else {
