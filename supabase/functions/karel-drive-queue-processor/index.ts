@@ -373,7 +373,14 @@ Deno.serve(async (req) => {
     let skipped = 0;
     let permanent = 0;
 
+    let phaseWorkerProcessed = 0;
+    let phaseWorkerBudgetExhausted = false;
     for (const pw of pendingWrites) {
+      if (isPhaseWorkerCall) {
+        if (phaseWorkerProcessed >= phaseWorkerMaxItems) { phaseWorkerBudgetExhausted = true; break; }
+        if (Date.now() >= phaseWorkerDeadline) { phaseWorkerBudgetExhausted = true; break; }
+        phaseWorkerProcessed++;
+      }
       const target = pw.target_document;
       const writeId = pw.id;
       const { payload, metadata } = decodeGovernedWrite(pw.content || "");
