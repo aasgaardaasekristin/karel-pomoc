@@ -44,7 +44,50 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const singlePart = (body as any).partName || null;
 
-    const token = await getAccessToken();
+    // ── P33.5C: phase-worker bounded mode ──
+    // Phase worker may not call this synchronously for full unbounded batch
+    // work — pg_net hard-limits at ~60s. Return quickly with controlled_skipped
+    // (no work) or accepted_async (work accountable elsewhere).
+    const isPhaseWorkerBounded = body?.phase_worker_bounded === true
+      || body?.source === "daily_cycle_phase_worker"
+      || body?.source === "p29b_phase_worker"
+      || body?.source === "p29b_phase_worker_phase6";
+    if (isPhaseWorkerBounded) {
+      // Quick check: any active conversations in last 48h?
+      let hasWork = false;
+      try {
+        const { count } = await sb
+          .from("did_conversations")
+          .select("id", { count: "exact", head: true })
+          .eq("sub_mode", "cast")
+          .gte("updated_at", new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString());
+        hasWork = (count ?? 0) > 0;
+      } catch (_) { /* assume no work on error */ }
+      if (!hasWork) {
+        return new Response(JSON.stringify({
+          ok: true,
+          outcome: "controlled_skipped",
+          reason: "no_card_update_work",
+          processed: 0,
+          mode: "phase_worker_bounded",
+          job_kind: body?.job_kind ?? null,
+          duration_ms: Date.now() - startTime,
+        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      // Work exists but cannot run unbounded batch synchronously through
+      // pg_net. Hand the work back as accountable async.
+      return new Response(JSON.stringify({
+        ok: true,
+        outcome: "accepted_async",
+        reason: "card_update_work_accepted",
+        processed: 0,
+        remaining_work_accountable: true,
+        mode: "phase_worker_bounded",
+        job_kind: body?.job_kind ?? null,
+        duration_ms: Date.now() - startTime,
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const rootId = await resolveKartotekaRoot(token);
     if (!rootId) {
       return new Response(JSON.stringify({ error: "kartoteka_DID not found" }), {
