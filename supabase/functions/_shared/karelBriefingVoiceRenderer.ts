@@ -229,17 +229,18 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
   const partName = canonicalizePartDisplayName(decision?.display_name ?? tpp?.proposed_part ?? tpp?.part_name);
 
   if (!decision?.ok_for_primary_suggestion) {
+    const fallbackPlan = [
+      "První kontakt: Hanička nebo Káťa krátce zjistí tělesné napětí, emoční dostupnost a ochotu kluků navázat kontakt.",
+      "Bezpečnostní kontrola: pokud někdo z kluků signalizuje stop, tlak nebo přemíra emocí, zůstáváme jen u krátkého ověření a neotevíráme nový materiál.",
+      "Tři možné cesty podle prvního kontaktu: krátké terapeutické Sezení, stabilizační Herna bez nového tématu, nebo jen bezpečný kontakt bez otevírání těžkého materiálu.",
+      "Stop signály pro dnešek: nepokoušet se otevřít nové trauma téma, neforsírovat konkrétní část a neuzavírat dnes žádné velké terapeutické rozhodnutí.",
+    ].join("\n");
     if (partName) {
-      // Mention the candidate part as a *pracovní hypotéza* without offering
-      // it as a primary suggestion — preserves drift-validator anchors
-      // (known part name + "hypotéza/pracovní" marker) and is honest about
-      // insufficient evidence today.
-      text = `Pro dnešek je v úvahu ${partName} jako pracovní hypotéza, ale ještě nemám dost opory ji nabídnout jako vedoucí část. Vybereme až podle toho, co kluci sami přinesou.`;
+      text = `Pro dnešek je v úvahu ${partName} jako pracovní hypotéza, ale ještě nemám dost opory ji nabídnout jako vedoucí část. Místo vedoucí části dnes navrhuji tento operační rámec:\n\n${fallbackPlan}`;
       confidence = "low";
       warnings.push(decision?.reason ? `part_relevance_rejected:${decision.reason}` : "no_today_part_proposal");
     } else {
-      text =
-        "Dnes nemám dost opory vybrat konkrétní část před prvním kontaktem. Vybereme až podle toho, co kluci sami přinesou jako pracovní téma.";
+      text = `Dnes nemám dost opory vybrat konkrétní část před prvním kontaktem. Místo vedoucí části dnes navrhuji tento operační rámec:\n\n${fallbackPlan}`;
       confidence = "low";
       warnings.push(decision?.reason ? `part_relevance_rejected:${decision.reason}` : "no_today_part_proposal");
     }
