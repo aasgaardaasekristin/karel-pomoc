@@ -335,12 +335,13 @@ Deno.serve(async (req: Request) => {
       return json({
         ok: true,
         mode: "phase_worker_bounded",
-        outcome: budgetExhausted ? "partial_budget_exhausted" : "completed",
+        outcome: "completed_bounded",
         processed: flushed + failed,
         flushed,
         failed,
         total_seen: list.length,
         budget_exhausted: budgetExhausted,
+        remaining_work_accountable: budgetExhausted,
         duration_ms: Date.now() - startedAt,
       });
     }
