@@ -3814,15 +3814,19 @@ Deno.serve(async (req) => {
         let providerStatus = "not_run";
         let internetEventsUsed = 0;
         let sourceBacked = 0;
+        const freshTriggersByPart = new Map<string, any[]>();
         for (const r of rows) {
           const ps = r?.evidence_summary?.provider_status;
           if (ps && ps !== "not_run") providerStatus = ps;
-          if (Array.isArray(r?.internet_triggers_today)) {
-            internetEventsUsed += r.internet_triggers_today.length;
-          }
-          if (Array.isArray(r?.source_refs)) {
-            sourceBacked += r.source_refs.length;
-          }
+          const freshTriggers = Array.isArray(r?.internet_triggers_today)
+            ? r.internet_triggers_today.filter((t: any) => t?.freshness?.ok_for_today_display === true)
+            : [];
+          freshTriggersByPart.set(r.part_name, freshTriggers);
+          internetEventsUsed += freshTriggers.length;
+          const freshRefs = Array.isArray(r?.source_refs)
+            ? r.source_refs.filter((t: any) => t?.freshness?.ok_for_today_display === true)
+            : [];
+          sourceBacked += freshRefs.length;
         }
 
         // P30.2b — find latest matching orchestrator run
@@ -3868,7 +3872,7 @@ Deno.serve(async (req) => {
             part_name: r.part_name,
             activity_status: r.activity_status,
             known_sensitive_patterns: r.known_sensitive_patterns ?? [],
-            internet_triggers_today: r.internet_triggers_today ?? [],
+            internet_triggers_today: freshTriggersByPart.get(r.part_name) ?? [],
             anniversaries_today: r.anniversaries_today ?? [],
             recommended_prevention: r.recommended_prevention ?? [],
             evidence_summary: r.evidence_summary ?? {},

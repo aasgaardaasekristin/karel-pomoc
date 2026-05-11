@@ -42,6 +42,10 @@ import {
 import { normalizeExternalSearchResultToEvent } from "../_shared/externalRealityEvents.ts";
 import { generateActivePartDailyBriefs } from "../_shared/activePartDailyBrief.ts";
 import { runP303ExternalRealityPipeline } from "../_shared/externalRealityP303Orchestrator.ts";
+import {
+  evaluateExternalRealityFreshness,
+  EXTERNAL_REALITY_PRESENTATION_QUERY_PLAN_VERSION,
+} from "../_shared/externalRealityFreshness.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -909,16 +913,73 @@ Deno.serve(async (req) => {
     if (action === "list_impacts") {
       // P9 self-healing before listing, so consumers never see dangling links
       const heal = await repairDanglingTaskLinkages(admin, canonicalUserId);
+      const datePrague = (body as any).date ??
+        new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+      const { data: watchRun } = await admin
+        .from("external_event_watch_runs")
+        .select("id, ran_at, internet_watch_status, payload")
+        .eq("user_id", canonicalUserId)
+        .eq("source_type", "internet_news")
+        .gte("ran_at", `${datePrague}T00:00:00+01:00`)
+        .order("ran_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const { data: matrixRows } = await admin
+        .from("part_external_reality_weekly_matrix")
+        .select("id, part_name, date_prague")
+        .eq("user_id", canonicalUserId)
+        .eq("date_prague", datePrague);
+      const matrixByPart = new Map(((matrixRows ?? []) as Array<any>).map((r) => [String(r.part_name), r]));
+      const { data: briefRows } = await admin
+        .from("did_active_part_daily_brief")
+        .select("part_name, brief_date, evidence_summary")
+        .eq("user_id", canonicalUserId)
+        .eq("brief_date", datePrague)
+        .eq("status", "active");
+      const briefByPart = new Map(((briefRows ?? []) as Array<any>).map((r) => [String(r.part_name), r]));
       const { data, error } = await admin
         .from("external_event_impacts")
-        .select("id, event_id, part_name, risk_level, reason, recommended_action, created_task_id, created_at, acknowledged_at, resolved_at, external_reality_events(event_title, event_type, source_type, verification_status, graphic_content_risk, summary_for_therapists)")
+        .select("id, event_id, part_name, risk_level, reason, recommended_action, created_task_id, created_at, acknowledged_at, resolved_at, external_reality_events(event_title, event_type, source_type, source_url, source_domain, verification_status, graphic_content_risk, summary_for_therapists, created_at, last_seen_at, raw_payload)")
         .eq("user_id", canonicalUserId)
         .is("resolved_at", null)
         .is("acknowledged_at", null)
         .order("created_at", { ascending: false })
         .limit(50);
       if (error) return json({ ok: false, message: error.message }, 500);
-      return json({ ok: true, impacts: data ?? [], self_healing: heal });
+      const freshImpacts = ((data ?? []) as Array<any>).map((impact) => {
+        const ev = impact.external_reality_events ?? {};
+        const raw = ev.raw_payload ?? {};
+        const activePartBrief = briefByPart.get(impact.part_name) ?? null;
+        const matrixRow = matrixByPart.get(impact.part_name) ?? null;
+        const freshness = evaluateExternalRealityFreshness({
+          datePrague,
+          event: {
+            source_url: ev.source_url ?? null,
+            source_published_at: raw.source_published_at ?? null,
+            fetched_at: raw.fetched_at ?? null,
+            last_seen_at: ev.last_seen_at ?? null,
+            created_at: ev.created_at ?? null,
+            raw_payload: raw,
+          },
+          watchRun: {
+            ran_at: watchRun?.ran_at ?? null,
+            query_plan_version: watchRun?.payload?.query_plan_version ?? EXTERNAL_REALITY_PRESENTATION_QUERY_PLAN_VERSION,
+            provider_status: watchRun?.internet_watch_status ?? null,
+          },
+          matrixRow,
+          activePartBrief,
+        });
+        return {
+          ...impact,
+          external_reality_events: {
+            ...ev,
+            freshness,
+            source_published_at: raw.source_published_at ?? null,
+            fetched_at: raw.fetched_at ?? null,
+          },
+        };
+      }).filter((impact) => impact.external_reality_events?.freshness?.ok_for_today_display === true);
+      return json({ ok: true, impacts: freshImpacts, self_healing: heal, freshness_gate: { date_prague: datePrague, hidden_count: Math.max(0, (data ?? []).length - freshImpacts.length) } });
     }
     return json({ ok: false, message: `Unknown action: ${action}` }, 400);
   } catch (e) {

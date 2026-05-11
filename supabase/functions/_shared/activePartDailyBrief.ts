@@ -23,12 +23,15 @@ import {
   normalizeCzechPartKey,
   type CanonicalPartNameResult,
 } from "./didPartCanonicalization.ts";
+import {
+  evaluateExternalRealityFreshness,
+  EXTERNAL_REALITY_PRESENTATION_QUERY_PLAN_VERSION,
+} from "./externalRealityFreshness.ts";
 
 // deno-lint-ignore no-explicit-any
 type SB = any;
 
-const PRESENTATION_QUERY_PLAN_VERSION =
-  "p30.3_personal_anchor_general_trigger_weekly_matrix";
+const PRESENTATION_QUERY_PLAN_VERSION = EXTERNAL_REALITY_PRESENTATION_QUERY_PLAN_VERSION;
 
 export interface GenerateBriefsInput {
   userId: string;
@@ -269,10 +272,11 @@ export async function generateActivePartDailyBriefs(
 
   // Determine provider status from most recent watch run today (read-only)
   let providerStatus = input.providerStatus ?? "not_run";
+  let latestWatchRun: any = null;
   if (!input.providerStatus) {
     const { data: lastRun } = await sb
       .from("external_event_watch_runs")
-      .select("internet_watch_status, ran_at, source_type")
+      .select("id, internet_watch_status, ran_at, source_type, payload")
       .eq("user_id", input.userId)
       .eq("source_type", "internet_news")
       .gte("ran_at", startUtc.toISOString())
@@ -280,9 +284,22 @@ export async function generateActivePartDailyBriefs(
       .order("ran_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    latestWatchRun = lastRun ?? null;
     if (lastRun?.internet_watch_status) {
       providerStatus = lastRun.internet_watch_status;
     }
+  } else {
+    const { data: lastRun } = await sb
+      .from("external_event_watch_runs")
+      .select("id, internet_watch_status, ran_at, source_type, payload")
+      .eq("user_id", input.userId)
+      .eq("source_type", "internet_news")
+      .gte("ran_at", startUtc.toISOString())
+      .lte("ran_at", endUtc.toISOString())
+      .order("ran_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    latestWatchRun = lastRun ?? null;
   }
 
   for (const cand of candidates) {
@@ -331,7 +348,7 @@ export async function generateActivePartDailyBriefs(
       const { data: evRows } = await sb
         .from("external_reality_events")
         .select(
-          "id, event_title, event_type, source_url, source_domain, summary_for_therapists, verification_status, last_seen_at, raw_payload",
+          "id, event_title, event_type, source_url, source_domain, summary_for_therapists, verification_status, created_at, last_seen_at, raw_payload",
         )
         .eq("user_id", input.userId)
         .gte("last_seen_at", since)
@@ -353,14 +370,58 @@ export async function generateActivePartDailyBriefs(
       warnings.push(`load_events_failed:${part.part_name}:${(e as Error).message}`);
     }
 
-    const internetTriggers = externalEvents.filter(
-      (e) => !!e.source_url && /^https?:\/\//i.test(e.source_url),
+    const activeBriefCtx = {
+      brief_date: input.datePrague,
+      generated_at: now.toISOString(),
+      evidence_summary: {
+        weekly_matrix_ref: exclusionReason ? null : matrixRef,
+        query_plan_version: exclusionReason ? null : (input.queryPlanVersion ?? PRESENTATION_QUERY_PLAN_VERSION),
+      },
+    };
+    const matrixCtx = { id: exclusionReason ? null : matrixRef, date_prague: input.datePrague };
+    const watchCtx = {
+      ran_at: latestWatchRun?.ran_at ?? null,
+      query_plan_version: latestWatchRun?.payload?.query_plan_version ?? input.queryPlanVersion ?? PRESENTATION_QUERY_PLAN_VERSION,
+      provider_status: providerStatus,
+    };
+    const externalEventViews = externalEvents.map((e) => {
+      const raw = e.raw_payload ?? {};
+      const sourcePublishedAt = raw.source_published_at ?? null;
+      const fetchedAt = raw.fetched_at ?? null;
+      const freshness = evaluateExternalRealityFreshness({
+        datePrague: input.datePrague,
+        event: {
+          source_url: e.source_url ?? null,
+          source_published_at: sourcePublishedAt,
+          fetched_at: fetchedAt,
+          last_seen_at: e.last_seen_at ?? null,
+          created_at: e.created_at ?? null,
+          raw_payload: raw,
+        },
+        watchRun: watchCtx,
+        matrixRow: matrixCtx,
+        activePartBrief: activeBriefCtx,
+      });
+      return { ...e, source_published_at: sourcePublishedAt, fetched_at: fetchedAt, freshness };
+    });
+    const internetTriggers = externalEventViews.filter((e) => e.freshness.ok_for_today_display === true);
+    const historicalTriggers = externalEventViews.filter(
+      (e) => !e.freshness.ok_for_today_display &&
+        (e.freshness.status === "stale" || e.freshness.status === "unknown_recency"),
+    );
+    const excludedExternalTriggers = externalEventViews.filter(
+      (e) => !e.freshness.ok_for_today_display &&
+        e.freshness.status !== "stale" && e.freshness.status !== "unknown_recency",
     );
     const sourceRefs = internetTriggers.map((e) => ({
       url: e.source_url,
       title: e.event_title,
       verification_status: e.verification_status,
       last_seen_at: e.last_seen_at,
+      source_domain: e.source_domain ?? null,
+      source_published_at: e.source_published_at ?? null,
+      fetched_at: e.fetched_at ?? null,
+      freshness: e.freshness,
     }));
     if (!exclusionReason) {
       totalInternetEvents += internetTriggers.length;
@@ -391,6 +452,29 @@ export async function generateActivePartDailyBriefs(
       sensitivity_count: sensList.length,
       external_events_total: externalEvents.length,
       source_backed_event_count: internetTriggers.length,
+      historical_source_backed_count: historicalTriggers.length,
+      historical_external_triggers: historicalTriggers.map((e) => ({
+        event_id: e.id,
+        title: e.event_title,
+        event_type: e.event_type,
+        source_url: e.source_url,
+        source_domain: e.source_domain ?? null,
+        source_published_at: e.source_published_at ?? null,
+        fetched_at: e.fetched_at ?? null,
+        last_seen_at: e.last_seen_at,
+        freshness: e.freshness,
+      })),
+      excluded_external_triggers: excludedExternalTriggers.map((e) => ({
+        event_id: e.id,
+        title: e.event_title,
+        event_type: e.event_type,
+        source_url: e.source_url,
+        source_domain: e.source_domain ?? null,
+        source_published_at: e.source_published_at ?? null,
+        fetched_at: e.fetched_at ?? null,
+        last_seen_at: e.last_seen_at,
+        freshness: e.freshness,
+      })),
       weekly_matrix_ref: exclusionReason ? null : matrixRef,
       query_plan_version: exclusionReason ? null : (input.queryPlanVersion ?? PRESENTATION_QUERY_PLAN_VERSION),
       trigger_source: !exclusionReason && matrixRef ? "p30.3_weekly_matrix" : "legacy_sensitivity_only",
@@ -428,13 +512,18 @@ export async function generateActivePartDailyBriefs(
             source_url: e.source_url,
             verification_status: e.verification_status,
             last_seen_at: e.last_seen_at,
+            source_domain: e.source_domain ?? null,
+            source_published_at: e.source_published_at ?? null,
+            fetched_at: e.fetched_at ?? null,
+            freshness: e.freshness,
           })),
-          external_events_today: externalEvents.map((e) => ({
+          external_events_today: internetTriggers.map((e) => ({
             event_id: e.id,
             title: e.event_title,
             event_type: e.event_type,
             verification_status: e.verification_status,
             has_source_url: !!e.source_url,
+            freshness: e.freshness,
           })),
           recommended_prevention: recommended,
           evidence_summary: evidenceSummary,
