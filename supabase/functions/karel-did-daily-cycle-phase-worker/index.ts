@@ -120,13 +120,13 @@ async function waitForPgNetResponse(
 ): Promise<{ ok: boolean; status: number; body: unknown; error_msg?: string | null }> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const { data } = await admin
-      .schema("net")
-      .from("_http_response")
-      .select("status_code, content, error_msg")
-      .eq("id", requestId)
-      .maybeSingle();
-    if (data) {
+    // P33.5D: read pg_net responses via SECURITY DEFINER RPC. The supabase-js
+    // .schema("net") path silently fails because PostgREST does not expose the
+    // net schema, which previously caused phase4/phase6 to wait the full
+    // timeout even when the delegate had already returned 200 in <100ms.
+    const { data: rows } = await admin.rpc("did_get_pg_net_response", { p_id: requestId });
+    const data = Array.isArray(rows) ? rows[0] : rows;
+    if (data && data.status_code != null) {
       const status = Number(data.status_code ?? 0);
       const content = data.content ?? "";
       let parsed: unknown = content;
@@ -216,13 +216,10 @@ async function reconcilePreviousDbTransportResponse(
   const prev = (job as any).result ?? null;
   const requestId = Number(prev?.db_transport_request_id ?? 0);
   if (!requestId || !Number.isFinite(requestId)) return null;
-  const { data } = await admin
-    .schema("net")
-    .from("_http_response")
-    .select("status_code, content, error_msg")
-    .eq("id", requestId)
-    .maybeSingle();
-  if (!data) return null;
+  // P33.5D: see waitForPgNetResponse — must use RPC, not .schema("net").
+  const { data: rows } = await admin.rpc("did_get_pg_net_response", { p_id: requestId });
+  const data = Array.isArray(rows) ? rows[0] : rows;
+  if (!data || data.status_code == null) return null;
   const status = Number(data.status_code ?? 0);
   if (!(status >= 200 && status < 300)) return null;
   let parsed: unknown = data.content ?? null;
