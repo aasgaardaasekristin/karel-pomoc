@@ -641,24 +641,30 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
   }
 
   try {
+    const useDbTransport = DB_TRANSPORT_KINDS.has(job.job_kind);
     const result = await withHeartbeat(admin, job.id, () =>
-      callEdgeFunction(target.fn, target.body, target.timeoutMs),
+      useDbTransport
+        ? callEdgeFunctionViaDbTransport(admin, target.fn, target.body, target.timeoutMs, {
+            jobId: job.id, cycleId: job.cycle_id, jobKind: job.job_kind,
+          })
+        : callEdgeFunction(target.fn, target.body, target.timeoutMs),
     );
     if (result.ok) {
       await admin.from("did_daily_cycle_phase_jobs").update({
         status: "completed",
         completed_at: new Date().toISOString(),
-        result: { http_status: result.status, body: result.body },
+        result: { http_status: result.status, body: result.body, transport: useDbTransport ? "db" : "edge" },
       }).eq("id", job.id);
-      return { id: job.id, kind: job.job_kind, outcome: "completed", http: result.status };
+      return { id: job.id, kind: job.job_kind, outcome: "completed", http: result.status, transport: useDbTransport ? "db" : "edge" };
     }
     const exhausted = job.attempt_count + 1 >= job.max_attempts;
+    const errPrefix = useDbTransport ? "delegate_db_http_" : "delegate_http_";
     await admin.from("did_daily_cycle_phase_jobs").update({
       status: exhausted ? "failed_permanent" : "failed_retry",
-      error_message: `delegate_http_${result.status}: ${typeof result.body === "string" ? result.body : JSON.stringify(result.body).slice(0, 400)}`,
+      error_message: `${errPrefix}${result.status}: ${typeof result.body === "string" ? result.body : JSON.stringify(result.body).slice(0, 400)}`,
       next_retry_at: exhausted ? null : new Date(Date.now() + Math.min(60_000 * Math.pow(2, job.attempt_count), 30 * 60_000)).toISOString(),
     }).eq("id", job.id);
-    return { id: job.id, kind: job.job_kind, outcome: exhausted ? "failed_permanent" : "failed_retry", http: result.status };
+    return { id: job.id, kind: job.job_kind, outcome: exhausted ? "failed_permanent" : "failed_retry", http: result.status, transport: useDbTransport ? "db" : "edge" };
   } catch (e: any) {
     const exhausted = job.attempt_count + 1 >= job.max_attempts;
     const msg = (e?.name === "AbortError") ? "timeout" : (e?.message ?? String(e));
