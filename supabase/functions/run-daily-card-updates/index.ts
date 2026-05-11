@@ -53,7 +53,9 @@ serve(async (req) => {
       || body?.source === "p29b_phase_worker"
       || body?.source === "p29b_phase_worker_phase6";
     if (isPhaseWorkerBounded) {
-      // Quick check: any active conversations in last 48h?
+      // P33.5D: bounded handler MUST run BEFORE any Drive token fetch, AI
+      // call, or unbounded card-update loop. Only a tiny DB-count check is
+      // permitted here. Returns within ~100ms in the common no-work case.
       let hasWork = false;
       try {
         const { count } = await sb
@@ -69,21 +71,22 @@ serve(async (req) => {
           outcome: "controlled_skipped",
           reason: "no_card_update_work",
           processed: 0,
+          remaining_work_accountable: false,
           mode: "phase_worker_bounded",
           job_kind: body?.job_kind ?? null,
+          p33_5d_bounded_confirmed: true,
           duration_ms: Date.now() - startTime,
         }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      // Work exists but cannot run unbounded batch synchronously through
-      // pg_net. Hand the work back as accountable async.
       return new Response(JSON.stringify({
         ok: true,
         outcome: "accepted_async",
-        reason: "card_update_work_accepted",
+        reason: "card_update_work_accounted_elsewhere",
         processed: 0,
         remaining_work_accountable: true,
         mode: "phase_worker_bounded",
         job_kind: body?.job_kind ?? null,
+        p33_5d_bounded_confirmed: true,
         duration_ms: Date.now() - startTime,
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }

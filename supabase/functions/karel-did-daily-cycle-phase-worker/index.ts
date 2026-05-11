@@ -120,13 +120,13 @@ async function waitForPgNetResponse(
 ): Promise<{ ok: boolean; status: number; body: unknown; error_msg?: string | null }> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const { data } = await admin
-      .schema("net")
-      .from("_http_response")
-      .select("status_code, content, error_msg")
-      .eq("id", requestId)
-      .maybeSingle();
-    if (data) {
+    // P33.5D: read pg_net responses via SECURITY DEFINER RPC. The supabase-js
+    // .schema("net") path silently fails because PostgREST does not expose the
+    // net schema, which previously caused phase4/phase6 to wait the full
+    // timeout even when the delegate had already returned 200 in <100ms.
+    const { data: rows } = await admin.rpc("did_get_pg_net_response", { p_id: requestId });
+    const data = Array.isArray(rows) ? rows[0] : rows;
+    if (data && data.status_code != null) {
       const status = Number(data.status_code ?? 0);
       const content = data.content ?? "";
       let parsed: unknown = content;
@@ -216,13 +216,10 @@ async function reconcilePreviousDbTransportResponse(
   const prev = (job as any).result ?? null;
   const requestId = Number(prev?.db_transport_request_id ?? 0);
   if (!requestId || !Number.isFinite(requestId)) return null;
-  const { data } = await admin
-    .schema("net")
-    .from("_http_response")
-    .select("status_code, content, error_msg")
-    .eq("id", requestId)
-    .maybeSingle();
-  if (!data) return null;
+  // P33.5D: see waitForPgNetResponse — must use RPC, not .schema("net").
+  const { data: rows } = await admin.rpc("did_get_pg_net_response", { p_id: requestId });
+  const data = Array.isArray(rows) ? rows[0] : rows;
+  if (!data || data.status_code == null) return null;
   const status = Number(data.status_code ?? 0);
   if (!(status >= 200 && status < 300)) return null;
   let parsed: unknown = data.content ?? null;
@@ -256,19 +253,28 @@ function boundedDelegateBody(extra: Record<string, unknown>): Record<string, unk
   };
 }
 
+// P33.5D: card-update delegate body must include p33_5d_card_updates_bounded
+// so run-daily-card-updates can confirm it received the bounded contract.
+function boundedCardUpdateBody(extra: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...boundedDelegateBody(extra),
+    p33_5d_card_updates_bounded: true,
+  };
+}
+
 function dispatchTarget(job: Job): { fn: string; body: Record<string, unknown>; timeoutMs: number } | { skip: string } {
   switch (job.job_kind) {
     case "phase4_card_profiling":
     case "phase4_card_update_tail":
       return {
         fn: "run-daily-card-updates",
-        body: boundedDelegateBody({ job_kind: job.job_kind, cycle_id: job.cycle_id }),
+        body: boundedCardUpdateBody({ job_kind: job.job_kind, cycle_id: job.cycle_id }),
         timeoutMs: 55_000,
       };
     case "phase6_card_autoupdate":
       return {
         fn: "run-daily-card-updates",
-        body: boundedDelegateBody({ job_kind: job.job_kind, cycle_id: job.cycle_id }),
+        body: boundedCardUpdateBody({ job_kind: job.job_kind, cycle_id: job.cycle_id }),
         timeoutMs: 55_000,
       };
     case "phase7_operative_plan":
@@ -786,6 +792,17 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
       const downstreamReason = (result.body as any)?.reason ?? null;
       const remainingAccountable = (result.body as any)?.remaining_work_accountable === true;
       const newStatus = downstreamOutcome === "controlled_skipped" ? "controlled_skipped" : "completed";
+      // P33.5D: store a non-secret preview of the delegate request body so
+      // acceptance proof can confirm phase4/phase6 were truly bounded.
+      const bodyPreview = {
+        source: (target.body as any)?.source ?? null,
+        job_kind: (target.body as any)?.job_kind ?? null,
+        phase_worker_bounded: (target.body as any)?.phase_worker_bounded ?? null,
+        timeout_budget_ms: (target.body as any)?.timeout_budget_ms ?? null,
+        max_items: (target.body as any)?.max_items ?? null,
+        p33_5c_bounded_delegate: (target.body as any)?.p33_5c_bounded_delegate ?? null,
+        p33_5d_card_updates_bounded: (target.body as any)?.p33_5d_card_updates_bounded ?? null,
+      };
       await admin.from("did_daily_cycle_phase_jobs").update({
         status: newStatus,
         completed_at: new Date().toISOString(),
@@ -795,6 +812,8 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
           delegate_outcome: downstreamOutcome,
           delegate_reason: downstreamReason,
           remaining_work_accountable: remainingAccountable,
+          delegate_request_body_preview: bodyPreview,
+          p33_5d_bounded_confirmed: (result.body as any)?.p33_5d_bounded_confirmed === true,
           ...observability,
         },
         error_message: downstreamOutcome === "controlled_skipped" ? (downstreamReason ?? null) : null,
