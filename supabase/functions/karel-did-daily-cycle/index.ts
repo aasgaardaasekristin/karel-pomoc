@@ -4381,11 +4381,24 @@ Datum: ${dateStr}` },
     // ─── KEEP-ALIVE: Phase 3b AI gateway call can take 60–120s. Without
     // a periodic heartbeat the cleanup-watcher (E3) sees stale heartbeat_at
     // and marks the cycle stuck mid-flight. Tick every 45s; cleared in finally.
+    // P33.5E: bounded fail-soft. Hard ceiling 45s on AI gateway call so
+    // ai_analysis can NEVER block enqueueRequiredPostPhase4Jobs. Any
+    // failure (timeout / 4xx / 5xx / non-JSON / abort / network) is
+    // captured into aiAnalysisFailsoft and execution continues.
     aiAnalysisKeepAlive = setInterval(() => {
       void setPhase("ai_analysis_keepalive", "Fáze 3b: čekám na AI gateway");
-    }, 45_000) as unknown as number;
+    }, 20_000) as unknown as number;
+    const aiAnalysisFailsoft: {
+      fallback_used: boolean;
+      analyzer_status: "completed" | "timeout_fallback" | "http_error_fallback" | "exception_fallback";
+      reason: string;
+      duration_ms: number;
+      p33_5e_ai_analysis_failsoft: true;
+    } = { fallback_used: false, analyzer_status: "completed", reason: "", duration_ms: 0, p33_5e_ai_analysis_failsoft: true };
+    const aiAnalysisStartedAt = Date.now();
     const analysisController = new AbortController();
-    let analysisTimeout: number | undefined = setTimeout(() => analysisController.abort(), 120000) as unknown as number;
+    const AI_ANALYSIS_TIMEOUT_MS = 45_000; // P33.5E: <=45s, never block enqueue
+    let analysisTimeout: number | undefined = setTimeout(() => analysisController.abort(), AI_ANALYSIS_TIMEOUT_MS) as unknown as number;
     let analysisResponse: Response;
     try {
     analysisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -4835,30 +4848,66 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
     if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
     } catch (abortErr: any) {
       if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
-      if (abortErr?.name === "AbortError") {
-        console.error("[AI analysis] TIMEOUT after 120s — continuing with empty analysis");
-        await setPhase("ai_analysis_timeout", "Phase 3b AI gateway timeout 120s");
-        analysisResponse = new Response("", { status: 408 });
-      } else {
-        throw abortErr;
-      }
+      // P33.5E: ALL exceptions (timeout/network/abort/other) are fail-soft.
+      // We must never throw out of the ai_analysis block.
+      const isTimeout = abortErr?.name === "AbortError";
+      aiAnalysisFailsoft.fallback_used = true;
+      aiAnalysisFailsoft.analyzer_status = isTimeout ? "timeout_fallback" : "exception_fallback";
+      aiAnalysisFailsoft.reason = isTimeout
+        ? `ai_gateway_timeout_${AI_ANALYSIS_TIMEOUT_MS}ms`
+        : `ai_gateway_exception:${(abortErr?.message ?? String(abortErr)).slice(0, 200)}`;
+      console.error(`[AI analysis] P33.5E failsoft (${aiAnalysisFailsoft.analyzer_status}): ${aiAnalysisFailsoft.reason}`);
+      await setPhase("ai_analysis_failsoft", aiAnalysisFailsoft.reason.slice(0, 200));
+      analysisResponse = new Response("", { status: isTimeout ? 408 : 599 });
     } finally {
       if (analysisTimeout !== undefined) { clearTimeout(analysisTimeout); analysisTimeout = undefined; }
     }
 
     let analysisText = "";
     if (analysisResponse.ok) {
-      const data = await analysisResponse.json();
-      analysisText = data.choices?.[0]?.message?.content || "";
-      console.log(`[AI analysis] Response length: ${analysisText.length} chars`);
-      // Log all [KARTA:...] blocks found
-      const kartaMatches = [...analysisText.matchAll(/\[KARTA:(.+?)\]/g)];
-      console.log(`[AI analysis] Card blocks found: ${kartaMatches.map(m => m[1]).join(", ") || "NONE"}`);
-      if (analysisText.length < 500) console.log(`[AI analysis] Full response: ${analysisText}`);
+      try {
+        const data = await analysisResponse.json();
+        analysisText = data.choices?.[0]?.message?.content || "";
+        console.log(`[AI analysis] Response length: ${analysisText.length} chars`);
+        const kartaMatches = [...analysisText.matchAll(/\[KARTA:(.+?)\]/g)];
+        console.log(`[AI analysis] Card blocks found: ${kartaMatches.map(m => m[1]).join(", ") || "NONE"}`);
+        if (analysisText.length < 500) console.log(`[AI analysis] Full response: ${analysisText}`);
+      } catch (jsonErr: any) {
+        // P33.5E: non-JSON response is fail-soft, not fatal.
+        aiAnalysisFailsoft.fallback_used = true;
+        aiAnalysisFailsoft.analyzer_status = "exception_fallback";
+        aiAnalysisFailsoft.reason = `ai_gateway_non_json:${(jsonErr?.message ?? String(jsonErr)).slice(0, 200)}`;
+        console.error(`[AI analysis] P33.5E failsoft non-JSON: ${aiAnalysisFailsoft.reason}`);
+      }
     } else {
-      const errText = await analysisResponse.text();
+      // P33.5E: HTTP 4xx/5xx is fail-soft — record metadata, continue.
+      let errText = "";
+      try { errText = await analysisResponse.text(); } catch (_) { /* ignore */ }
+      if (!aiAnalysisFailsoft.fallback_used) {
+        aiAnalysisFailsoft.fallback_used = true;
+        aiAnalysisFailsoft.analyzer_status = "http_error_fallback";
+        aiAnalysisFailsoft.reason = `ai_gateway_http_${analysisResponse.status}:${errText.slice(0, 200)}`;
+      }
       console.error(`[AI analysis] API error ${analysisResponse.status}: ${errText.slice(0, 500)}`);
     }
+    aiAnalysisFailsoft.duration_ms = Date.now() - aiAnalysisStartedAt;
+
+    // P33.5E: persist ai_analysis status into context_data so downstream
+    // diagnostics can see fallback was used. Failure to write must NOT
+    // block enqueue.
+    try {
+      const { data: prevRow } = await sb.from("did_update_cycles")
+        .select("context_data").eq("id", cycle.id).maybeSingle();
+      const prevContext = (prevRow?.context_data as Record<string, unknown>) || {};
+      await sb.from("did_update_cycles").update({
+        context_data: { ...prevContext, ai_analysis: aiAnalysisFailsoft },
+      }).eq("id", cycle.id);
+    } catch (ctxErr: any) {
+      console.warn("[P33.5E] context_data.ai_analysis write failed (non-fatal):", ctxErr?.message);
+    }
+    await setPhase("ai_analysis_done",
+      aiAnalysisFailsoft.fallback_used ? `fallback:${aiAnalysisFailsoft.analyzer_status}` : "completed");
+
 
     await setPhase("update_cards", "Fáze 4: Aktualizace karet (async enqueue)");
     // ═══════════════════════════════════════════════════════════════════════
@@ -5245,6 +5294,12 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       let p29b3EarlyEnqueueResult: { enqueued: string[]; skipped: any[]; errors: any[] } = {
         enqueued: [], skipped: [], errors: [],
       };
+      // P33.5E: recovery marker — guarantees we entered enqueue path even
+      // when ai_analysis used a fallback. The 14 required phase jobs MUST
+      // be created regardless of analyzer outcome.
+      if (aiAnalysisFailsoft.fallback_used) {
+        await setPhase("pre_required_jobs_recovery", "p33_5e_ai_analysis_fallback_continue");
+      }
       try {
         let pendingDriveWritesCount = 0;
         try {
