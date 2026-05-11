@@ -88,6 +88,7 @@ serve(async (req) => {
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    const token = await getAccessToken();
     const rootId = await resolveKartotekaRoot(token);
     if (!rootId) {
       return new Response(JSON.stringify({ error: "kartoteka_DID not found" }), {
