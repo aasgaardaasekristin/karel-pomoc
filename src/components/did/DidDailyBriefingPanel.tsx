@@ -53,6 +53,8 @@ import AiPolishCanaryPreviewPanel from "@/components/did/AiPolishCanaryPreviewPa
 import { getBriefingTruthStatus, pluralizeDays } from "@/lib/briefingTruthStatus";
 import { selectBestBriefing, isFullRenderableBriefing } from "@/lib/briefingSelection";
 import { sanitizeKarelVisibleText } from "@/lib/karelBriefingVisibleSanitizer";
+import { auditVisibleKarelSections, auditVisibleKarelText } from "@/lib/karelVisibleTextQuality";
+import { canonicalizePartDisplayName } from "@/lib/partTodayRelevance";
 
 interface BriefingDecision {
   /** SLICE 3 — stabilní serverové UUID briefing itemu (linked_briefing_item_id). */
@@ -265,6 +267,11 @@ export const backendContextSummary = (inputs: Record<string, any> | undefined): 
 };
 
 export const cleanVisibleClinicalText = (value: unknown): string => String(value ?? "")
+  .replace(/^00[0-9]_/g, "")
+  .replace(/\b00[0-9]_/g, "")
+  .replace(/\barthure?\b/gi, (m) => (m.toLocaleLowerCase("cs") === "arthure" ? "Arthure" : "Arthur"))
+  .replace(/\btundrupek\b/gi, "Tundrupek")
+  .replace(/\bgustik\b/gi, "Gustík")
   .replace(/pending_review\s*\/\s*evidence_limited/gi, "otevřené nebo částečně rozpracované, zatím bez plného dovyhodnocení")
   .replace(/\bpending_review\b/gi, "čeká na klinické dovyhodnocení")
   .replace(/\bevidence_limited\b/gi, "zatím bez dostatečného materiálu pro plný klinický závěr")
@@ -510,6 +517,11 @@ const cleanLine = (value: unknown, fallback = ""): string => {
   const cleaned = cleanVisibleClinicalText(value);
   if (!cleaned || FORBIDDEN_VISIBLE_DEBUG_RE.test(cleaned)) return fallback;
   return cleaned;
+};
+
+const cleanPartName = (value: unknown, fallback = "vybraná část"): string => {
+  const canonical = canonicalizePartDisplayName(String(value ?? ""));
+  return canonical || fallback;
 };
 
 interface SessionBlockView {
