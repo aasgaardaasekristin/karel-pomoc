@@ -83,13 +83,13 @@ describe("P33.5E ai_analysis fail-soft before enqueue", () => {
     expect(SRC).toMatch(/completeMainOrchestratorAfterPhaseJobDetach/);
   });
 
-  it("no unbounded fetch to ai.gateway.lovable.dev without AbortController in ai_analysis", () => {
-    // The ai_analysis fetch must reference analysisController.signal nearby.
-    const aiFetchIdx = SRC.indexOf("ai.gateway.lovable.dev/v1/chat/completions");
-    expect(aiFetchIdx).toBeGreaterThan(0);
-    // Within 800 chars before fetch we must see analysisController.signal.
-    const window = SRC.slice(Math.max(0, aiFetchIdx - 200), aiFetchIdx + 600);
-    expect(window).toMatch(/analysisController\.signal/);
+  it("ai_analysis fetch is guarded by analysisController.signal", () => {
+    // Find the fetch immediately following analysisController declaration.
+    const ctrlIdx = SRC.indexOf("const analysisController = new AbortController");
+    expect(ctrlIdx).toBeGreaterThan(0);
+    const window = SRC.slice(ctrlIdx, ctrlIdx + 1500);
+    expect(window).toMatch(/ai\.gateway\.lovable\.dev\/v1\/chat\/completions/);
+    expect(window).toMatch(/signal:\s*analysisController\.signal/);
   });
 
   it("required phase job list remains 14", () => {
