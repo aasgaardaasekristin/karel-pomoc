@@ -15,9 +15,9 @@ const baseAnchors = {
 function ev(overrides: Partial<{ source_url: string | null; source_published_at: string | null; fetched_at: string | null; last_seen_at: string | null; query_plan_version: string }>) {
   const raw: any = { query_plan_version: overrides.query_plan_version ?? QPV };
   return {
-    source_url: overrides.source_url ?? "https://example.cz/x",
+    source_url: "source_url" in overrides ? overrides.source_url : "https://example.cz/x",
     source_published_at: overrides.source_published_at ?? null,
-    fetched_at: overrides.fetched_at ?? `${today}T09:00:00Z`,
+    fetched_at: "fetched_at" in overrides ? overrides.fetched_at : `${today}T09:00:00Z`,
     last_seen_at: overrides.last_seen_at ?? `${today}T10:00:00Z`,
     raw_payload: raw,
   };
