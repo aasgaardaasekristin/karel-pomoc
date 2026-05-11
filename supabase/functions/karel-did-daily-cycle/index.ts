@@ -5278,6 +5278,69 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       await setPhase("p29b3_s0_required_jobs_enqueued",
         `enqueued=${p29b3EarlyEnqueueResult.enqueued.length} skipped=${p29b3EarlyEnqueueResult.skipped.length} errors=${p29b3EarlyEnqueueResult.errors.length}`);
 
+      // ═══════════════════════════════════════════════════════════════════
+      // P33.5C — FAST COMPLETION BARRIER
+      // All required phase jobs are detached. Main orchestrator MUST complete
+      // quickly so cycle marker doesn't go failed_stale while detached jobs
+      // run. Long downstream work belongs to phase worker.
+      // ═══════════════════════════════════════════════════════════════════
+      try {
+        const _forceFullPathLocal = (requestBody?.forceFullAnalysis === true || requestBody?.forceFullPath === true);
+        const barrier = await completeMainOrchestratorAfterPhaseJobDetach({
+          sb,
+          cycleId: cycle.id,
+          userId: resolvedUserId,
+          enqueueResult: p29b3EarlyEnqueueResult,
+          source: "main_daily_cycle_p33_5c",
+          forceFullPath: _forceFullPathLocal,
+          quietDayBranchTaken: false,
+        });
+        console.log(`[P33.5C] fast completion barrier ok=${barrier.ok} required=${barrier.detached_jobs_required.length} enqueued=${barrier.detached_jobs_enqueued.length} missing=${barrier.detached_jobs_missing.length} pending=${barrier.detached_jobs_pending_at_main_completion.length}`);
+
+        if (compileDataKeepAlive !== undefined) { clearInterval(compileDataKeepAlive); compileDataKeepAlive = undefined; }
+        if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
+        if (phaseTimeoutGuard !== undefined) { clearTimeout(phaseTimeoutGuard); phaseTimeoutGuard = undefined; }
+
+        return new Response(JSON.stringify({
+          success: true,
+          p33_5c_fast_completion_barrier: true,
+          cycle_id: cycle.id,
+          detached_jobs_required: barrier.detached_jobs_required.length,
+          detached_jobs_enqueued: barrier.detached_jobs_enqueued.length,
+          detached_jobs_missing: barrier.detached_jobs_missing,
+          detached_jobs_pending_at_main_completion: barrier.detached_jobs_pending_at_main_completion,
+          message: "Main orchestrator completed; phase worker handles detached long work.",
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (barrierErr: any) {
+        // If the barrier itself fails we DO NOT continue with long inline
+        // work — that would re-introduce the stale-heartbeat blocker. Log
+        // and bail out as failed so it's visible.
+        console.error("[P33.5C] fast completion barrier failed:", barrierErr?.message ?? barrierErr);
+        try {
+          await sb.from("did_update_cycles").update({
+            status: "failed",
+            phase: "phase_10_cleanup",
+            phase_step: "fast_completion_barrier_failed",
+            completed_at: new Date().toISOString(),
+            last_heartbeat_at: new Date().toISOString(),
+            last_error: `p33_5c_barrier_failed:${(barrierErr?.message ?? String(barrierErr)).slice(0, 280)}`,
+          }).eq("id", cycle.id);
+        } catch (_) { /* ignore */ }
+        if (compileDataKeepAlive !== undefined) { clearInterval(compileDataKeepAlive); compileDataKeepAlive = undefined; }
+        if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
+        if (phaseTimeoutGuard !== undefined) { clearTimeout(phaseTimeoutGuard); phaseTimeoutGuard = undefined; }
+        return new Response(JSON.stringify({
+          success: false,
+          p33_5c_fast_completion_barrier: false,
+          error: barrierErr?.message ?? String(barrierErr),
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       // Daily report (deterministic, only actually performed changes)
       // RULE: Daily reports are EMAIL-ONLY, never saved as standalone files.
       const reportMatch = analysisText.match(/\[REPORT\]([\s\S]*?)\[\/REPORT\]/);
