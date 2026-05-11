@@ -97,15 +97,15 @@ describe("P33.5F required jobs full enqueue", () => {
     expect([...res.attempted].sort()).toEqual([...P29B3_REQUIRED_PHASE_JOB_KINDS].sort());
   });
 
-  it("only phase4_centrum_tail can skip when payload ref is missing", async () => {
+  it("P33.5G: phase4_centrum_tail no longer silently skips on missing ref — becomes an error", async () => {
     const sb = makeMockSb();
     const res = await enqueueRequiredPostPhase4Jobs({
       sb, cycleId, userId,
       centrumTailPayloadRef: null,
       source: "test_no_payload",
     });
-    expect(res.skipped.map((s) => s.kind)).toEqual(["phase4_centrum_tail"]);
-    expect(res.errors).toEqual([]);
+    expect(res.skipped).toEqual([]);
+    expect(res.errors.map((e) => e.kind)).toEqual(["phase4_centrum_tail"]);
     expect(res.enqueued.length).toBe(13);
   });
 
@@ -170,7 +170,7 @@ describe("P33.5F required jobs full enqueue", () => {
   });
 
   it("source: main daily-cycle fail-fast on missing required jobs in inside branch", () => {
-    expect(dailyCycleSrc).toContain("P33.5F: FAIL-FAST guard");
+    expect(dailyCycleSrc).toMatch(/P33\.5[FG]: FAIL-FAST guard/);
     expect(dailyCycleSrc).toContain("p29b3_required_jobs_enqueue_failed");
     expect(dailyCycleSrc).toContain("missing_required_jobs");
   });

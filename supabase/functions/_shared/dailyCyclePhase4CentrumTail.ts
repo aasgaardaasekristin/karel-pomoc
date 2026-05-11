@@ -139,7 +139,16 @@ export async function runPhase4CentrumTail(args: {
     blacklist?: string[];
     counts?: Record<string, number>;
     dateStr?: string;
+    empty_payload?: boolean;
   };
+
+  // P33.5G: empty deterministic payload → controlled_skip, terminal/non-failed.
+  if (p.empty_payload === true) {
+    result.outcome = "controlled_skipped";
+    result.controlled_skips.push("empty_centrum_payload_no_tail_work");
+    result.duration_ms = Date.now() - start;
+    return result;
+  }
 
   const validatedAnalysisText = p.validatedAnalysisText ?? "";
   const analysisText = p.analysisText ?? "";
