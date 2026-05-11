@@ -52,10 +52,21 @@ describe("P33.5B.3 phase-worker DB transport observability", () => {
     expect(phaseWorkerSrc).toMatch(/delegate_db_http_401_/);
   });
 
-  it("per-target DB transport timeouts exist with pantry/drive_queue >= 180s", () => {
+  it("P33.5C critical DB transport timeouts stay below pg_net hard limit", () => {
     expect(phaseWorkerSrc).toMatch(/DB_TRANSPORT_TIMEOUTS_MS/);
-    expect(phaseWorkerSrc).toMatch(/phase8b_pantry_flush:\s*180_000/);
-    expect(phaseWorkerSrc).toMatch(/phase9_drive_queue_flush:\s*180_000/);
+    // P33.5C: pg_net is not a long-running completion channel.
+    // Critical delegate calls must stay under the ~60s pg_net timeout.
+    expect(phaseWorkerSrc).toMatch(/phase4_card_profiling:\s*55_000/);
+    expect(phaseWorkerSrc).toMatch(/phase6_card_autoupdate:\s*55_000/);
+    expect(phaseWorkerSrc).toMatch(/phase8b_pantry_flush:\s*55_000/);
+    expect(phaseWorkerSrc).toMatch(/phase9_drive_queue_flush:\s*55_000/);
+    expect(phaseWorkerSrc).not.toMatch(/phase8b_pantry_flush:\s*180_000/);
+    expect(phaseWorkerSrc).not.toMatch(/phase9_drive_queue_flush:\s*180_000/);
+  });
+
+  it("P33.5C bounded delegate budget is <= 45s", () => {
+    expect(phaseWorkerSrc).toMatch(/BOUNDED_DELEGATE_BUDGET_MS\s*=\s*45_000/);
+    expect(phaseWorkerSrc).toMatch(/timeout_budget_ms:\s*BOUNDED_DELEGATE_BUDGET_MS/);
   });
 
   it("pg_net poll window is aligned with scheduling timeout (no extra +10s)", () => {
