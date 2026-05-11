@@ -43,7 +43,10 @@ const HARD_FORBIDDEN: Array<{ re: RegExp; label: string }> = [
   { re: /m[ůu][žz]e\s+dnes\s+zat[ií][žz]it/i, label: "muze_dnes_zatizit" },
   { re: /dnes\s+se\s+objevilo/i, label: "dnes_se_objevilo" },
   { re: /dne[šs]n[ií]\s+ud[áa]lost/i, label: "dnesni_udalost" },
+  { re: /nem[áa]m\s+u\s+sebe\s+podrobn[ěe]j[šs][íi]\s+p[řr]ehled/i, label: "false_missing_phase_detail" },
 ];
+
+const LOWERCASE_PART_NAME_RE = /(^|[^\p{L}])(?:arthur|tundrupek)(?=$|[^\p{L}])/iu;
 
 /** Soft warnings — degrade confidence but don't block. */
 const SOFT_WARNINGS: Array<{ re: RegExp; label: string }> = [
@@ -61,6 +64,7 @@ export function auditVisibleKarelText(text: string | null | undefined): VisibleT
   for (const { re, label } of HARD_FORBIDDEN) {
     if (re.test(t)) errors.push(`forbidden:${label}`);
   }
+  if (LOWERCASE_PART_NAME_RE.test(t)) errors.push("forbidden:lowercase_part_name");
   for (const { re, label } of SOFT_WARNINGS) {
     if (re.test(t)) warnings.push(`warning:${label}`);
   }
