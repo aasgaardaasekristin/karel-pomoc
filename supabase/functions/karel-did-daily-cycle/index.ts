@@ -5291,9 +5291,11 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       // work for phases 5–7.x. Detached worker handles them. Helpers that
       // are not implemented yet are marked controlled_skipped by worker.
       // ═══════════════════════════════════════════════════════════════════
-      let p29b3EarlyEnqueueResult: { enqueued: string[]; skipped: any[]; errors: any[] } = {
-        enqueued: [], skipped: [], errors: [],
-      };
+      let p29b3EarlyEnqueueResult: {
+        enqueued: string[]; skipped: any[]; errors: any[];
+        attempted?: string[]; missing_after_enqueue?: string[];
+        already_existing?: string[]; duplicate_existing?: string[]; verified?: boolean;
+      } = { enqueued: [], skipped: [], errors: [] };
       // P33.5E: recovery marker — guarantees we entered enqueue path even
       // when ai_analysis used a fallback. The 14 required phase jobs MUST
       // be created regardless of analyzer outcome.
@@ -5323,15 +5325,63 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
           enqueued: res.enqueued.slice(),
           skipped: res.skipped.slice(),
           errors: res.errors.slice(),
+          attempted: res.attempted.slice(),
+          missing_after_enqueue: res.missing_after_enqueue.slice(),
+          already_existing: res.already_existing.slice(),
+          duplicate_existing: res.duplicate_existing.slice(),
+          verified: res.verified,
         };
-        console.log(`[P29B3_S0] early enqueue: enqueued=${res.enqueued.length} skipped=${res.skipped.length} errors=${res.errors.length}`);
+        console.log(`[P29B3_S0] early enqueue: enqueued=${res.enqueued.length} skipped=${res.skipped.length} errors=${res.errors.length} attempted=${res.attempted.length} missing=${res.missing_after_enqueue.length} verified=${res.verified}`);
       } catch (eeErr: any) {
         console.error("[P29B3_S0] early enqueue failed (non-fatal):", eeErr?.message ?? eeErr);
       }
-      // (no globalThis stash — completion semantics derives state from
-      //  summarizePhaseJobsForCycle at end of run.)
+      // P33.5F: persist full phase_enqueue audit into context_data so we
+      // can prove (or refute) the 14/14 required-jobs invariant per cycle.
+      try {
+        const { data: peRow } = await sb
+          .from("did_update_cycles")
+          .select("context_data").eq("id", cycle.id).maybeSingle();
+        const prevPe = (peRow?.context_data as Record<string, unknown>) || {};
+        await sb.from("did_update_cycles").update({
+          context_data: { ...prevPe, phase_enqueue: p29b3EarlyEnqueueResult },
+        }).eq("id", cycle.id);
+      } catch (_) { /* non-fatal */ }
       await setPhase("p29b3_s0_required_jobs_enqueued",
         `enqueued=${p29b3EarlyEnqueueResult.enqueued.length} skipped=${p29b3EarlyEnqueueResult.skipped.length} errors=${p29b3EarlyEnqueueResult.errors.length}`);
+
+      // P33.5F: FAIL-FAST guard — main daily-cycle MUST NOT mark itself
+      // completed when the required job graph is partial. Only
+      // phase4_centrum_tail is allowed to be skipped (when no payload ref
+      // exists); every other required kind must have a row.
+      {
+        const realMissing = (p29b3EarlyEnqueueResult.missing_after_enqueue ?? [])
+          .filter((k) => k !== "phase4_centrum_tail");
+        if (realMissing.length > 0 || p29b3EarlyEnqueueResult.errors.length > 0) {
+          const lastErr = `p33_5f_required_jobs_missing:[${realMissing.join(",")}]|errors:[${p29b3EarlyEnqueueResult.errors.map((e: any) => e.kind ?? e).join(",")}]`;
+          console.error(`[P33.5F] fail-fast: ${lastErr}`);
+          try {
+            await sb.from("did_update_cycles").update({
+              status: "failed",
+              phase: "p29b3_required_jobs_enqueue_failed",
+              phase_step: "missing_required_jobs",
+              completed_at: new Date().toISOString(),
+              heartbeat_at: new Date().toISOString(),
+              last_heartbeat_at: new Date().toISOString(),
+              last_error: lastErr.slice(0, 500),
+            }).eq("id", cycle.id);
+          } catch (_) { /* ignore */ }
+          if (compileDataKeepAlive !== undefined) { clearInterval(compileDataKeepAlive); compileDataKeepAlive = undefined; }
+          if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
+          if (phaseTimeoutGuard !== undefined) { clearTimeout(phaseTimeoutGuard); phaseTimeoutGuard = undefined; }
+          return new Response(JSON.stringify({
+            success: false,
+            p33_5f_required_jobs_missing: realMissing,
+            p33_5f_required_jobs_errors: p29b3EarlyEnqueueResult.errors,
+            cycle_id: cycle.id,
+            phase_enqueue: p29b3EarlyEnqueueResult,
+          }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
 
       // ═══════════════════════════════════════════════════════════════════
       // P33.5C — FAST COMPLETION BARRIER
