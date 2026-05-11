@@ -231,7 +231,7 @@ export async function runP303ExternalRealityPipeline(
         });
         const { data: existing } = await sb
           .from("external_reality_events")
-          .select("id, event_title, event_type, source_url, verification_status")
+          .select("id, event_title, event_type, source_url, source_domain, verification_status, raw_payload")
           .eq("user_id", input.userId)
           .eq("source_url", normalized.source_url)
           .limit(1);
@@ -241,16 +241,28 @@ export async function runP303ExternalRealityPipeline(
               event_title: string;
               event_type: string;
               source_url: string;
+              source_domain?: string | null;
               verification_status: string;
+              raw_payload?: any;
             }
           | null = null;
         if (existing && existing.length > 0) {
           eventsDeduped++;
           evRow = existing[0] as never;
           if (!input.dryRun) {
+            const mergedPayload = {
+              ...(existing[0]?.raw_payload ?? {}),
+              provider: normalized.provider,
+              search_query: normalized.search_query,
+              related_part_name: meta.partName,
+              trigger_category: meta.trigger_category,
+              query_plan_version: QUERY_PLAN_VERSION,
+              fetched_at: normalized.fetched_at,
+              source_published_at: normalized.source_published_at ?? null,
+            };
             await sb
               .from("external_reality_events")
-              .update({ last_seen_at: new Date().toISOString() })
+              .update({ last_seen_at: new Date().toISOString(), raw_payload: mergedPayload })
               .eq("id", existing[0].id);
           }
         } else if (!input.dryRun) {
@@ -276,9 +288,10 @@ export async function runP303ExternalRealityPipeline(
                 trigger_category: meta.trigger_category,
                 query_plan_version: QUERY_PLAN_VERSION,
                 fetched_at: normalized.fetched_at,
+                source_published_at: normalized.source_published_at ?? null,
               },
             })
-            .select("id, event_title, event_type, source_url, verification_status")
+            .select("id, event_title, event_type, source_url, source_domain, verification_status, raw_payload")
             .single();
           if (insErr) {
             warnings.push(`insert_event_failed:${insErr.message?.slice(0, 120)}`);
@@ -294,7 +307,11 @@ export async function runP303ExternalRealityPipeline(
             event_title: evRow.event_title,
             event_type: evRow.event_type,
             source_url: evRow.source_url,
+            source_domain: evRow.source_domain ?? normalized.source_name ?? null,
             verification_status: evRow.verification_status,
+            source_published_at: normalized.source_published_at ?? evRow.raw_payload?.source_published_at ?? null,
+            fetched_at: normalized.fetched_at ?? evRow.raw_payload?.fetched_at ?? null,
+            query_plan_version: QUERY_PLAN_VERSION,
           });
           externalEventsByPart.set(meta.partName, arr);
         }
