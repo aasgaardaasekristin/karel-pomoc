@@ -1,83 +1,85 @@
-# P33.6 — Visible Daily Briefing Semantic Integrity Lock
+# P33.7 — Daily Briefing Content Completeness & Professional Standard
 
-Cílem je opravit **viditelný výstup** Karlova denního přehledu, ne další backend proof. Backend může projít zelené SQL kontroly, ale UI pořád ukazuje dormantní části, staré návrhy, technické/debug texty a vágní externí kontext.
+This is a content-completeness task, not a text-cleanup task. Goal: Karlův přehled becomes a real morning clinical tool with mandatory sections, controlled-missing visibility, and source-backed evidence.
 
-## Část A — Audit viditelného výstupu (read-only)
+## Scope guardrails (do not touch)
+- Do NOT modify P30 external reality producers (read-only consumption of already-produced data)
+- Do NOT modify P31 AI polish
+- Do NOT modify P32 Hana routing
+- Do NOT add new UI features
+- Do NOT start P34
 
-Projdu všechny zdroje viditelného textu v Karlově přehledu (`Karlův přehled`, `Externí kontext`, `Možné vnější zatížení`, `Společná porada týmu`, `Plán dnešní herny/sezení`, `Technické podklady`, `AI polish náhled`, `today_part_proposal`).
+## Part A — Forensic SQL audit of latest briefing
+Query the latest `did_daily_briefings` row + its `karel_human_briefing.sections`. Produce a table:
+`section_id | current_text_summary | data_sources_used | missing_expected_content | is_professionally_actionable | needs_change`
 
-Výstup: `docs/P33_6_VISIBLE_OUTPUT_AUDIT.md` s tabulkou (komponenta, řádky, datový zdroj, payload path, source_cycle_id, briefing_date, expirace, admin-only, problém, potřebná změna).
+Answer mandatory audit questions about yesterday review, day plan, therapist tasks, external watch tiers, and old-proposal leakage.
 
-## Část B — Profesionální požadavky na briefing
+**Acceptance:** `content_gap_audit_complete`, `all_current_missing_sections_identified`, `professional_incompleteness_confirmed`.
 
-Vytvořím `docs/P33_6_PROFESSIONAL_DAILY_BRIEFING_REQUIREMENTS.md` pokrývající: aktuálnost, relevanci, transparentnost internetu, klinickou bezpečnost, jazykovou kvalitu, integritu plánu.
+## Part B — Content contract (new shared module)
+Create `supabase/functions/_shared/dailyBriefingContentCompleteness.ts` (and UI mirror in `src/lib/`) defining 9 required sections:
+`morning_readiness | yesterday_review | today_part_or_no_part_decision | today_session_playroom_plan | therapist_tasks | external_reality_context | risk_and_stop_signals | unknowns_and_limits | next_step`
 
-## Část C — Oprava `today_part_proposal` (dormantní části)
+Each section yields `{section_id, status: "complete"|"controlled_missing"|"blocked", source_tables, source_fields, evidence_count, controlled_missing_reason?, visible_summary_requirement}`.
 
-Nový helper `isPartTodayRelevantForPrimarySuggestion` — dormantní část (002_Anička apod.) nesmí být primární návrh dne bez čerstvé evidence (thread 24–72h, dnešní sezení/herna, live progress, explicitní zmínka terapeutkou). Technické prefixy (001_, 002_) normalizovat nebo skrýt. Při nízké opoře vyrenderovat: *"Dnes nemám dost opory vybrat konkrétní část před prvním kontaktem."*
+Rules: a section may be controlled_missing but must visibly state what's missing + what to do; never silently disappear.
 
-Soubory: `supabase/functions/_shared/karelBriefingVoiceRenderer.ts`, nový `_shared/partTodayRelevance.ts`, `karel-did-daily-briefing/index.ts`.
+## Part C — Yesterday review collector
+In `karel-did-daily-briefing` index.ts, collect from `did_session_reviews`, `did_daily_session_plans`, `did_live_session_progress`, `did_team_deliberations` for yesterday (Prague TZ).
+- If documented → render continuity block (uzavřené / otevřené / důsledek pro dnešek)
+- If nothing → render explicit "Včera nemám doložené dokončené Sezení ani Hernu..."
 
-## Část D — Externí realita: viditelné vysvětlení internetové kontroly
+## Part D — No-part operational fallback
+When `today_part_relevance_decision.ok_for_primary_suggestion=false`, generate a structured fallback day plan with: first-contact check, safety check, three pathways (Sezení / stabilizační Herna / bezpečný kontakt), stop signs, and "what not to open today".
 
-Renderer musí pro každou tier kategorii vyrobit konkrétní vysvětlení (kdo, co, zdroj, kdy ověřeno):
-- **Tier 1 (fresh today)**: "čerstvě zachycený okruh… zdroj ověřen dnes"
-- **Tier 2 (checked today, unknown pub date)**: "internetový přehled dnes znovu ověřil citlivý okruh… datum publikace není jasné… neberu jako dnešní událost"
-- **Tier 3 (historical)**: "dříve evidovaný citlivý okruh bez čerstvého podkladu pro dnešek"
+## Part E — Sezení / Herna plan section
+Replace weak "nemám připravený plán" with structured plan state:
+- Approved plan → show + source + signoff
+- No approved plan → decision protocol (when Sezení vs Herna vs safe contact)
+- Old proposals → only under "Starší návrhy k revizi"
 
-Zakázané fráze pro tier 2/3: "může dnes zatížit", "dnes se objevilo", "dnešní událost".
+## Part F — Concrete therapist tasks
+Replace generic asks with source-backed concrete actions:
+- **Hanička**: first-contact check, awareness of external theme, body/emotion/stop signal, route choice
+- **Káťa**: risk check, stop signs, external-theme containment, postpone decision
 
-UI panel `ExternalLoadWarning.tsx` už zobrazuje doménu/data/tier — doplním textovou vrstvu v `karelBriefingVoiceRenderer.ts` a v `karel-did-daily-briefing/index.ts`.
+## Part G — External reality manifestation
+For each used external signal: part affected, category/trigger, recency tier, source domain, fetched/checked date, publication-date-known flag, safe language. Distinct phrasing for tier 1 / tier 2 / historical (per existing P30.5b contract).
 
-## Část E — Skrytí technického/debug obsahu
+## Part H — Payload audit field
+Every payload writes `daily_briefing_content_completeness = {version: "p33.7", checked_at, sections{...9}, overall_status, blocking_reasons[]}`.
+If `overall_status="blocked"` → render safe operational fallback instead of normal briefing.
 
-`AiPolishCanaryPreviewPanel` a `Technické podklady` se nesmí zobrazit v normální Pracovně. Gate přes `isAdmin && debugMode`. Renderer musí odfiltrovat fráze: "AI polish", "audit", "payload", "truth gate", "job graph", "provider_status", "query_plan_version", "source_cycle_id", "unsupported_claims", "robotic_phrase".
+## Part I — Renderer integration
+Patch `supabase/functions/_shared/karelBriefingVoiceRenderer.ts` (and UI mirror) to:
+- consume `daily_briefing_content_completeness`
+- render controlled-missing reasons explicitly
+- include yesterday review + no-part fallback + external source manifestation
+- never select dormant/low-support parts as primary
 
-## Část F — Čerstvost týmových porad / návrhů sezení
+## Part J — Tests
+Create `src/test/p33_7DailyBriefingContentCompleteness.test.ts` with 14+ cases covering: yesterday review (both branches), no-part fallback, decision protocol, old-proposal exclusion, concrete tasks, external tiers (1/2/3), payload completeness, blocked→fallback, dirty-phrase guard regression, dormant part exclusion.
 
-Audit zdrojů "Společná porada týmu", "Plán dnešní herny", "Plán sezení". Pravidlo: zobrazit jako dnešní plán pouze pokud `valid_for_date = today` nebo `session_date = today` nebo navázáno na aktuální `source_cycle_id` a není expirováno. Staré otevřené návrhy (Timmi/Timmy z předchozích dnů) přesunout pod sbalené "Starší návrhy k revizi", nikdy ne jako primární dnešní plán.
+## Part K — Force regenerate + SQL proof
+Regenerate via `supabase--curl_edge_functions` against `karel-did-daily-briefing`. Re-run the audit SQL and prove every required clause visible/clean.
 
-## Část G — Czech jazyková gate
+## Part L — DOM proof
+Verify normal (non-debug) Pracovna shows the complete professional briefing with all sections, no debug, no dirty text, no stale Timmi as primary.
 
-Nový `supabase/functions/_shared/karelVisibleTextQuality.ts` s `auditVisibleKarelText(text)` vracející `{ ok, errors, warnings }`. Detekuje:
-- dvojité interpunkce (`..`)
-- chybnou gramatiku ("doložený praktickou", "Opora v podkladech je nízká")
-- interní termíny (AI polish, audit, payload, source_cycle_id…)
-- technické prefixy částí (`001_`, `002_`)
-- false today-event fráze pro tier 2/3
+## Part M — Full vitest
+`bunx vitest run --reporter=basic` must pass 100%.
 
-## Část H — Testy
-
-`src/test/p33_6VisibleDailyBriefingSemanticIntegrity.test.tsx` — 20 testů:
-1. Low-support 002_Anička → žádný primární návrh
-2. Dormantní část bez čerstvé evidence není primární
-3. Technický prefix `002_` nikdy není ve viditelném textu
-4. Tier 2 → "dnes ověřil" + "datum publikace není jasné"
-5. Tier 2 neobsahuje "může dnes zatížit"
-6. Tier 3 obsahuje "dříve evidovaný" / "bez čerstvého"
-7. Externí panel není prázdný když existuje tier 2 zdroj
-8. Externí panel zobrazuje doménu + datum ověření
-9. Žádné interní termíny v normálním UI
-10. AI polish skryt mimo admin debug
-11. Technické podklady skryté mimo admin debug
-12. Starý návrh z předchozího dne není primární
-13. Starý Timmi návrh bez čerstvého tieru není primární
-14. Same-day návrh se správným source_cycle_id se zobrazí
-15-19. Quality gate chytá: dvojité interpunkce, "doložený praktickou", "Opora v podkladech je nízká", "002_Anička", interní termíny
-20. Latest Karel briefing sections projdou quality gate
-
-Plus full vitest run.
-
-## Část I — Runtime proof
-
-SQL na latest briefing → ověřit absenci 002_, AI polish, Technické podklady, audit, "může dnes zatížit" tier2/3, stale Timmi, dormant primární část. Internet check viditelný když je přítomen.
-
-## Verdikt
-
-P33.6 = ACCEPTED jen pokud projdou všechny acceptance flagy z Částí A–I. Jinak NOT_ACCEPTED. Stop po verdiktu, nezačínat P34.
+## Final verdict
+Accepted only if all 23 acceptance flags listed in the prompt are true. Otherwise emit `P33.7 = NOT_ACCEPTED, blocker=<flag>`. Stop after verdict — no P34.
 
 ---
 
-**Rozsah:** ~15+ souborů, 2 docs, 1 nový shared helper (text quality), 1 nový shared helper (part relevance), patche v rendereru / external panel / briefing index / AI polish gating / team consultation komponentách, 20 nových testů.
+## Technical notes
 
-**Riziko:** velké — dotýká se viditelné vrstvy několika panelů. Snažím se neměnit business logiku pipeline, jen prezentační vrstvu a freshness gating.
+- New files: `supabase/functions/_shared/dailyBriefingContentCompleteness.ts`, `src/lib/dailyBriefingContentCompleteness.ts` (1:1 mirror), `src/test/p33_7DailyBriefingContentCompleteness.test.ts`
+- Modified files: `supabase/functions/karel-did-daily-briefing/index.ts`, `supabase/functions/_shared/karelBriefingVoiceRenderer.ts`, `src/components/did/DidDailyBriefingPanel.tsx` (only to render new sections — no behavior changes beyond rendering completeness contract)
+- Yesterday window: Prague TZ day boundary, `[yesterday 00:00 Europe/Prague, today 00:00)`
+- Source-backed = at least one row from listed source tables for that user with valid date scope
+- Controlled-missing reasons must be Czech, in Karel's voice, no debug terms
+- Renderer keeps existing P33.6G visible-quality gate; new contract runs BEFORE the gate so blocked payloads short-circuit to safe fallback
