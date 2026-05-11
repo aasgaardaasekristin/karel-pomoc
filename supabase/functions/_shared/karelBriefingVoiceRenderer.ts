@@ -700,6 +700,7 @@ export function renderKarelBriefingVoice(payload: any): KarelBriefingVoiceRender
   let empty = 0;
 
   for (const sec of sections) {
+    sec.karel_text = sanitizeRenderedText(sec.karel_text);
     pushUsed(sourceFieldsUsed, sec.source_fields);
     const claim = validateSectionClaims(sec, payload, knownParts);
     sec.unsupported_claims_count += claim.unsupported_claims_count;
