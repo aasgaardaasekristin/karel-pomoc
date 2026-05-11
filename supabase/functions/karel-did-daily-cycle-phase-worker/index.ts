@@ -777,13 +777,29 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
       : { transport: "edge" as const };
 
     if (result.ok) {
+      // P33.5C: honor downstream outcome contract.
+      // - "controlled_skipped" → job status controlled_skipped
+      // - "accepted_async"     → job status completed (work accountable elsewhere)
+      // - "completed_bounded"  → job status completed
+      // - generic 2xx success  → job status completed
+      const downstreamOutcome = (result.body as any)?.outcome ?? null;
+      const downstreamReason = (result.body as any)?.reason ?? null;
+      const remainingAccountable = (result.body as any)?.remaining_work_accountable === true;
+      const newStatus = downstreamOutcome === "controlled_skipped" ? "controlled_skipped" : "completed";
       await admin.from("did_daily_cycle_phase_jobs").update({
-        status: "completed",
+        status: newStatus,
         completed_at: new Date().toISOString(),
-        result: { http_status: result.status, body: result.body, ...observability },
-        error_message: null,
+        result: {
+          http_status: result.status,
+          body: result.body,
+          delegate_outcome: downstreamOutcome,
+          delegate_reason: downstreamReason,
+          remaining_work_accountable: remainingAccountable,
+          ...observability,
+        },
+        error_message: downstreamOutcome === "controlled_skipped" ? (downstreamReason ?? null) : null,
       }).eq("id", job.id);
-      return { id: job.id, kind: job.job_kind, outcome: "completed", http: result.status, transport: observability.transport };
+      return { id: job.id, kind: job.job_kind, outcome: newStatus, delegate_outcome: downstreamOutcome, http: result.status, transport: observability.transport };
     }
     const exhausted = job.attempt_count + 1 >= job.max_attempts;
     let errPrefix: string;
