@@ -28,6 +28,7 @@ const HARD_FORBIDDEN: Array<{ re: RegExp; label: string }> = [
   { re: /source_cycle_id/i, label: "source_cycle_id" },
   { re: /unsupported_claims/i, label: "unsupported_claims" },
   { re: /robotic_phrase/i, label: "robotic_phrase" },
+  { re: /\breview\b/i, label: "review" },
   // double punctuation
   { re: /\.\./, label: "double_period" },
   { re: /,,/, label: "double_comma" },
@@ -35,7 +36,8 @@ const HARD_FORBIDDEN: Array<{ re: RegExp; label: string }> = [
   { re: /\b00[0-9]_[A-Za-zÁ-Žá-ž]/, label: "technical_part_prefix" },
   // ungrammatical / robotic Czech currently visible
   { re: /dolo[žz]en[ýy]\s+praktickou/i, label: "dolozeny_praktickou" },
-  { re: /opora\s+v\s+podklade?ch\s+je\s+n[ií]zk[áa]/i, label: "opora_je_nizka" },
+  { re: /dolo[žz]en[ée]ho\s+Sezen[ií]\s+nebo\s+Herny/i, label: "dolozeneho_sezeni_nebo_herny" },
+  { re: /opora\s+v\s+podklade?ch\s+je\s+(?:zat[ií]m\s+)?n[ií]zk[áa]/i, label: "opora_je_nizka" },
   { re: /S[ií]la\s+(?:d[ůu]kazu|podklad[ůu])\s+je\s+n[ií]zk[áa]/i, label: "sila_je_nizka" },
   { re: /n[áa]vrh\s+na\s+dne[šs]n[ií]\s+[čc][áa]st\s+je\s+00[0-9]_/i, label: "navrh_002_prefix" },
   { re: /podle\s+posledn[ií]ho\s+p[řr]esn[ěe]\s+datovan[ée]ho\s+review/i, label: "datovaneho_review" },
