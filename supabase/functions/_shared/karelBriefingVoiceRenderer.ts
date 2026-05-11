@@ -151,6 +151,11 @@ function renderDailyCycleVerified(payload: any): RenderedBriefingSection {
 
 /**
  * Section 3 — části / aktivní kluci dnes.
+ *
+ * P33.6: Dormant or low-support hypothesis-only proposals must NOT appear
+ * as a primary "nabízí se část …" suggestion. Technical prefixes (002_)
+ * are normalized away. When opora is insufficient, render the calm
+ * fallback instead of leaking "Opora v podkladech je nízká".
  */
 function renderTodayParts(payload: any): RenderedBriefingSection {
   const tpp = payload?.today_part_proposal ?? null;
@@ -159,29 +164,42 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
     "today_part_proposal.rationale_text",
     "today_part_proposal.is_hypothesis_only",
     "today_part_proposal.evidence_strength",
+    "today_part_proposal.has_current_evidence",
+    "today_part_proposal.registry_sleeping",
   ];
   const warnings: string[] = [];
   let text: string;
   let confidence: "high" | "medium" | "low" = "medium";
 
-  const partName = safeStr(tpp?.proposed_part) || safeStr(tpp?.part_name);
-  const rationale = safeStr(tpp?.rationale_text);
+  const rawPartName = safeStr(tpp?.proposed_part) || safeStr(tpp?.part_name);
+  // Strip technical prefix like "002_Anička" → "Anička"
+  const normalizedPartName = rawPartName
+    ? rawPartName.replace(/^00[0-9]_/, "").trim()
+    : "";
+  const partName = normalizedPartName || rawPartName;
   const isHypothesis = tpp?.is_hypothesis_only === true;
-  const evidence = safeStr(tpp?.evidence_strength);
+  const evidence = safeStr(tpp?.evidence_strength).toLowerCase();
+  const hasCurrentEvidence = tpp?.has_current_evidence === true;
+  const registrySleeping = tpp?.registry_sleeping === true;
 
-  if (partName) {
-    const hypoNote = isHypothesis
-      ? " Beru to ale jen jako pracovní hypotézu, dokud to nepotvrdí Hanička s Káťou."
-      : "";
-    const evCz = evidence === "low" ? "nízká" : evidence === "medium" ? "střední" : evidence === "high" ? "vyšší" : "";
-    const evNote = evCz ? ` Opora v podkladech je ${evCz}.` : "";
-    const why = rationale ? ` Vychází to z toho, že ${rationale.charAt(0).toLocaleLowerCase("cs")}${rationale.slice(1)}` : "";
-    text = `Pro dnešek se mi jako možná část pro práci nabízí ${partName}.${hypoNote}${evNote}${why ? "\n\n" + why : ""}`;
-    confidence = isHypothesis || evidence === "low" ? "low" : "medium";
-  } else {
-    text = "Dnes nemám dost podkladů na to, abych navrhoval konkrétní část pro práci. Doporučuji vyjít z toho, co kluci sami přinesou.";
+  // Reject as primary suggestion when low support + hypothesis-only without current evidence,
+  // or when part is dormant without current evidence.
+  const rejectAsPrimary =
+    !partName ||
+    (isHypothesis && evidence === "low" && !hasCurrentEvidence) ||
+    (registrySleeping && !hasCurrentEvidence);
+
+  if (rejectAsPrimary) {
+    text =
+      "Dnes nemám dost opory vybrat konkrétní část před prvním kontaktem. Vybereme až podle toho, co kluci sami přinesou.";
     confidence = "low";
-    warnings.push("no_today_part_proposal");
+    warnings.push(partName ? "rejected_low_support_or_dormant" : "no_today_part_proposal");
+  } else {
+    const hypoNote = isHypothesis
+      ? " Beru to jen jako pracovní rámec, dokud to nepotvrdí Hanička s Káťou."
+      : "";
+    text = `Pro dnešek se mi jako možná část pro práci nabízí ${partName}.${hypoNote}`;
+    confidence = evidence === "high" ? "high" : "medium";
   }
 
   return {
@@ -306,19 +324,35 @@ function renderExternalReality(payload: any): RenderedBriefingSection {
   const sourceBacked = Number(ext?.source_backed_events_count) || 0;
   const used = Number(ext?.internet_events_used_count) || 0;
 
+  // P33.6 — explicitly state whether Karel actually checked the internet today,
+  // and split language by recency tier so the therapist sees that internet was
+  // queried even when no fresh-today event came back.
+  const partsArr: any[] = Array.isArray(ext?.parts) ? ext.parts : [];
+  const checkedTodayCount = partsArr.reduce((acc, p) => {
+    const a = p?.evidence_summary?.checked_external_sources_today;
+    return acc + (Array.isArray(a) ? a.length : 0);
+  }, 0);
+  const freshCount = partsArr.reduce((acc, p) => {
+    const a = p?.internet_triggers_today;
+    return acc + (Array.isArray(a) ? a.length : 0);
+  }, 0);
+
   if (ps === "configured") {
-    if (sourceBacked > 0) {
-      text = "Externí situační přehled je dnes dostupný a obsahuje čerstvě zdrojované okruhy pro opatrný kontext. Pracuji s nimi jen jako s jemným hlídáním rámce, ne jako s diagnózou ani predikcí.";
+    if (freshCount > 0 || sourceBacked > 0) {
+      text = "Externí situační přehled jsem dnes ověřoval a přinesl čerstvě zdrojované okruhy. Pracuji s nimi jen jako s jemným hlídáním rámce, ne jako s diagnózou ani predikcí.";
+      confidence = "medium";
+    } else if (checkedTodayCount > 0) {
+      text = "Externí situační přehled jsem dnes ověřoval. Datum publikace u nalezených zdrojů ale není jasné, takže to neberu jako dnešní událost — jen jako důvod jemně ověřit, jestli se s tématem dnes potkali.";
       confidence = "medium";
     } else {
-      text = `Externí situační přehled je dnes dostupný, ale nepřinesl žádnou doloženou událost. Beru to tak, že dnes není nic, co bych měl z venku zvlášť hlídat.`;
+      text = "Externí situační přehled jsem dnes ověřoval a žádný čerstvý ani dnes ověřený zdrojovaný okruh se neobjevil. Beru to tak, že dnes není nic, co bych měl z venku zvlášť hlídat.";
       confidence = "high";
     }
   } else if (ps === "provider_not_configured") {
     text = "Externí situační přehled dnes není zapnutý, takže o vnějších událostech nic netvrdím.";
     confidence = "high";
   } else if (ps === "provider_error") {
-    text = "Pokus o stažení externího situačního přehledu se dnes nepovedl, takže o vnějších událostech raději nic netvrdím.";
+    text = "Pokus o externí situační přehled se dnes nepovedl, takže o vnějších událostech raději nic netvrdím.";
     confidence = "low";
     warnings.push("provider_error");
   } else {

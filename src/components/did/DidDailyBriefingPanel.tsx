@@ -1737,13 +1737,15 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         );
       })()}
 
-      {/* Strukturované sekce — primární jen když není human ok=true.
-          Když je human vrstva primární, ukazujeme jen jako "Technické
-          podklady" toggle, který odkrývá strukturovaný layout. */}
+      {/* P33.6 — Technické podklady & AI polish náhled jsou admin/debug only.
+          Aktivace přes ?karelDebug=1 nebo localStorage.karel_debug=1. */}
       {(() => {
         const hb: any = (p as any).karel_human_briefing;
         const humanPrimary = !!(hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0);
         if (!humanPrimary) return null;
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { isKarelDebugMode } = require("@/lib/karelDebugMode");
+        if (!isKarelDebugMode()) return null;
         return (
           <details
             className="mt-2 rounded-md border border-border/40 bg-muted/10"
@@ -1759,12 +1761,18 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         );
       })()}
 
-      {/* P31.2C — read-only AI polish canary preview, collapsed audit panel.
-          Hlavní text Karlova přehledu zůstává deterministic. */}
-      <AiPolishCanaryPreviewPanel
-        briefingId={briefing?.id || null}
-        humanOk={!!((p as any).karel_human_briefing?.ok === true)}
-      />
+      {/* P33.6 — AI polish canary preview is admin/debug only. */}
+      {(() => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { isKarelDebugMode } = require("@/lib/karelDebugMode");
+        if (!isKarelDebugMode()) return null;
+        return (
+          <AiPolishCanaryPreviewPanel
+            briefingId={briefing?.id || null}
+            humanOk={!!((p as any).karel_human_briefing?.ok === true)}
+          />
+        );
+      })()}
 
 
       {!((p as any).karel_human_briefing?.ok === true) && visibleRealityContext && (

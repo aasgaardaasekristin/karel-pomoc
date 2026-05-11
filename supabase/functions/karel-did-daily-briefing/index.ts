@@ -3187,8 +3187,12 @@ Deno.serve(async (req) => {
         summary_text: summaryText,
       };
 
-      // NÁVRH ČÁSTI PRO DNEŠEK
-      const proposedPart = payload?.proposed_session?.part_name || payload?.proposed_playroom?.part_name || yPart || null;
+      // NÁVRH ČÁSTI PRO DNEŠEK — P33.6: bez "Síla důkazu je nízká",
+      // bez "doloženého Sezení", bez technického prefixu 002_.
+      const rawProposedPart = payload?.proposed_session?.part_name || payload?.proposed_playroom?.part_name || yPart || null;
+      const proposedPart = rawProposedPart
+        ? String(rawProposedPart).replace(/^00[0-9]_/, "").trim() || rawProposedPart
+        : null;
       const evidenceStrength = yCat === "completed_session" || yCat === "started_session"
         ? "high"
         : yCat === "approved_plan_not_started"
@@ -3197,9 +3201,9 @@ Deno.serve(async (req) => {
       const isHypothesisOnly = yCat === "pending_generated_plan" || yCat === "no_activity" || yCat === "unknown_or_inconsistent";
       const rationaleText = proposedPart
         ? (isHypothesisOnly
-            ? `Návrh na dnešní část je ${proposedPart}. Vychází z pracovní hypotézy, ne z doloženého Sezení nebo Herny. Síla důkazu je nízká, takže návrh musí potvrdit Hanička s Káťou; alternativa je počkat na první kontakt a vybrat část až po něm.`
-            : `Návrh na dnešní část je ${proposedPart}. Vychází z dolozené evidence z posledního Sezení. Návrh stále potřebuje schválení Haničky a Káti; alternativa je vybrat jinou část, pokud kluci sami ukážou jiný směr.`)
-        : `Pro dnešek nemám jednoznačný návrh části. Bez doložené evidence nechám výběr na Haničce a Káti po prvním kontaktu.`;
+            ? `Pro dnešek by mohla být relevantní část ${proposedPart}, ale je to jen pracovní rámec. Návrh musí potvrdit Hanička s Káťou; alternativa je počkat na první kontakt a vybrat část až po něm.`
+            : `Pro dnešek se nabízí část ${proposedPart} z evidence posledního Sezení. Návrh stále potřebuje schválení Haničky a Káti; alternativa je vybrat jinou část, pokud kluci sami ukážou jiný směr.`)
+        : `Pro dnešek nemám jednoznačný návrh části. Výběr nechám na Haničce a Káti po prvním kontaktu.`;
       payload.today_part_proposal = {
         proposed_part: proposedPart,
         evidence_strength: evidenceStrength,
@@ -3208,6 +3212,7 @@ Deno.serve(async (req) => {
         approver: "hanka_a_kata",
         alternative_text: "Pokud kluci sami ukážou jiný směr, výběr části se přizpůsobí jim.",
         rationale_text: rationaleText,
+        has_current_evidence: yCat === "completed_session" || yCat === "started_session",
       };
     } catch (e) {
       console.warn("[P20.2] yesterday_truth/today_part_proposal failed (non-fatal):", e);
