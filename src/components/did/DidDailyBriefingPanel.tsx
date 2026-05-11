@@ -1762,8 +1762,6 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
 
       {/* P33.6 — AI polish canary preview is admin/debug only. */}
       {(() => {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { isKarelDebugMode } = require("@/lib/karelDebugMode");
         if (!isKarelDebugMode()) return null;
         return (
           <AiPolishCanaryPreviewPanel
