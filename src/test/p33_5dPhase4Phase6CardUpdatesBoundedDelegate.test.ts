@@ -24,17 +24,17 @@ describe("P33.5D — run-daily-card-updates bounded delegate is first-class", ()
     expect(cardUpdatesSrc).toMatch(/p33_5d_bounded_confirmed:\s*true/);
   });
 
-  it("bounded branch appears before any getAccessToken call", () => {
+  it("bounded branch appears before any await getAccessToken() call site", () => {
     const boundedIdx = cardUpdatesSrc.indexOf("phase_worker_bounded");
-    const tokenIdx = cardUpdatesSrc.indexOf("getAccessToken");
+    const tokenIdx = cardUpdatesSrc.indexOf("await getAccessToken(");
     expect(boundedIdx).toBeGreaterThan(0);
     expect(tokenIdx).toBeGreaterThan(0);
     expect(boundedIdx).toBeLessThan(tokenIdx);
   });
 
-  it("bounded branch appears before resolveKartotekaRoot (Drive)", () => {
+  it("bounded branch appears before await resolveKartotekaRoot (Drive)", () => {
     const boundedIdx = cardUpdatesSrc.indexOf("phase_worker_bounded");
-    const driveIdx = cardUpdatesSrc.indexOf("resolveKartotekaRoot");
+    const driveIdx = cardUpdatesSrc.indexOf("await resolveKartotekaRoot(");
     expect(driveIdx).toBeGreaterThan(0);
     expect(boundedIdx).toBeLessThan(driveIdx);
   });
