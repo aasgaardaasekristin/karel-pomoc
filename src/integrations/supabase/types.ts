@@ -7807,6 +7807,15 @@ export type Database = {
       }
       did_count_visible_dirty_fields: { Args: never; Returns: number }
       did_daily_cycles_sweep_stale: { Args: never; Returns: Json }
+      did_get_pg_net_response: {
+        Args: { p_id: number }
+        Returns: {
+          content: string
+          created: string
+          error_msg: string
+          status_code: number
+        }[]
+      }
       did_internal_edge_function_post: {
         Args: {
           p_body?: Json
