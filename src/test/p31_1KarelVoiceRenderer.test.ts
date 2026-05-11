@@ -13,6 +13,8 @@ const validPayload: any = {
     is_hypothesis_only: true,
     evidence_strength: "low",
   },
+  // P33.7 content-completeness contract requires this for ok=true.
+  today_part_relevance_decision: { ok_for_primary_suggestion: true, reason: "test fixture" },
   ask_hanka: [{ text: "Krátce ověřit tělesný stav před sezením." }],
   ask_kata: [{ text: "Hlídat hranice návaznosti." }],
   proposed_session: { title: "Bezpečné ověření kontaktu" },
