@@ -3942,6 +3942,19 @@ Deno.serve(async (req) => {
       };
     }
 
+    // P33.7 — content completeness contract written into payload BEFORE renderer
+    try {
+      payload.daily_briefing_content_completeness = evaluateBriefingContentCompleteness(payload);
+    } catch (e) {
+      payload.daily_briefing_content_completeness = {
+        version: "p33.7",
+        checked_at: new Date().toISOString(),
+        sections: {},
+        overall_status: "blocked",
+        blocking_reasons: [`completeness_eval_threw:${String((e as Error)?.message ?? e).slice(0, 200)}`],
+      };
+    }
+
     // P31.1 — truth-locked Karel voice renderer. Deterministic, no AI calls.
     // Adds payload.karel_human_briefing without modifying the structured payload.
     try {
