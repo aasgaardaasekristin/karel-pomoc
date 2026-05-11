@@ -3916,18 +3916,29 @@ Deno.serve(async (req) => {
 
     if (payload?.today_part_proposal) {
       const tpp = payload.today_part_proposal;
-      payload.today_part_relevance_decision = isPartTodayRelevantForPrimarySuggestion({
-        proposed_part: tpp.proposed_part ?? tpp.part_name,
-        briefing_date: today,
-        source_cycle_id: payload?.source_cycle_id ?? payload?.briefing_truth_gate?.source_cycle_id ?? null,
-        is_hypothesis_only: tpp.is_hypothesis_only === true,
-        evidence_strength: tpp.evidence_strength,
-        recent_thread_part_names: Array.isArray(tpp.recent_thread_part_names) ? tpp.recent_thread_part_names : [],
-        todays_session_part_names: Array.isArray(tpp.todays_session_part_names) ? tpp.todays_session_part_names : [],
-        live_progress_part_names: Array.isArray(tpp.live_progress_part_names) ? tpp.live_progress_part_names : [],
-        explicit_therapist_mentions: Array.isArray(tpp.explicit_therapist_mentions) ? tpp.explicit_therapist_mentions : [],
-        registry_sleeping: tpp.registry_sleeping === true,
-      });
+      payload.today_part_relevance_decision = {
+        ...isPartTodayRelevantForPrimarySuggestion({
+          proposed_part: tpp.proposed_part ?? tpp.part_name,
+          briefing_date: today,
+          source_cycle_id: payload?.source_cycle_id ?? payload?.briefing_truth_gate?.source_cycle_id ?? null,
+          is_hypothesis_only: tpp.is_hypothesis_only === true,
+          evidence_strength: tpp.evidence_strength,
+          recent_thread_part_names: Array.isArray(tpp.recent_thread_part_names) ? tpp.recent_thread_part_names : [],
+          todays_session_part_names: Array.isArray(tpp.todays_session_part_names) ? tpp.todays_session_part_names : [],
+          live_progress_part_names: Array.isArray(tpp.live_progress_part_names) ? tpp.live_progress_part_names : [],
+          explicit_therapist_mentions: Array.isArray(tpp.explicit_therapist_mentions) ? tpp.explicit_therapist_mentions : [],
+          registry_sleeping: tpp.registry_sleeping === true,
+        }),
+        checked_at: new Date().toISOString(),
+      };
+    } else if (!payload.today_part_relevance_decision) {
+      payload.today_part_relevance_decision = {
+        ok_for_primary_suggestion: false,
+        reason: "no_today_part_proposal",
+        display_name: null,
+        confidence: "low",
+        checked_at: new Date().toISOString(),
+      };
     }
 
     // P31.1 — truth-locked Karel voice renderer. Deterministic, no AI calls.
