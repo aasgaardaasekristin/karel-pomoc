@@ -1697,10 +1697,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           Když ok=false, ukáže se fallback warning a strukturovaný layout
           zůstává primární. Když chybí úplně, chová se jako dřív. */}
       {(() => {
-        const hb: any = (p as any).karel_human_briefing;
-        const humanOk = !!(hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0);
         const humanBroken = !!(hb && hb.ok === false);
-        if (humanOk) {
+        if (visibleHumanOk) {
           return (
             <div
               className="rounded-xl border border-primary/15 bg-card/30 p-3.5 mt-1 space-y-3"
@@ -1708,7 +1706,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               data-human-ok="true"
               data-renderer-version={hb.renderer_version}
             >
-              {hb.sections.map((s: any, idx: number) => {
+              {humanSections.map((s: any, idx: number) => {
                 const rawText = typeof s?.karel_text === "string" ? s.karel_text : "";
                 const text = sanitizeKarelVisibleText(rawText);
                 if (!text.trim()) return null;
@@ -1729,6 +1727,27 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                 <p className="pt-2 border-t border-border/40 text-[11px] leading-relaxed text-muted-foreground italic">
                   Technická poznámka: {technicalNote}
                 </p>
+              )}
+            </div>
+          );
+        }
+        if (humanQualityBlocked) {
+          return (
+            <div
+              className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 mt-1 space-y-2"
+              data-testid="karel-human-briefing-quality-fallback"
+              data-human-ok="false"
+            >
+              <p className="text-[13px] leading-relaxed text-foreground/85">
+                Karlův přehled je dnes dočasně skrytý, protože neprošel jazykovou a klinickou kontrolou. Použijte jen ověřené operační podklady níže.
+              </p>
+              {isKarelDebugMode() && (
+                <details className="rounded-md border border-border/40 bg-background/40 p-2">
+                  <summary className="cursor-pointer text-[11px] text-muted-foreground">Detail kontroly</summary>
+                  <p className="mt-1 text-[11px] text-muted-foreground whitespace-pre-line">
+                    {visibleHumanAudit.errors.join("\n")}
+                  </p>
+                </details>
               )}
             </div>
           );
