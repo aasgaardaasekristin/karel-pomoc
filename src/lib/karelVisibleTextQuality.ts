@@ -46,6 +46,11 @@ const HARD_FORBIDDEN: Array<{ re: RegExp; label: string }> = [
   { re: /dnes\s+se\s+objevilo/i, label: "dnes_se_objevilo" },
   { re: /dne[šs]n[ií]\s+ud[áa]lost/i, label: "dnesni_udalost" },
   { re: /nem[áa]m\s+u\s+sebe\s+podrobn[ěe]j[šs][íi]\s+p[řr]ehled/i, label: "false_missing_phase_detail" },
+  // P33.7C — Czech grammar: preposition + Anička in nominative is wrong.
+  // Allowed safe forms: "K části Anička", "K návrhu pro část Anička", "U Aničky" (genitive).
+  // Forbidden: "Pro Anička", "S/s Anička", "U/u Anička", "K/k Anička" (preposition + nominative).
+  // Lookbehind exempts the safe forms preceded by "části " or "část ".
+  { re: /(?<!\u010d[áa]sti\s)(?<![čc][áa]st\s)\b(?:Pro|S|s|U|u|K|k)\s+Ani\u010dka\b/, label: "anicka_bad_case" },
 ];
 
 // Case-SENSITIVE: must only flag lowercase variants (proper-cased
