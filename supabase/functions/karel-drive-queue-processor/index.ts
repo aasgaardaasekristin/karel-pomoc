@@ -571,6 +571,24 @@ Deno.serve(async (req) => {
     };
     addLog(`Done: ${completed} ok, ${failed} retry, ${permanent} permanent, ${skipped} skipped in ${duration}ms`);
 
+    if (isPhaseWorkerCall) {
+      return new Response(JSON.stringify({
+        ok: true,
+        mode: "phase_worker_bounded",
+        outcome: "completed_bounded",
+        lane,
+        processed: phaseWorkerProcessed,
+        completed,
+        failed,
+        permanent_failed: permanent,
+        skipped,
+        budget_exhausted: phaseWorkerBudgetExhausted,
+        remaining_work_accountable: phaseWorkerBudgetExhausted,
+        duration_ms: duration,
+        log,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     return new Response(JSON.stringify(summary), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
