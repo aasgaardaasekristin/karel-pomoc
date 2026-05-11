@@ -30,6 +30,8 @@ const DEGRADED_METHOD_HINTS = [
   "nahrad",
 ];
 
+const DIRTY_VISIBLE_BRIEFING_RE = /\b00[0-9]_[A-Za-zÁ-Žá-ž]|Opora\s+v\s+podklade?ch\s+je\s+n[ií]zk[áa]|S[ií]la\s+d[ůu]kazu\s+je\s+n[ií]zk[áa]|dolo[žz]en[ýy]\s+praktickou|\.\.|\bAI polish\b|Technick[ée]\s+podklady|\baudit\b|\bpayload\b|provider_status|query_plan_version|source_cycle_id|nem[áa]m\s+u\s+sebe\s+podrobn[ěe]j[šs][íi]\s+p[řr]ehled/i;
+
 export interface BriefingSelectionRow {
   id?: string;
   briefing_date?: string | null;
@@ -45,6 +47,9 @@ export function isFullRenderableBriefing(row: BriefingSelectionRow | null | unde
   const hb = p.karel_human_briefing;
   const audit = hb?.render_audit ?? {};
   const ext = p.external_reality_watch;
+  const humanText = Array.isArray(hb?.sections)
+    ? hb.sections.map((s: any) => String(s?.karel_text ?? "")).join("\n")
+    : "";
 
   const generation = String(row.generation_method ?? "").toLowerCase();
   const degraded = DEGRADED_METHOD_HINTS.some((h) => generation.includes(h));
@@ -59,6 +64,7 @@ export function isFullRenderableBriefing(row: BriefingSelectionRow | null | unde
     FULL_ALLOWED_PROVIDER_STATUSES.has(String(ext.provider_status ?? "")) &&
     Number(audit.unsupported_claims_count ?? 0) === 0 &&
     Number(audit.robotic_phrase_count ?? 0) === 0 &&
+    !DIRTY_VISIBLE_BRIEFING_RE.test(humanText) &&
     !degraded
   );
 }
