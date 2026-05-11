@@ -253,19 +253,28 @@ function boundedDelegateBody(extra: Record<string, unknown>): Record<string, unk
   };
 }
 
+// P33.5D: card-update delegate body must include p33_5d_card_updates_bounded
+// so run-daily-card-updates can confirm it received the bounded contract.
+function boundedCardUpdateBody(extra: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...boundedDelegateBody(extra),
+    p33_5d_card_updates_bounded: true,
+  };
+}
+
 function dispatchTarget(job: Job): { fn: string; body: Record<string, unknown>; timeoutMs: number } | { skip: string } {
   switch (job.job_kind) {
     case "phase4_card_profiling":
     case "phase4_card_update_tail":
       return {
         fn: "run-daily-card-updates",
-        body: boundedDelegateBody({ job_kind: job.job_kind, cycle_id: job.cycle_id }),
+        body: boundedCardUpdateBody({ job_kind: job.job_kind, cycle_id: job.cycle_id }),
         timeoutMs: 55_000,
       };
     case "phase6_card_autoupdate":
       return {
         fn: "run-daily-card-updates",
-        body: boundedDelegateBody({ job_kind: job.job_kind, cycle_id: job.cycle_id }),
+        body: boundedCardUpdateBody({ job_kind: job.job_kind, cycle_id: job.cycle_id }),
         timeoutMs: 55_000,
       };
     case "phase7_operative_plan":
