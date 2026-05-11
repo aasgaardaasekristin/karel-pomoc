@@ -792,6 +792,17 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
       const downstreamReason = (result.body as any)?.reason ?? null;
       const remainingAccountable = (result.body as any)?.remaining_work_accountable === true;
       const newStatus = downstreamOutcome === "controlled_skipped" ? "controlled_skipped" : "completed";
+      // P33.5D: store a non-secret preview of the delegate request body so
+      // acceptance proof can confirm phase4/phase6 were truly bounded.
+      const bodyPreview = {
+        source: (target.body as any)?.source ?? null,
+        job_kind: (target.body as any)?.job_kind ?? null,
+        phase_worker_bounded: (target.body as any)?.phase_worker_bounded ?? null,
+        timeout_budget_ms: (target.body as any)?.timeout_budget_ms ?? null,
+        max_items: (target.body as any)?.max_items ?? null,
+        p33_5c_bounded_delegate: (target.body as any)?.p33_5c_bounded_delegate ?? null,
+        p33_5d_card_updates_bounded: (target.body as any)?.p33_5d_card_updates_bounded ?? null,
+      };
       await admin.from("did_daily_cycle_phase_jobs").update({
         status: newStatus,
         completed_at: new Date().toISOString(),
@@ -801,6 +812,8 @@ async function processJob(admin: any, job: Job, canonicalUserId: string) {
           delegate_outcome: downstreamOutcome,
           delegate_reason: downstreamReason,
           remaining_work_accountable: remainingAccountable,
+          delegate_request_body_preview: bodyPreview,
+          p33_5d_bounded_confirmed: (result.body as any)?.p33_5d_bounded_confirmed === true,
           ...observability,
         },
         error_message: downstreamOutcome === "controlled_skipped" ? (downstreamReason ?? null) : null,
