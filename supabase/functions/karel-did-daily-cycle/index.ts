@@ -15,6 +15,7 @@ import { runGlobalDidEventIngestion } from "../_shared/didEventIngestion.ts";
 import { snapshotProtectedMutation } from "../_shared/mutationSnapshotGuard.ts";
 import { enqueuePhaseJob, summarizePhaseJobsForCycle, P29B3_REQUIRED_PHASE_JOB_KINDS } from "../_shared/dailyCyclePhaseJobs.ts";
 import { enqueueRequiredPostPhase4Jobs, isInlinePhase5To7Disabled } from "../_shared/dailyCycleEarlyEnqueue.ts";
+import { ensureCentrumTailPayloadRef } from "../_shared/dailyCyclePhasePayloads.ts";
 import { completeMainOrchestratorAfterPhaseJobDetach } from "../_shared/dailyCycleFastCompletionBarrier.ts";
 import {
   buildTherapistTaskInsert,
@@ -5302,6 +5303,76 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       if (aiAnalysisFailsoft.fallback_used) {
         await setPhase("pre_required_jobs_recovery", "p33_5e_ai_analysis_fallback_continue");
       }
+      // P33.5G: ensure phase4_centrum_tail payload row exists BEFORE early
+      // enqueue. If the upstream upsert above produced no row (or this is a
+      // path with no real centrum data) we still create a deterministic
+      // (possibly empty) payload so the required job can always be enqueued.
+      let ensuredCentrumTailRef: any = null;
+      let ensuredCentrumTailMeta: Record<string, unknown> = {};
+      try {
+        const ensure = await ensureCentrumTailPayloadRef({
+          sb,
+          cycleId: cycle.id,
+          userId: resolvedUserId,
+          source: "p33_5g_required_centrum_tail",
+          centrumPayload: null, // real payload was already upserted above when present
+        });
+        ensuredCentrumTailRef = ensure.ref;
+        ensuredCentrumTailMeta = {
+          ok: ensure.ok,
+          payload_id: ensure.ref?.payload_id ?? null,
+          payload_hash: ensure.ref?.payload_hash ?? null,
+          created: ensure.created,
+          reused: ensure.reused,
+          empty_payload: ensure.empty_payload,
+          reason: ensure.reason ?? (ensure.empty_payload
+            ? "centrum_tail_payload_missing_but_required_job_must_be_enqueued"
+            : "centrum_tail_payload_present"),
+          errors: ensure.errors,
+        };
+        if (!ensure.ok || !ensure.ref) {
+          const lastErr = `p33_5g_centrum_payload_ref_failed:${(ensure.reason ?? ensure.errors.join("|")).slice(0,280)}`;
+          console.error(`[P33.5G] ${lastErr}`);
+          try {
+            await sb.from("did_update_cycles").update({
+              status: "failed",
+              phase: "p33_5g_centrum_payload_ref_failed",
+              phase_step: "ensure_centrum_payload_failed",
+              completed_at: new Date().toISOString(),
+              heartbeat_at: new Date().toISOString(),
+              last_heartbeat_at: new Date().toISOString(),
+              last_error: lastErr.slice(0, 500),
+            }).eq("id", cycle.id);
+            // persist meta
+            const { data: ctxRow } = await sb
+              .from("did_update_cycles").select("context_data").eq("id", cycle.id).maybeSingle();
+            const prev = (ctxRow?.context_data as Record<string, unknown>) || {};
+            await sb.from("did_update_cycles").update({
+              context_data: { ...prev, centrum_tail_payload: ensuredCentrumTailMeta },
+            }).eq("id", cycle.id);
+          } catch (_) { /* ignore */ }
+          if (compileDataKeepAlive !== undefined) { clearInterval(compileDataKeepAlive); compileDataKeepAlive = undefined; }
+          if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
+          if (phaseTimeoutGuard !== undefined) { clearTimeout(phaseTimeoutGuard); phaseTimeoutGuard = undefined; }
+          return new Response(JSON.stringify({
+            success: false,
+            p33_5g_centrum_payload_ref_failed: true,
+            cycle_id: cycle.id,
+            centrum_tail_payload: ensuredCentrumTailMeta,
+          }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      } catch (ensureErr: any) {
+        console.error("[P33.5G] ensureCentrumTailPayloadRef threw:", ensureErr?.message ?? ensureErr);
+      }
+      try {
+        const { data: ctxRow } = await sb
+          .from("did_update_cycles").select("context_data").eq("id", cycle.id).maybeSingle();
+        const prev = (ctxRow?.context_data as Record<string, unknown>) || {};
+        await sb.from("did_update_cycles").update({
+          context_data: { ...prev, centrum_tail_payload: ensuredCentrumTailMeta },
+        }).eq("id", cycle.id);
+      } catch (_) { /* non-fatal */ }
+
       try {
         let pendingDriveWritesCount = 0;
         try {
@@ -5310,14 +5381,11 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
             .eq("status", "pending");
           pendingDriveWritesCount = count ?? 0;
         } catch (_) { /* non-fatal */ }
-        const ref = centrumTailPayloadId
-          ? { payload_id: centrumTailPayloadId, payload_hash: "see_phase4_tail_enqueue" }
-          : null;
         const res = await enqueueRequiredPostPhase4Jobs({
           sb,
           cycleId: cycle.id,
           userId: resolvedUserId,
-          centrumTailPayloadRef: ref,
+          centrumTailPayloadRef: ensuredCentrumTailRef,
           pendingDriveWritesCount,
           source: "main_daily_cycle_p29b3_s0",
         });
@@ -5349,16 +5417,13 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       await setPhase("p29b3_s0_required_jobs_enqueued",
         `enqueued=${p29b3EarlyEnqueueResult.enqueued.length} skipped=${p29b3EarlyEnqueueResult.skipped.length} errors=${p29b3EarlyEnqueueResult.errors.length}`);
 
-      // P33.5F: FAIL-FAST guard — main daily-cycle MUST NOT mark itself
-      // completed when the required job graph is partial. Only
-      // phase4_centrum_tail is allowed to be skipped (when no payload ref
-      // exists); every other required kind must have a row.
+      // P33.5G: FAIL-FAST guard — every required job (including
+      // phase4_centrum_tail) MUST be present. No "accepted with caveat".
       {
-        const realMissing = (p29b3EarlyEnqueueResult.missing_after_enqueue ?? [])
-          .filter((k) => k !== "phase4_centrum_tail");
+        const realMissing = (p29b3EarlyEnqueueResult.missing_after_enqueue ?? []).slice();
         if (realMissing.length > 0 || p29b3EarlyEnqueueResult.errors.length > 0) {
-          const lastErr = `p33_5f_required_jobs_missing:[${realMissing.join(",")}]|errors:[${p29b3EarlyEnqueueResult.errors.map((e: any) => e.kind ?? e).join(",")}]`;
-          console.error(`[P33.5F] fail-fast: ${lastErr}`);
+          const lastErr = `p33_5g_required_jobs_missing:[${realMissing.join(",")}]|errors:[${p29b3EarlyEnqueueResult.errors.map((e: any) => e.kind ?? e).join(",")}]`;
+          console.error(`[P33.5G] fail-fast: ${lastErr}`);
           try {
             await sb.from("did_update_cycles").update({
               status: "failed",
@@ -5375,13 +5440,14 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
           if (phaseTimeoutGuard !== undefined) { clearTimeout(phaseTimeoutGuard); phaseTimeoutGuard = undefined; }
           return new Response(JSON.stringify({
             success: false,
-            p33_5f_required_jobs_missing: realMissing,
-            p33_5f_required_jobs_errors: p29b3EarlyEnqueueResult.errors,
+            p33_5g_required_jobs_missing: realMissing,
+            p33_5g_required_jobs_errors: p29b3EarlyEnqueueResult.errors,
             cycle_id: cycle.id,
             phase_enqueue: p29b3EarlyEnqueueResult,
           }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
       }
+
 
       // ═══════════════════════════════════════════════════════════════════
       // P33.5C — FAST COMPLETION BARRIER
@@ -5503,11 +5569,46 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
             .eq("status", "pending");
           pendingDriveWritesCount = count ?? 0;
         } catch (_) { /* non-fatal */ }
+        // P33.5G: ensure phase4_centrum_tail payload exists in recovery
+        // path too — the required job graph must be 14/14 in every branch.
+        let recoveryEnsuredRef: any = null;
+        let recoveryEnsuredMeta: Record<string, unknown> = {};
+        try {
+          const ensure = await ensureCentrumTailPayloadRef({
+            sb,
+            cycleId: cycle!.id,
+            userId: resolvedUserId,
+            source: "p33_5g_recovery_required_centrum_tail",
+            centrumPayload: null,
+          });
+          recoveryEnsuredRef = ensure.ref;
+          recoveryEnsuredMeta = {
+            ok: ensure.ok,
+            payload_id: ensure.ref?.payload_id ?? null,
+            payload_hash: ensure.ref?.payload_hash ?? null,
+            created: ensure.created,
+            reused: ensure.reused,
+            empty_payload: ensure.empty_payload,
+            reason: ensure.reason ?? "centrum_tail_payload_missing_but_required_job_must_be_enqueued",
+            errors: ensure.errors,
+          };
+        } catch (ensureErr: any) {
+          console.error("[P33.5G] recovery ensureCentrumTailPayloadRef threw:", ensureErr?.message ?? ensureErr);
+        }
+        try {
+          const { data: ctxRow } = await sb
+            .from("did_update_cycles").select("context_data").eq("id", cycle!.id).maybeSingle();
+          const prev = (ctxRow?.context_data as Record<string, unknown>) || {};
+          await sb.from("did_update_cycles").update({
+            context_data: { ...prev, centrum_tail_payload: recoveryEnsuredMeta },
+          }).eq("id", cycle!.id);
+        } catch (_) { /* non-fatal */ }
+
         const res = await enqueueRequiredPostPhase4Jobs({
           sb,
           cycleId: cycle!.id,
           userId: resolvedUserId,
-          centrumTailPayloadRef: null, // legitimately skips phase4_centrum_tail
+          centrumTailPayloadRef: recoveryEnsuredRef,
           pendingDriveWritesCount,
           source: "main_daily_cycle_p33_5f_recovery",
         });
@@ -5531,8 +5632,9 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
           }).eq("id", cycle!.id);
         } catch (_) { /* non-fatal */ }
 
-        const realMissing = peSerialized.missing_after_enqueue
-          .filter((k) => k !== "phase4_centrum_tail");
+        // P33.5G: every required job (including phase4_centrum_tail) must
+        // be present. No "accepted with caveat" path remains.
+        const realMissing = peSerialized.missing_after_enqueue.slice();
         if (realMissing.length > 0 || peSerialized.errors.length > 0) {
           const lastErr = `p33_5f_required_jobs_missing:[${realMissing.join(",")}]|errors:[${peSerialized.errors.map((e: any) => e.kind ?? e).join(",")}]`;
           console.error(`[P33.5F] recovery fail-fast: ${lastErr}`);

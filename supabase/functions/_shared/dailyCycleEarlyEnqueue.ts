@@ -76,9 +76,16 @@ export async function enqueueRequiredPostPhase4Jobs(
     };
     if (kind === "phase4_centrum_tail") {
       if (!i.centrumTailPayloadRef) {
-        // Only this job legitimately requires a payload ref. All other
-        // required jobs MUST be enqueued unconditionally.
-        out.skipped.push({ kind, reason: "missing_centrum_payload_ref" });
+        // P33.5G: phase4_centrum_tail is REQUIRED. The orchestrator must
+        // ensure a deterministic (possibly empty) payload via
+        // ensureCentrumTailPayloadRef BEFORE calling this helper. A missing
+        // ref is therefore a hard error, not an allowed skip — otherwise
+        // the cycle ends up at 13/14 required jobs and pretends to be
+        // "accepted with caveat".
+        out.errors.push({
+          kind,
+          reason: "missing_centrum_payload_ref_not_allowed_p33_5g",
+        });
         continue;
       }
       input.payload_ref = i.centrumTailPayloadRef;

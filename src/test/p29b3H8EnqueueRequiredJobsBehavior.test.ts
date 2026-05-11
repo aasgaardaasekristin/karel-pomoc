@@ -78,7 +78,7 @@ describe("P29B.3-H8 enqueueRequiredPostPhase4Jobs behavior", () => {
     }
   });
 
-  it("skips ONLY phase4_centrum_tail when payload ref is missing; all others enqueued", async () => {
+  it("P33.5G: missing payload ref for phase4_centrum_tail becomes an ERROR (no silent skip)", async () => {
     const inserted: Inserted[] = [];
     const sb = makeMockSb(inserted);
     const res = await enqueueRequiredPostPhase4Jobs({
@@ -87,8 +87,9 @@ describe("P29B.3-H8 enqueueRequiredPostPhase4Jobs behavior", () => {
       userId,
       source: "p29b3_h8_test_no_payload",
     });
-    expect(res.skipped.map(s => s.kind)).toEqual(["phase4_centrum_tail"]);
-    expect(res.errors).toEqual([]);
+    expect(res.skipped).toEqual([]);
+    expect(res.errors.map(e => e.kind)).toEqual(["phase4_centrum_tail"]);
+    expect(res.errors[0].reason).toMatch(/missing_centrum_payload_ref_not_allowed_p33_5g/);
     expect(inserted.length).toBe(P29B3_REQUIRED_PHASE_JOB_KINDS.length - 1);
     expect(inserted.find(r => r.job_kind === "phase4_centrum_tail")).toBeUndefined();
   });
