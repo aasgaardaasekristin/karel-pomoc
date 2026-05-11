@@ -5485,6 +5485,115 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       console.log("[daily-cycle] Email generation skipped (handled by karel-did-daily-email).");
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // P33.5F — RECOVERY PATH for empty validatedAnalysisText
+    // When the AI analyzer fail-soft path returns no [KARTA:…] blocks the
+    // `if (validatedAnalysisText)` block above is skipped entirely. Without
+    // this fallback the canonical enqueueRequiredPostPhase4Jobs + fast
+    // completion barrier never run and only the legacy inline phase 5–9
+    // enqueues create jobs (4/14). Truth gate would then be false-green.
+    // ═══════════════════════════════════════════════════════════════════════
+    if (!validatedAnalysisText) {
+      try {
+        await setPhase("p33_5f_required_jobs_recovery", "validated_analysis_text_empty");
+        let pendingDriveWritesCount = 0;
+        try {
+          const { count } = await sb.from("did_pending_drive_writes")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "pending");
+          pendingDriveWritesCount = count ?? 0;
+        } catch (_) { /* non-fatal */ }
+        const res = await enqueueRequiredPostPhase4Jobs({
+          sb,
+          cycleId: cycle!.id,
+          userId: resolvedUserId,
+          centrumTailPayloadRef: null, // legitimately skips phase4_centrum_tail
+          pendingDriveWritesCount,
+          source: "main_daily_cycle_p33_5f_recovery",
+        });
+        const peSerialized = {
+          enqueued: res.enqueued.slice(),
+          skipped: res.skipped.slice(),
+          errors: res.errors.slice(),
+          attempted: res.attempted.slice(),
+          missing_after_enqueue: res.missing_after_enqueue.slice(),
+          already_existing: res.already_existing.slice(),
+          duplicate_existing: res.duplicate_existing.slice(),
+          verified: res.verified,
+        };
+        try {
+          const { data: peRow } = await sb
+            .from("did_update_cycles")
+            .select("context_data").eq("id", cycle!.id).maybeSingle();
+          const prev = (peRow?.context_data as Record<string, unknown>) || {};
+          await sb.from("did_update_cycles").update({
+            context_data: { ...prev, phase_enqueue: peSerialized },
+          }).eq("id", cycle!.id);
+        } catch (_) { /* non-fatal */ }
+
+        const realMissing = peSerialized.missing_after_enqueue
+          .filter((k) => k !== "phase4_centrum_tail");
+        if (realMissing.length > 0 || peSerialized.errors.length > 0) {
+          const lastErr = `p33_5f_required_jobs_missing:[${realMissing.join(",")}]|errors:[${peSerialized.errors.map((e: any) => e.kind ?? e).join(",")}]`;
+          console.error(`[P33.5F] recovery fail-fast: ${lastErr}`);
+          try {
+            await sb.from("did_update_cycles").update({
+              status: "failed",
+              phase: "p29b3_required_jobs_enqueue_failed",
+              phase_step: "missing_required_jobs",
+              completed_at: new Date().toISOString(),
+              heartbeat_at: new Date().toISOString(),
+              last_heartbeat_at: new Date().toISOString(),
+              last_error: lastErr.slice(0, 500),
+            }).eq("id", cycle!.id);
+          } catch (_) { /* ignore */ }
+          if (compileDataKeepAlive !== undefined) { clearInterval(compileDataKeepAlive); compileDataKeepAlive = undefined; }
+          if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
+          if (phaseTimeoutGuard !== undefined) { clearTimeout(phaseTimeoutGuard); phaseTimeoutGuard = undefined; }
+          return new Response(JSON.stringify({
+            success: false,
+            p33_5f_recovery: true,
+            p33_5f_required_jobs_missing: realMissing,
+            p33_5f_required_jobs_errors: peSerialized.errors,
+            cycle_id: cycle!.id,
+            phase_enqueue: peSerialized,
+          }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        const _forceFullPathLocal = (requestBody?.forceFullAnalysis === true || requestBody?.forceFullPath === true);
+        const barrier = await completeMainOrchestratorAfterPhaseJobDetach({
+          sb,
+          cycleId: cycle!.id,
+          userId: resolvedUserId,
+          enqueueResult: {
+            enqueued: peSerialized.enqueued,
+            skipped: peSerialized.skipped,
+            errors: peSerialized.errors,
+          },
+          source: "main_daily_cycle_p33_5f_recovery",
+          forceFullPath: _forceFullPathLocal,
+          quietDayBranchTaken: false,
+        });
+        console.log(`[P33.5F] recovery barrier ok=${barrier.ok} required=${barrier.detached_jobs_required.length} enqueued=${barrier.detached_jobs_enqueued.length} missing=${barrier.detached_jobs_missing.length}`);
+        if (compileDataKeepAlive !== undefined) { clearInterval(compileDataKeepAlive); compileDataKeepAlive = undefined; }
+        if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
+        if (phaseTimeoutGuard !== undefined) { clearTimeout(phaseTimeoutGuard); phaseTimeoutGuard = undefined; }
+        return new Response(JSON.stringify({
+          success: true,
+          p33_5f_recovery: true,
+          p33_5c_fast_completion_barrier: barrier.ok,
+          cycle_id: cycle!.id,
+          detached_jobs_required: barrier.detached_jobs_required.length,
+          detached_jobs_enqueued: barrier.detached_jobs_enqueued.length,
+          detached_jobs_missing: barrier.detached_jobs_missing,
+          phase_enqueue: peSerialized,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (recoveryErr: any) {
+        console.error("[P33.5F] recovery path failed:", recoveryErr?.message ?? recoveryErr);
+        // fall through to legacy completion writer (will mark status appropriately)
+      }
+    }
+
     // ═══ AUTO-CREATE MEETING if Karel calls one in the reports ═══
     try {
       const combinedReportText = (hankaHtml || "") + " " + (kataHtml || "") + " " + aiReportText;
