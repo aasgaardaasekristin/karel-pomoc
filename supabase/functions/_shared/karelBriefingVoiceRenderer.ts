@@ -366,20 +366,44 @@ function renderSessionPlan(payload: any): RenderedBriefingSection {
 /**
  * Section 4b (P33.7) — yesterday review (continuity OR controlled missing).
  */
+function isCompletedYesterdayReview(r: any): boolean {
+  if (!r || r.exists !== true) return false;
+  // Must be actually held (clinical activity) and explicitly anchored to yesterday.
+  if (r.held !== true) return false;
+  if (r.is_yesterday !== true && r.is_yesterday_for_briefing !== true) return false;
+  // Must have a real review_id (not just a pending plan fallback).
+  if (!r.review_id) return false;
+  const status = String(r.review_status ?? r.status ?? "").toLowerCase();
+  // Reject pending/technical/abandoned/non-clinical statuses.
+  const reject = new Set([
+    "pending_review", "analysis_running", "technical_test",
+    "approved_not_started", "pending_generated_plan",
+    "evidence_limited", "planned_not_started", "none",
+  ]);
+  if (reject.has(status)) return false;
+  // Reject explicit fallback reasons indicating no clinical session.
+  const fallback = String(r.fallback_reason ?? "").toLowerCase();
+  if (fallback === "planned_session_not_clinically_held" || fallback === "approved_plan_not_started" || fallback === "pending_generated_plan_only") return false;
+  // Require completion = completed (not partial/abandoned).
+  const completion = String(r.completion ?? "").toLowerCase();
+  if (completion && completion !== "completed") return false;
+  return true;
+}
+
 function renderYesterdayReview(payload: any): RenderedBriefingSection {
   const ysess = payload?.yesterday_session_review ?? null;
   const yplay = payload?.yesterday_playroom_review ?? null;
-  const sessExists = ysess?.exists === true || ysess?.held === true;
-  const playExists = yplay?.exists === true || yplay?.held === true;
+  const sessOk = isCompletedYesterdayReview(ysess);
+  const playOk = isCompletedYesterdayReview(yplay);
   const fields = ["yesterday_session_review", "yesterday_playroom_review"];
   const warnings: string[] = [];
 
   let text: string;
   let confidence: "high" | "medium" | "low" = "medium";
 
-  if (sessExists || playExists) {
+  if (sessOk || playOk) {
     const lines: string[] = ["Včerejší návaznost:"];
-    if (sessExists) {
+    if (sessOk) {
       const part = canonicalizePartDisplayName(safeStr(ysess?.part_name)) || "části";
       const summary = safeStr(ysess?.karel_summary);
       const finding = safeStr(ysess?.key_finding_about_part);
@@ -388,7 +412,7 @@ function renderYesterdayReview(payload: any): RenderedBriefingSection {
       if (finding) lines.push(`Co bylo uzavřené: ${finding}`);
       if (implication) lines.push(`Co z toho plyne pro dnešek: ${implication}`);
     }
-    if (playExists) {
+    if (playOk) {
       const part = canonicalizePartDisplayName(safeStr(yplay?.part_name)) || "kluky";
       const summary = safeStr(yplay?.karel_summary || yplay?.summary);
       lines.push(`Herna s ${part}: ${summary || "doložená, ale bez plné analýzy."}`);
@@ -398,7 +422,11 @@ function renderYesterdayReview(payload: any): RenderedBriefingSection {
   } else {
     text = "Včera nemám doložené dokončené Sezení ani Hernu. Dnešní plán proto nesmí předpokládat navázání na hotový terapeutický materiál; začínáme krátkým ověřením aktuálního stavu kluků.";
     confidence = "medium";
-    warnings.push("no_yesterday_review_controlled_missing");
+    if (ysess?.exists === true || yplay?.exists === true) {
+      warnings.push("yesterday_review_present_but_not_clinically_completed");
+    } else {
+      warnings.push("no_yesterday_review_controlled_missing");
+    }
   }
 
   return {
