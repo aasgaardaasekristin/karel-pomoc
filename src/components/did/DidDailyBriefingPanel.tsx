@@ -48,6 +48,7 @@ import { useDidThreads } from "@/hooks/useDidThreads";
 import type { DeliberationType } from "@/types/teamDeliberation";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import ExternalLoadWarning from "@/components/did/ExternalLoadWarning";
+import { isKarelDebugMode } from "@/lib/karelDebugMode";
 import AiPolishCanaryPreviewPanel from "@/components/did/AiPolishCanaryPreviewPanel";
 import { getBriefingTruthStatus, pluralizeDays } from "@/lib/briefingTruthStatus";
 import { selectBestBriefing, isFullRenderableBriefing } from "@/lib/briefingSelection";
@@ -1743,8 +1744,6 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         const hb: any = (p as any).karel_human_briefing;
         const humanPrimary = !!(hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0);
         if (!humanPrimary) return null;
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { isKarelDebugMode } = require("@/lib/karelDebugMode");
         if (!isKarelDebugMode()) return null;
         return (
           <details
@@ -1763,8 +1762,6 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
 
       {/* P33.6 — AI polish canary preview is admin/debug only. */}
       {(() => {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { isKarelDebugMode } = require("@/lib/karelDebugMode");
         if (!isKarelDebugMode()) return null;
         return (
           <AiPolishCanaryPreviewPanel
