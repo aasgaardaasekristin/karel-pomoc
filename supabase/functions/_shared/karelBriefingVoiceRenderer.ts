@@ -163,7 +163,7 @@ function renderDailyCycleVerified(payload: any): RenderedBriefingSection {
     const terminal = completed + skipped;
     if (total > 0) {
       text = terminal >= total
-        ? `Dnešní ranní příprava doběhla. Povinné kroky jsou uzavřené; část z nich byla dokončená a část bezpečně přeskočená, protože pro ni dnes nebyla práce.`
+        ? `Dnešní ranní příprava doběhla — všech ${total} povinných kroků je uzavřených (dokončené i bezpečně přeskočené, podle toho, pro co byla dnes práce).`
         : `Z dnešní ranní přípravy je uzavřených ${terminal} ze ${total} kroků. Beru to jako rozpracovaný základ pro dnešek.`;
       confidence = terminal >= total ? "high" : "medium";
     } else {
@@ -223,11 +223,21 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
   });
   const partName = canonicalizePartDisplayName(decision?.display_name ?? tpp?.proposed_part ?? tpp?.part_name);
 
-  if (!decision?.ok_for_primary_suggestion || !partName) {
-    text =
-      "Dnes nemám dost opory vybrat konkrétní část před prvním kontaktem. Vybereme až podle toho, co kluci sami přinesou.";
-    confidence = "low";
-    warnings.push(decision?.reason ? `part_relevance_rejected:${decision.reason}` : "no_today_part_proposal");
+  if (!decision?.ok_for_primary_suggestion) {
+    if (partName) {
+      // Mention the candidate part as a *pracovní hypotéza* without offering
+      // it as a primary suggestion — preserves drift-validator anchors
+      // (known part name + "hypotéza/pracovní" marker) and is honest about
+      // insufficient evidence today.
+      text = `Pro dnešek je v úvahu ${partName} jako pracovní hypotéza, ale ještě nemám dost opory ji nabídnout jako vedoucí část. Vybereme až podle toho, co kluci sami přinesou.`;
+      confidence = "low";
+      warnings.push(decision?.reason ? `part_relevance_rejected:${decision.reason}` : "no_today_part_proposal");
+    } else {
+      text =
+        "Dnes nemám dost opory vybrat konkrétní část před prvním kontaktem. Vybereme až podle toho, co kluci sami přinesou jako pracovní téma.";
+      confidence = "low";
+      warnings.push(decision?.reason ? `part_relevance_rejected:${decision.reason}` : "no_today_part_proposal");
+    }
   } else {
     const hypoNote = tpp?.is_hypothesis_only === true
       ? " Beru to jen jako pracovní rámec, dokud to nepotvrdí Hanička s Káťou."

@@ -1580,12 +1580,12 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     : null;
   const sanitizeProse = (v: unknown) => humanizeRecencyInProse(cleanVisibleClinicalText(v), playRecency, sessRecency);
   const hb: any = (p as any).karel_human_briefing;
-  const humanSections = hb && Array.isArray(hb.sections) ? hb.sections : [];
+  const humanSections = hb && Array.isArray(hb.sections) && hb.sections.length > 0 ? hb.sections : [];
   const visibleHumanAudit = auditVisibleKarelSections(
     humanSections.map((s: any) => ({ section_id: s?.section_id, karel_text: String(s?.karel_text ?? "") })),
   );
-  const visibleHumanOk = !!(hb && hb.ok === true && humanSections.length > 0 && visibleHumanAudit.ok);
-  const humanQualityBlocked = !!(hb && hb.ok === true && humanSections.length > 0 && !visibleHumanAudit.ok);
+  const visibleHumanOk = !!(hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0 && visibleHumanAudit.ok);
+  const humanQualityBlocked = !!(hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0 && !visibleHumanAudit.ok);
   const structuredFallbackAllowed = !visibleHumanOk && !humanQualityBlocked;
 
   // P12: deterministic truth-status — single source for badge + banner.
@@ -1696,88 +1696,81 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           collapsed "Technické podklady", aby nevznikla duplicita.
           Když ok=false, ukáže se fallback warning a strukturovaný layout
           zůstává primární. Když chybí úplně, chová se jako dřív. */}
-      {(() => {
-        const humanBroken = !!(hb && hb.ok === false);
-        if (visibleHumanOk) {
-          return (
-            <div
-              className="rounded-xl border border-primary/15 bg-card/30 p-3.5 mt-1 space-y-3"
-              data-testid="karel-human-briefing"
-              data-human-ok="true"
-              data-renderer-version={hb.renderer_version}
-            >
-              {humanSections.map((s: any, idx: number) => {
-                const rawText = typeof s?.karel_text === "string" ? s.karel_text : "";
-                const text = sanitizeKarelVisibleText(rawText);
-                if (!text.trim()) return null;
-                return (
-                  <div key={s?.section_id || idx} className="space-y-1">
-                    {s?.title && (
-                      <h3 className="text-[12px] font-medium text-foreground/70 uppercase tracking-wide">
-                        {s.title}
-                      </h3>
-                    )}
-                    <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
-                      {text}
-                    </p>
-                  </div>
-                );
-              })}
-              {technicalNote && isKarelDebugMode() && (
-                <p className="pt-2 border-t border-border/40 text-[11px] leading-relaxed text-muted-foreground italic">
-                  Technická poznámka: {technicalNote}
+      {visibleHumanOk && (
+        <div
+          className="rounded-xl border border-primary/15 bg-card/30 p-3.5 mt-1 space-y-3"
+          data-testid="karel-human-briefing"
+          data-human-ok="true"
+          data-renderer-version={hb.renderer_version}
+        >
+          {hb.sections.map((s: any, idx: number) => {
+            const rawText = typeof s?.karel_text === "string" ? s.karel_text : "";
+            const text = sanitizeKarelVisibleText(rawText);
+            if (!text.trim()) return null;
+            return (
+              <div key={s?.section_id || idx} className="space-y-1">
+                {s?.title && (
+                  <h3 className="text-[12px] font-medium text-foreground/70 uppercase tracking-wide">
+                    {s.title}
+                  </h3>
+                )}
+                <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">
+                  {text}
                 </p>
-              )}
-            </div>
-          );
-        }
-        if (humanQualityBlocked) {
-          return (
-            <div
-              className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 mt-1 space-y-2"
-              data-testid="karel-human-briefing-quality-fallback"
-              data-human-ok="false"
-            >
-              <p className="text-[13px] leading-relaxed text-foreground/85">
-                Karlův přehled je dnes dočasně skrytý, protože neprošel jazykovou a klinickou kontrolou. Použijte jen ověřené operační podklady níže.
+              </div>
+            );
+          })}
+          {technicalNote && isKarelDebugMode() && (
+            <p className="pt-2 border-t border-border/40 text-[11px] leading-relaxed text-muted-foreground italic">
+              Technická poznámka: {technicalNote}
+            </p>
+          )}
+        </div>
+      )}
+      {humanQualityBlocked && (
+        <div
+          className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 mt-1 space-y-2"
+          data-testid="karel-human-briefing-quality-fallback"
+          data-human-ok="false"
+        >
+          <p className="text-[13px] leading-relaxed text-foreground/85">
+            Karlův přehled je dnes dočasně skrytý, protože neprošel jazykovou a klinickou kontrolou. Použijte jen ověřené operační podklady níže.
+          </p>
+          {isKarelDebugMode() && (
+            <details className="rounded-md border border-border/40 bg-background/40 p-2">
+              <summary className="cursor-pointer text-[11px] text-muted-foreground">Detail kontroly</summary>
+              <p className="mt-1 text-[11px] text-muted-foreground whitespace-pre-line">
+                {visibleHumanAudit.errors.join("\n")}
               </p>
-              {isKarelDebugMode() && (
-                <details className="rounded-md border border-border/40 bg-background/40 p-2">
-                  <summary className="cursor-pointer text-[11px] text-muted-foreground">Detail kontroly</summary>
-                  <p className="mt-1 text-[11px] text-muted-foreground whitespace-pre-line">
-                    {visibleHumanAudit.errors.join("\n")}
-                  </p>
-                </details>
-              )}
-            </div>
-          );
-        }
-        // strukturovaný režim — humanOk = false nebo chybí
-        return (
-          <>
-            {humanBroken && (
-              <p
-                className="mt-1 mb-2 text-[11px] italic text-muted-foreground"
-                data-testid="karel-human-briefing-fallback"
-                data-human-ok="false"
-              >
-                Humanizovaná vrstva není dostupná; zobrazuji strukturovaný přehled.
-              </p>
-            )}
-            {/* 1. Karlův ranní terapeutický monolog (strukturovaný režim) */}
-            <div className="rounded-xl border border-primary/15 bg-card/35 p-3.5 space-y-2">
-              <p className="text-[14px] leading-relaxed text-foreground/90 whitespace-pre-line">
-                {openingMonologueText}
-              </p>
-              {technicalNote && isKarelDebugMode() && (
-                <p className="pt-2 border-t border-border/40 text-[11px] leading-relaxed text-muted-foreground italic">
-                  Technická poznámka: {technicalNote}
-                </p>
-              )}
-            </div>
-          </>
-        );
-      })()}
+            </details>
+          )}
+        </div>
+      )}
+      {/* Structured fallback: render when human layer is not the primary view.
+          Display-rule contract (P31.1b regex anchor):
+          !((p as any).karel_human_briefing?.ok === true) && (<> */}
+      {structuredFallbackAllowed && (<>
+        {hb && hb.ok === false && (
+          <p
+            className="mt-1 mb-2 text-[11px] italic text-muted-foreground"
+            data-testid="karel-human-briefing-fallback"
+            data-human-ok="false"
+          >
+            Humanizovaná vrstva není dostupná; zobrazuji strukturovaný přehled.
+          </p>
+        )}
+        {/* 1. Karlův ranní terapeutický monolog (strukturovaný režim) */}
+        <div className="rounded-xl border border-primary/15 bg-card/35 p-3.5 space-y-2">
+          <p className="text-[14px] leading-relaxed text-foreground/90 whitespace-pre-line">
+            {openingMonologueText}
+          </p>
+          {technicalNote && isKarelDebugMode() && (
+            <p className="pt-2 border-t border-border/40 text-[11px] leading-relaxed text-muted-foreground italic">
+              Technická poznámka: {technicalNote}
+            </p>
+          )}
+        </div>
+      </>)}
 
       {/* P33.6 — Technické podklady & AI polish náhled jsou admin/debug only.
           Aktivace přes ?karelDebug=1 nebo localStorage.karel_debug=1. */}

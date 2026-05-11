@@ -176,6 +176,7 @@ const renderPanel = async (fixture: any) => {
 describe("P31.1c — UI runtime smoke + anti-regression", () => {
   beforeEach(() => {
     cleanup();
+    try { window.localStorage.setItem("karel_debug", "1"); } catch {}
   });
 
   it("A. fixture obsahuje tvar latest payloadu bez raw clinical textu", () => {
