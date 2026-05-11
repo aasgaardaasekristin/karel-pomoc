@@ -31,6 +31,15 @@ export type RawExternalImpact = {
     verification_status: string;
     graphic_content_risk: string;
     summary_for_therapists: string;
+    source_url?: string | null;
+    source_domain?: string | null;
+    source_published_at?: string | null;
+    fetched_at?: string | null;
+    freshness?: {
+      ok_for_today_display?: boolean;
+      status?: string;
+      reason?: string;
+    } | null;
   } | null;
 };
 
@@ -45,6 +54,10 @@ export type DisplayExternalImpact = {
   body: string;
   /** Optional recommendation, fully humanized. */
   recommendation: string | null;
+  source_domain: string | null;
+  source_published_at: string | null;
+  fetched_at: string | null;
+  freshness_ok: boolean;
   /** How many raw impacts this card aggregates (for diagnostics, not UI). */
   source_impact_ids: string[];
 };
@@ -164,6 +177,7 @@ export function clusterAndHumanizeExternalImpacts(
       groups.set(groupKey, []);
       labels.set(groupKey, label);
     }
+    if (ev?.freshness && ev.freshness.ok_for_today_display !== true) continue;
     groups.get(groupKey)!.push(imp);
   }
 
@@ -195,6 +209,10 @@ export function clusterAndHumanizeExternalImpacts(
       theme_label: themeLabel,
       body,
       recommendation: reco,
+      source_domain: worst.external_reality_events?.source_domain ?? null,
+      source_published_at: worst.external_reality_events?.source_published_at ?? null,
+      fetched_at: worst.external_reality_events?.fetched_at ?? null,
+      freshness_ok: worst.external_reality_events?.freshness?.ok_for_today_display === true,
       source_impact_ids: group.map((g) => g.id),
     });
   }
