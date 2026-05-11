@@ -381,7 +381,7 @@ function renderRisks(payload: any): RenderedBriefingSection {
     lines.push(`U těchto kluků je dnes čerstvě zachycený vnější okruh: ${partsWithTriggers.join(", ")}. Není to predikce, je to upozornění držet bezpečný rámec.`);
   }
   if (partsWithCheckedToday.length > 0) {
-    lines.push(`Internetový přehled dnes znovu ověřil citlivý okruh u: ${partsWithCheckedToday.join(", ")}. Datum publikace zdroje není jasné, takže to neberu jako dnešní událost; jen jako důvod jemně ověřit, zda se s tématem dnes setkali.`);
+    lines.push(`Internetový přehled dnes znovu ověřil citlivý okruh u: ${partsWithCheckedToday.join(", ")}. Datum publikace zdroje není jasné, neberu to jako něco, co se stalo dnes; jen jako důvod jemně ověřit, zda se s tématem dnes setkali.`);
   }
   if (partsWithHistoricalOnly.length > 0) {
     lines.push(`U těchto kluků existuje dříve evidovaný citlivý okruh bez čerstvého zdrojovaného podkladu pro dnešek: ${partsWithHistoricalOnly.join(", ")}. Smyslem je jen ověřit, zda se s tématem dnes setkali.`);
