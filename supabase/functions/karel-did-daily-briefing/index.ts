@@ -45,6 +45,7 @@ import {
   type DailyBriefingTruthGateResult,
 } from "../_shared/dailyBriefingTruthGate.ts";
 import { renderKarelBriefingVoice } from "../_shared/karelBriefingVoiceRenderer.ts";
+import { evaluateBriefingContentCompleteness } from "../_shared/dailyBriefingContentCompleteness.ts";
 import { generateKarelAiPolishCandidate } from "../_shared/karelBriefingVoiceAiPolish.ts";
 import { isPartTodayRelevantForPrimarySuggestion } from "../_shared/partTodayRelevance.ts";
 
@@ -3938,6 +3939,19 @@ Deno.serve(async (req) => {
         display_name: null,
         confidence: "low",
         checked_at: new Date().toISOString(),
+      };
+    }
+
+    // P33.7 — content completeness contract written into payload BEFORE renderer
+    try {
+      payload.daily_briefing_content_completeness = evaluateBriefingContentCompleteness(payload);
+    } catch (e) {
+      payload.daily_briefing_content_completeness = {
+        version: "p33.7",
+        checked_at: new Date().toISOString(),
+        sections: {},
+        overall_status: "blocked",
+        blocking_reasons: [`completeness_eval_threw:${String((e as Error)?.message ?? e).slice(0, 200)}`],
       };
     }
 

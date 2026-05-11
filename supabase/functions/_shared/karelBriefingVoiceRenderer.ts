@@ -12,6 +12,10 @@ import {
   canonicalizePartDisplayName,
   isPartTodayRelevantForPrimarySuggestion,
 } from "./partTodayRelevance.ts";
+import {
+  evaluateBriefingContentCompleteness,
+  type DailyBriefingContentCompleteness,
+} from "./dailyBriefingContentCompleteness.ts";
 
 export interface RenderedBriefingSection {
   section_id: string;
@@ -35,6 +39,7 @@ export interface KarelBriefingVoiceRenderResult {
   sections: RenderedBriefingSection[];
   opening_text?: string;
   closing_text?: string;
+  content_completeness?: DailyBriefingContentCompleteness;
   render_audit: {
     source_fields_used: string[];
     missing_expected_fields: string[];
@@ -46,7 +51,7 @@ export interface KarelBriefingVoiceRenderResult {
   errors: string[];
 }
 
-export const RENDERER_VERSION = "p31.1.0";
+export const RENDERER_VERSION = "p33.7.0";
 
 function withTerminalPunctuation(text: string): string {
   const s = safeStr(text);
@@ -224,17 +229,18 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
   const partName = canonicalizePartDisplayName(decision?.display_name ?? tpp?.proposed_part ?? tpp?.part_name);
 
   if (!decision?.ok_for_primary_suggestion) {
+    const fallbackPlan = [
+      "První kontakt: Hanička nebo Káťa krátce zjistí tělesné napětí, emoční dostupnost a ochotu kluků navázat kontakt.",
+      "Bezpečnostní kontrola: pokud někdo z kluků signalizuje stop, tlak nebo přemíra emocí, zůstáváme jen u krátkého ověření a neotevíráme nový materiál.",
+      "Tři možné cesty podle prvního kontaktu: krátké terapeutické Sezení, stabilizační Herna bez nového tématu, nebo jen bezpečný kontakt bez otevírání těžkého materiálu.",
+      "Stop signály pro dnešek: nepokoušet se otevřít nové trauma téma, neforsírovat konkrétní část a neuzavírat dnes žádné velké terapeutické rozhodnutí.",
+    ].join("\n");
     if (partName) {
-      // Mention the candidate part as a *pracovní hypotéza* without offering
-      // it as a primary suggestion — preserves drift-validator anchors
-      // (known part name + "hypotéza/pracovní" marker) and is honest about
-      // insufficient evidence today.
-      text = `Pro dnešek je v úvahu ${partName} jako pracovní hypotéza, ale ještě nemám dost opory ji nabídnout jako vedoucí část. Vybereme až podle toho, co kluci sami přinesou.`;
+      text = `Pro dnešek je v úvahu ${partName} jako pracovní hypotéza, ale ještě nemám dost opory ji nabídnout jako vedoucí část. Místo vedoucí části dnes navrhuji tento operační rámec:\n\n${fallbackPlan}`;
       confidence = "low";
       warnings.push(decision?.reason ? `part_relevance_rejected:${decision.reason}` : "no_today_part_proposal");
     } else {
-      text =
-        "Dnes nemám dost opory vybrat konkrétní část před prvním kontaktem. Vybereme až podle toho, co kluci sami přinesou jako pracovní téma.";
+      text = `Dnes nemám dost opory vybrat konkrétní část před prvním kontaktem. Místo vedoucí části dnes navrhuji tento operační rámec:\n\n${fallbackPlan}`;
       confidence = "low";
       warnings.push(decision?.reason ? `part_relevance_rejected:${decision.reason}` : "no_today_part_proposal");
     }
@@ -259,6 +265,9 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
 
 /**
  * Section 4 — úkoly terapeutek (ask_hanka / ask_kata).
+ *
+ * P33.7: Tasks must be CONCRETE. When podklady chybí, Karel doplní
+ * defaultní first-contact / risk-stop rámec, aby přehled nebyl operačně prázdný.
  */
 function renderTherapistAsks(payload: any): RenderedBriefingSection {
   const askH = Array.isArray(payload?.ask_hanka) ? payload.ask_hanka : [];
@@ -269,21 +278,32 @@ function renderTherapistAsks(payload: any): RenderedBriefingSection {
   const firstH = safeStr(askH[0]?.text);
   const firstK = safeStr(askK[0]?.text);
 
-  const parts: string[] = [];
-  if (firstH) parts.push(withTerminalPunctuation(`Haničko, hlavní věc na dnes je ${firstH.charAt(0).toLocaleLowerCase("cs")}${firstH.slice(1)}`));
-  if (firstK) parts.push(withTerminalPunctuation(`Káťo, hlavní věc na dnes je ${firstK.charAt(0).toLocaleLowerCase("cs")}${firstK.slice(1)}`));
-  if (askH.length > 1) parts.push(`Pro Haničku k tomu mám ještě ${askH.length - 1} navazujících bodů.`);
-  if (askK.length > 1) parts.push(`Pro Káťu k tomu mám ještě ${askK.length - 1} navazujících bodů.`);
+  const blocks: string[] = [];
 
-  let text: string;
-  let confidence: "high" | "medium" | "low" = "high";
-  if (parts.length === 0) {
-    text = "Pro Haničku ani Káťu nemám dnes žádný konkrétní úkol připravený.";
-    confidence = "low";
-    warnings.push("no_therapist_asks");
+  // Hanička block — first-contact check
+  if (firstH) {
+    const head = withTerminalPunctuation(`Haničko, hlavní věc na dnes je ${firstH.charAt(0).toLocaleLowerCase("cs")}${firstH.slice(1)}`);
+    const concrete = "Konkrétně: ověř první kontakt s kluky (zda jsou dostupní a ochotní navázat), pojmenuj tělesné napětí nebo emoční dostupnost a podle toho rozhodni, jestli dnes půjdeme do Sezení, do stabilizační Herny, nebo zůstane jen bezpečný kontakt.";
+    blocks.push(`${head}\n${concrete}`);
+    if (askH.length > 1) blocks.push(`Pro Haničku k tomu mám ještě ${askH.length - 1} navazujících bodů.`);
   } else {
-    text = parts.join("\n\n");
+    blocks.push("Haničko, jako první krok ověř kontakt s kluky: zda jsou dostupní, jaké je tělesné napětí a ochota navázat. Podle toho rozhodneme mezi krátkým Sezením, stabilizační Hernou nebo jen bezpečným kontaktem.");
+    warnings.push("no_ask_hanka_default_first_contact_used");
   }
+
+  // Káťa block — risk + stop signals
+  if (firstK) {
+    const head = withTerminalPunctuation(`Káťo, hlavní věc na dnes je ${firstK.charAt(0).toLocaleLowerCase("cs")}${firstK.slice(1)}`);
+    const concrete = "Konkrétně: projdi rizika a stop signály pro dnešek, drž bezpečný rámec a pokud se objeví citlivý okruh z venku, dej Haničce vědět, abychom dnes neotevírali nové trauma téma.";
+    blocks.push(`${head}\n${concrete}`);
+    if (askK.length > 1) blocks.push(`Pro Káťu k tomu mám ještě ${askK.length - 1} navazujících bodů.`);
+  } else {
+    blocks.push("Káťo, drž dnes risk a stop check: sleduj signály přetížení u kluků, pojmenuj případnou citlivost z venku a rozhodni, zda některé téma dnes raději neotevírat.");
+    warnings.push("no_ask_kata_default_risk_stop_used");
+  }
+
+  const text = blocks.join("\n\n");
+  const confidence: "high" | "medium" | "low" = (firstH && firstK) ? "high" : "medium";
 
   return {
     section_id: "therapist_asks",
@@ -298,6 +318,9 @@ function renderTherapistAsks(payload: any): RenderedBriefingSection {
 
 /**
  * Section 5 — plán sezení / herny.
+ *
+ * P33.7: Když není schválený plán, Karel místo věty „nemám plán" nabídne
+ * rozhodovací protokol (kdy zvolit Sezení / Hernu / bezpečný kontakt).
  */
 function renderSessionPlan(payload: any): RenderedBriefingSection {
   const sess = payload?.proposed_session ?? null;
@@ -309,15 +332,22 @@ function renderSessionPlan(payload: any): RenderedBriefingSection {
   const playTitle = safeStr(play?.title || play?.theme || play?.focus);
 
   const lines: string[] = [];
-  if (sessTitle) lines.push(`Pro dnešní Sezení mám připravený rámec: ${sessTitle}.`);
-  if (playTitle) lines.push(`Pro Hernu mám připravený rámec: ${playTitle}.`);
+  if (sessTitle) lines.push(`Pro dnešní Sezení mám schválený rámec: ${sessTitle}.`);
+  if (playTitle) lines.push(`Pro Hernu mám schválený rámec: ${playTitle}.`);
 
   let text: string;
   let confidence: "high" | "medium" | "low" = "medium";
   if (lines.length === 0) {
-    text = "Pro dnešek nemám připravený konkrétní plán Sezení ani Herny. Doporučuji rozhodnout podle prvního kontaktu s kluky.";
+    text = [
+      "Pro dnešek nemám schválený konkrétní plán Sezení ani Herny.",
+      "Rozhodovací protokol podle prvního kontaktu:",
+      "— Sezení zvol, pokud kluci přinášejí konkrétní téma a je u nich dnes ochota i kapacita pracovat hlouběji.",
+      "— Stabilizační Hernu zvol, pokud je vyšší napětí, ale kontakt drží; cílem je bezpečí, ne nový materiál.",
+      "— Jen bezpečný kontakt zvol, pokud někdo z kluků signalizuje stop, přemíru emocí nebo únavu; nic nového dnes neotevíráme.",
+      "Případné starší týmové návrhy (například s Timmim) prosím neberte jako dnešní plán; jen jako podklad k pozdější revizi.",
+    ].join("\n");
     confidence = "low";
-    warnings.push("no_session_or_playroom");
+    warnings.push("no_session_or_playroom_decision_protocol_used");
   } else {
     text = lines.join("\n\n");
   }
@@ -325,6 +355,55 @@ function renderSessionPlan(payload: any): RenderedBriefingSection {
   return {
     section_id: "session_plan",
     title: "Plán Sezení a Herny",
+    karel_text: text,
+    source_fields: fields,
+    confidence,
+    unsupported_claims_count: 0,
+    warnings,
+  };
+}
+
+/**
+ * Section 4b (P33.7) — yesterday review (continuity OR controlled missing).
+ */
+function renderYesterdayReview(payload: any): RenderedBriefingSection {
+  const ysess = payload?.yesterday_session_review ?? null;
+  const yplay = payload?.yesterday_playroom_review ?? null;
+  const sessExists = ysess?.exists === true || ysess?.held === true;
+  const playExists = yplay?.exists === true || yplay?.held === true;
+  const fields = ["yesterday_session_review", "yesterday_playroom_review"];
+  const warnings: string[] = [];
+
+  let text: string;
+  let confidence: "high" | "medium" | "low" = "medium";
+
+  if (sessExists || playExists) {
+    const lines: string[] = ["Včerejší návaznost:"];
+    if (sessExists) {
+      const part = canonicalizePartDisplayName(safeStr(ysess?.part_name)) || "části";
+      const summary = safeStr(ysess?.karel_summary);
+      const finding = safeStr(ysess?.key_finding_about_part);
+      const implication = safeStr(ysess?.implications_for_plan);
+      lines.push(`Sezení s ${part}: ${summary || "průběh doložený, podrobnosti viz review."}`);
+      if (finding) lines.push(`Co bylo uzavřené: ${finding}`);
+      if (implication) lines.push(`Co z toho plyne pro dnešek: ${implication}`);
+    }
+    if (playExists) {
+      const part = canonicalizePartDisplayName(safeStr(yplay?.part_name)) || "kluky";
+      const summary = safeStr(yplay?.karel_summary || yplay?.summary);
+      lines.push(`Herna s ${part}: ${summary || "doložená, ale bez plné analýzy."}`);
+    }
+    text = lines.join("\n");
+    confidence = "high";
+  } else {
+    text = "Včera nemám doložené dokončené Sezení ani Hernu. Dnešní plán proto nesmí předpokládat navázání na hotový terapeutický materiál; začínáme krátkým ověřením aktuálního stavu kluků.";
+    confidence = "medium";
+    warnings.push("no_yesterday_review_controlled_missing");
+  }
+
+  return {
+    section_id: "yesterday_review",
+    title: "Včerejší návaznost",
     karel_text: text,
     source_fields: fields,
     confidence,
@@ -381,9 +460,67 @@ function renderExternalReality(payload: any): RenderedBriefingSection {
     return acc + (Array.isArray(a) ? a.length : 0);
   }, 0);
 
+  // P33.7 — Source/tier manifestation per affected part.
+  type PerPart = { name: string; tier: "fresh" | "checked" | "historical"; category: string; domain: string; checkedDate: string; pubDate: string | null };
+  const perPart: PerPart[] = [];
+  const cleanCat = (s: any) => safeStr(s).replace(/_/g, " ").trim();
+  for (const p of partsArr) {
+    const name = canonicalizePartDisplayName(safeStr(p?.evidence_summary?.canonical_part_name) || safeStr(p?.part_name)) || "";
+    if (!name) continue;
+    const fresh = Array.isArray(p?.internet_triggers_today) ? p.internet_triggers_today : [];
+    const checked = Array.isArray(p?.evidence_summary?.checked_external_sources_today) ? p.evidence_summary.checked_external_sources_today : [];
+    const hist = Array.isArray(p?.evidence_summary?.historical_external_triggers) ? p.evidence_summary.historical_external_triggers : [];
+    const isFresh = (t: any) => t?.freshness?.display_tier === "fresh_today_event" || t?.freshness?.ok_for_today_display === true;
+    const freshHit = fresh.find(isFresh) ?? checked.find(isFresh);
+    if (freshHit) {
+      perPart.push({
+        name, tier: "fresh",
+        category: cleanCat(freshHit?.event_type || freshHit?.category) || "vnější citlivý okruh",
+        domain: safeStr(freshHit?.source_domain),
+        checkedDate: safeStr(freshHit?.fetched_at || freshHit?.checked_at).slice(0, 10),
+        pubDate: safeStr(freshHit?.source_published_at) || null,
+      });
+      continue;
+    }
+    if (checked.length > 0) {
+      const c = checked[0];
+      perPart.push({
+        name, tier: "checked",
+        category: cleanCat(c?.event_type || c?.category) || "vnější citlivý okruh",
+        domain: safeStr(c?.source_domain),
+        checkedDate: safeStr(c?.fetched_at || c?.checked_at).slice(0, 10),
+        pubDate: safeStr(c?.source_published_at) || null,
+      });
+      continue;
+    }
+    if (hist.length > 0) {
+      const h = hist[0];
+      perPart.push({
+        name, tier: "historical",
+        category: cleanCat(h?.event_type || h?.category) || "vnější citlivý okruh",
+        domain: safeStr(h?.source_domain),
+        checkedDate: safeStr(h?.fetched_at || h?.checked_at).slice(0, 10),
+        pubDate: safeStr(h?.source_published_at) || null,
+      });
+    }
+  }
+
+  function manifestLine(pp: PerPart): string {
+    const tail = [pp.domain && `zdroj ${pp.domain}`, pp.checkedDate && `ověřeno ${pp.checkedDate}`, pp.pubDate ? `publikováno ${pp.pubDate}` : "datum publikace neznámé"].filter(Boolean).join(", ");
+    if (pp.tier === "fresh") {
+      return `U ${pp.name} je dnes čerstvě zachycený vnější okruh z oblasti ${pp.category} (${tail}). Beru to jen jako signál držet bezpečný rámec, ne jako závěr o jeho stavu.`;
+    }
+    if (pp.tier === "checked") {
+      return `U ${pp.name} internetový přehled dnes znovu ověřil citlivý okruh z oblasti ${pp.category} (${tail}). Datum publikace zdroje není jasné, neberu to jako dnešní událost; jen jako důvod jemně ověřit, jestli se s tématem dnes setkali.`;
+    }
+    return `U ${pp.name} je dříve evidovaný citlivý okruh z oblasti ${pp.category} bez čerstvého dnešního zdroje (${tail}). Smyslem je jen ověřit, zda se s tématem dnes setkali.`;
+  }
+
   if (ps === "configured") {
-    if (freshCount > 0 || sourceBacked > 0) {
-      text = "Externí situační přehled jsem dnes ověřoval a přinesl čerstvě zdrojované okruhy. Pracuji s nimi jen jako s jemným hlídáním rámce, ne jako s diagnózou ani predikcí.";
+    if (perPart.length > 0) {
+      const intro = "Externí situační přehled jsem dnes ověřoval. Konkrétně:";
+      const lines = perPart.slice(0, 6).map(manifestLine);
+      text = [intro, ...lines].join("\n\n");
       confidence = "medium";
     } else if (checkedTodayCount > 0) {
       text = "Externí situační přehled jsem dnes ověřoval. Datum publikace u nalezených zdrojů ale není jasné, takže to neberu jako dnešní událost — jen jako důvod jemně ověřit, jestli se s tématem dnes potkali.";
@@ -692,6 +829,7 @@ export function renderKarelBriefingVoice(payload: any): KarelBriefingVoiceRender
   const sections: RenderedBriefingSection[] = [
     renderSystemMorningState(payload),
     renderDailyCycleVerified(payload),
+    renderYesterdayReview(payload),
     renderTodayParts(payload),
     renderTherapistAsks(payload),
     renderSessionPlan(payload),
@@ -700,6 +838,9 @@ export function renderKarelBriefingVoice(payload: any): KarelBriefingVoiceRender
     renderUnknowns(payload, []),
     renderNextStep(payload),
   ];
+
+  // P33.7 — content completeness contract
+  const contentCompleteness = evaluateBriefingContentCompleteness(payload);
 
   // Claim check + forbidden phrase audit per section
   const knownParts = collectKnownPartNames(payload);
@@ -751,6 +892,7 @@ export function renderKarelBriefingVoice(payload: any): KarelBriefingVoiceRender
     sections,
     opening_text: sections[0]?.karel_text,
     closing_text: sections[sections.length - 1]?.karel_text,
+    content_completeness: contentCompleteness,
     render_audit: {
       source_fields_used: Array.from(sourceFieldsUsed).sort(),
       missing_expected_fields: missingExpected,
