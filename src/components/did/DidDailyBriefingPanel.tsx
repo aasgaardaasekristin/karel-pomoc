@@ -1782,9 +1782,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       {/* P33.6 — Technické podklady & AI polish náhled jsou admin/debug only.
           Aktivace přes ?karelDebug=1 nebo localStorage.karel_debug=1. */}
       {(() => {
-        const hb: any = (p as any).karel_human_briefing;
-        const humanPrimary = !!(hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0);
-        if (!humanPrimary) return null;
+        if (!visibleHumanOk) return null;
         if (!isKarelDebugMode()) return null;
         return (
           <details
@@ -1807,13 +1805,13 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         return (
           <AiPolishCanaryPreviewPanel
             briefingId={briefing?.id || null}
-            humanOk={!!((p as any).karel_human_briefing?.ok === true)}
+            humanOk={visibleHumanOk}
           />
         );
       })()}
 
 
-      {!((p as any).karel_human_briefing?.ok === true) && visibleRealityContext && (
+      {structuredFallbackAllowed && visibleRealityContext && (
         <>
           <NarrativeDivider />
           <SectionHead>Důležitý kontext z posledních dní</SectionHead>
@@ -1823,7 +1821,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
-      {!((p as any).karel_human_briefing?.ok === true) && (<>
+      {structuredFallbackAllowed && (<>
       {/* 2. Co se změnilo za poslední 3 dny */}
       {p.last_3_days && (
         <>
