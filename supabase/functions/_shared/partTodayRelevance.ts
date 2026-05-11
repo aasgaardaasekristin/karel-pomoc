@@ -31,6 +31,12 @@ export interface PartTodayRelevanceResult {
 }
 
 const TECHNICAL_PREFIX_RE = /^00[0-9]_/;
+const CANONICAL_PART_NAMES: Record<string, string> = {
+  arthur: "Arthur",
+  tundrupek: "Tundrupek",
+  gustik: "Gustík",
+  "gust\u00edk": "Gust\u00edk",
+};
 
 /**
  * Strip technical prefixes like "002_Anička" → "Anička".
@@ -44,6 +50,14 @@ export function normalizePartDisplayName(raw: string | null | undefined): string
   if (!s) return null;
   // Capitalize first letter (Czech-aware)
   return s.charAt(0).toLocaleUpperCase("cs") + s.slice(1);
+}
+
+export function canonicalizePartDisplayName(raw: string | null | undefined): string | null {
+  const display = normalizePartDisplayName(raw);
+  if (!display) return null;
+  const key = display.toLocaleLowerCase("cs");
+  if (key === "hana" || key === "hanka" || key === "hani\u010dka" || key === "karel" || key === "k\u00e1\u0165a" || key === "kata") return null;
+  return CANONICAL_PART_NAMES[key] ?? display;
 }
 
 function eqCi(a: string, b: string): boolean {

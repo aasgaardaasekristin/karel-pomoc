@@ -24,6 +24,12 @@ export interface PartTodayRelevanceResult {
 }
 
 const TECHNICAL_PREFIX_RE = /^00[0-9]_/;
+const CANONICAL_PART_NAMES: Record<string, string> = {
+  arthur: "Arthur",
+  tundrupek: "Tundrupek",
+  gustik: "Gustík",
+  gustík: "Gustík",
+};
 
 export function normalizePartDisplayName(raw: string | null | undefined): string | null {
   if (!raw) return null;
@@ -32,6 +38,14 @@ export function normalizePartDisplayName(raw: string | null | undefined): string
   s = s.replace(TECHNICAL_PREFIX_RE, "").trim();
   if (!s) return null;
   return s.charAt(0).toLocaleUpperCase("cs") + s.slice(1);
+}
+
+export function canonicalizePartDisplayName(raw: string | null | undefined): string | null {
+  const display = normalizePartDisplayName(raw);
+  if (!display) return null;
+  const key = display.toLocaleLowerCase("cs");
+  if (key === "hana" || key === "hanka" || key === "hanička" || key === "karel" || key === "káťa" || key === "kata") return null;
+  return CANONICAL_PART_NAMES[key] ?? display;
 }
 
 function eqCi(a: string, b: string): boolean {
