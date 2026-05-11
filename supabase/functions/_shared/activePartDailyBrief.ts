@@ -404,14 +404,15 @@ export async function generateActivePartDailyBriefs(
       });
       return { ...e, source_published_at: sourcePublishedAt, fetched_at: fetchedAt, freshness };
     });
-    const internetTriggers = externalEventViews.filter((e) => e.freshness.ok_for_today_display === true);
+    const internetTriggers = externalEventViews.filter((e) => e.freshness.display_tier === "fresh_today_event");
+    const checkedTodayUnknownDate = externalEventViews.filter(
+      (e) => e.freshness.display_tier === "checked_today_unknown_publication_date",
+    );
     const historicalTriggers = externalEventViews.filter(
-      (e) => !e.freshness.ok_for_today_display &&
-        (e.freshness.status === "stale" || e.freshness.status === "unknown_recency"),
+      (e) => e.freshness.display_tier === "historical_sensitive_context",
     );
     const excludedExternalTriggers = externalEventViews.filter(
-      (e) => !e.freshness.ok_for_today_display &&
-        e.freshness.status !== "stale" && e.freshness.status !== "unknown_recency",
+      (e) => e.freshness.display_tier === "not_displayable",
     );
     const sourceRefs = internetTriggers.map((e) => ({
       url: e.source_url,
@@ -452,7 +453,21 @@ export async function generateActivePartDailyBriefs(
       sensitivity_count: sensList.length,
       external_events_total: externalEvents.length,
       source_backed_event_count: internetTriggers.length,
+      fresh_today_event_count: internetTriggers.length,
+      checked_today_unknown_date_count: checkedTodayUnknownDate.length,
+      visible_checked_source_count: internetTriggers.length + checkedTodayUnknownDate.length,
       historical_source_backed_count: historicalTriggers.length,
+      checked_external_sources_today: checkedTodayUnknownDate.map((e) => ({
+        event_id: e.id,
+        title: e.event_title,
+        event_type: e.event_type,
+        source_url: e.source_url,
+        source_domain: e.source_domain ?? null,
+        source_published_at: e.source_published_at ?? null,
+        fetched_at: e.fetched_at ?? null,
+        last_seen_at: e.last_seen_at,
+        freshness: e.freshness,
+      })),
       historical_external_triggers: historicalTriggers.map((e) => ({
         event_id: e.id,
         title: e.event_title,

@@ -978,7 +978,7 @@ Deno.serve(async (req) => {
             fetched_at: raw.fetched_at ?? null,
           },
         };
-      }).filter((impact) => impact.external_reality_events?.freshness?.ok_for_today_display === true);
+      }).filter((impact) => impact.external_reality_events?.freshness?.ok_for_visible_checked_source === true);
       return json({ ok: true, impacts: freshImpacts, self_healing: heal, freshness_gate: { date_prague: datePrague, hidden_count: Math.max(0, (data ?? []).length - freshImpacts.length) } });
     }
     return json({ ok: false, message: `Unknown action: ${action}` }, 400);

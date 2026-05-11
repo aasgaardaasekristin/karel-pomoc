@@ -37,11 +37,29 @@ export type RawExternalImpact = {
     fetched_at?: string | null;
     freshness?: {
       ok_for_today_display?: boolean;
+      ok_for_visible_checked_source?: boolean;
+      display_tier?:
+        | "fresh_today_event"
+        | "checked_today_unknown_publication_date"
+        | "historical_sensitive_context"
+        | "not_displayable";
       status?: string;
       reason?: string;
+      language_policy?: {
+        may_say_today_event?: boolean;
+        may_say_checked_today?: boolean;
+        must_say_publication_date_unknown?: boolean;
+        must_say_historical_only?: boolean;
+      };
     } | null;
   } | null;
 };
+
+export type DisplayTier =
+  | "fresh_today_event"
+  | "checked_today_unknown_publication_date"
+  | "historical_sensitive_context"
+  | "not_displayable";
 
 export type DisplayExternalImpact = {
   /** Stable display key (part + theme cluster) */
@@ -57,7 +75,11 @@ export type DisplayExternalImpact = {
   source_domain: string | null;
   source_published_at: string | null;
   fetched_at: string | null;
+  /** Backwards compat: true only when display_tier is fresh_today_event. */
   freshness_ok: boolean;
+  display_tier: DisplayTier;
+  /** Short cautionary line shown in tier 2 / 3 cards. */
+  caution_label: string | null;
   /** How many raw impacts this card aggregates (for diagnostics, not UI). */
   source_impact_ids: string[];
 };
@@ -177,30 +199,48 @@ export function clusterAndHumanizeExternalImpacts(
       groups.set(groupKey, []);
       labels.set(groupKey, label);
     }
-    if (ev?.freshness && ev.freshness.ok_for_today_display !== true) continue;
+    if (ev?.freshness?.display_tier === "not_displayable") continue;
+    if (ev?.freshness && ev.freshness.ok_for_visible_checked_source !== true && ev.freshness.ok_for_today_display !== true) continue;
     groups.get(groupKey)!.push(imp);
   }
 
   const cards: DisplayExternalImpact[] = [];
   for (const [groupKey, group] of groups) {
+    if (group.length === 0) continue;
     // Worst risk wins
     const worst = group.reduce((acc, x) =>
       RISK_RANK[x.risk_level] >= RISK_RANK[acc.risk_level] ? x : acc,
     );
     const themeLabel = labels.get(groupKey) ?? "vnější téma";
     const clusterCode = groupKey.split("::").slice(1).join("::");
+    const fr = worst.external_reality_events?.freshness ?? null;
+    const tier: DisplayTier = (fr?.display_tier as DisplayTier) ??
+      (fr?.ok_for_today_display ? "fresh_today_event" : "not_displayable");
 
-    const body =
-      HUMAN_BODY_BY_CLUSTER[clusterCode] ??
-      HUMAN_BODY_BY_CLUSTER[clusterCode.split("::")[0]] ??
-      GENERIC_BODY;
+    let body: string;
+    let caution: string | null = null;
+    if (tier === "fresh_today_event") {
+      body =
+        HUMAN_BODY_BY_CLUSTER[clusterCode] ??
+        HUMAN_BODY_BY_CLUSTER[clusterCode.split("::")[0]] ??
+        GENERIC_BODY;
+    } else if (tier === "checked_today_unknown_publication_date") {
+      body = `Internetový přehled dnes znovu ověřil citlivý okruh: ${themeLabel}. Datum publikace zdroje není dostupné, neberte to jako důkaz, že se událost stala dnes.`;
+      caution = "dnes ověřený zdroj · datum publikace není dostupné";
+    } else {
+      // historical_sensitive_context
+      body = `Dříve evidovaný citlivý okruh: ${themeLabel}. Dnes bez čerstvého zdrojovaného podkladu — lze jemně ověřit, zda se s tématem dnes setkal.`;
+      caution = "dříve evidovaný citlivý okruh";
+    }
 
     // Try to use human recommended_action from canonical impact, but stripped.
     const recoRaw = stripInternalMarkers(worst.recommended_action ?? "");
     const recoFromCluster =
       HUMAN_RECO_BY_CLUSTER[clusterCode] ??
       HUMAN_RECO_BY_CLUSTER[clusterCode.split("::")[0]];
-    const reco = recoFromCluster ?? (recoRaw.length > 0 ? recoRaw : GENERIC_RECO);
+    const reco = tier === "fresh_today_event"
+      ? (recoFromCluster ?? (recoRaw.length > 0 ? recoRaw : GENERIC_RECO))
+      : null;
 
     cards.push({
       key: groupKey,
@@ -212,13 +252,24 @@ export function clusterAndHumanizeExternalImpacts(
       source_domain: worst.external_reality_events?.source_domain ?? null,
       source_published_at: worst.external_reality_events?.source_published_at ?? null,
       fetched_at: worst.external_reality_events?.fetched_at ?? null,
-      freshness_ok: worst.external_reality_events?.freshness?.ok_for_today_display === true,
+      freshness_ok: tier === "fresh_today_event",
+      display_tier: tier,
+      caution_label: caution,
       source_impact_ids: group.map((g) => g.id),
     });
   }
 
-  // Stable sort: red first, then amber, then watch; within risk by part name
+  // Stable sort: tier (fresh > checked > historical), then risk, then part name
+  const TIER_RANK: Record<DisplayTier, number> = {
+    fresh_today_event: 3,
+    checked_today_unknown_publication_date: 2,
+    historical_sensitive_context: 1,
+    not_displayable: 0,
+  };
   cards.sort((a, b) => {
+    if (TIER_RANK[a.display_tier] !== TIER_RANK[b.display_tier]) {
+      return TIER_RANK[b.display_tier] - TIER_RANK[a.display_tier];
+    }
     if (RISK_RANK[a.risk_level] !== RISK_RANK[b.risk_level]) {
       return RISK_RANK[b.risk_level] - RISK_RANK[a.risk_level];
     }
