@@ -37,8 +37,20 @@ export type RawExternalImpact = {
     fetched_at?: string | null;
     freshness?: {
       ok_for_today_display?: boolean;
+      ok_for_visible_checked_source?: boolean;
+      display_tier?:
+        | "fresh_today_event"
+        | "checked_today_unknown_publication_date"
+        | "historical_sensitive_context"
+        | "not_displayable";
       status?: string;
       reason?: string;
+      language_policy?: {
+        may_say_today_event?: boolean;
+        may_say_checked_today?: boolean;
+        must_say_publication_date_unknown?: boolean;
+        must_say_historical_only?: boolean;
+      };
     } | null;
   } | null;
 };
