@@ -36,7 +36,11 @@ export interface WeeklyMatrixUpsertInput {
       event_title: string;
       event_type: string;
       source_url: string | null;
+      source_domain?: string | null;
       verification_status: string;
+      source_published_at?: string | null;
+      fetched_at?: string | null;
+      query_plan_version?: string | null;
     }>
   >;
   providerStatus: string;
@@ -104,6 +108,9 @@ export async function upsertExternalRealityWeeklyMatrix(
         url: e.source_url,
         title: e.event_title,
         verification_status: e.verification_status,
+        source_domain: e.source_domain ?? null,
+        source_published_at: e.source_published_at ?? null,
+        fetched_at: e.fetched_at ?? null,
       }));
 
     const recommendedGuards = profile?.recommended_guards ?? [];
