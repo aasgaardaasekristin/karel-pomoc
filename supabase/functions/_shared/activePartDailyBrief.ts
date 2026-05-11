@@ -272,10 +272,11 @@ export async function generateActivePartDailyBriefs(
 
   // Determine provider status from most recent watch run today (read-only)
   let providerStatus = input.providerStatus ?? "not_run";
+  let latestWatchRun: any = null;
   if (!input.providerStatus) {
     const { data: lastRun } = await sb
       .from("external_event_watch_runs")
-      .select("internet_watch_status, ran_at, source_type")
+      .select("id, internet_watch_status, ran_at, source_type, payload")
       .eq("user_id", input.userId)
       .eq("source_type", "internet_news")
       .gte("ran_at", startUtc.toISOString())
@@ -283,9 +284,22 @@ export async function generateActivePartDailyBriefs(
       .order("ran_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    latestWatchRun = lastRun ?? null;
     if (lastRun?.internet_watch_status) {
       providerStatus = lastRun.internet_watch_status;
     }
+  } else {
+    const { data: lastRun } = await sb
+      .from("external_event_watch_runs")
+      .select("id, internet_watch_status, ran_at, source_type, payload")
+      .eq("user_id", input.userId)
+      .eq("source_type", "internet_news")
+      .gte("ran_at", startUtc.toISOString())
+      .lte("ran_at", endUtc.toISOString())
+      .order("ran_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    latestWatchRun = lastRun ?? null;
   }
 
   for (const cand of candidates) {
