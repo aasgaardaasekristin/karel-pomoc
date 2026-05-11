@@ -7807,6 +7807,15 @@ export type Database = {
       }
       did_count_visible_dirty_fields: { Args: never; Returns: number }
       did_daily_cycles_sweep_stale: { Args: never; Returns: Json }
+      did_internal_edge_function_post: {
+        Args: {
+          p_body?: Json
+          p_function_name: string
+          p_source?: string
+          p_timeout_ms?: number
+        }
+        Returns: number
+      }
       did_lifecycle_state_for_thread: {
         Args: { p_thread_id: string }
         Returns: {
