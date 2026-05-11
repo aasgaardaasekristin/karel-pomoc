@@ -11,6 +11,8 @@
  * pouze serverová auditní stopa okamžiku schválení, ne UI podpis.
  */
 
+import { auditVisibleKarelText } from "@/lib/karelVisibleTextQuality";
+
 export type DeliberationStatus =
   | "draft"
   | "active"
@@ -183,18 +185,29 @@ function pragueTodayISO(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
 }
 
-function isTodayScopedDeliberation(d: TeamDeliberation): boolean {
+function isExpiredDeliberation(d: TeamDeliberation): boolean {
+  const expiresAt = String(((d.session_params ?? {}) as Record<string, unknown>).expires_at ?? "");
+  return !!expiresAt && !Number.isNaN(new Date(expiresAt).getTime()) && new Date(expiresAt).getTime() < Date.now();
+}
+
+function passesVisibleQuality(d: TeamDeliberation): boolean {
+  const text = [d.title, d.reason, d.initial_karel_brief, d.karel_proposed_plan]
+    .filter(Boolean)
+    .join("\n");
+  return auditVisibleKarelText(text).ok;
+}
+
+function isTodayScopedDeliberation(d: TeamDeliberation, latestSourceCycleId?: string | null): boolean {
   const today = pragueTodayISO();
   const sp = (d.session_params ?? {}) as Record<string, unknown>;
   const explicitDate = String(sp.valid_for_date ?? sp.session_date ?? sp.briefing_date ?? "").slice(0, 10);
-  const hasSourceCycle = !!(sp.source_cycle_id || sp.linked_source_cycle_id || sp.briefing_source_cycle_id);
-  const updatedToday = String(d.updated_at ?? "").slice(0, 10) === today;
-  const createdToday = String(d.created_at ?? "").slice(0, 10) === today;
-  return explicitDate === today || hasSourceCycle || updatedToday || createdToday;
+  const sourceCycle = String(sp.source_cycle_id ?? sp.linked_source_cycle_id ?? sp.briefing_source_cycle_id ?? "");
+  return explicitDate === today || (!!latestSourceCycleId && sourceCycle === latestSourceCycleId);
 }
 
 export function partitionDashboardDeliberations(
-  list: TeamDeliberation[]
+  list: TeamDeliberation[],
+  options: { latestSourceCycleId?: string | null } = {},
 ): { primary: TeamDeliberation[]; overflow: TeamDeliberation[] } {
   const PRIORITY_RANK: Record<DeliberationPriority, number> = {
     crisis: 0,
@@ -209,10 +222,12 @@ export function partitionDashboardDeliberations(
   const open = list.filter(
     (d) =>
       (d.status === "active" || d.status === "awaiting_signoff") &&
-      !isTestDeliberation(d)
+      !isTestDeliberation(d) &&
+      !isExpiredDeliberation(d) &&
+      passesVisibleQuality(d)
   );
-  const todayScoped = open.filter(isTodayScopedDeliberation);
-  const staleReview = open.filter((d) => !isTodayScopedDeliberation(d));
+  const todayScoped = open.filter((d) => isTodayScopedDeliberation(d, options.latestSourceCycleId));
+  const staleReview = open.filter((d) => !isTodayScopedDeliberation(d, options.latestSourceCycleId));
   const sorted = [...todayScoped].sort((a, b) => {
     const pa = PRIORITY_RANK[a.priority] ?? 5;
     const pb = PRIORITY_RANK[b.priority] ?? 5;
