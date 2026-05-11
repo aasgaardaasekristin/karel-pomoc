@@ -84,6 +84,15 @@ export type DisplayExternalImpact = {
   source_impact_ids: string[];
 };
 
+function canonicalizeImpactPartName(raw: string): string {
+  const s = String(raw ?? "").replace(/^00[0-9]_/, "").trim();
+  const key = s.toLocaleLowerCase("cs");
+  if (key === "arthur") return "Arthur";
+  if (key === "tundrupek") return "Tundrupek";
+  if (key === "gustik" || key === "gustík") return "Gustík";
+  return s ? s.charAt(0).toLocaleUpperCase("cs") + s.slice(1) : s;
+}
+
 // ---------------------------------------------------------------------------
 // Cleaners
 // ---------------------------------------------------------------------------
@@ -194,7 +203,8 @@ export function clusterAndHumanizeExternalImpacts(
       ev?.event_type ?? "",
       imp.part_name,
     );
-    const groupKey = `${imp.part_name}::${cluster}`;
+    const displayPartName = canonicalizeImpactPartName(imp.part_name);
+    const groupKey = `${displayPartName}::${cluster}`;
     if (!groups.has(groupKey)) {
       groups.set(groupKey, []);
       labels.set(groupKey, label);
@@ -244,7 +254,7 @@ export function clusterAndHumanizeExternalImpacts(
 
     cards.push({
       key: groupKey,
-      part_name: worst.part_name,
+      part_name: canonicalizeImpactPartName(worst.part_name),
       risk_level: worst.risk_level,
       theme_label: themeLabel,
       body,
