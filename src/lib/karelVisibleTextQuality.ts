@@ -48,7 +48,9 @@ const HARD_FORBIDDEN: Array<{ re: RegExp; label: string }> = [
   { re: /nem[áa]m\s+u\s+sebe\s+podrobn[ěe]j[šs][íi]\s+p[řr]ehled/i, label: "false_missing_phase_detail" },
 ];
 
-const LOWERCASE_PART_NAME_RE = /(^|[^\p{L}])(?:arthur|tundrupek)(?=$|[^\p{L}])/iu;
+// Case-SENSITIVE: must only flag lowercase variants (proper-cased
+// "Arthur"/"Tundrupek" are clean Czech names visible to the therapist).
+const LOWERCASE_PART_NAME_RE = /(^|[^\p{L}])(?:arthur|tundrupek)(?=$|[^\p{L}])/u;
 
 /** Soft warnings — degrade confidence but don't block. */
 const SOFT_WARNINGS: Array<{ re: RegExp; label: string }> = [
