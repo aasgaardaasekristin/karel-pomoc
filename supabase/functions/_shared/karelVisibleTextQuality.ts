@@ -36,6 +36,10 @@ const HARD_FORBIDDEN: Array<{ re: RegExp; label: string }> = [
   { re: /dnes\s+se\s+objevilo/i, label: "dnes_se_objevilo" },
   { re: /dne[\u0161s]n[\u00ed\u00ec]\s+ud[\u00e1a]lost/i, label: "dnesni_udalost" },
   { re: /nem[\u00e1a]m\s+u\s+sebe\s+podrobn[\u011be]j[\u0161s][\u00ed\u00ec]\s+p[\u0159r]ehled/i, label: "false_missing_phase_detail" },
+  // P33.7C — Czech grammar: preposition + Ani\u010dka (nominative) is wrong.
+  // Allowed: "K \u010d\u00e1sti Ani\u010dka", "K n\u00e1vrhu pro \u010d\u00e1st Ani\u010dka", "U Ani\u010dky" (genitive).
+  // Forbidden: "Pro|S|s|U|u|K|k Ani\u010dka". Lookbehind exempts safe forms.
+  { re: /(?<!\u010d[\u00e1a]sti\s)(?<![\u010dc][\u00e1a]st\s)\b(?:Pro|S|s|U|u|K|k)\s+Ani\u010dka\b/, label: "anicka_bad_case" },
 ];
 
 // Case-SENSITIVE: only lowercase variants are dirty; capitalized names are clean.

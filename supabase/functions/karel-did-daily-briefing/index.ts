@@ -3074,7 +3074,10 @@ Deno.serve(async (req) => {
       // P33.7A — cache-version gate. A cached row is only "ready" if it carries
       // the current P33.7 renderer + content completeness contract. Older rows
       // (e.g. p31.1.0) must be regenerated even without an explicit force flag.
-      const REQUIRED_RENDERER_VERSION = "p33.7.0";
+      // P33.7C — bumped to p33.7.1 (renderer ok-gate now honours content
+      // completeness contract + ISO-date numbers excluded from external_reality
+      // unsupported-claim audit). Old p33.7.0 cached rows must regenerate.
+      const REQUIRED_RENDERER_VERSION = "p33.7.1";
       const REQUIRED_COMPLETENESS_VERSION = "p33.7";
       const cachedHuman = existing?.payload?.karel_human_briefing ?? null;
       const cachedCompleteness = existing?.payload?.daily_briefing_content_completeness ?? null;
