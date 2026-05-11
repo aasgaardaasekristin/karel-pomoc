@@ -829,6 +829,7 @@ export function renderKarelBriefingVoice(payload: any): KarelBriefingVoiceRender
   const sections: RenderedBriefingSection[] = [
     renderSystemMorningState(payload),
     renderDailyCycleVerified(payload),
+    renderYesterdayReview(payload),
     renderTodayParts(payload),
     renderTherapistAsks(payload),
     renderSessionPlan(payload),
@@ -837,6 +838,9 @@ export function renderKarelBriefingVoice(payload: any): KarelBriefingVoiceRender
     renderUnknowns(payload, []),
     renderNextStep(payload),
   ];
+
+  // P33.7 — content completeness contract
+  const contentCompleteness = evaluateBriefingContentCompleteness(payload);
 
   // Claim check + forbidden phrase audit per section
   const knownParts = collectKnownPartNames(payload);
