@@ -892,6 +892,7 @@ export function renderKarelBriefingVoice(payload: any): KarelBriefingVoiceRender
     sections,
     opening_text: sections[0]?.karel_text,
     closing_text: sections[sections.length - 1]?.karel_text,
+    content_completeness: contentCompleteness,
     render_audit: {
       source_fields_used: Array.from(sourceFieldsUsed).sort(),
       missing_expected_fields: missingExpected,
