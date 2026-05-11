@@ -11,6 +11,7 @@ import {
   type DeliberationType,
 } from "@/types/teamDeliberation";
 import { useVisibleClinicalTextAudit } from "@/lib/visibleClinicalTextGuard";
+import { canonicalizePartDisplayName } from "@/lib/partTodayRelevance";
 
 interface Props {
   refreshTrigger?: number;
@@ -63,7 +64,7 @@ function DeliberationRow({
             )}
             {d.subject_parts?.slice(0, 3).map((p) => (
               <Badge key={p} className="text-[9px] h-4 px-1.5 bg-primary/10 text-primary border border-primary/20">
-                {p}
+                {canonicalizePartDisplayName(p) ?? p}
               </Badge>
             ))}
           </div>
@@ -209,7 +210,7 @@ const TeamDeliberationsPanel = ({ refreshTrigger, onOpenRoom }: Props) => {
             onClick={() => setShowOverflow((v) => !v)}
           >
             {showOverflow ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            Další porady ({overflow.length})
+            Starší návrhy k revizi ({overflow.length})
           </button>
           {showOverflow && (
             <div className="space-y-2 mt-2 pl-2 border-l border-border/50">
