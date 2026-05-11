@@ -167,7 +167,11 @@ export async function runP303ExternalRealityPipeline(
       event_title: string;
       event_type: string;
       source_url: string | null;
+      source_domain?: string | null;
       verification_status: string;
+      source_published_at?: string | null;
+      fetched_at?: string | null;
+      query_plan_version?: string | null;
     }>
   >();
   let eventsCreated = 0;
