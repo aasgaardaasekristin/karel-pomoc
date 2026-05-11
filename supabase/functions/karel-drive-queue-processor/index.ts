@@ -312,12 +312,20 @@ Deno.serve(async (req) => {
       }
     }
 
-    // P33.5B.3: bounded mode for phase-worker delegate. Always returns
+    // P33.5C: bounded mode for phase-worker delegate. Always returns
     // HTTP 200 quickly with controlled_skipped on no-work / already-claimed.
     const isPhaseWorkerCall =
+      body?.phase_worker_bounded === true ||
       body?.source === "daily_cycle_phase_worker" ||
       body?.triggered_by === "p29b_phase_worker" ||
       body?.p33_5b2_db_transport === true;
+    const phaseWorkerMaxItems = isPhaseWorkerCall
+      ? Math.min(Math.max(Number(body?.max_items ?? 5), 1), 10)
+      : Number.POSITIVE_INFINITY;
+    const phaseWorkerBudgetMs = isPhaseWorkerCall
+      ? Math.min(Math.max(Number(body?.timeout_budget_ms ?? 45_000), 5_000), 45_000)
+      : Number.POSITIVE_INFINITY;
+    const phaseWorkerDeadline = startTime + phaseWorkerBudgetMs;
 
     if (!pendingWrites || pendingWrites.length === 0) {
       addLog(scoped ? "No scoped writes found." : "No eligible pending writes for this lane.");
@@ -365,7 +373,14 @@ Deno.serve(async (req) => {
     let skipped = 0;
     let permanent = 0;
 
+    let phaseWorkerProcessed = 0;
+    let phaseWorkerBudgetExhausted = false;
     for (const pw of pendingWrites) {
+      if (isPhaseWorkerCall) {
+        if (phaseWorkerProcessed >= phaseWorkerMaxItems) { phaseWorkerBudgetExhausted = true; break; }
+        if (Date.now() >= phaseWorkerDeadline) { phaseWorkerBudgetExhausted = true; break; }
+        phaseWorkerProcessed++;
+      }
       const target = pw.target_document;
       const writeId = pw.id;
       const { payload, metadata } = decodeGovernedWrite(pw.content || "");
@@ -555,6 +570,24 @@ Deno.serve(async (req) => {
       log,
     };
     addLog(`Done: ${completed} ok, ${failed} retry, ${permanent} permanent, ${skipped} skipped in ${duration}ms`);
+
+    if (isPhaseWorkerCall) {
+      return new Response(JSON.stringify({
+        ok: true,
+        mode: "phase_worker_bounded",
+        outcome: "completed_bounded",
+        lane,
+        processed: phaseWorkerProcessed,
+        completed,
+        failed,
+        permanent_failed: permanent,
+        skipped,
+        budget_exhausted: phaseWorkerBudgetExhausted,
+        remaining_work_accountable: phaseWorkerBudgetExhausted,
+        duration_ms: duration,
+        log,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     return new Response(JSON.stringify(summary), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
