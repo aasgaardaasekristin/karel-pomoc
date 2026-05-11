@@ -2776,7 +2776,20 @@ Deno.serve(async (req) => {
     }
     if (!scopedUserId) return jsonResponse({ error: "missing_user_scope" }, 400);
     const generationMethod = body?.method || (wantsAuto ? "auto" : "manual");
-    const forceRegenerate = body?.force === true || isSlaMethod(generationMethod);
+    // P33.7A — accept multiple force-flag shapes and explicit P33.7 source markers
+    const P33_7_FORCE_SOURCES = new Set([
+      "p33_7_runtime_regen",
+      "p33_7a_force_regen",
+      "p33_7a_force_regen_runtime_proof",
+      "p33_7_content_completeness",
+    ]);
+    const forceFlagFromBody =
+      body?.force === true ||
+      body?.forceRegenerate === true ||
+      body?.force_regenerate === true ||
+      body?.regenerate === true ||
+      P33_7_FORCE_SOURCES.has(String(body?.source ?? ""));
+    const forceRegenerate = forceFlagFromBody || isSlaMethod(generationMethod);
 
     const today = pragueDayISO();
     const triggerSource = body?.source === "cron" ? "cron"
@@ -3058,12 +3071,27 @@ Deno.serve(async (req) => {
         ALLOWED_PROVIDER_STATUSES.includes(String(cachedExt.provider_status ?? "")) &&
         cachedExt.active_part_daily_brief_count !== undefined &&
         cachedExt.active_part_daily_brief_count !== null;
+      // P33.7A — cache-version gate. A cached row is only "ready" if it carries
+      // the current P33.7 renderer + content completeness contract. Older rows
+      // (e.g. p31.1.0) must be regenerated even without an explicit force flag.
+      const REQUIRED_RENDERER_VERSION = "p33.7.0";
+      const REQUIRED_COMPLETENESS_VERSION = "p33.7";
+      const cachedHuman = existing?.payload?.karel_human_briefing ?? null;
+      const cachedCompleteness = existing?.payload?.daily_briefing_content_completeness ?? null;
+      const cachedP337Ready =
+        cachedHuman?.ok === true &&
+        cachedHuman?.renderer_version === REQUIRED_RENDERER_VERSION &&
+        cachedCompleteness?.version === REQUIRED_COMPLETENESS_VERSION &&
+        ["complete", "complete_with_controlled_missing"].includes(
+          String(cachedCompleteness?.overall_status ?? "")
+        );
       const cachedIsReady =
         existing &&
         cachedGateOk &&
         !!cachedSourceCycleId &&
         cachedAfterCycle &&
-        cachedExternalRealityOk;
+        cachedExternalRealityOk &&
+        cachedP337Ready;
 
       if (existing && cachedIsReady) {
         await finishBriefingAttempt(supabase, attemptId, { status: "succeeded", created_briefing_id: existing.id, metadata: { cached: true } });
