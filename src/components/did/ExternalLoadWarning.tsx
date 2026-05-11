@@ -55,7 +55,7 @@ export default function ExternalLoadWarning({ showWhenEmpty = false }: Props) {
         });
         if (cancelled) return;
         const raw = ((res as { impacts?: RawExternalImpact[] })?.impacts ?? []) as RawExternalImpact[];
-        const display = clusterAndHumanizeExternalImpacts(raw).filter((card) => card.freshness_ok === true);
+        const display = clusterAndHumanizeExternalImpacts(raw).filter((c) => c.display_tier !== "not_displayable");
         setCards(display);
       } catch (err) {
         if (cancelled) return;
