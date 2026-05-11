@@ -312,9 +312,32 @@ Deno.serve(async (req) => {
       }
     }
 
+    // P33.5B.3: bounded mode for phase-worker delegate. Always returns
+    // HTTP 200 quickly with controlled_skipped on no-work / already-claimed.
+    const isPhaseWorkerCall =
+      body?.source === "daily_cycle_phase_worker" ||
+      body?.triggered_by === "p29b_phase_worker" ||
+      body?.p33_5b2_db_transport === true;
+
     if (!pendingWrites || pendingWrites.length === 0) {
       addLog(scoped ? "No scoped writes found." : "No eligible pending writes for this lane.");
       if (!scoped) await heartbeat(sb, lane, 0, 0, 0, 0, Date.now() - startTime, null);
+      if (isPhaseWorkerCall) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            mode: "phase_worker_bounded",
+            lane,
+            outcome: "controlled_skipped",
+            reason: "already_claimed_or_no_claimable_work",
+            processed: 0,
+            results: writeResults,
+            log,
+            duration_ms: Date.now() - startTime,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
       return new Response(
         JSON.stringify({ mode: scoped ? "scoped" : "batch", lane, processed: 0, results: writeResults, log, duration_ms: Date.now() - startTime }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
