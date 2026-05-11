@@ -242,8 +242,8 @@ function renderTherapistAsks(payload: any): RenderedBriefingSection {
   const firstK = safeStr(askK[0]?.text);
 
   const parts: string[] = [];
-  if (firstH) parts.push(`Haničko, hlavní věc na dnes je ${firstH.charAt(0).toLocaleLowerCase("cs")}${firstH.slice(1)}.`);
-  if (firstK) parts.push(`Káťo, hlavní věc na dnes je ${firstK.charAt(0).toLocaleLowerCase("cs")}${firstK.slice(1)}.`);
+  if (firstH) parts.push(withTerminalPunctuation(`Haničko, hlavní věc na dnes je ${firstH.charAt(0).toLocaleLowerCase("cs")}${firstH.slice(1)}`));
+  if (firstK) parts.push(withTerminalPunctuation(`Káťo, hlavní věc na dnes je ${firstK.charAt(0).toLocaleLowerCase("cs")}${firstK.slice(1)}`));
   if (askH.length > 1) parts.push(`Pro Haničku k tomu mám ještě ${askH.length - 1} navazujících bodů.`);
   if (askK.length > 1) parts.push(`Pro Káťu k tomu mám ještě ${askK.length - 1} navazujících bodů.`);
 
@@ -403,14 +403,14 @@ function renderRisks(payload: any): RenderedBriefingSection {
 
   const partsWithTriggers: string[] = partsArr
     .filter((p) => Array.isArray(p?.internet_triggers_today) && p.internet_triggers_today.some(isFresh))
-    .map((p) => safeStr(p?.part_name)).filter(Boolean);
+    .map((p) => canonicalizePartDisplayName(p?.part_name) || "").filter(Boolean);
 
   const partsWithCheckedToday: string[] = partsArr
     .filter((p) => {
       const arr = p?.evidence_summary?.checked_external_sources_today;
       return Array.isArray(arr) && arr.length > 0 && !isFresh(p);
     })
-    .map((p) => safeStr(p?.part_name)).filter(Boolean);
+    .map((p) => canonicalizePartDisplayName(p?.part_name) || "").filter(Boolean);
 
   const partsWithHistoricalOnly: string[] = partsArr
     .filter((p) => {
@@ -421,7 +421,7 @@ function renderRisks(payload: any): RenderedBriefingSection {
         p.evidence_summary.historical_external_triggers.length > 0;
       return !fresh && !checked && hist;
     })
-    .map((p) => safeStr(p?.part_name)).filter(Boolean);
+    .map((p) => canonicalizePartDisplayName(p?.part_name) || "").filter(Boolean);
 
   const lines: string[] = [];
   if (lingering.length > 0) {
@@ -496,7 +496,8 @@ function renderUnknowns(payload: any, allWarnings: string[]): RenderedBriefingSe
  * Section 9 — opatrný další krok.
  */
 function renderNextStep(payload: any): RenderedBriefingSection {
-  const dtp = safeStr(payload?.daily_therapeutic_priority);
+  const decision = payload?.today_part_relevance_decision ?? null;
+  const dtp = decision?.ok_for_primary_suggestion === false ? "" : safeStr(payload?.daily_therapeutic_priority);
   const fields = ["daily_therapeutic_priority"];
   const warnings: string[] = [];
   let text: string;
