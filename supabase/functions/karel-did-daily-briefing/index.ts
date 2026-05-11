@@ -45,6 +45,7 @@ import {
   type DailyBriefingTruthGateResult,
 } from "../_shared/dailyBriefingTruthGate.ts";
 import { renderKarelBriefingVoice } from "../_shared/karelBriefingVoiceRenderer.ts";
+import { evaluateBriefingContentCompleteness } from "../_shared/dailyBriefingContentCompleteness.ts";
 import { generateKarelAiPolishCandidate } from "../_shared/karelBriefingVoiceAiPolish.ts";
 import { isPartTodayRelevantForPrimarySuggestion } from "../_shared/partTodayRelevance.ts";
 
