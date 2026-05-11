@@ -260,18 +260,20 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // P33.5B.3: bounded mode for phase-worker delegate. Always returns
+    // P33.5C: bounded mode for phase-worker delegate. Always returns
     // HTTP 200 quickly with controlled_skipped on no-work / already-claimed,
-    // and respects an explicit max_items / timeout_budget_ms.
+    // and respects an explicit max_items / timeout_budget_ms (capped under
+    // pg_net's ~60s limit).
     const isPhaseWorkerCall =
+      body?.phase_worker_bounded === true ||
       body?.source === "daily_cycle_phase_worker" ||
       body?.source === "p29b_phase_worker" ||
       body?.p33_5b2_db_transport === true;
     const maxItems = isPhaseWorkerCall
-      ? Math.min(Math.max(Number(body?.max_items ?? 10), 1), MAX_BATCH)
+      ? Math.min(Math.max(Number(body?.max_items ?? 5), 1), 10)
       : MAX_BATCH;
     const timeoutBudgetMs = isPhaseWorkerCall
-      ? Math.min(Math.max(Number(body?.timeout_budget_ms ?? 90_000), 5_000), 170_000)
+      ? Math.min(Math.max(Number(body?.timeout_budget_ms ?? 45_000), 5_000), 45_000)
       : Number.POSITIVE_INFINITY;
     const deadline = startedAt + timeoutBudgetMs;
 
