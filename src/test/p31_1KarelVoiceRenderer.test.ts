@@ -122,9 +122,10 @@ describe("P31.1 karelBriefingVoiceRenderer (truth-locked)", () => {
   it("today_parts section is honest when no proposed part exists", () => {
     const p = JSON.parse(JSON.stringify(validPayload));
     p.today_part_proposal = null;
+    p.today_part_relevance_decision = null;
     const r = renderKarelBriefingVoice(p);
     const tp = r.sections.find((s) => s.section_id === "today_parts")!;
-    expect(tp.karel_text).toMatch(/nemám dost opory|nemám dost podkladů/i);
+    expect(tp.karel_text).toMatch(/nemám dost opory|nemám dost podkladů|nemám dost dat/i);
     expect(tp.confidence).toBe("low");
   });
 
