@@ -125,20 +125,29 @@ function renderSystemMorningState(payload: any): RenderedBriefingSection {
  * Section 2 — co je ověřené z denního cyklu.
  */
 function renderDailyCycleVerified(payload: any): RenderedBriefingSection {
-  const snap = payload?.phase_jobs_snapshot ?? null;
-  const fields = ["phase_jobs_snapshot"];
+  const snap = payload?.phase_jobs_snapshot
+    ?? payload?.briefing_truth_gate?.job_graph_snapshot
+    ?? payload?.daily_cycle_completion_semantics?.detached_jobs_summary
+    ?? null;
+  const truth = payload?.briefing_truth_gate ?? null;
+  const fields = ["phase_jobs_snapshot", "briefing_truth_gate.job_graph_snapshot", "briefing_truth_gate.required_jobs_count", "briefing_truth_gate.completed_jobs", "briefing_truth_gate.controlled_skipped_jobs", "daily_cycle_completion_semantics.detached_jobs_summary"];
   const warnings: string[] = [];
   let text: string;
   let confidence: "high" | "medium" | "low" = "medium";
 
-  if (snap && typeof snap === "object") {
-    const jobs = Array.isArray(snap?.jobs) ? snap.jobs : [];
-    const total = jobs.length || (typeof snap?.total === "number" ? snap.total : 0);
+  if ((Array.isArray(snap) && snap.length > 0) || (snap && typeof snap === "object")) {
+    const jobs = Array.isArray(snap) ? snap : (Array.isArray(snap?.jobs) ? snap.jobs : []);
     const completed = jobs.filter((j: any) => j?.status === "completed").length
-      || (typeof snap?.completed === "number" ? snap.completed : 0);
+      || Number(truth?.completed_jobs ?? snap?.completed ?? 0);
+    const skipped = jobs.filter((j: any) => j?.status === "controlled_skipped").length
+      || Number(truth?.controlled_skipped_jobs ?? snap?.controlled_skipped ?? 0);
+    const total = jobs.length || Number(truth?.required_jobs_count ?? snap?.total ?? 0);
+    const terminal = completed + skipped;
     if (total > 0) {
-      text = `Z dnešní ranní přípravy je hotových ${completed} ze ${total} kroků. Beru to jako solidní základ pro dnešek.`;
-      confidence = completed === total ? "high" : "medium";
+      text = terminal >= total
+        ? `Dnešní ranní příprava doběhla. Povinné kroky jsou uzavřené; část z nich byla dokončená a část bezpečně přeskočená, protože pro ni dnes nebyla práce.`
+        : `Z dnešní ranní přípravy je uzavřených ${terminal} ze ${total} kroků. Beru to jako rozpracovaný základ pro dnešek.`;
+      confidence = terminal >= total ? "high" : "medium";
     } else {
       text = "Dnešní ranní příprava sice proběhla, ale nemám u sebe podrobnější přehled jejích jednotlivých kroků.";
       warnings.push("phase_jobs_snapshot_empty");
@@ -182,35 +191,31 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
   let text: string;
   let confidence: "high" | "medium" | "low" = "medium";
 
-  const rawPartName = safeStr(tpp?.proposed_part) || safeStr(tpp?.part_name);
-  // Strip technical prefix like "002_Anička" → "Anička"
-  const normalizedPartName = rawPartName
-    ? rawPartName.replace(/^00[0-9]_/, "").trim()
-    : "";
-  const partName = normalizedPartName || rawPartName;
-  const isHypothesis = tpp?.is_hypothesis_only === true;
-  const evidence = safeStr(tpp?.evidence_strength).toLowerCase();
-  const hasCurrentEvidence = tpp?.has_current_evidence === true;
-  const registrySleeping = tpp?.registry_sleeping === true;
+  const decision = payload?.today_part_relevance_decision ?? isPartTodayRelevantForPrimarySuggestion({
+    proposed_part: tpp?.proposed_part ?? tpp?.part_name,
+    briefing_date: safeStr(payload?.briefing_date) || safeStr(payload?.viewer_meta?.briefing_date_iso),
+    source_cycle_id: payload?.briefing_truth_gate?.source_cycle_id ?? payload?.source_cycle_id,
+    is_hypothesis_only: tpp?.is_hypothesis_only === true,
+    evidence_strength: tpp?.evidence_strength,
+    recent_thread_part_names: Array.isArray(tpp?.recent_thread_part_names) ? tpp.recent_thread_part_names : [],
+    todays_session_part_names: Array.isArray(tpp?.todays_session_part_names) ? tpp.todays_session_part_names : [],
+    live_progress_part_names: Array.isArray(tpp?.live_progress_part_names) ? tpp.live_progress_part_names : [],
+    explicit_therapist_mentions: Array.isArray(tpp?.explicit_therapist_mentions) ? tpp.explicit_therapist_mentions : [],
+    registry_sleeping: tpp?.registry_sleeping === true,
+  });
+  const partName = canonicalizePartDisplayName(decision?.display_name ?? tpp?.proposed_part ?? tpp?.part_name);
 
-  // Reject as primary suggestion when low support + hypothesis-only without current evidence,
-  // or when part is dormant without current evidence.
-  const rejectAsPrimary =
-    !partName ||
-    (isHypothesis && evidence === "low" && !hasCurrentEvidence) ||
-    (registrySleeping && !hasCurrentEvidence);
-
-  if (rejectAsPrimary) {
+  if (!decision?.ok_for_primary_suggestion || !partName) {
     text =
       "Dnes nemám dost opory vybrat konkrétní část před prvním kontaktem. Vybereme až podle toho, co kluci sami přinesou.";
     confidence = "low";
-    warnings.push(partName ? "rejected_low_support_or_dormant" : "no_today_part_proposal");
+    warnings.push(decision?.reason ? `part_relevance_rejected:${decision.reason}` : "no_today_part_proposal");
   } else {
-    const hypoNote = isHypothesis
+    const hypoNote = tpp?.is_hypothesis_only === true
       ? " Beru to jen jako pracovní rámec, dokud to nepotvrdí Hanička s Káťou."
       : "";
     text = `Pro dnešek se mi jako možná část pro práci nabízí ${partName}.${hypoNote}`;
-    confidence = evidence === "high" ? "high" : "medium";
+    confidence = decision?.confidence === "high" ? "high" : "medium";
   }
 
   return {
