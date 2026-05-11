@@ -53,7 +53,7 @@ import AiPolishCanaryPreviewPanel from "@/components/did/AiPolishCanaryPreviewPa
 import { getBriefingTruthStatus, pluralizeDays } from "@/lib/briefingTruthStatus";
 import { selectBestBriefing, isFullRenderableBriefing } from "@/lib/briefingSelection";
 import { sanitizeKarelVisibleText } from "@/lib/karelBriefingVisibleSanitizer";
-import { auditVisibleKarelSections, auditVisibleKarelText } from "@/lib/karelVisibleTextQuality";
+import { auditVisibleKarelSections } from "@/lib/karelVisibleTextQuality";
 import { canonicalizePartDisplayName } from "@/lib/partTodayRelevance";
 
 interface BriefingDecision {
