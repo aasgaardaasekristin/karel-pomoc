@@ -1723,7 +1723,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                   </div>
                 );
               })}
-              {technicalNote && (
+              {technicalNote && isKarelDebugMode() && (
                 <p className="pt-2 border-t border-border/40 text-[11px] leading-relaxed text-muted-foreground italic">
                   Technická poznámka: {technicalNote}
                 </p>
@@ -1769,7 +1769,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               <p className="text-[14px] leading-relaxed text-foreground/90 whitespace-pre-line">
                 {openingMonologueText}
               </p>
-              {technicalNote && (
+              {technicalNote && isKarelDebugMode() && (
                 <p className="pt-2 border-t border-border/40 text-[11px] leading-relaxed text-muted-foreground italic">
                   Technická poznámka: {technicalNote}
                 </p>
