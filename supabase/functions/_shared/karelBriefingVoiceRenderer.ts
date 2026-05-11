@@ -8,6 +8,11 @@
  * Public API: renderKarelBriefingVoice(payload) → KarelBriefingVoiceRenderResult
  */
 
+import {
+  canonicalizePartDisplayName,
+  isPartTodayRelevantForPrimarySuggestion,
+} from "./partTodayRelevance.ts";
+
 export interface RenderedBriefingSection {
   section_id: string;
   title: string;
@@ -42,6 +47,12 @@ export interface KarelBriefingVoiceRenderResult {
 }
 
 export const RENDERER_VERSION = "p31.1.0";
+
+function withTerminalPunctuation(text: string): string {
+  const s = safeStr(text);
+  if (!s) return "";
+  return /[.!?]$/.test(s) ? s : `${s}.`;
+}
 
 export const FORBIDDEN_ROBOTIC_PHRASES: { pattern: RegExp; label: string }[] = [
   { pattern: /na základ[ěe] dat/i, label: "Na základě dat" },
