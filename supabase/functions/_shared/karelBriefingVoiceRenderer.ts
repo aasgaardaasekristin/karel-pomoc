@@ -51,7 +51,7 @@ export interface KarelBriefingVoiceRenderResult {
   errors: string[];
 }
 
-export const RENDERER_VERSION = "p33.7.0";
+export const RENDERER_VERSION = "p33.7.1";
 
 function withTerminalPunctuation(text: string): string {
   const s = safeStr(text);
@@ -763,7 +763,17 @@ function validateSectionClaims(
   // Only enforce for external_reality and daily_cycle_verified where numbers are stamped
   if (section.section_id === "external_reality") {
     const ext = payload?.external_reality_watch ?? null;
-    const numbers = (text.match(/\b(\d+)\b/g) || []).map(Number);
+    // P33.7C — strip ISO date sequences (YYYY-MM-DD) and other date-context
+    // numbers before extracting "claim numbers". Verification dates of cited
+    // sources are not unsupported claims.
+    const stripped = text
+      // Full ISO dates like 2026-05-11
+      .replace(/\b\d{4}-\d{1,2}-\d{1,2}\b/g, " ")
+      // Czech short dates like 11. 5. 2026 or 11.5.2026
+      .replace(/\b\d{1,2}\.\s?\d{1,2}\.\s?\d{4}\b/g, " ")
+      // Year tokens 19xx/20xx
+      .replace(/\b(?:19|20)\d{2}\b/g, " ");
+    const numbers = (stripped.match(/\b(\d+)\b/g) || []).map(Number);
     const allowed = new Set<number>();
     if (ext) {
       allowed.add(Number(ext.active_part_daily_brief_count) || 0);
@@ -905,11 +915,21 @@ export function renderKarelBriefingVoice(payload: any): KarelBriefingVoiceRender
   if (!payload?.briefing_truth_gate) missingExpected.push("briefing_truth_gate");
   if (!payload?.external_reality_watch) missingExpected.push("external_reality_watch");
 
+  // P33.7C — ok-gate must also honour the content-completeness contract.
+  // Allowed statuses: "complete" and "complete_with_controlled_missing".
+  // Controlled-missing alone must NOT make ok=false (the missing reason is
+  // visibly rendered). Blocked / incomplete states force ok=false.
+  const completenessStatus = String(contentCompleteness?.overall_status ?? "");
+  const completenessOk =
+    completenessStatus === "complete" ||
+    completenessStatus === "complete_with_controlled_missing";
+
   const ok = sections.length >= 6
     && totalUnsupported === 0
     && totalRobotic === 0
     && empty === 0
-    && errors.length === 0;
+    && errors.length === 0
+    && completenessOk;
 
   return {
     ok,
