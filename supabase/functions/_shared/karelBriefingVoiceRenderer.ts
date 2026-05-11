@@ -151,6 +151,11 @@ function renderDailyCycleVerified(payload: any): RenderedBriefingSection {
 
 /**
  * Section 3 — části / aktivní kluci dnes.
+ *
+ * P33.6: Dormant or low-support hypothesis-only proposals must NOT appear
+ * as a primary "nabízí se část …" suggestion. Technical prefixes (002_)
+ * are normalized away. When opora is insufficient, render the calm
+ * fallback instead of leaking "Opora v podkladech je nízká".
  */
 function renderTodayParts(payload: any): RenderedBriefingSection {
   const tpp = payload?.today_part_proposal ?? null;
@@ -159,29 +164,42 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
     "today_part_proposal.rationale_text",
     "today_part_proposal.is_hypothesis_only",
     "today_part_proposal.evidence_strength",
+    "today_part_proposal.has_current_evidence",
+    "today_part_proposal.registry_sleeping",
   ];
   const warnings: string[] = [];
   let text: string;
   let confidence: "high" | "medium" | "low" = "medium";
 
-  const partName = safeStr(tpp?.proposed_part) || safeStr(tpp?.part_name);
-  const rationale = safeStr(tpp?.rationale_text);
+  const rawPartName = safeStr(tpp?.proposed_part) || safeStr(tpp?.part_name);
+  // Strip technical prefix like "002_Anička" → "Anička"
+  const normalizedPartName = rawPartName
+    ? rawPartName.replace(/^00[0-9]_/, "").trim()
+    : "";
+  const partName = normalizedPartName || rawPartName;
   const isHypothesis = tpp?.is_hypothesis_only === true;
-  const evidence = safeStr(tpp?.evidence_strength);
+  const evidence = safeStr(tpp?.evidence_strength).toLowerCase();
+  const hasCurrentEvidence = tpp?.has_current_evidence === true;
+  const registrySleeping = tpp?.registry_sleeping === true;
 
-  if (partName) {
-    const hypoNote = isHypothesis
-      ? " Beru to ale jen jako pracovní hypotézu, dokud to nepotvrdí Hanička s Káťou."
-      : "";
-    const evCz = evidence === "low" ? "nízká" : evidence === "medium" ? "střední" : evidence === "high" ? "vyšší" : "";
-    const evNote = evCz ? ` Opora v podkladech je ${evCz}.` : "";
-    const why = rationale ? ` Vychází to z toho, že ${rationale.charAt(0).toLocaleLowerCase("cs")}${rationale.slice(1)}` : "";
-    text = `Pro dnešek se mi jako možná část pro práci nabízí ${partName}.${hypoNote}${evNote}${why ? "\n\n" + why : ""}`;
-    confidence = isHypothesis || evidence === "low" ? "low" : "medium";
-  } else {
-    text = "Dnes nemám dost podkladů na to, abych navrhoval konkrétní část pro práci. Doporučuji vyjít z toho, co kluci sami přinesou.";
+  // Reject as primary suggestion when low support + hypothesis-only without current evidence,
+  // or when part is dormant without current evidence.
+  const rejectAsPrimary =
+    !partName ||
+    (isHypothesis && evidence === "low" && !hasCurrentEvidence) ||
+    (registrySleeping && !hasCurrentEvidence);
+
+  if (rejectAsPrimary) {
+    text =
+      "Dnes nemám dost opory vybrat konkrétní část před prvním kontaktem. Vybereme až podle toho, co kluci sami přinesou.";
     confidence = "low";
-    warnings.push("no_today_part_proposal");
+    warnings.push(partName ? "rejected_low_support_or_dormant" : "no_today_part_proposal");
+  } else {
+    const hypoNote = isHypothesis
+      ? " Beru to jen jako pracovní rámec, dokud to nepotvrdí Hanička s Káťou."
+      : "";
+    text = `Pro dnešek se mi jako možná část pro práci nabízí ${partName}.${hypoNote}`;
+    confidence = evidence === "high" ? "high" : "medium";
   }
 
   return {
