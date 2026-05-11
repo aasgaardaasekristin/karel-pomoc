@@ -163,7 +163,7 @@ function renderDailyCycleVerified(payload: any): RenderedBriefingSection {
     const terminal = completed + skipped;
     if (total > 0) {
       text = terminal >= total
-        ? `Dnešní ranní příprava doběhla. Povinné kroky jsou uzavřené; část z nich byla dokončená a část bezpečně přeskočená, protože pro ni dnes nebyla práce.`
+        ? `Dnešní ranní příprava doběhla — všech ${total} povinných kroků je uzavřených (dokončené i bezpečně přeskočené, podle toho, pro co byla dnes práce).`
         : `Z dnešní ranní přípravy je uzavřených ${terminal} ze ${total} kroků. Beru to jako rozpracovaný základ pro dnešek.`;
       confidence = terminal >= total ? "high" : "medium";
     } else {
