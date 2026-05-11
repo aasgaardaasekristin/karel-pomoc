@@ -348,7 +348,7 @@ export async function generateActivePartDailyBriefs(
       const { data: evRows } = await sb
         .from("external_reality_events")
         .select(
-          "id, event_title, event_type, source_url, source_domain, summary_for_therapists, verification_status, last_seen_at, raw_payload",
+          "id, event_title, event_type, source_url, source_domain, summary_for_therapists, verification_status, created_at, last_seen_at, raw_payload",
         )
         .eq("user_id", input.userId)
         .gte("last_seen_at", since)
@@ -370,14 +370,58 @@ export async function generateActivePartDailyBriefs(
       warnings.push(`load_events_failed:${part.part_name}:${(e as Error).message}`);
     }
 
-    const internetTriggers = externalEvents.filter(
-      (e) => !!e.source_url && /^https?:\/\//i.test(e.source_url),
+    const activeBriefCtx = {
+      brief_date: input.datePrague,
+      generated_at: now.toISOString(),
+      evidence_summary: {
+        weekly_matrix_ref: exclusionReason ? null : matrixRef,
+        query_plan_version: exclusionReason ? null : (input.queryPlanVersion ?? PRESENTATION_QUERY_PLAN_VERSION),
+      },
+    };
+    const matrixCtx = { id: exclusionReason ? null : matrixRef, date_prague: input.datePrague };
+    const watchCtx = {
+      ran_at: latestWatchRun?.ran_at ?? null,
+      query_plan_version: latestWatchRun?.payload?.query_plan_version ?? input.queryPlanVersion ?? PRESENTATION_QUERY_PLAN_VERSION,
+      provider_status: providerStatus,
+    };
+    const externalEventViews = externalEvents.map((e) => {
+      const raw = e.raw_payload ?? {};
+      const sourcePublishedAt = raw.source_published_at ?? null;
+      const fetchedAt = raw.fetched_at ?? null;
+      const freshness = evaluateExternalRealityFreshness({
+        datePrague: input.datePrague,
+        event: {
+          source_url: e.source_url ?? null,
+          source_published_at: sourcePublishedAt,
+          fetched_at: fetchedAt,
+          last_seen_at: e.last_seen_at ?? null,
+          created_at: e.created_at ?? null,
+          raw_payload: raw,
+        },
+        watchRun: watchCtx,
+        matrixRow: matrixCtx,
+        activePartBrief: activeBriefCtx,
+      });
+      return { ...e, source_published_at: sourcePublishedAt, fetched_at: fetchedAt, freshness };
+    });
+    const internetTriggers = externalEventViews.filter((e) => e.freshness.ok_for_today_display === true);
+    const historicalTriggers = externalEventViews.filter(
+      (e) => !e.freshness.ok_for_today_display &&
+        (e.freshness.status === "stale" || e.freshness.status === "unknown_recency"),
+    );
+    const excludedExternalTriggers = externalEventViews.filter(
+      (e) => !e.freshness.ok_for_today_display &&
+        e.freshness.status !== "stale" && e.freshness.status !== "unknown_recency",
     );
     const sourceRefs = internetTriggers.map((e) => ({
       url: e.source_url,
       title: e.event_title,
       verification_status: e.verification_status,
       last_seen_at: e.last_seen_at,
+      source_domain: e.source_domain ?? null,
+      source_published_at: e.source_published_at ?? null,
+      fetched_at: e.fetched_at ?? null,
+      freshness: e.freshness,
     }));
     if (!exclusionReason) {
       totalInternetEvents += internetTriggers.length;
