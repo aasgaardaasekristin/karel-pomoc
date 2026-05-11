@@ -460,9 +460,67 @@ function renderExternalReality(payload: any): RenderedBriefingSection {
     return acc + (Array.isArray(a) ? a.length : 0);
   }, 0);
 
+  // P33.7 — Source/tier manifestation per affected part.
+  type PerPart = { name: string; tier: "fresh" | "checked" | "historical"; category: string; domain: string; checkedDate: string; pubDate: string | null };
+  const perPart: PerPart[] = [];
+  const cleanCat = (s: any) => safeStr(s).replace(/_/g, " ").trim();
+  for (const p of partsArr) {
+    const name = canonicalizePartDisplayName(safeStr(p?.evidence_summary?.canonical_part_name) || safeStr(p?.part_name)) || "";
+    if (!name) continue;
+    const fresh = Array.isArray(p?.internet_triggers_today) ? p.internet_triggers_today : [];
+    const checked = Array.isArray(p?.evidence_summary?.checked_external_sources_today) ? p.evidence_summary.checked_external_sources_today : [];
+    const hist = Array.isArray(p?.evidence_summary?.historical_external_triggers) ? p.evidence_summary.historical_external_triggers : [];
+    const isFresh = (t: any) => t?.freshness?.display_tier === "fresh_today_event" || t?.freshness?.ok_for_today_display === true;
+    const freshHit = fresh.find(isFresh) ?? checked.find(isFresh);
+    if (freshHit) {
+      perPart.push({
+        name, tier: "fresh",
+        category: cleanCat(freshHit?.event_type || freshHit?.category) || "vnější citlivý okruh",
+        domain: safeStr(freshHit?.source_domain),
+        checkedDate: safeStr(freshHit?.fetched_at || freshHit?.checked_at).slice(0, 10),
+        pubDate: safeStr(freshHit?.source_published_at) || null,
+      });
+      continue;
+    }
+    if (checked.length > 0) {
+      const c = checked[0];
+      perPart.push({
+        name, tier: "checked",
+        category: cleanCat(c?.event_type || c?.category) || "vnější citlivý okruh",
+        domain: safeStr(c?.source_domain),
+        checkedDate: safeStr(c?.fetched_at || c?.checked_at).slice(0, 10),
+        pubDate: safeStr(c?.source_published_at) || null,
+      });
+      continue;
+    }
+    if (hist.length > 0) {
+      const h = hist[0];
+      perPart.push({
+        name, tier: "historical",
+        category: cleanCat(h?.event_type || h?.category) || "vnější citlivý okruh",
+        domain: safeStr(h?.source_domain),
+        checkedDate: safeStr(h?.fetched_at || h?.checked_at).slice(0, 10),
+        pubDate: safeStr(h?.source_published_at) || null,
+      });
+    }
+  }
+
+  function manifestLine(pp: PerPart): string {
+    const tail = [pp.domain && `zdroj ${pp.domain}`, pp.checkedDate && `ověřeno ${pp.checkedDate}`, pp.pubDate ? `publikováno ${pp.pubDate}` : "datum publikace neznámé"].filter(Boolean).join(", ");
+    if (pp.tier === "fresh") {
+      return `U ${pp.name} je dnes čerstvě zachycený vnější okruh z oblasti ${pp.category} (${tail}). Beru to jen jako signál držet bezpečný rámec, ne jako závěr o jeho stavu.`;
+    }
+    if (pp.tier === "checked") {
+      return `U ${pp.name} internetový přehled dnes znovu ověřil citlivý okruh z oblasti ${pp.category} (${tail}). Datum publikace zdroje není jasné, neberu to jako dnešní událost; jen jako důvod jemně ověřit, jestli se s tématem dnes setkali.`;
+    }
+    return `U ${pp.name} je dříve evidovaný citlivý okruh z oblasti ${pp.category} bez čerstvého dnešního zdroje (${tail}). Smyslem je jen ověřit, zda se s tématem dnes setkali.`;
+  }
+
   if (ps === "configured") {
-    if (freshCount > 0 || sourceBacked > 0) {
-      text = "Externí situační přehled jsem dnes ověřoval a přinesl čerstvě zdrojované okruhy. Pracuji s nimi jen jako s jemným hlídáním rámce, ne jako s diagnózou ani predikcí.";
+    if (perPart.length > 0) {
+      const intro = "Externí situační přehled jsem dnes ověřoval. Konkrétně:";
+      const lines = perPart.slice(0, 6).map(manifestLine);
+      text = [intro, ...lines].join("\n\n");
       confidence = "medium";
     } else if (checkedTodayCount > 0) {
       text = "Externí situační přehled jsem dnes ověřoval. Datum publikace u nalezených zdrojů ale není jasné, takže to neberu jako dnešní událost — jen jako důvod jemně ověřit, jestli se s tématem dnes potkali.";
