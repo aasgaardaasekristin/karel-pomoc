@@ -1580,12 +1580,12 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     : null;
   const sanitizeProse = (v: unknown) => humanizeRecencyInProse(cleanVisibleClinicalText(v), playRecency, sessRecency);
   const hb: any = (p as any).karel_human_briefing;
-  const humanSections = hb && Array.isArray(hb.sections) ? hb.sections : [];
+  const humanSections = hb && Array.isArray(hb.sections) && hb.sections.length > 0 ? hb.sections : [];
   const visibleHumanAudit = auditVisibleKarelSections(
     humanSections.map((s: any) => ({ section_id: s?.section_id, karel_text: String(s?.karel_text ?? "") })),
   );
-  const visibleHumanOk = !!(hb && hb.ok === true && humanSections.length > 0 && visibleHumanAudit.ok);
-  const humanQualityBlocked = !!(hb && hb.ok === true && humanSections.length > 0 && !visibleHumanAudit.ok);
+  const visibleHumanOk = !!(hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0 && visibleHumanAudit.ok);
+  const humanQualityBlocked = !!(hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0 && !visibleHumanAudit.ok);
   const structuredFallbackAllowed = !visibleHumanOk && !humanQualityBlocked;
 
   // P12: deterministic truth-status — single source for badge + banner.
