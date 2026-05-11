@@ -4381,11 +4381,24 @@ Datum: ${dateStr}` },
     // ─── KEEP-ALIVE: Phase 3b AI gateway call can take 60–120s. Without
     // a periodic heartbeat the cleanup-watcher (E3) sees stale heartbeat_at
     // and marks the cycle stuck mid-flight. Tick every 45s; cleared in finally.
+    // P33.5E: bounded fail-soft. Hard ceiling 45s on AI gateway call so
+    // ai_analysis can NEVER block enqueueRequiredPostPhase4Jobs. Any
+    // failure (timeout / 4xx / 5xx / non-JSON / abort / network) is
+    // captured into aiAnalysisFailsoft and execution continues.
     aiAnalysisKeepAlive = setInterval(() => {
       void setPhase("ai_analysis_keepalive", "Fáze 3b: čekám na AI gateway");
-    }, 45_000) as unknown as number;
+    }, 20_000) as unknown as number;
+    const aiAnalysisFailsoft: {
+      fallback_used: boolean;
+      analyzer_status: "completed" | "timeout_fallback" | "http_error_fallback" | "exception_fallback";
+      reason: string;
+      duration_ms: number;
+      p33_5e_ai_analysis_failsoft: true;
+    } = { fallback_used: false, analyzer_status: "completed", reason: "", duration_ms: 0, p33_5e_ai_analysis_failsoft: true };
+    const aiAnalysisStartedAt = Date.now();
     const analysisController = new AbortController();
-    let analysisTimeout: number | undefined = setTimeout(() => analysisController.abort(), 120000) as unknown as number;
+    const AI_ANALYSIS_TIMEOUT_MS = 45_000; // P33.5E: <=45s, never block enqueue
+    let analysisTimeout: number | undefined = setTimeout(() => analysisController.abort(), AI_ANALYSIS_TIMEOUT_MS) as unknown as number;
     let analysisResponse: Response;
     try {
     analysisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
