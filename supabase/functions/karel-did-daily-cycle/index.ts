@@ -4848,30 +4848,66 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
     if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
     } catch (abortErr: any) {
       if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
-      if (abortErr?.name === "AbortError") {
-        console.error("[AI analysis] TIMEOUT after 120s — continuing with empty analysis");
-        await setPhase("ai_analysis_timeout", "Phase 3b AI gateway timeout 120s");
-        analysisResponse = new Response("", { status: 408 });
-      } else {
-        throw abortErr;
-      }
+      // P33.5E: ALL exceptions (timeout/network/abort/other) are fail-soft.
+      // We must never throw out of the ai_analysis block.
+      const isTimeout = abortErr?.name === "AbortError";
+      aiAnalysisFailsoft.fallback_used = true;
+      aiAnalysisFailsoft.analyzer_status = isTimeout ? "timeout_fallback" : "exception_fallback";
+      aiAnalysisFailsoft.reason = isTimeout
+        ? `ai_gateway_timeout_${AI_ANALYSIS_TIMEOUT_MS}ms`
+        : `ai_gateway_exception:${(abortErr?.message ?? String(abortErr)).slice(0, 200)}`;
+      console.error(`[AI analysis] P33.5E failsoft (${aiAnalysisFailsoft.analyzer_status}): ${aiAnalysisFailsoft.reason}`);
+      await setPhase("ai_analysis_failsoft", aiAnalysisFailsoft.reason.slice(0, 200));
+      analysisResponse = new Response("", { status: isTimeout ? 408 : 599 });
     } finally {
       if (analysisTimeout !== undefined) { clearTimeout(analysisTimeout); analysisTimeout = undefined; }
     }
 
     let analysisText = "";
     if (analysisResponse.ok) {
-      const data = await analysisResponse.json();
-      analysisText = data.choices?.[0]?.message?.content || "";
-      console.log(`[AI analysis] Response length: ${analysisText.length} chars`);
-      // Log all [KARTA:...] blocks found
-      const kartaMatches = [...analysisText.matchAll(/\[KARTA:(.+?)\]/g)];
-      console.log(`[AI analysis] Card blocks found: ${kartaMatches.map(m => m[1]).join(", ") || "NONE"}`);
-      if (analysisText.length < 500) console.log(`[AI analysis] Full response: ${analysisText}`);
+      try {
+        const data = await analysisResponse.json();
+        analysisText = data.choices?.[0]?.message?.content || "";
+        console.log(`[AI analysis] Response length: ${analysisText.length} chars`);
+        const kartaMatches = [...analysisText.matchAll(/\[KARTA:(.+?)\]/g)];
+        console.log(`[AI analysis] Card blocks found: ${kartaMatches.map(m => m[1]).join(", ") || "NONE"}`);
+        if (analysisText.length < 500) console.log(`[AI analysis] Full response: ${analysisText}`);
+      } catch (jsonErr: any) {
+        // P33.5E: non-JSON response is fail-soft, not fatal.
+        aiAnalysisFailsoft.fallback_used = true;
+        aiAnalysisFailsoft.analyzer_status = "exception_fallback";
+        aiAnalysisFailsoft.reason = `ai_gateway_non_json:${(jsonErr?.message ?? String(jsonErr)).slice(0, 200)}`;
+        console.error(`[AI analysis] P33.5E failsoft non-JSON: ${aiAnalysisFailsoft.reason}`);
+      }
     } else {
-      const errText = await analysisResponse.text();
+      // P33.5E: HTTP 4xx/5xx is fail-soft — record metadata, continue.
+      let errText = "";
+      try { errText = await analysisResponse.text(); } catch (_) { /* ignore */ }
+      if (!aiAnalysisFailsoft.fallback_used) {
+        aiAnalysisFailsoft.fallback_used = true;
+        aiAnalysisFailsoft.analyzer_status = "http_error_fallback";
+        aiAnalysisFailsoft.reason = `ai_gateway_http_${analysisResponse.status}:${errText.slice(0, 200)}`;
+      }
       console.error(`[AI analysis] API error ${analysisResponse.status}: ${errText.slice(0, 500)}`);
     }
+    aiAnalysisFailsoft.duration_ms = Date.now() - aiAnalysisStartedAt;
+
+    // P33.5E: persist ai_analysis status into context_data so downstream
+    // diagnostics can see fallback was used. Failure to write must NOT
+    // block enqueue.
+    try {
+      const { data: prevRow } = await sb.from("did_update_cycles")
+        .select("context_data").eq("id", cycle.id).maybeSingle();
+      const prevContext = (prevRow?.context_data as Record<string, unknown>) || {};
+      await sb.from("did_update_cycles").update({
+        context_data: { ...prevContext, ai_analysis: aiAnalysisFailsoft },
+      }).eq("id", cycle.id);
+    } catch (ctxErr: any) {
+      console.warn("[P33.5E] context_data.ai_analysis write failed (non-fatal):", ctxErr?.message);
+    }
+    await setPhase("ai_analysis_done",
+      aiAnalysisFailsoft.fallback_used ? `fallback:${aiAnalysisFailsoft.analyzer_status}` : "completed");
+
 
     await setPhase("update_cards", "Fáze 4: Aktualizace karet (async enqueue)");
     // ═══════════════════════════════════════════════════════════════════════
