@@ -38,7 +38,8 @@ const HARD_FORBIDDEN: Array<{ re: RegExp; label: string }> = [
   { re: /nem[\u00e1a]m\s+u\s+sebe\s+podrobn[\u011be]j[\u0161s][\u00ed\u00ec]\s+p[\u0159r]ehled/i, label: "false_missing_phase_detail" },
 ];
 
-const LOWERCASE_PART_NAME_RE = /(^|[^\p{L}])(?:arthur|tundrupek)(?=$|[^\p{L}])/iu;
+// Case-SENSITIVE: only lowercase variants are dirty; capitalized names are clean.
+const LOWERCASE_PART_NAME_RE = /(^|[^\p{L}])(?:arthur|tundrupek)(?=$|[^\p{L}])/u;
 
 const SOFT_WARNINGS: Array<{ re: RegExp; label: string }> = [
   { re: /\b(low|medium|high)\b/i, label: "english_evidence_word" },
