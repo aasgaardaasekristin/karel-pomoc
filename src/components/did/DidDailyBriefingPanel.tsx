@@ -53,6 +53,8 @@ import AiPolishCanaryPreviewPanel from "@/components/did/AiPolishCanaryPreviewPa
 import { getBriefingTruthStatus, pluralizeDays } from "@/lib/briefingTruthStatus";
 import { selectBestBriefing, isFullRenderableBriefing } from "@/lib/briefingSelection";
 import { sanitizeKarelVisibleText } from "@/lib/karelBriefingVisibleSanitizer";
+import { auditVisibleKarelSections } from "@/lib/karelVisibleTextQuality";
+import { canonicalizePartDisplayName } from "@/lib/partTodayRelevance";
 
 interface BriefingDecision {
   /** SLICE 3 — stabilní serverové UUID briefing itemu (linked_briefing_item_id). */
@@ -265,6 +267,11 @@ export const backendContextSummary = (inputs: Record<string, any> | undefined): 
 };
 
 export const cleanVisibleClinicalText = (value: unknown): string => String(value ?? "")
+  .replace(/^00[0-9]_/g, "")
+  .replace(/\b00[0-9]_/g, "")
+  .replace(/\barthure?\b/gi, (m) => (m.toLocaleLowerCase("cs") === "arthure" ? "Arthure" : "Arthur"))
+  .replace(/\btundrupek\b/gi, "Tundrupek")
+  .replace(/\bgustik\b/gi, "Gustík")
   .replace(/pending_review\s*\/\s*evidence_limited/gi, "otevřené nebo částečně rozpracované, zatím bez plného dovyhodnocení")
   .replace(/\bpending_review\b/gi, "čeká na klinické dovyhodnocení")
   .replace(/\bevidence_limited\b/gi, "zatím bez dostatečného materiálu pro plný klinický závěr")
@@ -512,6 +519,11 @@ const cleanLine = (value: unknown, fallback = ""): string => {
   return cleaned;
 };
 
+const cleanPartName = (value: unknown, fallback = "vybraná část"): string => {
+  const canonical = canonicalizePartDisplayName(String(value ?? ""));
+  return canonical || fallback;
+};
+
 interface SessionBlockView {
   title: string;
   duration: string;
@@ -569,10 +581,11 @@ export const toProposedSessionView = (session: ProposedSession | null | undefine
   const rawBlocks = Array.isArray(session.agenda_outline) ? session.agenda_outline : [];
   const containsTechnicalFallback = FORBIDDEN_VISIBLE_DEBUG_RE.test(`${session.first_draft ?? ""} ${JSON.stringify(rawBlocks)}`) || rawBlocks.length === 1;
   const lead = session.led_by === "společně" ? "obě terapeutky" : session.led_by;
+  const partName = cleanPartName(session.part_name);
   if (containsTechnicalFallback || rawBlocks.length < 4) {
     return {
-      title: `Sezení s částí ${cleanLine(session.part_name, "vybranou částí")}`,
-      part_name: cleanLine(session.part_name, "vybraná část"),
+      title: `Sezení s částí ${partName}`,
+      part_name: partName,
       lead,
       duration: session.duration_min ? `~${session.duration_min} min` : "čeká na doplnění",
       rationale: "Karel zatím nemá dost podkladů pro vykonatelné Sezení. Potřebuje od Haničky nebo Káti upřesnit aktuální stav části, bezpečnost a dostupnost. Po doplnění vytvoří nový návrh.",
@@ -586,8 +599,8 @@ export const toProposedSessionView = (session: ProposedSession | null | undefine
     };
   }
   return {
-    title: `Sezení s částí ${cleanLine(session.part_name, "vybranou částí")}`,
-    part_name: cleanLine(session.part_name, "vybraná část"),
+    title: `Sezení s částí ${partName}`,
+    part_name: partName,
     lead,
     duration: session.duration_min ? `~${session.duration_min} min` : "cca 45–60 min",
     rationale: cleanLine(session.why_today || session.first_draft, "Návrh vychází z dnešní priority a čeká na týmové doladění."),
@@ -603,10 +616,11 @@ export const toProposedSessionView = (session: ProposedSession | null | undefine
 
 export const toProposedPlayroomView = (playroom: ProposedPlayroom | null | undefined): ProposedPlayroomView | null => {
   if (!playroom?.part_name) return null;
+  const partName = cleanPartName(playroom.part_name);
   const blocks = Array.isArray(playroom.playroom_plan?.therapeutic_program) ? playroom.playroom_plan.therapeutic_program : [];
   return {
-    title: `Návrh Herny s ${cleanLine(playroom.part_name, "vybranou částí")}`,
-    part_name: cleanLine(playroom.part_name, "vybraná část"),
+    title: `Návrh Herny s ${partName}`,
+    part_name: partName,
     lead_label: "vede Karel",
     approval_label: "čeká na schválení terapeutkami",
     rationale: cleanLine(playroom.why_this_part_today || playroom.main_theme, "Jemně ověřit, co dnes část unese, a držet bezpečný kontakt bez výkladu za ni."),
@@ -1565,6 +1579,14 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     ? `${sessRecency.human_recency_label || "starší"} · ${formatPragueDateLabel(sessRecency.source_date_iso ?? sessRecency.session_date_iso)}`
     : null;
   const sanitizeProse = (v: unknown) => humanizeRecencyInProse(cleanVisibleClinicalText(v), playRecency, sessRecency);
+  const hb: any = (p as any).karel_human_briefing;
+  const humanSections = hb && Array.isArray(hb.sections) ? hb.sections : [];
+  const visibleHumanAudit = auditVisibleKarelSections(
+    humanSections.map((s: any) => ({ section_id: s?.section_id, karel_text: String(s?.karel_text ?? "") })),
+  );
+  const visibleHumanOk = !!(hb && hb.ok === true && humanSections.length > 0 && visibleHumanAudit.ok);
+  const humanQualityBlocked = !!(hb && hb.ok === true && humanSections.length > 0 && !visibleHumanAudit.ok);
+  const structuredFallbackAllowed = !visibleHumanOk && !humanQualityBlocked;
 
   // P12: deterministic truth-status — single source for badge + banner.
   // Replaces the old `briefingMethodBadge` + freshness banner + limited
@@ -1675,10 +1697,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           Když ok=false, ukáže se fallback warning a strukturovaný layout
           zůstává primární. Když chybí úplně, chová se jako dřív. */}
       {(() => {
-        const hb: any = (p as any).karel_human_briefing;
-        const humanOk = !!(hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0);
         const humanBroken = !!(hb && hb.ok === false);
-        if (humanOk) {
+        if (visibleHumanOk) {
           return (
             <div
               className="rounded-xl border border-primary/15 bg-card/30 p-3.5 mt-1 space-y-3"
@@ -1686,7 +1706,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               data-human-ok="true"
               data-renderer-version={hb.renderer_version}
             >
-              {hb.sections.map((s: any, idx: number) => {
+              {humanSections.map((s: any, idx: number) => {
                 const rawText = typeof s?.karel_text === "string" ? s.karel_text : "";
                 const text = sanitizeKarelVisibleText(rawText);
                 if (!text.trim()) return null;
@@ -1703,10 +1723,31 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                   </div>
                 );
               })}
-              {technicalNote && (
+              {technicalNote && isKarelDebugMode() && (
                 <p className="pt-2 border-t border-border/40 text-[11px] leading-relaxed text-muted-foreground italic">
                   Technická poznámka: {technicalNote}
                 </p>
+              )}
+            </div>
+          );
+        }
+        if (humanQualityBlocked) {
+          return (
+            <div
+              className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 mt-1 space-y-2"
+              data-testid="karel-human-briefing-quality-fallback"
+              data-human-ok="false"
+            >
+              <p className="text-[13px] leading-relaxed text-foreground/85">
+                Karlův přehled je dnes dočasně skrytý, protože neprošel jazykovou a klinickou kontrolou. Použijte jen ověřené operační podklady níže.
+              </p>
+              {isKarelDebugMode() && (
+                <details className="rounded-md border border-border/40 bg-background/40 p-2">
+                  <summary className="cursor-pointer text-[11px] text-muted-foreground">Detail kontroly</summary>
+                  <p className="mt-1 text-[11px] text-muted-foreground whitespace-pre-line">
+                    {visibleHumanAudit.errors.join("\n")}
+                  </p>
+                </details>
               )}
             </div>
           );
@@ -1728,7 +1769,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               <p className="text-[14px] leading-relaxed text-foreground/90 whitespace-pre-line">
                 {openingMonologueText}
               </p>
-              {technicalNote && (
+              {technicalNote && isKarelDebugMode() && (
                 <p className="pt-2 border-t border-border/40 text-[11px] leading-relaxed text-muted-foreground italic">
                   Technická poznámka: {technicalNote}
                 </p>
@@ -1741,9 +1782,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       {/* P33.6 — Technické podklady & AI polish náhled jsou admin/debug only.
           Aktivace přes ?karelDebug=1 nebo localStorage.karel_debug=1. */}
       {(() => {
-        const hb: any = (p as any).karel_human_briefing;
-        const humanPrimary = !!(hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0);
-        if (!humanPrimary) return null;
+        if (!visibleHumanOk) return null;
         if (!isKarelDebugMode()) return null;
         return (
           <details
@@ -1766,13 +1805,13 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         return (
           <AiPolishCanaryPreviewPanel
             briefingId={briefing?.id || null}
-            humanOk={!!((p as any).karel_human_briefing?.ok === true)}
+            humanOk={visibleHumanOk}
           />
         );
       })()}
 
 
-      {!((p as any).karel_human_briefing?.ok === true) && visibleRealityContext && (
+      {structuredFallbackAllowed && visibleRealityContext && (
         <>
           <NarrativeDivider />
           <SectionHead>Důležitý kontext z posledních dní</SectionHead>
@@ -1782,7 +1821,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
-      {!((p as any).karel_human_briefing?.ok === true) && (<>
+      {structuredFallbackAllowed && (<>
       {/* 2. Co se změnilo za poslední 3 dny */}
       {p.last_3_days && (
         <>

@@ -179,6 +179,20 @@ function isTestDeliberation(d: TeamDeliberation): boolean {
   return TEST_TITLE_PATTERNS.some((rx) => rx.test(haystack));
 }
 
+function pragueTodayISO(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+}
+
+function isTodayScopedDeliberation(d: TeamDeliberation): boolean {
+  const today = pragueTodayISO();
+  const sp = (d.session_params ?? {}) as Record<string, unknown>;
+  const explicitDate = String(sp.valid_for_date ?? sp.session_date ?? sp.briefing_date ?? "").slice(0, 10);
+  const hasSourceCycle = !!(sp.source_cycle_id || sp.linked_source_cycle_id || sp.briefing_source_cycle_id);
+  const updatedToday = String(d.updated_at ?? "").slice(0, 10) === today;
+  const createdToday = String(d.created_at ?? "").slice(0, 10) === today;
+  return explicitDate === today || hasSourceCycle || updatedToday || createdToday;
+}
+
 export function partitionDashboardDeliberations(
   list: TeamDeliberation[]
 ): { primary: TeamDeliberation[]; overflow: TeamDeliberation[] } {
@@ -197,7 +211,9 @@ export function partitionDashboardDeliberations(
       (d.status === "active" || d.status === "awaiting_signoff") &&
       !isTestDeliberation(d)
   );
-  const sorted = [...open].sort((a, b) => {
+  const todayScoped = open.filter(isTodayScopedDeliberation);
+  const staleReview = open.filter((d) => !isTodayScopedDeliberation(d));
+  const sorted = [...todayScoped].sort((a, b) => {
     const pa = PRIORITY_RANK[a.priority] ?? 5;
     const pb = PRIORITY_RANK[b.priority] ?? 5;
     if (pa !== pb) return pa - pb;
@@ -227,7 +243,7 @@ export function partitionDashboardDeliberations(
   }
 
   const primaryIds = new Set(primary.map((d) => d.id));
-  const overflow = sorted.filter((d) => !primaryIds.has(d.id));
+  const overflow = [...sorted.filter((d) => !primaryIds.has(d.id)), ...staleReview];
   return { primary, overflow };
 }
 

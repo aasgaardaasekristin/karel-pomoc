@@ -8,6 +8,11 @@
  * Public API: renderKarelBriefingVoice(payload) → KarelBriefingVoiceRenderResult
  */
 
+import {
+  canonicalizePartDisplayName,
+  isPartTodayRelevantForPrimarySuggestion,
+} from "./partTodayRelevance.ts";
+
 export interface RenderedBriefingSection {
   section_id: string;
   title: string;
@@ -42,6 +47,30 @@ export interface KarelBriefingVoiceRenderResult {
 }
 
 export const RENDERER_VERSION = "p31.1.0";
+
+function withTerminalPunctuation(text: string): string {
+  const s = safeStr(text);
+  if (!s) return "";
+  return /[.!?]$/.test(s) ? s : `${s}.`;
+}
+
+function sanitizeRenderedText(text: string): string {
+  return safeStr(text)
+    .replace(/\b00[0-9]_/g, "")
+    .replace(/S[íi]la\s+d[ůu]kazu\s+je\s+n[íi]zk[áa][^.!?]*[.!?]?/gi, "")
+    .replace(/Opora\s+v\s+podklade?ch\s+je\s+n[íi]zk[áa][^.!?]*[.!?]?/gi, "")
+    .replace(/dolo[žz]en[ýy]\s+praktickou\s+pozn[áa]mku/gi, "praktickou poznámku")
+    .replace(/dolo[žz]en[ýy]\s+praktick[ýy]\s+report/gi, "praktickou poznámku")
+    .replace(/praktick[ýy]\s+report/gi, "praktickou poznámku")
+    .replace(/podle\s+posledn[íi]ho\s+p[řr]esn[ěe]\s+datovan[ée]ho\s+review/gi, "podle posledního doloženého záznamu")
+    .replace(/\barthure?\b/gi, (m) => (m.toLocaleLowerCase("cs") === "arthure" ? "Arthure" : "Arthur"))
+    .replace(/\btundrupek\b/gi, "Tundrupek")
+    .replace(/\bgustik\b/gi, "Gustík")
+    .replace(/\.\.+/g, ".")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .trim();
+}
 
 export const FORBIDDEN_ROBOTIC_PHRASES: { pattern: RegExp; label: string }[] = [
   { pattern: /na základ[ěe] dat/i, label: "Na základě dat" },
@@ -114,22 +143,31 @@ function renderSystemMorningState(payload: any): RenderedBriefingSection {
  * Section 2 — co je ověřené z denního cyklu.
  */
 function renderDailyCycleVerified(payload: any): RenderedBriefingSection {
-  const snap = payload?.phase_jobs_snapshot ?? null;
-  const fields = ["phase_jobs_snapshot"];
+  const snap = payload?.phase_jobs_snapshot
+    ?? payload?.briefing_truth_gate?.job_graph_snapshot
+    ?? payload?.daily_cycle_completion_semantics?.detached_jobs_summary
+    ?? null;
+  const truth = payload?.briefing_truth_gate ?? null;
+  const fields = ["phase_jobs_snapshot", "briefing_truth_gate.job_graph_snapshot", "briefing_truth_gate.required_jobs_count", "briefing_truth_gate.completed_jobs", "briefing_truth_gate.controlled_skipped_jobs", "daily_cycle_completion_semantics.detached_jobs_summary"];
   const warnings: string[] = [];
   let text: string;
   let confidence: "high" | "medium" | "low" = "medium";
 
-  if (snap && typeof snap === "object") {
-    const jobs = Array.isArray(snap?.jobs) ? snap.jobs : [];
-    const total = jobs.length || (typeof snap?.total === "number" ? snap.total : 0);
+  if ((Array.isArray(snap) && snap.length > 0) || (snap && typeof snap === "object")) {
+    const jobs = Array.isArray(snap) ? snap : (Array.isArray(snap?.jobs) ? snap.jobs : []);
     const completed = jobs.filter((j: any) => j?.status === "completed").length
-      || (typeof snap?.completed === "number" ? snap.completed : 0);
+      || Number(truth?.completed_jobs ?? snap?.completed ?? 0);
+    const skipped = jobs.filter((j: any) => j?.status === "controlled_skipped").length
+      || Number(truth?.controlled_skipped_jobs ?? snap?.controlled_skipped ?? 0);
+    const total = jobs.length || Number(truth?.required_jobs_count ?? snap?.total ?? 0);
+    const terminal = completed + skipped;
     if (total > 0) {
-      text = `Z dnešní ranní přípravy je hotových ${completed} ze ${total} kroků. Beru to jako solidní základ pro dnešek.`;
-      confidence = completed === total ? "high" : "medium";
+      text = terminal >= total
+        ? `Dnešní ranní příprava doběhla. Povinné kroky jsou uzavřené; část z nich byla dokončená a část bezpečně přeskočená, protože pro ni dnes nebyla práce.`
+        : `Z dnešní ranní přípravy je uzavřených ${terminal} ze ${total} kroků. Beru to jako rozpracovaný základ pro dnešek.`;
+      confidence = terminal >= total ? "high" : "medium";
     } else {
-      text = "Dnešní ranní příprava sice proběhla, ale nemám u sebe podrobnější přehled jejích jednotlivých kroků.";
+      text = "Dnešní ranní příprava proběhla, ale přehled kroků je dnes uložený bez počitatelné položkové struktury.";
       warnings.push("phase_jobs_snapshot_empty");
     }
   } else {
@@ -171,35 +209,31 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
   let text: string;
   let confidence: "high" | "medium" | "low" = "medium";
 
-  const rawPartName = safeStr(tpp?.proposed_part) || safeStr(tpp?.part_name);
-  // Strip technical prefix like "002_Anička" → "Anička"
-  const normalizedPartName = rawPartName
-    ? rawPartName.replace(/^00[0-9]_/, "").trim()
-    : "";
-  const partName = normalizedPartName || rawPartName;
-  const isHypothesis = tpp?.is_hypothesis_only === true;
-  const evidence = safeStr(tpp?.evidence_strength).toLowerCase();
-  const hasCurrentEvidence = tpp?.has_current_evidence === true;
-  const registrySleeping = tpp?.registry_sleeping === true;
+  const decision = payload?.today_part_relevance_decision ?? isPartTodayRelevantForPrimarySuggestion({
+    proposed_part: tpp?.proposed_part ?? tpp?.part_name,
+    briefing_date: safeStr(payload?.briefing_date) || safeStr(payload?.viewer_meta?.briefing_date_iso),
+    source_cycle_id: payload?.briefing_truth_gate?.source_cycle_id ?? payload?.source_cycle_id,
+    is_hypothesis_only: tpp?.is_hypothesis_only === true,
+    evidence_strength: tpp?.evidence_strength,
+    recent_thread_part_names: Array.isArray(tpp?.recent_thread_part_names) ? tpp.recent_thread_part_names : [],
+    todays_session_part_names: Array.isArray(tpp?.todays_session_part_names) ? tpp.todays_session_part_names : [],
+    live_progress_part_names: Array.isArray(tpp?.live_progress_part_names) ? tpp.live_progress_part_names : [],
+    explicit_therapist_mentions: Array.isArray(tpp?.explicit_therapist_mentions) ? tpp.explicit_therapist_mentions : [],
+    registry_sleeping: tpp?.registry_sleeping === true,
+  });
+  const partName = canonicalizePartDisplayName(decision?.display_name ?? tpp?.proposed_part ?? tpp?.part_name);
 
-  // Reject as primary suggestion when low support + hypothesis-only without current evidence,
-  // or when part is dormant without current evidence.
-  const rejectAsPrimary =
-    !partName ||
-    (isHypothesis && evidence === "low" && !hasCurrentEvidence) ||
-    (registrySleeping && !hasCurrentEvidence);
-
-  if (rejectAsPrimary) {
+  if (!decision?.ok_for_primary_suggestion || !partName) {
     text =
       "Dnes nemám dost opory vybrat konkrétní část před prvním kontaktem. Vybereme až podle toho, co kluci sami přinesou.";
     confidence = "low";
-    warnings.push(partName ? "rejected_low_support_or_dormant" : "no_today_part_proposal");
+    warnings.push(decision?.reason ? `part_relevance_rejected:${decision.reason}` : "no_today_part_proposal");
   } else {
-    const hypoNote = isHypothesis
+    const hypoNote = tpp?.is_hypothesis_only === true
       ? " Beru to jen jako pracovní rámec, dokud to nepotvrdí Hanička s Káťou."
       : "";
     text = `Pro dnešek se mi jako možná část pro práci nabízí ${partName}.${hypoNote}`;
-    confidence = evidence === "high" ? "high" : "medium";
+    confidence = decision?.confidence === "high" ? "high" : "medium";
   }
 
   return {
@@ -226,8 +260,8 @@ function renderTherapistAsks(payload: any): RenderedBriefingSection {
   const firstK = safeStr(askK[0]?.text);
 
   const parts: string[] = [];
-  if (firstH) parts.push(`Haničko, hlavní věc na dnes je ${firstH.charAt(0).toLocaleLowerCase("cs")}${firstH.slice(1)}.`);
-  if (firstK) parts.push(`Káťo, hlavní věc na dnes je ${firstK.charAt(0).toLocaleLowerCase("cs")}${firstK.slice(1)}.`);
+  if (firstH) parts.push(withTerminalPunctuation(`Haničko, hlavní věc na dnes je ${firstH.charAt(0).toLocaleLowerCase("cs")}${firstH.slice(1)}`));
+  if (firstK) parts.push(withTerminalPunctuation(`Káťo, hlavní věc na dnes je ${firstK.charAt(0).toLocaleLowerCase("cs")}${firstK.slice(1)}`));
   if (askH.length > 1) parts.push(`Pro Haničku k tomu mám ještě ${askH.length - 1} navazujících bodů.`);
   if (askK.length > 1) parts.push(`Pro Káťu k tomu mám ještě ${askK.length - 1} navazujících bodů.`);
 
@@ -387,14 +421,14 @@ function renderRisks(payload: any): RenderedBriefingSection {
 
   const partsWithTriggers: string[] = partsArr
     .filter((p) => Array.isArray(p?.internet_triggers_today) && p.internet_triggers_today.some(isFresh))
-    .map((p) => safeStr(p?.part_name)).filter(Boolean);
+    .map((p) => canonicalizePartDisplayName(p?.part_name) || "").filter(Boolean);
 
   const partsWithCheckedToday: string[] = partsArr
     .filter((p) => {
       const arr = p?.evidence_summary?.checked_external_sources_today;
       return Array.isArray(arr) && arr.length > 0 && !isFresh(p);
     })
-    .map((p) => safeStr(p?.part_name)).filter(Boolean);
+    .map((p) => canonicalizePartDisplayName(p?.part_name) || "").filter(Boolean);
 
   const partsWithHistoricalOnly: string[] = partsArr
     .filter((p) => {
@@ -405,7 +439,7 @@ function renderRisks(payload: any): RenderedBriefingSection {
         p.evidence_summary.historical_external_triggers.length > 0;
       return !fresh && !checked && hist;
     })
-    .map((p) => safeStr(p?.part_name)).filter(Boolean);
+    .map((p) => canonicalizePartDisplayName(p?.part_name) || "").filter(Boolean);
 
   const lines: string[] = [];
   if (lingering.length > 0) {
@@ -480,7 +514,8 @@ function renderUnknowns(payload: any, allWarnings: string[]): RenderedBriefingSe
  * Section 9 — opatrný další krok.
  */
 function renderNextStep(payload: any): RenderedBriefingSection {
-  const dtp = safeStr(payload?.daily_therapeutic_priority);
+  const decision = payload?.today_part_relevance_decision ?? null;
+  const dtp = decision?.ok_for_primary_suggestion === false ? "" : safeStr(payload?.daily_therapeutic_priority);
   const fields = ["daily_therapeutic_priority"];
   const warnings: string[] = [];
   let text: string;
@@ -665,6 +700,7 @@ export function renderKarelBriefingVoice(payload: any): KarelBriefingVoiceRender
   let empty = 0;
 
   for (const sec of sections) {
+    sec.karel_text = sanitizeRenderedText(sec.karel_text);
     pushUsed(sourceFieldsUsed, sec.source_fields);
     const claim = validateSectionClaims(sec, payload, knownParts);
     sec.unsupported_claims_count += claim.unsupported_claims_count;

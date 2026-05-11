@@ -46,6 +46,7 @@ import {
 } from "../_shared/dailyBriefingTruthGate.ts";
 import { renderKarelBriefingVoice } from "../_shared/karelBriefingVoiceRenderer.ts";
 import { generateKarelAiPolishCandidate } from "../_shared/karelBriefingVoiceAiPolish.ts";
+import { isPartTodayRelevantForPrimarySuggestion } from "../_shared/partTodayRelevance.ts";
 
 /**
  * SLA generation methods (added 2026-04-30, morning_operational_integrity_e2e):
@@ -3214,6 +3215,18 @@ Deno.serve(async (req) => {
         rationale_text: rationaleText,
         has_current_evidence: yCat === "completed_session" || yCat === "started_session",
       };
+      payload.today_part_relevance_decision = isPartTodayRelevantForPrimarySuggestion({
+        proposed_part: proposedPart,
+        briefing_date: today,
+        source_cycle_id: payload?.source_cycle_id ?? null,
+        is_hypothesis_only: isHypothesisOnly,
+        evidence_strength: evidenceStrength,
+        recent_thread_part_names: [],
+        todays_session_part_names: (yCat === "completed_session" || yCat === "started_session") && proposedPart ? [proposedPart] : [],
+        live_progress_part_names: [],
+        explicit_therapist_mentions: [],
+        registry_sleeping: false,
+      });
     } catch (e) {
       console.warn("[P20.2] yesterday_truth/today_part_proposal failed (non-fatal):", e);
     }
@@ -3899,6 +3912,22 @@ Deno.serve(async (req) => {
           read_error: String((e as Error)?.message ?? e).slice(0, 200),
         };
       }
+    }
+
+    if (payload?.today_part_proposal) {
+      const tpp = payload.today_part_proposal;
+      payload.today_part_relevance_decision = isPartTodayRelevantForPrimarySuggestion({
+        proposed_part: tpp.proposed_part ?? tpp.part_name,
+        briefing_date: today,
+        source_cycle_id: payload?.source_cycle_id ?? payload?.briefing_truth_gate?.source_cycle_id ?? null,
+        is_hypothesis_only: tpp.is_hypothesis_only === true,
+        evidence_strength: tpp.evidence_strength,
+        recent_thread_part_names: Array.isArray(tpp.recent_thread_part_names) ? tpp.recent_thread_part_names : [],
+        todays_session_part_names: Array.isArray(tpp.todays_session_part_names) ? tpp.todays_session_part_names : [],
+        live_progress_part_names: Array.isArray(tpp.live_progress_part_names) ? tpp.live_progress_part_names : [],
+        explicit_therapist_mentions: Array.isArray(tpp.explicit_therapist_mentions) ? tpp.explicit_therapist_mentions : [],
+        registry_sleeping: tpp.registry_sleeping === true,
+      });
     }
 
     // P31.1 — truth-locked Karel voice renderer. Deterministic, no AI calls.

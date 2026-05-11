@@ -33,7 +33,10 @@ const HARD_FORBIDDEN: Array<{ re: RegExp; label: string }> = [
   { re: /m[\u016f\u00fa][\u017ez]e\s+dnes\s+zat[\u00ed\u00ec][\u017ez]it/i, label: "muze_dnes_zatizit" },
   { re: /dnes\s+se\s+objevilo/i, label: "dnes_se_objevilo" },
   { re: /dne[\u0161s]n[\u00ed\u00ec]\s+ud[\u00e1a]lost/i, label: "dnesni_udalost" },
+  { re: /nem[\u00e1a]m\s+u\s+sebe\s+podrobn[\u011be]j[\u0161s][\u00ed\u00ec]\s+p[\u0159r]ehled/i, label: "false_missing_phase_detail" },
 ];
+
+const LOWERCASE_PART_NAME_RE = /(^|[^\p{L}])(?:arthur|tundrupek)(?=$|[^\p{L}])/iu;
 
 const SOFT_WARNINGS: Array<{ re: RegExp; label: string }> = [
   { re: /\b(low|medium|high)\b/i, label: "english_evidence_word" },
@@ -45,6 +48,7 @@ export function auditVisibleKarelText(text: string | null | undefined): VisibleT
   const t = String(text ?? "");
   if (!t.trim()) return { ok: true, errors, warnings };
   for (const { re, label } of HARD_FORBIDDEN) if (re.test(t)) errors.push(`forbidden:${label}`);
+  if (LOWERCASE_PART_NAME_RE.test(t)) errors.push("forbidden:lowercase_part_name");
   for (const { re, label } of SOFT_WARNINGS) if (re.test(t)) warnings.push(`warning:${label}`);
   return { ok: errors.length === 0, errors, warnings };
 }
