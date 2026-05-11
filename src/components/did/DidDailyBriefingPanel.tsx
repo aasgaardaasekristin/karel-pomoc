@@ -1744,8 +1744,6 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         const hb: any = (p as any).karel_human_briefing;
         const humanPrimary = !!(hb && hb.ok === true && Array.isArray(hb.sections) && hb.sections.length > 0);
         if (!humanPrimary) return null;
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { isKarelDebugMode } = require("@/lib/karelDebugMode");
         if (!isKarelDebugMode()) return null;
         return (
           <details
