@@ -92,27 +92,39 @@ export default function ExternalLoadWarning({ showWhenEmpty = false }: Props) {
         </span>
       </header>
       {cards.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Dnes nejsou čerstvé zdrojované vnější zátěže.</p>
+        <p className="text-xs text-muted-foreground">Dnes nejsou čerstvé ani nově ověřené zdrojované vnější zátěže.</p>
       ) : (
         <ul className="space-y-1.5">
           {cards.slice(0, 8).map((c) => {
             const meta = RISK_META[c.risk_level];
             const Icon = meta.Icon;
+            const tierLabel =
+              c.display_tier === "fresh_today_event"
+                ? "Čerstvý zdroj"
+                : c.display_tier === "checked_today_unknown_publication_date"
+                  ? "Dnes ověřený zdroj"
+                  : "Dříve evidované";
             return (
               <li
                 key={c.key}
                 className={`rounded-md border p-2 text-xs ${meta.tone}`}
                 data-risk={c.risk_level}
                 data-part={c.part_name}
+                data-tier={c.display_tier}
               >
-                <div className="flex items-center gap-2 font-medium">
+                <div className="flex items-center gap-2 font-medium flex-wrap">
                   <Icon className="h-3.5 w-3.5" aria-hidden />
                   <span>{c.part_name}</span>
                   <span className="opacity-70">·</span>
                   <span className="uppercase tracking-wide text-[10px]">{meta.label}</span>
+                  <span className="opacity-70">·</span>
+                  <span className="uppercase tracking-wide text-[10px] rounded bg-background/60 px-1 py-0.5">{tierLabel}</span>
                   <span className="opacity-70 truncate">· {c.theme_label}</span>
                 </div>
                 <div className="mt-1 leading-snug">{c.body}</div>
+                {c.caution_label && (
+                  <div className="mt-1 text-[10px] opacity-80 italic">{c.caution_label}</div>
+                )}
                 {c.recommendation && (
                   <div className="mt-1 italic opacity-90">
                     Doporučení: {c.recommendation}
@@ -123,9 +135,11 @@ export default function ExternalLoadWarning({ showWhenEmpty = false }: Props) {
                   {formatSourceDate(c.source_published_at) ? ` · publikováno ${formatSourceDate(c.source_published_at)}` : ""}
                   {formatSourceDate(c.fetched_at) ? ` · ověřeno dne ${formatSourceDate(c.fetched_at)}` : ""}
                 </div>
-                <div className="mt-1 text-[10px] opacity-60">
-                  Co dnes hlídat: tělo · emoci · pocit bezpečí · zahlcení · potřebu zastavit.
-                </div>
+                {c.display_tier === "fresh_today_event" && (
+                  <div className="mt-1 text-[10px] opacity-60">
+                    Co dnes hlídat: tělo · emoci · pocit bezpečí · zahlcení · potřebu zastavit.
+                  </div>
+                )}
               </li>
             );
           })}
