@@ -5294,6 +5294,12 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       let p29b3EarlyEnqueueResult: { enqueued: string[]; skipped: any[]; errors: any[] } = {
         enqueued: [], skipped: [], errors: [],
       };
+      // P33.5E: recovery marker — guarantees we entered enqueue path even
+      // when ai_analysis used a fallback. The 14 required phase jobs MUST
+      // be created regardless of analyzer outcome.
+      if (aiAnalysisFailsoft.fallback_used) {
+        await setPhase("pre_required_jobs_recovery", "p33_5e_ai_analysis_fallback_continue");
+      }
       try {
         let pendingDriveWritesCount = 0;
         try {
