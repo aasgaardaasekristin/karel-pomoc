@@ -3071,12 +3071,27 @@ Deno.serve(async (req) => {
         ALLOWED_PROVIDER_STATUSES.includes(String(cachedExt.provider_status ?? "")) &&
         cachedExt.active_part_daily_brief_count !== undefined &&
         cachedExt.active_part_daily_brief_count !== null;
+      // P33.7A — cache-version gate. A cached row is only "ready" if it carries
+      // the current P33.7 renderer + content completeness contract. Older rows
+      // (e.g. p31.1.0) must be regenerated even without an explicit force flag.
+      const REQUIRED_RENDERER_VERSION = "p33.7.0";
+      const REQUIRED_COMPLETENESS_VERSION = "p33.7";
+      const cachedHuman = existing?.payload?.karel_human_briefing ?? null;
+      const cachedCompleteness = existing?.payload?.daily_briefing_content_completeness ?? null;
+      const cachedP337Ready =
+        cachedHuman?.ok === true &&
+        cachedHuman?.renderer_version === REQUIRED_RENDERER_VERSION &&
+        cachedCompleteness?.version === REQUIRED_COMPLETENESS_VERSION &&
+        ["complete", "complete_with_controlled_missing"].includes(
+          String(cachedCompleteness?.overall_status ?? "")
+        );
       const cachedIsReady =
         existing &&
         cachedGateOk &&
         !!cachedSourceCycleId &&
         cachedAfterCycle &&
-        cachedExternalRealityOk;
+        cachedExternalRealityOk &&
+        cachedP337Ready;
 
       if (existing && cachedIsReady) {
         await finishBriefingAttempt(supabase, attemptId, { status: "succeeded", created_briefing_id: existing.id, metadata: { cached: true } });
