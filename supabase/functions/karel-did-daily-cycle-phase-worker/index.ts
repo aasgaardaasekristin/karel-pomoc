@@ -230,40 +230,68 @@ async function reconcilePreviousDbTransportResponse(
   return { ok: true, status, body: parsed, request_id: requestId };
 }
 
+// P33.5C: pg_net hard limit ≈ 60s. All DB-transport timeouts MUST stay
+// strictly below that, and downstream timeout_budget_ms must stay below
+// the DB-transport timeout. No more 180s pg_net waits.
 const DB_TRANSPORT_TIMEOUTS_MS: Record<string, number> = {
-  phase4_card_profiling: 120_000,
-  phase4_card_update_tail: 120_000,
-  phase6_card_autoupdate: 120_000,
-  phase8b_pantry_flush: 180_000,
-  phase9_drive_queue_flush: 180_000,
+  phase4_card_profiling: 55_000,
+  phase4_card_update_tail: 55_000,
+  phase6_card_autoupdate: 55_000,
+  phase8b_pantry_flush: 55_000,
+  phase9_drive_queue_flush: 55_000,
 };
+
+// P33.5C: bounded delegate body shared shape.
+const BOUNDED_DELEGATE_BUDGET_MS = 45_000;
+const BOUNDED_DELEGATE_MAX_ITEMS = 5;
+
+function boundedDelegateBody(extra: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...extra,
+    source: "daily_cycle_phase_worker",
+    phase_worker_bounded: true,
+    timeout_budget_ms: BOUNDED_DELEGATE_BUDGET_MS,
+    max_items: BOUNDED_DELEGATE_MAX_ITEMS,
+    p33_5c_bounded_delegate: true,
+  };
+}
 
 function dispatchTarget(job: Job): { fn: string; body: Record<string, unknown>; timeoutMs: number } | { skip: string } {
   switch (job.job_kind) {
     case "phase4_card_profiling":
     case "phase4_card_update_tail":
-      // Delegate to update-part-profile loop driver. We invoke run-daily-card-updates
-      // which already iterates active parts with its own per-call AI budget.
-      return { fn: "run-daily-card-updates", body: { source: "p29b_phase_worker", cycle_id: job.cycle_id }, timeoutMs: 180_000 };
+      return {
+        fn: "run-daily-card-updates",
+        body: boundedDelegateBody({ job_kind: job.job_kind, cycle_id: job.cycle_id }),
+        timeoutMs: 55_000,
+      };
     case "phase6_card_autoupdate":
-      return { fn: "run-daily-card-updates", body: { source: "p29b_phase_worker_phase6", cycle_id: job.cycle_id }, timeoutMs: 180_000 };
+      return {
+        fn: "run-daily-card-updates",
+        body: boundedDelegateBody({ job_kind: job.job_kind, cycle_id: job.cycle_id }),
+        timeoutMs: 55_000,
+      };
     case "phase7_operative_plan":
-      // P29B.3-H1: detached operative-plan update (was inline in main daily-cycle).
       return { fn: "update-operative-plan", body: { source: "p29b_phase_worker_phase7", cycle_id: job.cycle_id }, timeoutMs: 90_000 };
     case "phase8_therapist_intel":
       return { fn: "karel-daily-therapist-intelligence", body: { source: "p29b_phase_worker" }, timeoutMs: 90_000 };
     case "phase8a5_session_eval_safety_net": {
-      // P29B.3-H8.3: controller-mode (no plan_id) is handled in-process
-      // before reaching this switch via dispatchTarget. This branch only
-      // fires for legacy per-plan jobs still on the queue.
       const planId = (job.input as any)?.plan_id;
       if (!planId) return { skip: "controller_mode_handled_in_process" };
       return { fn: "karel-did-session-finalize", body: { ...(job.input as any), source: "auto_safety_net" }, timeoutMs: 90_000 };
     }
     case "phase8b_pantry_flush":
-      return { fn: "karel-pantry-flush-to-drive", body: { source: "p29b_phase_worker", max_items: 10, timeout_budget_ms: 150_000 }, timeoutMs: 180_000 };
+      return {
+        fn: "karel-pantry-flush-to-drive",
+        body: boundedDelegateBody({ job_kind: job.job_kind }),
+        timeoutMs: 55_000,
+      };
     case "phase9_drive_queue_flush":
-      return { fn: "karel-drive-queue-processor", body: { triggered_by: "p29b_phase_worker", max_items: 10, timeout_budget_ms: 150_000 }, timeoutMs: 180_000 };
+      return {
+        fn: "karel-drive-queue-processor",
+        body: boundedDelegateBody({ job_kind: job.job_kind, triggered_by: "p29b_phase_worker" }),
+        timeoutMs: 55_000,
+      };
     default:
       return { skip: `unknown_job_kind:${job.job_kind}` };
   }
