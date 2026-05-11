@@ -345,23 +345,33 @@ function renderRisks(payload: any): RenderedBriefingSection {
   const lingering = Array.isArray(payload?.lingering) ? payload.lingering : [];
   const fields = ["lingering", "external_reality_watch.parts"];
   const ext = payload?.external_reality_watch ?? null;
-  const partsWithTriggers: string[] = Array.isArray(ext?.parts)
-    ? ext.parts
-        .filter((p: any) => Array.isArray(p?.internet_triggers_today) &&
-          p.internet_triggers_today.some((t: any) => t?.freshness?.ok_for_today_display === true))
-        .map((p: any) => safeStr(p?.part_name))
-        .filter(Boolean)
-    : [];
-  const partsWithHistoricalOnly: string[] = Array.isArray(ext?.parts)
-    ? ext.parts
-        .filter((p: any) =>
-          (!Array.isArray(p?.internet_triggers_today) ||
-            !p.internet_triggers_today.some((t: any) => t?.freshness?.ok_for_today_display === true)) &&
-          Array.isArray(p?.evidence_summary?.historical_external_triggers) &&
-          p.evidence_summary.historical_external_triggers.length > 0)
-        .map((p: any) => safeStr(p?.part_name))
-        .filter(Boolean)
-    : [];
+  const partsArr: any[] = Array.isArray(ext?.parts) ? ext.parts : [];
+
+  const isFresh = (t: any) =>
+    t?.freshness?.display_tier === "fresh_today_event" ||
+    t?.freshness?.ok_for_today_display === true;
+
+  const partsWithTriggers: string[] = partsArr
+    .filter((p) => Array.isArray(p?.internet_triggers_today) && p.internet_triggers_today.some(isFresh))
+    .map((p) => safeStr(p?.part_name)).filter(Boolean);
+
+  const partsWithCheckedToday: string[] = partsArr
+    .filter((p) => {
+      const arr = p?.evidence_summary?.checked_external_sources_today;
+      return Array.isArray(arr) && arr.length > 0 && !isFresh(p);
+    })
+    .map((p) => safeStr(p?.part_name)).filter(Boolean);
+
+  const partsWithHistoricalOnly: string[] = partsArr
+    .filter((p) => {
+      const fresh = Array.isArray(p?.internet_triggers_today) && p.internet_triggers_today.some(isFresh);
+      const checked = Array.isArray(p?.evidence_summary?.checked_external_sources_today) &&
+        p.evidence_summary.checked_external_sources_today.length > 0;
+      const hist = Array.isArray(p?.evidence_summary?.historical_external_triggers) &&
+        p.evidence_summary.historical_external_triggers.length > 0;
+      return !fresh && !checked && hist;
+    })
+    .map((p) => safeStr(p?.part_name)).filter(Boolean);
 
   const lines: string[] = [];
   if (lingering.length > 0) {
@@ -369,6 +379,9 @@ function renderRisks(payload: any): RenderedBriefingSection {
   }
   if (partsWithTriggers.length > 0) {
     lines.push(`U těchto kluků je dnes čerstvě zachycený vnější okruh: ${partsWithTriggers.join(", ")}. Není to predikce, je to upozornění držet bezpečný rámec.`);
+  }
+  if (partsWithCheckedToday.length > 0) {
+    lines.push(`Internetový přehled dnes znovu ověřil citlivý okruh u: ${partsWithCheckedToday.join(", ")}. Datum publikace zdroje není jasné, takže to neberu jako dnešní událost; jen jako důvod jemně ověřit, zda se s tématem dnes setkali.`);
   }
   if (partsWithHistoricalOnly.length > 0) {
     lines.push(`U těchto kluků existuje dříve evidovaný citlivý okruh bez čerstvého zdrojovaného podkladu pro dnešek: ${partsWithHistoricalOnly.join(", ")}. Smyslem je jen ověřit, zda se s tématem dnes setkali.`);
