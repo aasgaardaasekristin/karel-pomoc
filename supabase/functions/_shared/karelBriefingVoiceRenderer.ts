@@ -54,6 +54,24 @@ function withTerminalPunctuation(text: string): string {
   return /[.!?]$/.test(s) ? s : `${s}.`;
 }
 
+function sanitizeRenderedText(text: string): string {
+  return safeStr(text)
+    .replace(/\b00[0-9]_/g, "")
+    .replace(/S[íi]la\s+d[ůu]kazu\s+je\s+n[íi]zk[áa][^.!?]*[.!?]?/gi, "")
+    .replace(/Opora\s+v\s+podklade?ch\s+je\s+n[íi]zk[áa][^.!?]*[.!?]?/gi, "")
+    .replace(/dolo[žz]en[ýy]\s+praktickou\s+pozn[áa]mku/gi, "praktickou poznámku")
+    .replace(/dolo[žz]en[ýy]\s+praktick[ýy]\s+report/gi, "praktickou poznámku")
+    .replace(/praktick[ýy]\s+report/gi, "praktickou poznámku")
+    .replace(/podle\s+posledn[íi]ho\s+p[řr]esn[ěe]\s+datovan[ée]ho\s+review/gi, "podle posledního doloženého záznamu")
+    .replace(/\barthure?\b/gi, (m) => (m.toLocaleLowerCase("cs") === "arthure" ? "Arthure" : "Arthur"))
+    .replace(/\btundrupek\b/gi, "Tundrupek")
+    .replace(/\bgustik\b/gi, "Gustík")
+    .replace(/\.\.+/g, ".")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .trim();
+}
+
 export const FORBIDDEN_ROBOTIC_PHRASES: { pattern: RegExp; label: string }[] = [
   { pattern: /na základ[ěe] dat/i, label: "Na základě dat" },
   { pattern: /dle dostupných informac[ií]/i, label: "Dle dostupných informací" },
