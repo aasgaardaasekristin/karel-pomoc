@@ -39,6 +39,7 @@ export interface KarelBriefingVoiceRenderResult {
   sections: RenderedBriefingSection[];
   opening_text?: string;
   closing_text?: string;
+  content_completeness?: DailyBriefingContentCompleteness;
   render_audit: {
     source_fields_used: string[];
     missing_expected_fields: string[];
