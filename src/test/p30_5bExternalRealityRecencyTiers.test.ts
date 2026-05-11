@@ -126,7 +126,8 @@ describe("P30.5B active part daily brief: tier-2 sources stay visible", () => {
   });
 });
 
-function mkImpact(tier: "fresh_today_event" | "checked_today_unknown_publication_date" | "historical_sensitive_context" | "not_displayable", id = tier): RawExternalImpact {
+function mkImpact(tier: "fresh_today_event" | "checked_today_unknown_publication_date" | "historical_sensitive_context" | "not_displayable", id?: string): RawExternalImpact {
+  id = id ?? tier;
   return {
     id, event_id: "e", part_name: "Tundrupek", risk_level: "red", reason: "Timmy", recommended_action: null,
     external_reality_events: {
