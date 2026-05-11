@@ -12,6 +12,10 @@ import {
   canonicalizePartDisplayName,
   isPartTodayRelevantForPrimarySuggestion,
 } from "./partTodayRelevance.ts";
+import {
+  evaluateBriefingContentCompleteness,
+  type DailyBriefingContentCompleteness,
+} from "./dailyBriefingContentCompleteness.ts";
 
 export interface RenderedBriefingSection {
   section_id: string;
