@@ -25,6 +25,13 @@ const RISK_META: Record<DisplayExternalImpact["risk_level"], { label: string; to
   red: { label: "Vysoká citlivost", tone: "border-rose-300 bg-rose-50/40 text-rose-900", Icon: ShieldAlert },
 };
 
+function formatSourceDate(value: string | null): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value.slice(0, 10);
+  return new Intl.DateTimeFormat("cs-CZ", { dateStyle: "medium" }).format(d);
+}
+
 interface Props {
   /** When true, render even if list is empty (for debugging UI). Default false. */
   showWhenEmpty?: boolean;
@@ -48,7 +55,7 @@ export default function ExternalLoadWarning({ showWhenEmpty = false }: Props) {
         });
         if (cancelled) return;
         const raw = ((res as { impacts?: RawExternalImpact[] })?.impacts ?? []) as RawExternalImpact[];
-        const display = clusterAndHumanizeExternalImpacts(raw);
+        const display = clusterAndHumanizeExternalImpacts(raw).filter((card) => card.freshness_ok === true);
         setCards(display);
       } catch (err) {
         if (cancelled) return;
@@ -85,7 +92,7 @@ export default function ExternalLoadWarning({ showWhenEmpty = false }: Props) {
         </span>
       </header>
       {cards.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Aktuálně žádná aktivní vnější zátěž.</p>
+        <p className="text-xs text-muted-foreground">Dnes nejsou čerstvé zdrojované vnější zátěže.</p>
       ) : (
         <ul className="space-y-1.5">
           {cards.slice(0, 8).map((c) => {
@@ -111,6 +118,11 @@ export default function ExternalLoadWarning({ showWhenEmpty = false }: Props) {
                     Doporučení: {c.recommendation}
                   </div>
                 )}
+                <div className="mt-1 text-[10px] opacity-70">
+                  Zdroj: {c.source_domain ?? "ověřený odkaz"}
+                  {formatSourceDate(c.source_published_at) ? ` · publikováno ${formatSourceDate(c.source_published_at)}` : ""}
+                  {formatSourceDate(c.fetched_at) ? ` · ověřeno dne ${formatSourceDate(c.fetched_at)}` : ""}
+                </div>
                 <div className="mt-1 text-[10px] opacity-60">
                   Co dnes hlídat: tělo · emoci · pocit bezpečí · zahlcení · potřebu zastavit.
                 </div>
