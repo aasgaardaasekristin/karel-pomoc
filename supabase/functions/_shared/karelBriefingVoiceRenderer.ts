@@ -308,7 +308,7 @@ function renderExternalReality(payload: any): RenderedBriefingSection {
 
   if (ps === "configured") {
     if (sourceBacked > 0) {
-      text = `Externí situační přehled je dnes dostupný a vidím v něm ${sourceBacked} doložených zdrojovaných událostí, které se mapují na ${briefCount} dnešních situačních zápisů ke klukům. Pracuji s ním opatrně a jen jako s kontextem, ne jako s diagnózou.`;
+      text = "Externí situační přehled je dnes dostupný a obsahuje čerstvě zdrojované okruhy pro opatrný kontext. Pracuji s nimi jen jako s jemným hlídáním rámce, ne jako s diagnózou ani predikcí.";
       confidence = "medium";
     } else {
       text = `Externí situační přehled je dnes dostupný, ale nepřinesl žádnou doloženou událost. Beru to tak, že dnes není nic, co bych měl z venku zvlášť hlídat.`;
@@ -347,7 +347,18 @@ function renderRisks(payload: any): RenderedBriefingSection {
   const ext = payload?.external_reality_watch ?? null;
   const partsWithTriggers: string[] = Array.isArray(ext?.parts)
     ? ext.parts
-        .filter((p: any) => Array.isArray(p?.internet_triggers_today) && p.internet_triggers_today.length > 0)
+        .filter((p: any) => Array.isArray(p?.internet_triggers_today) &&
+          p.internet_triggers_today.some((t: any) => t?.freshness?.ok_for_today_display === true))
+        .map((p: any) => safeStr(p?.part_name))
+        .filter(Boolean)
+    : [];
+  const partsWithHistoricalOnly: string[] = Array.isArray(ext?.parts)
+    ? ext.parts
+        .filter((p: any) =>
+          (!Array.isArray(p?.internet_triggers_today) ||
+            !p.internet_triggers_today.some((t: any) => t?.freshness?.ok_for_today_display === true)) &&
+          Array.isArray(p?.evidence_summary?.historical_external_triggers) &&
+          p.evidence_summary.historical_external_triggers.length > 0)
         .map((p: any) => safeStr(p?.part_name))
         .filter(Boolean)
     : [];
@@ -357,7 +368,10 @@ function renderRisks(payload: any): RenderedBriefingSection {
     lines.push(`Nesené téma, které ještě dobíhá: ${lingering.length === 1 ? "jedno" : `${lingering.length}`}. Nedělám z toho zatím závěr, jen ho držím na vědomí.`);
   }
   if (partsWithTriggers.length > 0) {
-    lines.push(`U těchto kluků dnes vidím možný spouštěč zvenku: ${partsWithTriggers.join(", ")}. Není to predikce, je to upozornění držet bezpečný rámec.`);
+    lines.push(`U těchto kluků je dnes čerstvě zachycený vnější okruh: ${partsWithTriggers.join(", ")}. Není to predikce, je to upozornění držet bezpečný rámec.`);
+  }
+  if (partsWithHistoricalOnly.length > 0) {
+    lines.push(`U těchto kluků existuje dříve evidovaný citlivý okruh bez čerstvého zdrojovaného podkladu pro dnešek: ${partsWithHistoricalOnly.join(", ")}. Smyslem je jen ověřit, zda se s tématem dnes setkali.`);
   }
 
   let text: string;
