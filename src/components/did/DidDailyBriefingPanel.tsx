@@ -581,10 +581,11 @@ export const toProposedSessionView = (session: ProposedSession | null | undefine
   const rawBlocks = Array.isArray(session.agenda_outline) ? session.agenda_outline : [];
   const containsTechnicalFallback = FORBIDDEN_VISIBLE_DEBUG_RE.test(`${session.first_draft ?? ""} ${JSON.stringify(rawBlocks)}`) || rawBlocks.length === 1;
   const lead = session.led_by === "společně" ? "obě terapeutky" : session.led_by;
+  const partName = cleanPartName(session.part_name);
   if (containsTechnicalFallback || rawBlocks.length < 4) {
     return {
-      title: `Sezení s částí ${cleanLine(session.part_name, "vybranou částí")}`,
-      part_name: cleanLine(session.part_name, "vybraná část"),
+      title: `Sezení s částí ${partName}`,
+      part_name: partName,
       lead,
       duration: session.duration_min ? `~${session.duration_min} min` : "čeká na doplnění",
       rationale: "Karel zatím nemá dost podkladů pro vykonatelné Sezení. Potřebuje od Haničky nebo Káti upřesnit aktuální stav části, bezpečnost a dostupnost. Po doplnění vytvoří nový návrh.",
@@ -598,8 +599,8 @@ export const toProposedSessionView = (session: ProposedSession | null | undefine
     };
   }
   return {
-    title: `Sezení s částí ${cleanLine(session.part_name, "vybranou částí")}`,
-    part_name: cleanLine(session.part_name, "vybraná část"),
+    title: `Sezení s částí ${partName}`,
+    part_name: partName,
     lead,
     duration: session.duration_min ? `~${session.duration_min} min` : "cca 45–60 min",
     rationale: cleanLine(session.why_today || session.first_draft, "Návrh vychází z dnešní priority a čeká na týmové doladění."),
@@ -615,10 +616,11 @@ export const toProposedSessionView = (session: ProposedSession | null | undefine
 
 export const toProposedPlayroomView = (playroom: ProposedPlayroom | null | undefined): ProposedPlayroomView | null => {
   if (!playroom?.part_name) return null;
+  const partName = cleanPartName(playroom.part_name);
   const blocks = Array.isArray(playroom.playroom_plan?.therapeutic_program) ? playroom.playroom_plan.therapeutic_program : [];
   return {
-    title: `Návrh Herny s ${cleanLine(playroom.part_name, "vybranou částí")}`,
-    part_name: cleanLine(playroom.part_name, "vybraná část"),
+    title: `Návrh Herny s ${partName}`,
+    part_name: partName,
     lead_label: "vede Karel",
     approval_label: "čeká na schválení terapeutkami",
     rationale: cleanLine(playroom.why_this_part_today || playroom.main_theme, "Jemně ověřit, co dnes část unese, a držet bezpečný kontakt bez výkladu za ni."),
