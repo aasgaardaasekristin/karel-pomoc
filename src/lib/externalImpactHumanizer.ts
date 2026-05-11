@@ -55,6 +55,12 @@ export type RawExternalImpact = {
   } | null;
 };
 
+export type DisplayTier =
+  | "fresh_today_event"
+  | "checked_today_unknown_publication_date"
+  | "historical_sensitive_context"
+  | "not_displayable";
+
 export type DisplayExternalImpact = {
   /** Stable display key (part + theme cluster) */
   key: string;
@@ -69,7 +75,11 @@ export type DisplayExternalImpact = {
   source_domain: string | null;
   source_published_at: string | null;
   fetched_at: string | null;
+  /** Backwards compat: true only when display_tier is fresh_today_event. */
   freshness_ok: boolean;
+  display_tier: DisplayTier;
+  /** Short cautionary line shown in tier 2 / 3 cards. */
+  caution_label: string | null;
   /** How many raw impacts this card aggregates (for diagnostics, not UI). */
   source_impact_ids: string[];
 };
