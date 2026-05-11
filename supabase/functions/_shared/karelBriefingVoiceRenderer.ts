@@ -324,19 +324,35 @@ function renderExternalReality(payload: any): RenderedBriefingSection {
   const sourceBacked = Number(ext?.source_backed_events_count) || 0;
   const used = Number(ext?.internet_events_used_count) || 0;
 
+  // P33.6 — explicitly state whether Karel actually checked the internet today,
+  // and split language by recency tier so the therapist sees that internet was
+  // queried even when no fresh-today event came back.
+  const partsArr: any[] = Array.isArray(ext?.parts) ? ext.parts : [];
+  const checkedTodayCount = partsArr.reduce((acc, p) => {
+    const a = p?.evidence_summary?.checked_external_sources_today;
+    return acc + (Array.isArray(a) ? a.length : 0);
+  }, 0);
+  const freshCount = partsArr.reduce((acc, p) => {
+    const a = p?.internet_triggers_today;
+    return acc + (Array.isArray(a) ? a.length : 0);
+  }, 0);
+
   if (ps === "configured") {
-    if (sourceBacked > 0) {
-      text = "Externí situační přehled je dnes dostupný a obsahuje čerstvě zdrojované okruhy pro opatrný kontext. Pracuji s nimi jen jako s jemným hlídáním rámce, ne jako s diagnózou ani predikcí.";
+    if (freshCount > 0 || sourceBacked > 0) {
+      text = "Externí situační přehled jsem dnes ověřoval a přinesl čerstvě zdrojované okruhy. Pracuji s nimi jen jako s jemným hlídáním rámce, ne jako s diagnózou ani predikcí.";
+      confidence = "medium";
+    } else if (checkedTodayCount > 0) {
+      text = "Externí situační přehled jsem dnes ověřoval. Datum publikace u nalezených zdrojů ale není jasné, takže to neberu jako dnešní událost — jen jako důvod jemně ověřit, jestli se s tématem dnes potkali.";
       confidence = "medium";
     } else {
-      text = `Externí situační přehled je dnes dostupný, ale nepřinesl žádnou doloženou událost. Beru to tak, že dnes není nic, co bych měl z venku zvlášť hlídat.`;
+      text = "Externí situační přehled jsem dnes ověřoval a žádný čerstvý ani dnes ověřený zdrojovaný okruh se neobjevil. Beru to tak, že dnes není nic, co bych měl z venku zvlášť hlídat.";
       confidence = "high";
     }
   } else if (ps === "provider_not_configured") {
     text = "Externí situační přehled dnes není zapnutý, takže o vnějších událostech nic netvrdím.";
     confidence = "high";
   } else if (ps === "provider_error") {
-    text = "Pokus o stažení externího situačního přehledu se dnes nepovedl, takže o vnějších událostech raději nic netvrdím.";
+    text = "Pokus o externí situační přehled se dnes nepovedl, takže o vnějších událostech raději nic netvrdím.";
     confidence = "low";
     warnings.push("provider_error");
   } else {
