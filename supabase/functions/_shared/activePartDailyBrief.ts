@@ -23,12 +23,15 @@ import {
   normalizeCzechPartKey,
   type CanonicalPartNameResult,
 } from "./didPartCanonicalization.ts";
+import {
+  evaluateExternalRealityFreshness,
+  EXTERNAL_REALITY_PRESENTATION_QUERY_PLAN_VERSION,
+} from "./externalRealityFreshness.ts";
 
 // deno-lint-ignore no-explicit-any
 type SB = any;
 
-const PRESENTATION_QUERY_PLAN_VERSION =
-  "p30.3_personal_anchor_general_trigger_weekly_matrix";
+const PRESENTATION_QUERY_PLAN_VERSION = EXTERNAL_REALITY_PRESENTATION_QUERY_PLAN_VERSION;
 
 export interface GenerateBriefsInput {
   userId: string;
