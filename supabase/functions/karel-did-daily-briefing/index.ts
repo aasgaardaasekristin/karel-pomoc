@@ -4071,6 +4071,74 @@ Deno.serve(async (req) => {
       }
     }
 
+    // P33.8A — surface Hana personal clinical intelligence into the briefing.
+    try {
+      const since72h = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+      const [trgs, reviews, privacies] = await Promise.all([
+        supabase
+          .from("hana_personal_external_trigger_lookups")
+          .select("id, theme, query_terms, related_part_name, related_groups, status, used_in_briefing, created_at")
+          .eq("user_id", scopedUserId)
+          .gte("created_at", since72h)
+          .order("created_at", { ascending: false })
+          .limit(20),
+        supabase
+          .from("hana_personal_centrum_review_queue")
+          .select("id, related_part_name, related_groups, safe_summary, status, used_in_briefing, created_at")
+          .eq("user_id", scopedUserId)
+          .gte("created_at", since72h)
+          .order("created_at", { ascending: false })
+          .limit(20),
+        supabase
+          .from("hana_personal_privacy_rules")
+          .select("id, instruction_text, applies_to_scope, related_parts, active, created_at")
+          .eq("user_id", scopedUserId)
+          .eq("active", true)
+          .order("created_at", { ascending: false })
+          .limit(20),
+      ]);
+      const triggerRows = (trgs as any)?.data ?? [];
+      const reviewRows = (reviews as any)?.data ?? [];
+      const privacyRows = (privacies as any)?.data ?? [];
+      payload.hana_personal_clinical_intelligence = {
+        version: "p33.8a",
+        checked_at: new Date().toISOString(),
+        external_trigger_lookups: triggerRows,
+        centrum_review_entries: reviewRows,
+        active_privacy_rules: privacyRows,
+        counts: {
+          triggers: triggerRows.length,
+          reviews: reviewRows.length,
+          privacy_rules: privacyRows.length,
+        },
+      };
+      const triggerIds = triggerRows.filter((r: any) => !r.used_in_briefing).map((r: any) => r.id);
+      const reviewIds = reviewRows.filter((r: any) => !r.used_in_briefing).map((r: any) => r.id);
+      if (triggerIds.length) {
+        await supabase
+          .from("hana_personal_external_trigger_lookups")
+          .update({ used_in_briefing: true })
+          .in("id", triggerIds);
+      }
+      if (reviewIds.length) {
+        await supabase
+          .from("hana_personal_centrum_review_queue")
+          .update({ used_in_briefing: true })
+          .in("id", reviewIds);
+      }
+    } catch (e) {
+      console.warn("[P33.8A] hana clinical intelligence load failed (non-fatal):", e);
+      payload.hana_personal_clinical_intelligence = {
+        version: "p33.8a",
+        checked_at: new Date().toISOString(),
+        external_trigger_lookups: [],
+        centrum_review_entries: [],
+        active_privacy_rules: [],
+        counts: { triggers: 0, reviews: 0, privacy_rules: 0 },
+        error: String((e as Error)?.message ?? e).slice(0, 200),
+      };
+    }
+
     // P33.7 — content completeness contract written into payload BEFORE renderer
     try {
       payload.daily_briefing_content_completeness = evaluateBriefingContentCompleteness(payload);
