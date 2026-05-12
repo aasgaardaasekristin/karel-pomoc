@@ -3951,31 +3951,77 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (payload?.today_part_proposal) {
-      const tpp = payload.today_part_proposal;
-      payload.today_part_relevance_decision = {
-        ...isPartTodayRelevantForPrimarySuggestion({
-          proposed_part: tpp.proposed_part ?? tpp.part_name,
-          briefing_date: today,
-          source_cycle_id: payload?.source_cycle_id ?? payload?.briefing_truth_gate?.source_cycle_id ?? null,
-          is_hypothesis_only: tpp.is_hypothesis_only === true,
-          evidence_strength: tpp.evidence_strength,
-          recent_thread_part_names: Array.isArray(tpp.recent_thread_part_names) ? tpp.recent_thread_part_names : [],
-          todays_session_part_names: Array.isArray(tpp.todays_session_part_names) ? tpp.todays_session_part_names : [],
-          live_progress_part_names: Array.isArray(tpp.live_progress_part_names) ? tpp.live_progress_part_names : [],
-          explicit_therapist_mentions: Array.isArray(tpp.explicit_therapist_mentions) ? tpp.explicit_therapist_mentions : [],
-          registry_sleeping: tpp.registry_sleeping === true,
-        }),
-        checked_at: new Date().toISOString(),
-      };
-    } else if (!payload.today_part_relevance_decision) {
-      payload.today_part_relevance_decision = {
-        ok_for_primary_suggestion: false,
-        reason: "no_today_part_proposal",
-        display_name: null,
-        confidence: "low",
-        checked_at: new Date().toISOString(),
-      };
+    // ── P33.8 — Daily part workability matrix (upstream decision; renderer
+    // must NOT decide workability; it must only display the matrix decision). ──
+    try {
+      const centrum = await loadCentrumPartMatrix(supabase, {
+        userId,
+        datePrague: today,
+        driveToken: null, // briefing fn has no Drive token; falls back to DB mirror (profile_fallback)
+      });
+      const recentThreadPartNames: string[] = Array.isArray((context as any)?.recent_threads)
+        ? ((context as any).recent_threads as any[])
+            .map((t) => String(t?.part_name ?? "").trim())
+            .filter(Boolean)
+        : [];
+      const recentSessionPlans: any[] = Array.isArray((context as any)?.recent_session_plans)
+        ? (context as any).recent_session_plans
+        : [];
+      const todaysSessionPartNames: string[] = recentSessionPlans
+        .filter((p) => String(p?.session_date ?? p?.plan_date ?? "") === today)
+        .map((p) => String(p?.part_name ?? p?.selected_part ?? "").trim())
+        .filter(Boolean);
+      const externalRealityParts = Array.isArray(payload?.external_reality_watch?.parts)
+        ? payload.external_reality_watch.parts.map((p: any) => ({
+            part_name: String(p?.part_name ?? "").trim(),
+            activity_status: String(p?.activity_status ?? ""),
+          }))
+        : [];
+
+      // Fresh team deliberations (≤36h, approved/signed_off/active)
+      let freshTeamDeliberations: any[] = [];
+      try {
+        const since = new Date(Date.now() - 36 * 3600 * 1000).toISOString();
+        const { data: tdRows } = await supabase
+          .from("did_team_deliberations")
+          .select("id, status, session_params, part_name, updated_at, created_at")
+          .eq("user_id", userId)
+          .gte("updated_at", since)
+          .in("status", ["approved", "signed_off", "active"])
+          .order("updated_at", { ascending: false })
+          .limit(20);
+        freshTeamDeliberations = Array.isArray(tdRows) ? tdRows : [];
+      } catch (e) {
+        console.warn("[P33.8] fresh team deliberations fetch failed (non-fatal):", e);
+      }
+
+      const matrix = buildDailyPartWorkabilityMatrix({
+        datePrague: today,
+        centrum,
+        todayPartProposalPart: payload?.today_part_proposal?.proposed_part ?? null,
+        todaysSessionPartNames,
+        recentThreadPartNames,
+        livePartNames: [],
+        explicitTherapistMentions: [],
+        externalRealityParts,
+        freshTeamDeliberations,
+      });
+
+      payload.daily_part_workability_matrix = matrix;
+      payload.today_part_relevance_decision = deriveRelevanceDecisionFromMatrix(matrix);
+    } catch (e) {
+      console.warn("[P33.8] matrix build failed (non-fatal):", e);
+      if (!payload.today_part_relevance_decision) {
+        payload.today_part_relevance_decision = {
+          ok_for_primary_suggestion: false,
+          reason: "matrix_build_failed",
+          display_name: null,
+          confidence: "low",
+          derived_from: "p33.8_matrix",
+          matrix_overall_decision: "blocked_centrum_missing",
+          checked_at: new Date().toISOString(),
+        };
+      }
     }
 
     // P33.7 — content completeness contract written into payload BEFORE renderer
