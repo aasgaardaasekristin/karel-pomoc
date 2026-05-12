@@ -350,7 +350,7 @@ serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
-    const { messages, mode, didInitialContext, didSubMode, notebookProject, didPartName, didThreadLabel, didEnteredName, didContextPrimeCache, mode_id, no_save } = await req.json();
+    const { messages, mode, didInitialContext, didSubMode, notebookProject, didPartName, didThreadLabel, didEnteredName, didContextPrimeCache, mode_id, no_save, didThreadId } = await req.json();
     const persistencePolicy = resolvePersistencePolicy({ mode_id, no_save, didSubMode, mode });
     const lastRequestUserText = normalizeMessageContentForPrompt([...(messages || [])].reverse().find((m: any) => m.role === "user")?.content);
     const requestSafety = detectSafetyMention(lastRequestUserText);
@@ -1295,15 +1295,16 @@ This overrides ALL other language instructions.
 
     if (isPlayroomMode) {
       const lastPlayroomInput = normalizeMessageContentForPrompt([...messages].reverse().find((m: any) => m.role === "user")?.content);
+      console.log(`[karel-chat][playroom] threadId received: didThreadId=${didThreadId ?? "(none)"}`);
       const approvedPlayroom = await loadApprovedPlayroomSnapshot(didPartName || didEnteredName);
       if (!approvedPlayroom.ok) {
-        console.warn("[karel-chat][playroom] snapshot unavailable:", approvedPlayroom.reason, "plan_id=", approvedPlayroom.plan_id);
+        console.warn("[karel-chat][playroom] snapshot unavailable:", approvedPlayroom.reason, "plan_id=", approvedPlayroom.plan_id, "threadId=", didThreadId ?? "(none)");
         return new Response(
           JSON.stringify(buildPlayroomSnapshotUnavailableBody(approvedPlayroom)),
           { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      console.log("[karel-chat][playroom] snapshot loaded:", { plan_id: approvedPlayroom.plan_id, version_key: approvedPlayroom.version_key, snapshot_at: approvedPlayroom.snapshot_at, source: approvedPlayroom.source });
+      console.log("[karel-chat][playroom] snapshot loaded:", { plan_id: approvedPlayroom.plan_id, version_key: approvedPlayroom.version_key, snapshot_at: approvedPlayroom.snapshot_at, source: approvedPlayroom.source, threadId: didThreadId ?? "(none)" });
       const playroomProgramBlock = JSON.stringify({
         plan_id: approvedPlayroom.plan_id,
         program_status: approvedPlayroom.program_status,
