@@ -82,15 +82,17 @@ describe("P33.10.2 — Drive Read Containment", () => {
     it("imports safeDriveRead", () => {
       expect(chat).toMatch(/from\s+"@\/lib\/safeDriveRead"/);
     });
-    it("DID-mode open does not raw-fetch karel-did-drive-read", () => {
-      // The branch entered when prevModeRef.current !== mode and mode === "childcare"
-      // pre-loads basic centrum docs. It must use safeDriveRead.
-      const idx = chat.indexOf("Drive enrichment is non-blocking");
+    it("P33.10.2A — DID-mode open branch is DB-only (no Drive read on page open)", () => {
+      const idx = chat.indexOf("chat-childcare-open-db-only");
       expect(idx).toBeGreaterThan(-1);
-      const slice = chat.slice(idx, idx + 2000);
+      const slice = chat.slice(idx, idx + 1500);
+      expect(slice).not.toMatch(/safeDriveRead\(/);
       expect(slice).not.toMatch(/fetch\([^)]*karel-did-drive-read/);
-      expect(slice).toMatch(/safeDriveRead\(/);
-      expect(slice).toMatch(/caller:\s*"Chat\.tsx:childcare-open"/);
+      expect(slice).not.toMatch(/getAuthHeaders\(/);
+      expect(slice).toMatch(/did_part_registry/);
+    });
+    it("P33.10.2A — caller 'Chat.tsx:childcare-open' is removed everywhere", () => {
+      expect(chat).not.toMatch(/Chat\.tsx:childcare-open/);
     });
     it("loadDriveContext helper uses safeDriveRead", () => {
       const idx = chat.indexOf("const loadDriveContext");
