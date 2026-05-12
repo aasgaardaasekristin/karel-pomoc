@@ -202,18 +202,17 @@ function renderDailyCycleVerified(payload: any): RenderedBriefingSection {
  */
 function renderTodayParts(payload: any): RenderedBriefingSection {
   const tpp = payload?.today_part_proposal ?? null;
+  const matrix = payload?.daily_part_workability_matrix ?? null;
   const fields = [
+    "daily_part_workability_matrix",
+    "today_part_relevance_decision",
     "today_part_proposal.proposed_part",
-    "today_part_proposal.rationale_text",
-    "today_part_proposal.is_hypothesis_only",
-    "today_part_proposal.evidence_strength",
-    "today_part_proposal.has_current_evidence",
-    "today_part_proposal.registry_sleeping",
   ];
   const warnings: string[] = [];
   let text: string;
   let confidence: "high" | "medium" | "low" = "medium";
 
+  // P33.8 — Primary source of truth is the matrix when present.
   const decision = payload?.today_part_relevance_decision ?? isPartTodayRelevantForPrimarySuggestion({
     proposed_part: tpp?.proposed_part ?? tpp?.part_name,
     briefing_date: safeStr(payload?.briefing_date) || safeStr(payload?.viewer_meta?.briefing_date_iso),
@@ -226,30 +225,51 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
     explicit_therapist_mentions: Array.isArray(tpp?.explicit_therapist_mentions) ? tpp.explicit_therapist_mentions : [],
     registry_sleeping: tpp?.registry_sleeping === true,
   });
-  const partName = canonicalizePartDisplayName(decision?.display_name ?? tpp?.proposed_part ?? tpp?.part_name);
 
-  if (!decision?.ok_for_primary_suggestion) {
+  // Derive watch-only sensitivity context from matrix (informational only).
+  const watchOnlyNames: string[] = matrix && Array.isArray(matrix.parts)
+    ? matrix.parts
+        .filter((p: any) => p?.workability === "watch_only" && p?.display_name)
+        .map((p: any) => canonicalizePartDisplayName(p.display_name) ?? String(p.display_name))
+        .filter(Boolean)
+        .slice(0, 4)
+    : [];
+  const watchOnlySuffix = watchOnlyNames.length > 0
+    ? `\n\nDnes mám jen jako citlivostní kontext (watch-only, ne jako vedoucí část pro práci): ${watchOnlyNames.join(", ")}.`
+    : "";
+
+  if (decision?.ok_for_primary_suggestion) {
+    const partName = canonicalizePartDisplayName(decision?.display_name ?? tpp?.proposed_part ?? tpp?.part_name);
+    const matrixPart = matrix && Array.isArray(matrix.parts)
+      ? matrix.parts.find((p: any) => canonicalizePartDisplayName(p?.display_name) === partName)
+      : null;
+    const route = matrixPart?.recommended_route as string | undefined;
+    const routeText = route === "session"
+      ? " Doporučená cesta je krátké terapeutické Sezení, pokud první kontakt potvrdí, že je to v pořádku."
+      : route === "first_contact"
+      ? " Doporučená cesta je nejdřív první kontakt a podle něj rozhodnout, zda Sezení nebo stabilizační Herna."
+      : "";
+    const evidenceNote = matrixPart?.reason
+      ? ` Opírám to o: ${humanReason(matrixPart.reason)}.`
+      : "";
+    text = `Pro dnešek se mi jako pracovní vedoucí část nabízí ${partName}.${evidenceNote}${routeText}${watchOnlySuffix}`;
+    confidence = decision?.confidence === "high" ? "high" : "medium";
+  } else {
+    const partName = canonicalizePartDisplayName(decision?.display_name ?? tpp?.proposed_part ?? tpp?.part_name);
     const fallbackPlan = [
       "První kontakt: Hanička nebo Káťa krátce zjistí tělesné napětí, emoční dostupnost a ochotu kluků navázat kontakt.",
       "Bezpečnostní kontrola: pokud někdo z kluků signalizuje stop, tlak nebo přemíra emocí, zůstáváme jen u krátkého ověření a neotevíráme nový materiál.",
       "Tři možné cesty podle prvního kontaktu: krátké terapeutické Sezení, stabilizační Herna bez nového tématu, nebo jen bezpečný kontakt bez otevírání těžkého materiálu.",
       "Stop signály pro dnešek: nepokoušet se otevřít nové trauma téma, neforsírovat konkrétní část a neuzavírat dnes žádné velké terapeutické rozhodnutí.",
     ].join("\n");
-    if (partName) {
-      text = `Pro dnešek je v úvahu ${partName} jako pracovní hypotéza, ale ještě nemám dost opory ji nabídnout jako vedoucí část. Místo vedoucí části dnes navrhuji tento operační rámec:\n\n${fallbackPlan}`;
-      confidence = "low";
-      warnings.push(decision?.reason ? `part_relevance_rejected:${decision.reason}` : "no_today_part_proposal");
-    } else {
-      text = `Dnes nemám dost opory vybrat konkrétní část před prvním kontaktem. Místo vedoucí části dnes navrhuji tento operační rámec:\n\n${fallbackPlan}`;
-      confidence = "low";
-      warnings.push(decision?.reason ? `part_relevance_rejected:${decision.reason}` : "no_today_part_proposal");
-    }
-  } else {
-    const hypoNote = tpp?.is_hypothesis_only === true
-      ? " Beru to jen jako pracovní rámec, dokud to nepotvrdí Hanička s Káťou."
-      : "";
-    text = `Pro dnešek se mi jako možná část pro práci nabízí ${partName}.${hypoNote}`;
-    confidence = decision?.confidence === "high" ? "high" : "medium";
+    const lead = matrix?.overall_decision === "blocked_centrum_missing"
+      ? "Dnes nemám potvrzený obraz částí z 00_CENTRUM, takže nemůžu volit vedoucí část před prvním kontaktem."
+      : partName
+      ? `Pro dnešek je v úvahu ${partName} jako pracovní hypotéza, ale podle dnešních signálů z 00_CENTRUM a pipeline na ni nemám dost opory, abych ji označil jako vedoucí část.`
+      : "Dnes nemám žádnou část jako vedoucí kandidátku, protože 00_CENTRUM ani dnešní signály nedávají dost opory.";
+    text = `${lead} Místo vedoucí části dnes navrhuji tento operační rámec:\n\n${fallbackPlan}${watchOnlySuffix}`;
+    confidence = "low";
+    warnings.push(decision?.reason ? `part_relevance_rejected:${decision.reason}` : "no_today_part_proposal");
   }
 
   return {
@@ -261,6 +281,16 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
     unsupported_claims_count: 0,
     warnings,
   };
+}
+
+function humanReason(reason: string): string {
+  switch (reason) {
+    case "active_with_strong_today_evidence": return "aktivní v 00_CENTRUM a má dnes čerstvou stopu (sezení nebo živý záznam)";
+    case "active_with_fresh_team_proposal_and_evidence": return "aktivní v 00_CENTRUM, čerstvý návrh týmu a dnešní stopu";
+    case "active_with_recent_thread_only": return "aktivní v 00_CENTRUM a nedávné vlákno (≤72 h)";
+    case "dormant_with_fresh_evidence": return "v 00_CENTRUM v útlumu, ale s čerstvou stopou — proto jen po prvním kontaktu";
+    default: return reason;
+  }
 }
 
 /**
