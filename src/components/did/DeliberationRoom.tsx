@@ -41,6 +41,7 @@ import {
   getPlanChangeLabel,
   hasActiveExternalCurrentEventReplan,
   isPlayroomDeliberation,
+  renderDeliberationTitle,
   sanitizeHernaVisibleText,
 } from "./deliberationRoomUiHelpers";
 
