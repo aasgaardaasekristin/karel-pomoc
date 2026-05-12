@@ -85,15 +85,32 @@ function changedKeys(before: any, after: any) {
   return keys.filter((k) => JSON.stringify((before ?? {})[k] ?? null) !== JSON.stringify((after ?? {})[k] ?? null));
 }
 
+function cleanDisplayName(raw: string): string {
+  const name = String(raw ?? "")
+    .replace(/^\d+_/, "")
+    .replace(/\.(txt|md|doc|docx)$/i, "")
+    .replace(/_/g, " ")
+    .trim();
+  if (!name) return "";
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+function formatActionTitle(prefix: string, raw: string | null | undefined): string {
+  const display = cleanDisplayName(String(raw ?? "").trim()).trim();
+  if (!display) return prefix;
+  return `${prefix} — ${display}`;
+}
+
 function buildProgramPrefill(payload: any, ask: any, assignee: "hanka" | "kata") {
   if (ask.target_type === "proposed_playroom" && payload?.proposed_playroom) {
     const s = payload.proposed_playroom;
     const program = Array.isArray(s.playroom_plan?.therapeutic_program) ? s.playroom_plan.therapeutic_program : [];
+    const titleHint = formatActionTitle("Plán dnešní herny", s.part_name);
     return {
-      title: `Plán dnešní herny s ${s.part_name}`,
+      title: titleHint,
       reason: [s.main_theme, s.why_this_part_today].filter(Boolean).join(" — "),
-      initial_karel_brief: [`🎲 **Plán dnešní herny s ${s.part_name}**`, "", `*Hlavní téma:* ${s.main_theme}`, `*Proč právě dnes:* ${s.why_this_part_today}`, "", "Tento bod vznikl z Karlova přehledu a odpověď terapeutky se bude započítávat do živého programu."].join("\n"),
-      karel_proposed_plan: [`Část: ${s.part_name}`, `Stav: ${s.status || "awaiting_therapist_review"}`, `Hlavní téma: ${s.main_theme}`, "", s.goals?.length ? `Cíle:\n${s.goals.map((g: string, i: number) => `${i + 1}. ${g}`).join("\n")}` : "", s.playroom_plan?.child_safe_version ? `Dětsky bezpečná verze:\n${s.playroom_plan.child_safe_version}` : ""].filter(Boolean).join("\n"),
+      initial_karel_brief: [`🎲 **${titleHint}**`, "", `*Hlavní téma:* ${s.main_theme}`, `*Proč právě dnes:* ${s.why_this_part_today}`, "", "Tento bod vznikl z Karlova přehledu a odpověď terapeutky se bude započítávat do živého programu."].join("\n"),
+      karel_proposed_plan: [`Část: ${cleanDisplayName(s.part_name) || s.part_name}`, `Stav: ${s.status || "awaiting_therapist_review"}`, `Hlavní téma: ${s.main_theme}`, "", s.goals?.length ? `Cíle:\n${s.goals.map((g: string, i: number) => `${i + 1}. ${g}`).join("\n")}` : "", s.playroom_plan?.child_safe_version ? `Dětsky bezpečná verze:\n${s.playroom_plan.child_safe_version}` : ""].filter(Boolean).join("\n"),
       agenda_outline: program,
       questions_for_hanka: assignee === "hanka" ? [ask.text || ask.question_text] : [],
       questions_for_kata: assignee === "kata" ? [ask.text || ask.question_text] : [],
@@ -115,10 +132,11 @@ function buildProgramPrefill(payload: any, ask: any, assignee: "hanka" | "kata")
 
   const s = payload?.proposed_session;
   if (ask.target_type === "proposed_session" && s) {
+    const titleHint = formatActionTitle("Plán sezení", s.part_name);
     return {
-      title: `Plán sezení s ${s.part_name}`,
+      title: titleHint,
       reason: [s.why_today, s.kata_involvement ? `(Káťa: ${s.kata_involvement})` : ""].filter(Boolean).join(" — "),
-      initial_karel_brief: [`📅 **Plán sezení s ${s.part_name}**`, "", `*Proč právě dnes:* ${s.why_today}`, "", "Tento bod vznikl z Karlova přehledu a odpověď terapeutky se bude započítávat do živého programu."].join("\n"),
+      initial_karel_brief: [`📅 **${titleHint}**`, "", `*Proč právě dnes:* ${s.why_today}`, "", "Tento bod vznikl z Karlova přehledu a odpověď terapeutky se bude započítávat do živého programu."].join("\n"),
       karel_proposed_plan: s.first_draft || "",
       agenda_outline: Array.isArray(s.agenda_outline) ? s.agenda_outline : [],
       questions_for_hanka: assignee === "hanka" ? [ask.text || ask.question_text] : [],
