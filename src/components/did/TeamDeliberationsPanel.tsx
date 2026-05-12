@@ -70,7 +70,7 @@ function DeliberationRow({
             ))}
           </div>
           <p className={`text-[12px] font-medium leading-snug truncate ${isApproved ? "text-muted-foreground" : "text-foreground"}`}>
-            {d.title}
+            {renderDeliberationTitle(d)}
           </p>
           {d.reason && (
             <p className="text-[10px] text-muted-foreground leading-snug line-clamp-2 mt-0.5">
