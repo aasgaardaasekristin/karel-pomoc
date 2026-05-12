@@ -4056,6 +4056,51 @@ export type Database = {
           },
         ]
       }
+      did_playroom_runtime_state: {
+        Row: {
+          closed_at: string | null
+          consecutive_stabilize_count: number
+          current_block_index: number
+          id: string
+          metadata: Json
+          owner_user_id: string
+          phase: string
+          playroom_plan_id: string | null
+          program_snapshot: Json
+          started_at: string
+          thread_id: string
+          updated_at: string
+        }
+        Insert: {
+          closed_at?: string | null
+          consecutive_stabilize_count?: number
+          current_block_index?: number
+          id?: string
+          metadata?: Json
+          owner_user_id: string
+          phase?: string
+          playroom_plan_id?: string | null
+          program_snapshot?: Json
+          started_at?: string
+          thread_id: string
+          updated_at?: string
+        }
+        Update: {
+          closed_at?: string | null
+          consecutive_stabilize_count?: number
+          current_block_index?: number
+          id?: string
+          metadata?: Json
+          owner_user_id?: string
+          phase?: string
+          playroom_plan_id?: string | null
+          program_snapshot?: Json
+          started_at?: string
+          thread_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       did_profile_claims: {
         Row: {
           card_section: string
