@@ -40,6 +40,9 @@ export interface CentrumPartRow {
   registry_status: CentrumRegistryStatus;
   raw_status: string;
   source: "drive_index" | "db_mirror";
+  index_confirmed_at?: string | null;
+  last_seen_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface CentrumPartMatrix {
@@ -127,12 +130,13 @@ export async function loadCentrumPartMatrix(
   }
 
   // 2) Fallback to DB mirror — explicitly marked as profile_fallback.
-  // P33.9: did_part_registry has no `part_id` and no `aliases` columns.
-  // Use real columns: id, part_name, display_name, status, index_confirmed_at.
+  // P33.10: did_part_registry has no `part_id` and no `aliases` columns.
+  // Use real columns and keep provenance dates so stale mirror state cannot masquerade as today's activity.
   try {
     const { data, error } = await sb
       .from("did_part_registry")
-      .select("id, part_name, display_name, status, index_confirmed_at")
+      .select("id, part_name, display_name, status, index_confirmed_at, last_seen_at, updated_at")
+      .eq("user_id", input.userId)
       .limit(200);
     if (error) throw error;
     const rows = Array.isArray(data) ? data : [];
@@ -152,6 +156,9 @@ export async function loadCentrumPartMatrix(
         registry_status: normalizeStatus(String(r?.status ?? "")),
         raw_status: String(r?.status ?? ""),
         source: "db_mirror",
+        index_confirmed_at: r?.index_confirmed_at ?? null,
+        last_seen_at: r?.last_seen_at ?? null,
+        updated_at: r?.updated_at ?? null,
       });
     }
     if (matrix.rows.length > 0) {
