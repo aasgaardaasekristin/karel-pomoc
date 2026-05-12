@@ -949,6 +949,13 @@ export function renderKarelBriefingVoice(payload: any): KarelBriefingVoiceRender
     renderUnknowns(payload, []),
     renderNextStep(payload),
   ];
+  const hanaSection = renderHanaPersonalIntelligence(payload);
+  if (hanaSection) {
+    // Insert just before "Citlivosti dne" so it lands as therapeutic context.
+    const idx = sections.findIndex((s) => s.section_id === "risks_sensitivities");
+    if (idx >= 0) sections.splice(idx, 0, hanaSection);
+    else sections.push(hanaSection);
+  }
 
   // P33.7 — content completeness contract
   const contentCompleteness = evaluateBriefingContentCompleteness(payload);
