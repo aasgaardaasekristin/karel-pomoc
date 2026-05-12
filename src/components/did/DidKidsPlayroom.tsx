@@ -522,9 +522,13 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       setThread(nextThread);
       setReply("");
       uploads.clearAttachments();
-    } catch (error) {
+    } catch (error: any) {
       console.error("[DidKidsPlayroom] message save failed", error);
-      const fallbackMessages = [...nextMessages, { role: "assistant" as const, content: PLAYROOM_TECH_FALLBACK }];
+      const isSnapshotMissing = error?.code === "playroom_snapshot_unavailable";
+      const assistantContent = isSnapshotMissing
+        ? "Hernu nelze spustit, protože chybí schválený snapshot programu. Otevři prosím plán a nech ho znovu schválit."
+        : PLAYROOM_TECH_FALLBACK;
+      const fallbackMessages = [...nextMessages, { role: "assistant" as const, content: assistantContent }];
       setThread({ ...currentThread, messages: fallbackMessages });
       await (supabase as any).from("did_threads").update({ messages: fallbackMessages, last_activity_at: new Date().toISOString(), is_processed: false }).eq("id", currentThread.id);
       setReply("");
