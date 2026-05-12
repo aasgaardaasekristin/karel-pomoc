@@ -471,7 +471,7 @@ serve(async (req) => {
 
     if (listAll) {
       const files = await listFilesInFolder(token, targetFolderId, budget, effectiveMaxFiles);
-      return new Response(JSON.stringify({ ok: true, files, folderId: targetFolderId, request_id: reqId }), {
+      return new Response(JSON.stringify({ ok: true, files, folderId: targetFolderId, request_id: reqId, elapsed_ms: elapsed(budget) }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
