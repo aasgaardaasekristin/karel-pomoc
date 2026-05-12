@@ -378,8 +378,11 @@ serve(async (req) => {
 
     if (!rootFolderId) {
       return new Response(JSON.stringify({
+        ok: false,
         error: "Složka Kartoteka_DID nebyla nalezena na Google Drive",
         documents: {},
+        request_id: reqId,
+        elapsed_ms: elapsed(budget),
       }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
