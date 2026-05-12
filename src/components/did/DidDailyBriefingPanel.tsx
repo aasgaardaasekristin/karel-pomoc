@@ -785,7 +785,30 @@ const toAskItem = (
   role: "ask_hanka" | "ask_kata",
 ): AskItemObj => {
   if (raw && typeof raw === "object" && "id" in raw && "text" in raw) {
-    return { ...(raw as AskItemObj), id: String(raw.id), text: String(raw.text) };
+    const obj = raw as AskItemObj;
+    // P33.10.1 — Part B: normalize missing workspace/target fields so
+    // every visible ask item is always clickable and never opens a dead
+    // workspace. If target_item_id is null/missing, fall back to the
+    // current briefing as the addressable target.
+    const id = String(obj.id);
+    const target_item_id = obj.target_item_id != null && String(obj.target_item_id).trim() !== ""
+      ? obj.target_item_id
+      : briefingId;
+    const target_type: BriefingAskTargetType = (obj.target_type && obj.target_type !== "none")
+      ? obj.target_type
+      : ("briefing" as BriefingAskTargetType);
+    const expected_resolution: BriefingAskExpectedResolution = obj.expected_resolution
+      ?? ("answer" as BriefingAskExpectedResolution);
+    return {
+      ...obj,
+      id,
+      text: String(obj.text),
+      assignee: obj.assignee ?? (role === "ask_hanka" ? "hanka" : "kata"),
+      target_type,
+      target_item_id,
+      expected_resolution,
+      briefing_id: obj.briefing_id ?? briefingId,
+    };
   }
   const text = String(raw ?? "");
   return {
@@ -793,11 +816,11 @@ const toAskItem = (
     text,
     assignee: role === "ask_hanka" ? "hanka" : "kata",
     intent: "none",
-    target_type: "none",
-    target_item_id: null,
+    target_type: "briefing" as BriefingAskTargetType,
+    target_item_id: briefingId,
     target_part_name: null,
     requires_immediate_program_update: false,
-    expected_resolution: "store_memory",
+    expected_resolution: "answer" as BriefingAskExpectedResolution,
     source: "daily_briefing",
     briefing_id: briefingId,
   };
