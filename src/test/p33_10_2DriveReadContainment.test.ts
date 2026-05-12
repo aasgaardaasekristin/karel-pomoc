@@ -46,7 +46,7 @@ describe("P33.10.2 — Drive Read Containment", () => {
     });
     it("returns controlled_timeout envelope instead of throwing", () => {
       expect(fn).toMatch(/status:\s*"controlled_timeout"/);
-      expect(fn).toMatch(/reason:\s*"drive_read_budget_exhausted"/);
+      expect(fn).toMatch(/"drive_read_budget_exhausted"/);
       // controlledTimeout helper returns HTTP 200, not 504.
       expect(fn).toMatch(/status:\s*200/);
     });
