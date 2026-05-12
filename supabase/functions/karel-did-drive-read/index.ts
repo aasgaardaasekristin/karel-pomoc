@@ -532,6 +532,7 @@ serve(async (req) => {
         ok: false,
         error: error instanceof Error ? error.message : "Unknown error",
         request_id: reqId,
+        elapsed_ms: elapsed(budget),
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
