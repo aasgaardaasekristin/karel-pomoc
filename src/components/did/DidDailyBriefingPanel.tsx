@@ -1371,7 +1371,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       const itemId = s.id || legacyAskIdFor(briefing.id, "ask_kata", `playroom::${s.part_name}`);
       setOpeningItemId(itemId);
       try {
-        const titleHint = `Plán dnešní herny s ${s.part_name}`;
+        const titleHint = formatActionTitle("Plán dnešní herny", s.part_name);
         const program = Array.isArray(s.playroom_plan?.therapeutic_program) ? s.playroom_plan.therapeutic_program : [];
         const reasonText = [s.main_theme, s.why_this_part_today].filter(Boolean).join(" — ");
         const introBrief = [
