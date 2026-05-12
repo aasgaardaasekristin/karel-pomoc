@@ -1112,13 +1112,16 @@ const Chat = () => {
     (async () => {
       try {
         const headers = await getAuthHeaders();
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-          { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${partName.replace(/\s+/g, "_")}`] }) }
-        );
-        if (response.ok) {
-          const docData = await response.json();
-          const docs = docData.documents || {};
+        const driveRes = await safeDriveRead(headers as Record<string, string>, {
+          documents: [`Karta_${partName.replace(/\s+/g, "_")}`],
+          recursive: false,
+          allowGlobalSearch: false,
+          caller: "Chat.tsx:continue-thread",
+          budgetMs: 12_000,
+          silent: true,
+        });
+        const docs = driveRes.documents || {};
+        if (Object.keys(docs).length > 0) {
           const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
           setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
         }
