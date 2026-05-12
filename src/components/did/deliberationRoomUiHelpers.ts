@@ -1,4 +1,5 @@
 import type { TeamDeliberation } from "@/types/teamDeliberation";
+import { formatActionTitle } from "@/lib/didPartNaming";
 
 function sessionParamsOf(deliberation: Pick<TeamDeliberation, "session_params"> | null | undefined) {
   return deliberation?.session_params && typeof deliberation.session_params === "object"
