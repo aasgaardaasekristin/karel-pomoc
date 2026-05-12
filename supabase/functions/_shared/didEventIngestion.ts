@@ -814,6 +814,23 @@ export async function routeEvent(sb: SupabaseClient, eventInput: NormalizedDidEv
     const drive = await createDrivePackageIfNeeded(sb, event, classification);
     const cardProposalId = await createCardUpdateProposalIfNeeded(sb, event, classification);
     const hanaMem = await upsertHanaPersonalMemoryIfNeeded(sb, event, classification);
+    // P33.8A — Hana personal semantic intelligence routing
+    if (event.source_kind === "hana_personal_ingestion") {
+      try {
+        const { classifyHanaPersonalMessage } = await import("./hanaPersonalSemanticClassifier.ts");
+        const { routeHanaSemanticItems } = await import("./hanaPersonalIntelligenceRouter.ts");
+        const semantic = classifyHanaPersonalMessage({ text: event.raw_excerpt });
+        await routeHanaSemanticItems(sb, semantic, {
+          user_id: event.user_id,
+          source_ref: event.source_ref,
+          source_thread_id: event.source_id ?? null,
+          source_message_ref: event.message_id ?? null,
+          raw_text_for_classifier_only: event.raw_excerpt,
+        });
+      } catch (e) {
+        console.warn("[did-event-ingestion] hana semantic routing failed (non-blocking):", (e as Error)?.message);
+      }
+    }
     await markIngestionProcessed(sb, logId, "routed", {
       pantry_entry_id: pantryEntryId,
       observation_id: observation.observationId ?? null,
