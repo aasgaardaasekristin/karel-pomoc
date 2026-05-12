@@ -1281,7 +1281,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       const itemId = s.id || legacyAskIdFor(briefing.id, "ask_hanka", `session::${s.part_name}`);
       setOpeningItemId(itemId);
       try {
-        const titleHint = `Plán sezení s ${s.part_name}`;
+        const titleHint = formatActionTitle("Plán sezení", s.part_name);
 
         const reasonText = [
           s.why_today,
