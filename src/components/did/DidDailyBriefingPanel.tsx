@@ -48,6 +48,7 @@ import { useDidThreads } from "@/hooks/useDidThreads";
 import type { DeliberationType } from "@/types/teamDeliberation";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import ExternalLoadWarning from "@/components/did/ExternalLoadWarning";
+import { formatActionTitle } from "@/lib/didPartNaming";
 import { isKarelDebugMode } from "@/lib/karelDebugMode";
 import AiPolishCanaryPreviewPanel from "@/components/did/AiPolishCanaryPreviewPanel";
 import { getBriefingTruthStatus, pluralizeDays } from "@/lib/briefingTruthStatus";
