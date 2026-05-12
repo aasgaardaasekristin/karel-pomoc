@@ -2029,6 +2029,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           </div>
         </>
       )}
+      </>)}
+      {/* P33.10.1 — Action workflow below MUST render even when human briefing is OK.
+          Only prose duplicates above are gated by structuredFallbackAllowed. */}
 
       {/* 4. Dnešní navržené sezení — klikatelné.
           THERAPIST-LED TRUTH PASS (2026-04-22): Tato sekce zobrazuje POUZE
