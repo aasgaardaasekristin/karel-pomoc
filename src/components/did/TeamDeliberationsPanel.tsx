@@ -12,6 +12,7 @@ import {
 } from "@/types/teamDeliberation";
 import { useVisibleClinicalTextAudit } from "@/lib/visibleClinicalTextGuard";
 import { canonicalizePartDisplayName } from "@/lib/partTodayRelevance";
+import { renderDeliberationTitle } from "./deliberationRoomUiHelpers";
 
 interface Props {
   refreshTrigger?: number;
