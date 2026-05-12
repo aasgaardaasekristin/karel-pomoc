@@ -34,11 +34,22 @@ export interface MatrixEvidenceFlags {
   excluded_non_part: boolean;
 }
 
+export interface MatrixFreshEvidenceSource {
+  source: "recent_thread" | "today_session_approved" | "live_progress" | "explicit_therapist_mention" | "hana_personal_review";
+  label: string;
+}
+
 export interface MatrixPart {
   id: string;
   canonical_name: string;
   display_name: string;
   registry_status: "active" | "dormant" | "sleeping" | "unknown";
+  status_source: "drive_index" | "db_mirror" | "db_mirror_stale" | "unknown";
+  status_last_verified_at: string | null;
+  fresh_evidence_sources: MatrixFreshEvidenceSource[];
+  dedupe_key: string;
+  display_allowed_today: boolean;
+  primary_allowed: boolean;
   workability: Workability;
   reason: string;
   evidence: MatrixEvidenceFlags;
@@ -100,6 +111,26 @@ export interface BuildMatrixInput {
   explicitTherapistMentions?: string[];
   externalRealityParts?: Array<{ part_name: string; activity_status?: string }>;
   freshTeamDeliberations?: AnyObj[];
+  hanaPersonalReviewPartNames?: string[];
+}
+
+const RECENT_ACTIVITY_WINDOW_DAYS = 14;
+
+function canonicalKey(raw: string | null | undefined): string {
+  return norm(canonicalizePartDisplayName(raw ?? "") ?? raw ?? "").replace(/[^a-z0-9]/g, "");
+}
+
+function ageDays(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return null;
+  return (Date.now() - t) / 86_400_000;
+}
+
+function statusVerifiedAt(row: CentrumPartRow): string | null {
+  return row.source === "drive_index"
+    ? (row.index_confirmed_at ?? row.updated_at ?? row.last_seen_at ?? null)
+    : (row.index_confirmed_at ?? row.last_seen_at ?? row.updated_at ?? null);
 }
 
 export function buildDailyPartWorkabilityMatrix(input: BuildMatrixInput): PartWorkabilityMatrix {
