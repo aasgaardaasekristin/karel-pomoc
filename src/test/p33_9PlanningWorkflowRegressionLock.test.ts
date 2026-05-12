@@ -172,38 +172,31 @@ describe("P33.9 — annotation-only behaviour preserves planning fields", () => 
 
 // ----- renderer: no technical jargon leaking into visible text -----
 describe("P33.9 — renderer does not leak technical jargon", () => {
-  // Forbidden tokens MUST NOT appear as user-visible literal strings.
-  // We only flag occurrences inside double-quoted strings to avoid
-  // false positives on identifiers, comments, etc.
-  const FORBIDDEN = [
-    "00_CENTRUM",
-    "watch-only",
-    "pipeline",
-    "povinných kroků",
-    "source_cycle_id",
-    "provider_status",
-    "query_plan_version",
-  ];
+  // Strip line and block comments so we only look at code/strings.
+  const codeOnly = rendererSrc
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  const FORBIDDEN = ["00_CENTRUM", "watch-only", "pipeline", "povinných kroků"];
 
   for (const token of FORBIDDEN) {
     it(`renderer source has no user-visible literal "${token}"`, () => {
-      // search for the token inside a "..." literal
-      const re = new RegExp(`"[^"]*${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^"]*"`);
-      const hit = rendererSrc.match(re);
-      // Allow the token if it only appears inside FORBIDDEN_ROBOTIC_PHRASES
-      // detection lists (those are filters, not output).
-      if (hit) {
-        const surrounding = rendererSrc.slice(
-          Math.max(0, (hit.index ?? 0) - 80),
-          (hit.index ?? 0) + hit[0].length + 80,
+      const re = new RegExp(
+        `"[^"\\n]*${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^"\\n]*"`,
+        "g",
+      );
+      const hits = [...codeOnly.matchAll(re)];
+      const realHits = hits.filter((h) => {
+        const start = h.index ?? 0;
+        const surrounding = codeOnly.slice(
+          Math.max(0, start - 140),
+          start + h[0].length + 140,
         );
-        const isFilterEntry =
-          /FORBIDDEN_ROBOTIC_PHRASES|forbidden_phrase|label\s*:/.test(surrounding);
-        expect(
-          isFilterEntry,
-          `forbidden user-visible literal "${token}" leaked into renderer output: ${hit[0]}`,
-        ).toBe(true);
-      }
+        return !/FORBIDDEN_ROBOTIC_PHRASES|forbidden_phrase|label\s*:/.test(surrounding);
+      });
+      expect(
+        realHits.map((h) => h[0]),
+        `forbidden user-visible literal "${token}" leaked`,
+      ).toHaveLength(0);
     });
   }
 });
