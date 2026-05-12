@@ -1214,6 +1214,20 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
         </section>
       )}
 
+      {/* P33.10.2C — Explicit user-triggered Drive read button.
+          Render path stays DB-only; Drive only loads on click. */}
+      <div className="flex justify-end mt-2 mb-3">
+        <button
+          type="button"
+          onClick={loadOperativeNarrative}
+          disabled={loadingNarrative}
+          data-testid="karel-daily-plan-refresh-operative"
+          className="text-[11px] text-primary/60 hover:text-primary underline-offset-2 hover:underline disabled:opacity-50"
+        >
+          {loadingNarrative ? "Načítám operativní přehled…" : "Aktualizovat operativní přehled (Drive)"}
+        </button>
+      </div>
+
       {/* ── B2. 4 sekce dneška — velitelský pohled ze snapshotu ── */}
       <CommandFourSections snapshot={snapshot} navigate={navigate} />
 
