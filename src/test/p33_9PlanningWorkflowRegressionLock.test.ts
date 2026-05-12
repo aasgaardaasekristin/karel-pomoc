@@ -204,4 +204,9 @@ describe("P33.9 — renderer does not leak technical jargon", () => {
       ).toHaveLength(0);
     });
   }
+
+  it("external reality lines do not use preposition + nominative part-name template", () => {
+    expect(rendererSrc).not.toContain("U ${pp.name}");
+    expect(rendererSrc).toContain("${pp.name}: dnes je čerstvě zachycený");
+  });
 });

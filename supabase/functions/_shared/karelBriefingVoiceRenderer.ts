@@ -587,12 +587,12 @@ function renderExternalReality(payload: any): RenderedBriefingSection {
   function manifestLine(pp: PerPart): string {
     const tail = [pp.domain && `zdroj ${pp.domain}`, pp.checkedDate && `ověřeno ${pp.checkedDate}`, pp.pubDate ? `publikováno ${pp.pubDate}` : "datum publikace neznámé"].filter(Boolean).join(", ");
     if (pp.tier === "fresh") {
-      return `U ${pp.name} je dnes čerstvě zachycený vnější okruh z oblasti ${pp.category} (${tail}). Beru to jen jako signál držet bezpečný rámec, ne jako závěr o jeho stavu.`;
+      return `${pp.name}: dnes je čerstvě zachycený vnější okruh z oblasti ${pp.category} (${tail}). Beru to jen jako signál držet bezpečný rámec, ne jako závěr o jeho stavu.`;
     }
     if (pp.tier === "checked") {
-      return `U ${pp.name} internetový přehled dnes znovu ověřil citlivý okruh z oblasti ${pp.category} (${tail}). Datum publikace zdroje není jasné, neberu to jako dnešní událost; jen jako důvod jemně ověřit, jestli se s tématem dnes setkali.`;
+      return `${pp.name}: internetový přehled dnes znovu ověřil citlivý okruh z oblasti ${pp.category} (${tail}). Datum publikace zdroje není jasné, neberu to jako dnešní událost; jen jako důvod jemně ověřit, jestli se s tématem dnes setkali.`;
     }
-    return `U ${pp.name} je dříve evidovaný citlivý okruh z oblasti ${pp.category} bez čerstvého dnešního zdroje (${tail}). Smyslem je jen ověřit, zda se s tématem dnes setkali.`;
+    return `${pp.name}: dříve evidovaný citlivý okruh z oblasti ${pp.category} bez čerstvého dnešního zdroje (${tail}). Smyslem je jen ověřit, zda se s tématem dnes setkali.`;
   }
 
   if (ps === "configured") {
