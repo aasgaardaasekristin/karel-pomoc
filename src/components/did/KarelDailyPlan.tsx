@@ -585,6 +585,36 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
 
   useEffect(() => { load(); }, [load, refreshTrigger]);
 
+  // P33.10.2C — Explicit, user-triggered Drive read for the 05A narrative.
+  // NEVER called on render or in an effect. Bounded + fail-soft via safeDriveRead.
+  const [loadingNarrative, setLoadingNarrative] = useState(false);
+  const loadOperativeNarrative = useCallback(async () => {
+    setLoadingNarrative(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await safeDriveRead(headers, {
+        documents: ["05A_OPERATIVNI_PLAN"],
+        subFolder: "00_CENTRUM",
+        recursive: false,
+        allowGlobalSearch: false,
+        budgetMs: 12_000,
+        caller: "KarelDailyPlan:explicit-refresh",
+      });
+      const raw = res.documents?.["05A_OPERATIVNI_PLAN"];
+      if (typeof raw === "string" && raw.length > 50 && !raw.startsWith("[Dokument")) {
+        const overviewMatch = raw.match(/━━━\s*6\.\s*KARL[ŮU]V\s*P[ŘR]EHLED\s*━━━\n([\s\S]*?)(?=━━━|═══|$)/i);
+        if (overviewMatch?.[1]) {
+          const lines = overviewMatch[1].trim().split("\n").filter(l => l.trim()).slice(0, 8);
+          setPlan05ANarrative(lines.join(" ").replace(/\s{2,}/g, " ").trim());
+        }
+      }
+    } catch (err) {
+      console.error("[KarelDailyPlan] loadOperativeNarrative failed:", err);
+    } finally {
+      setLoadingNarrative(false);
+    }
+  }, []);
+
   // ── Send therapist message ──
   const handleSendTherapistMessage = async (sender: "hanka" | "kata") => {
     const msg = sender === "hanka" ? hankaMessage : kataMessage;
