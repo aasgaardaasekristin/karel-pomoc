@@ -3082,8 +3082,13 @@ Deno.serve(async (req) => {
       // P33.8 — bumped to p33.8.0 (renderer now consumes
       // daily_part_workability_matrix as the upstream authority for which
       // parts are workable today). Old p33.7.x cached rows MUST regenerate.
+      // P33.9 — additionally require payload_generation_version=p33.9.0 and
+      // matrix_gate_version=p33.9_annotation_only so old destructive-gate rows
+      // (which nulled part_name and replaced asks) cannot be served.
       const REQUIRED_RENDERER_VERSION = "p33.8.1";
       const REQUIRED_COMPLETENESS_VERSION = "p33.7";
+      const REQUIRED_PAYLOAD_GENERATION_VERSION = "p33.9.0";
+      const REQUIRED_MATRIX_GATE_VERSION = "p33.9_annotation_only";
       const cachedHuman = existing?.payload?.karel_human_briefing ?? null;
       const cachedCompleteness = existing?.payload?.daily_briefing_content_completeness ?? null;
       const cachedP337Ready =
@@ -3093,13 +3098,17 @@ Deno.serve(async (req) => {
         ["complete", "complete_with_controlled_missing"].includes(
           String(cachedCompleteness?.overall_status ?? "")
         );
+      const cachedP339Ready =
+        existing?.payload?.payload_generation_version === REQUIRED_PAYLOAD_GENERATION_VERSION &&
+        existing?.payload?.matrix_gate_version === REQUIRED_MATRIX_GATE_VERSION;
       const cachedIsReady =
         existing &&
         cachedGateOk &&
         !!cachedSourceCycleId &&
         cachedAfterCycle &&
         cachedExternalRealityOk &&
-        cachedP337Ready;
+        cachedP337Ready &&
+        cachedP339Ready;
 
       if (existing && cachedIsReady) {
         await finishBriefingAttempt(supabase, attemptId, { status: "succeeded", created_briefing_id: existing.id, metadata: { cached: true } });
@@ -4034,6 +4043,11 @@ Deno.serve(async (req) => {
       annotateProposal(payload?.proposed_playroom);
       // ask_hanka / ask_kata: do not replace, do not append primitives.
       // Structured asks built upstream remain authoritative.
+
+      // P33.9 — explicit version markers so cache gate can reject pre-P33.9 rows
+      // (which contained the destructive matrix gate).
+      payload.payload_generation_version = "p33.9.0";
+      payload.matrix_gate_version = "p33.9_annotation_only";
     } catch (e) {
       console.warn("[P33.8] matrix build failed (non-fatal):", e);
       if (!payload.today_part_relevance_decision) {
