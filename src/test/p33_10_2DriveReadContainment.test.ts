@@ -83,12 +83,14 @@ describe("P33.10.2 — Drive Read Containment", () => {
       expect(chat).toMatch(/from\s+"@\/lib\/safeDriveRead"/);
     });
     it("DID-mode open does not raw-fetch karel-did-drive-read", () => {
-      // Locate the childcare branch and assert no raw fetch to drive-read inside.
-      const idx = chat.indexOf('mode === "childcare"');
+      // The branch entered when prevModeRef.current !== mode and mode === "childcare"
+      // pre-loads basic centrum docs. It must use safeDriveRead.
+      const idx = chat.indexOf("Drive enrichment is non-blocking");
       expect(idx).toBeGreaterThan(-1);
-      const slice = chat.slice(idx, idx + 2500);
+      const slice = chat.slice(idx, idx + 2000);
       expect(slice).not.toMatch(/fetch\([^)]*karel-did-drive-read/);
       expect(slice).toMatch(/safeDriveRead\(/);
+      expect(slice).toMatch(/caller:\s*"Chat\.tsx:childcare-open"/);
     });
     it("loadDriveContext helper uses safeDriveRead", () => {
       const idx = chat.indexOf("const loadDriveContext");
