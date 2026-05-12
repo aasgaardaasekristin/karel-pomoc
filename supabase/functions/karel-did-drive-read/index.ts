@@ -1,6 +1,60 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 
+// ═══════════════════════════════════════════════════════════════════════════
+// P33.10.2 — Drive Read Containment
+// Hard limits enforced for every invocation. Recursive / global search are
+// off by default. Budget-exhausted requests return a controlled-timeout JSON
+// envelope (HTTP 200) instead of being killed by the runtime IDLE_TIMEOUT.
+// ═══════════════════════════════════════════════════════════════════════════
+const OVERALL_BUDGET_MS = 45_000;
+const PER_FETCH_TIMEOUT_MS = 8_000;
+const MAX_DEPTH_DEFAULT = 2;
+const MAX_FOLDERS_DEFAULT = 80;
+const MAX_FILES_DEFAULT = 300;
+const MAX_GLOBAL_SEARCH_RESULTS = 30;
+
+type Budget = {
+  startedAt: number;
+  deadline: number;
+  foldersVisited: number;
+  filesSeen: number;
+  reqId: string;
+};
+
+function newBudget(reqId: string): Budget {
+  const now = Date.now();
+  return {
+    startedAt: now,
+    deadline: now + OVERALL_BUDGET_MS,
+    foldersVisited: 0,
+    filesSeen: 0,
+    reqId,
+  };
+}
+
+function budgetExhausted(b: Budget, maxFolders: number, maxFiles: number): boolean {
+  return (
+    Date.now() >= b.deadline ||
+    b.foldersVisited >= maxFolders ||
+    b.filesSeen >= maxFiles
+  );
+}
+
+function elapsed(b: Budget): number {
+  return Date.now() - b.startedAt;
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), PER_FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: ctl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 // ── OAuth2 token helper ──
 async function getAccessToken(): Promise<string> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
@@ -11,7 +65,7 @@ async function getAccessToken(): Promise<string> {
     throw new Error("Missing Google OAuth credentials");
   }
 
-  const res = await fetch("https://oauth2.googleapis.com/token", {
+  const res = await fetchWithTimeout("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -40,7 +94,7 @@ async function findFolders(token: string, name: string, parentId?: string): Prom
     includeItemsFromAllDrives: "true",
   });
 
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `https://www.googleapis.com/drive/v3/files?${params.toString()}`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
@@ -73,13 +127,16 @@ async function resolveKartotekaRoot(token: string): Promise<string | null> {
 
 async function listFilesInFolder(
   token: string,
-  folderId: string
+  folderId: string,
+  budget: Budget,
+  maxFiles: number,
 ): Promise<Array<{ id: string; name: string; mimeType?: string }>> {
   const q = `'${folderId}' in parents and trashed=false`;
   const allFiles: Array<{ id: string; name: string; mimeType?: string }> = [];
   let pageToken: string | undefined;
 
   do {
+    if (Date.now() >= budget.deadline) break;
     const params = new URLSearchParams({
       q,
       fields: "nextPageToken,files(id,name,mimeType)",
@@ -87,26 +144,31 @@ async function listFilesInFolder(
     });
     if (pageToken) params.set("pageToken", pageToken);
 
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://www.googleapis.com/drive/v3/files?${params.toString()}`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
     const data = await res.json();
-    allFiles.push(...(data.files || []));
+    const batch = (data.files || []) as Array<{ id: string; name: string; mimeType?: string }>;
+    for (const f of batch) {
+      if (allFiles.length + budget.filesSeen >= maxFiles) break;
+      allFiles.push(f);
+    }
+    budget.filesSeen += batch.length;
     pageToken = data.nextPageToken || undefined;
+    if (allFiles.length + budget.filesSeen >= maxFiles) break;
   } while (pageToken);
 
   return allFiles;
 }
 
 async function readFileContent(token: string, fileId: string, mimeType?: string): Promise<string> {
-  // Google Workspace files must be exported, not downloaded via alt=media
   const isGoogleDoc = mimeType === "application/vnd.google-apps.document";
   const isGoogleSheet = mimeType === "application/vnd.google-apps.spreadsheet";
   const isGoogleWorkspace = mimeType?.startsWith("application/vnd.google-apps.");
 
   if (isGoogleSheet) {
-    const exportRes = await fetch(
+    const exportRes = await fetchWithTimeout(
       `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/csv`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
@@ -115,7 +177,7 @@ async function readFileContent(token: string, fileId: string, mimeType?: string)
   }
 
   if (isGoogleDoc || isGoogleWorkspace) {
-    const exportRes = await fetch(
+    const exportRes = await fetchWithTimeout(
       `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
@@ -123,14 +185,12 @@ async function readFileContent(token: string, fileId: string, mimeType?: string)
     return await exportRes.text();
   }
 
-  // Regular file – download via alt=media
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!res.ok) {
-    // Fallback: maybe mimeType wasn't passed, try export as text
-    const exportRes = await fetch(
+    const exportRes = await fetchWithTimeout(
       `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
@@ -167,43 +227,77 @@ const isDocumentMatch = (requested: string, fileName: string) => {
   );
 };
 
-async function findDocumentRecursive(
+async function findDocumentBounded(
   token: string,
   folderId: string,
-  requestedDoc: string
+  requestedDoc: string,
+  budget: Budget,
+  depth: number,
+  maxDepth: number,
+  maxFolders: number,
+  maxFiles: number,
 ): Promise<{ id: string; name: string; mimeType?: string } | null> {
-  const files = await listFilesInFolder(token, folderId);
+  if (budgetExhausted(budget, maxFolders, maxFiles)) return null;
+  budget.foldersVisited += 1;
+
+  const files = await listFilesInFolder(token, folderId, budget, maxFiles);
 
   const directMatch = files.find(
     (f) => f.mimeType !== "application/vnd.google-apps.folder" && isDocumentMatch(requestedDoc, f.name)
   );
   if (directMatch) return directMatch;
 
+  if (depth >= maxDepth) return null;
+
   const subfolders = files.filter((f) => f.mimeType === "application/vnd.google-apps.folder");
   for (const subfolder of subfolders) {
-    const nestedMatch = await findDocumentRecursive(token, subfolder.id, requestedDoc);
+    if (budgetExhausted(budget, maxFolders, maxFiles)) return null;
+    const nestedMatch = await findDocumentBounded(
+      token, subfolder.id, requestedDoc, budget, depth + 1, maxDepth, maxFolders, maxFiles
+    );
     if (nestedMatch) return nestedMatch;
   }
 
   return null;
 }
 
-async function findDocumentGlobal(
+async function findDocumentGlobalBounded(
   token: string,
-  requestedDoc: string
+  requestedDoc: string,
+  budget: Budget,
 ): Promise<{ id: string; name: string; mimeType?: string } | null> {
+  if (Date.now() >= budget.deadline) return null;
   const canonical = canonicalDocName(requestedDoc);
   const searchTerm = canonical.replace(/^\d+/, "").slice(0, 40) || requestedDoc;
 
   const q = `trashed=false and mimeType!='application/vnd.google-apps.folder' and name contains '${searchTerm}'`;
-  const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&pageSize=100`,
+  const res = await fetchWithTimeout(
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&pageSize=${MAX_GLOBAL_SEARCH_RESULTS}`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   const data = await res.json();
-  const files = (data.files || []) as Array<{ id: string; name: string; mimeType?: string }>;
+  const files = ((data.files || []) as Array<{ id: string; name: string; mimeType?: string }>)
+    .slice(0, MAX_GLOBAL_SEARCH_RESULTS);
 
   return files.find((f) => isDocumentMatch(requestedDoc, f.name)) || null;
+}
+
+function controlledTimeout(budget: Budget, reason: string, extra: Record<string, unknown> = {}) {
+  return new Response(JSON.stringify({
+    ok: false,
+    status: "controlled_timeout",
+    reason,
+    partial: true,
+    items_found: [],
+    searched_folders: budget.foldersVisited,
+    files_seen: budget.filesSeen,
+    elapsed_ms: elapsed(budget),
+    request_id: budget.reqId,
+    ...extra,
+  }), {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
 
 serve(async (req) => {
@@ -211,66 +305,91 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // ── Auth fallback chain: service-role → anon → requireAuth → proceed anyway ──
+  // ── Auth fallback chain ──
   let authenticated = false;
   try {
     const authHeader = req.headers.get("Authorization") || "";
     const token = authHeader.replace("Bearer ", "");
-    if (token === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) {
-      authenticated = true;
-    }
+    if (token === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) authenticated = true;
   } catch {}
-
   if (!authenticated) {
     try {
       const authHeader = req.headers.get("Authorization") || "";
       const token = authHeader.replace("Bearer ", "");
-      if (token === Deno.env.get("SUPABASE_ANON_KEY")) {
-        authenticated = true;
-      }
+      if (token === Deno.env.get("SUPABASE_ANON_KEY")) authenticated = true;
     } catch {}
   }
-
   if (!authenticated) {
     try {
       const authResult = await requireAuth(req);
-      if (!(authResult instanceof Response)) {
-        authenticated = true;
-      }
+      if (!(authResult instanceof Response)) authenticated = true;
     } catch (authErr: any) {
       console.warn("[drive-read] Auth fallback - proceeding without strict auth:", authErr?.message);
       authenticated = true;
     }
   }
-
-  // Read-only function — always proceed
   if (!authenticated) {
     console.warn("[drive-read] No auth method succeeded, proceeding anyway (read-only)");
   }
 
-  try {
-    const body = await req.json();
-    const { documents, listAll, subFolder, allowGlobalSearch, partName, tailLines } = body;
-    const token = await getAccessToken();
+  const reqId = crypto.randomUUID().slice(0, 8);
+  const budget = newBudget(reqId);
 
-    // Find kartoteka_DID folder
+  try {
+    const body = await req.json().catch(() => ({}));
+    const {
+      documents,
+      listAll,
+      subFolder,
+      partName,
+      tailLines,
+      // P33.10.2: explicit opt-in flags. Defaults are restrictive.
+      recursive = false,
+      allowGlobalSearch = false,
+      maxDepth = MAX_DEPTH_DEFAULT,
+      maxFolders = MAX_FOLDERS_DEFAULT,
+      maxFiles = MAX_FILES_DEFAULT,
+      caller = "unknown",
+    } = body;
+
+    const effectiveMaxDepth = Math.min(Number(maxDepth) || MAX_DEPTH_DEFAULT, MAX_DEPTH_DEFAULT);
+    const effectiveMaxFolders = Math.min(Number(maxFolders) || MAX_FOLDERS_DEFAULT, MAX_FOLDERS_DEFAULT);
+    const effectiveMaxFiles = Math.min(Number(maxFiles) || MAX_FILES_DEFAULT, MAX_FILES_DEFAULT);
+
+    // Structured, secret-free log line.
+    console.log(JSON.stringify({
+      tag: "[drive-read]",
+      reqId,
+      caller,
+      action: partName ? "partName" : (listAll ? "listAll" : "documents"),
+      target_label: partName
+        ? canonicalDocName(String(partName)).slice(0, 40)
+        : (Array.isArray(documents) ? documents.length : 0),
+      subFolder: subFolder || null,
+      recursive,
+      globalSearch: allowGlobalSearch,
+      maxDepth: effectiveMaxDepth,
+      maxFolders: effectiveMaxFolders,
+      maxFiles: effectiveMaxFiles,
+    }));
+
+    const token = await getAccessToken();
     const rootFolderId = await resolveKartotekaRoot(token);
 
     if (!rootFolderId) {
-      return new Response(JSON.stringify({ 
+      return new Response(JSON.stringify({
         error: "Složka Kartoteka_DID nebyla nalezena na Google Drive",
-        documents: {} 
+        documents: {},
       }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // ═══ MODE: partName — find and read a DID part card by name ═══
+    // ═══ MODE: partName ═══
     if (partName) {
-      const rootChildren = await listFilesInFolder(token, rootFolderId);
+      const rootChildren = await listFilesInFolder(token, rootFolderId, budget, effectiveMaxFiles);
       const foldersToSearch: string[] = [];
-
       for (const f of rootChildren) {
         if (f.mimeType !== "application/vnd.google-apps.folder") continue;
         const name = f.name.trim();
@@ -286,83 +405,130 @@ serve(async (req) => {
       let foundFile: { id: string; name: string; mimeType?: string } | null = null;
 
       for (const searchFolderId of foldersToSearch) {
-        const found = await findDocumentRecursive(token, searchFolderId, partName);
+        if (budgetExhausted(budget, effectiveMaxFolders, effectiveMaxFiles)) {
+          return controlledTimeout(budget, "drive_read_budget_exhausted", { mode: "partName" });
+        }
+        const found = await findDocumentBounded(
+          token, searchFolderId, partName, budget,
+          0, effectiveMaxDepth, effectiveMaxFolders, effectiveMaxFiles
+        );
         if (found) {
           try {
             cardContent = await readFileContent(token, found.id, found.mimeType);
             foundFile = found;
             break;
           } catch (e) {
-            console.error(`Failed to read card for "${partName}" (${found.name}):`, e);
+            console.error(`[drive-read] read fail ${reqId}:`, (e as Error).message);
           }
         }
       }
 
       if (cardContent && foundFile) {
-        console.log(`[drive-read] Found card for "${partName}": ${foundFile.name}`);
         let returnContent = cardContent;
         if (tailLines && typeof tailLines === "number" && tailLines > 0) {
           const allLines = cardContent.split("\n");
           returnContent = allLines.slice(-tailLines).join("\n");
         }
-        return new Response(JSON.stringify({ content: returnContent, fileId: foundFile.id, fileName: foundFile.name, totalChars: cardContent.length, totalLines: cardContent.split("\n").length }), {
+        return new Response(JSON.stringify({
+          ok: true,
+          content: returnContent,
+          fileId: foundFile.id,
+          fileName: foundFile.name,
+          totalChars: cardContent.length,
+          totalLines: cardContent.split("\n").length,
+          elapsed_ms: elapsed(budget),
+          request_id: reqId,
+        }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      return new Response(JSON.stringify({ content: null, error: `Card for "${partName}" not found` }), {
+      if (Date.now() >= budget.deadline) {
+        return controlledTimeout(budget, "drive_read_budget_exhausted", { mode: "partName" });
+      }
+      return new Response(JSON.stringify({
+        ok: false,
+        content: null,
+        error: `Card for "${partName}" not found`,
+        request_id: reqId,
+      }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // ═══ MODE: documents[] — original behavior ═══
+    // ═══ MODE: documents[] ═══
     let targetFolderId = rootFolderId;
     if (subFolder) {
       const subFolderId = await findFolder(token, subFolder, rootFolderId);
-      if (subFolderId) {
-        targetFolderId = subFolderId;
-      } else {
-        console.warn(`Subfolder "${subFolder}" not found in Kartoteka_DID, using root`);
-      }
+      if (subFolderId) targetFolderId = subFolderId;
+      else console.warn(`[drive-read] Subfolder "${subFolder}" not found, using root`);
     }
 
     if (listAll) {
-      const files = await listFilesInFolder(token, targetFolderId);
-      return new Response(JSON.stringify({ files, folderId: targetFolderId }), {
+      const files = await listFilesInFolder(token, targetFolderId, budget, effectiveMaxFiles);
+      return new Response(JSON.stringify({ ok: true, files, folderId: targetFolderId, request_id: reqId }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const result: Record<string, string> = {};
     const requestedDocs: string[] = documents || [];
-    const shouldUseGlobalSearch = allowGlobalSearch === true || !subFolder;
 
     for (const docName of requestedDocs) {
-      let match = await findDocumentRecursive(token, targetFolderId, docName);
-      if (!match && shouldUseGlobalSearch) {
-        match = await findDocumentGlobal(token, docName);
+      if (budgetExhausted(budget, effectiveMaxFolders, effectiveMaxFiles)) {
+        return controlledTimeout(budget, "drive_read_budget_exhausted", {
+          mode: "documents",
+          partial_documents: result,
+        });
+      }
+
+      // P33.10.2: depth and recursion are bounded, never unlimited.
+      const effectiveDepth = recursive ? effectiveMaxDepth : 1;
+      let match = await findDocumentBounded(
+        token, targetFolderId, docName, budget,
+        0, effectiveDepth, effectiveMaxFolders, effectiveMaxFiles
+      );
+
+      // Global search: opt-in only.
+      if (!match && allowGlobalSearch === true) {
+        match = await findDocumentGlobalBounded(token, docName, budget);
       }
 
       if (match) {
         try {
           result[docName] = await readFileContent(token, match.id, match.mimeType);
         } catch (e) {
-          console.error(`Failed to read ${docName} (${match.name}):`, e);
-          result[docName] = `[Chyba při čtení: ${e.message}]`;
+          console.error(`[drive-read] doc read fail ${reqId} ${docName}:`, (e as Error).message);
+          result[docName] = `[Chyba při čtení]`;
         }
       } else {
         result[docName] = `[Dokument "${docName}" nebyl nalezen ve složce Kartoteka_DID]`;
       }
     }
 
-    return new Response(JSON.stringify({ documents: result, folderId: targetFolderId }), {
+    return new Response(JSON.stringify({
+      ok: true,
+      documents: result,
+      folderId: targetFolderId,
+      elapsed_ms: elapsed(budget),
+      request_id: reqId,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("DID Drive read error:", error);
+    if (Date.now() >= budget.deadline || (error as any)?.name === "AbortError") {
+      return controlledTimeout(budget, "drive_read_budget_exhausted", {
+        error_kind: (error as any)?.name || "abort",
+      });
+    }
+    console.error(`[drive-read] error ${reqId}:`, (error as Error).message);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({
+        ok: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+        request_id: reqId,
+      }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
