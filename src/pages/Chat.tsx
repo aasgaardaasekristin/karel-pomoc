@@ -1397,19 +1397,20 @@ const Chat = () => {
         }
 
         // Create canonical thread bound to the resolved session UUID.
+        const sessionPartDisplay = cleanDisplayName(String(sessionPart || "").trim());
         const intro = [
-          `📅 **Plán sezení s ${sessionPart}**`,
+          `📅 **${formatActionTitle("Plán sezení", sessionPart)}**`,
           "",
-          `Pro dnešek navrhuji pracovat s **${sessionPart}**.`,
+          `Pro dnešek navrhuji pracovat s částí **${sessionPartDisplay}**.`,
           "",
-          `*Proč právě teď:* na základě stavu registru a posledních pozorování je ${sessionPart} prioritou pro dnešní sezení.`,
+          `*Proč právě teď:* na základě stavu registru a posledních pozorování je část ${sessionPartDisplay} prioritou pro dnešní sezení.`,
           "",
           `*Můj návrh prvního kroku:* začněme krátkým ground-checkem a projděme si terapeutický plán pro dnešek. Pokud máte nový postřeh z posledních 24h, prosím sdílejte hned na začátku.`,
         ].join("\n");
         const thread = await didThreads.createThread("Karel", "mamka", "cs", [
           { role: "assistant", content: intro },
         ], {
-          threadLabel: `Sezení: ${sessionPart}`,
+          threadLabel: `Sezení — ${sessionPartDisplay || sessionPart}`,
           workspaceType: "session" as const,
           workspaceId: resolvedSessionId,
         });
