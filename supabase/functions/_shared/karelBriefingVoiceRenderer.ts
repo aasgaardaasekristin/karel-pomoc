@@ -168,15 +168,15 @@ function renderDailyCycleVerified(payload: any): RenderedBriefingSection {
     const terminal = completed + skipped;
     if (total > 0) {
       text = terminal >= total
-        ? `Dnešní ranní příprava doběhla — všech ${total} povinných kroků je uzavřených (dokončené i bezpečně přeskočené, podle toho, pro co byla dnes práce).`
-        : `Z dnešní ranní přípravy je uzavřených ${terminal} ze ${total} kroků. Beru to jako rozpracovaný základ pro dnešek.`;
+        ? `Dnešní ranní přípravu mám hotovou — všechno, co k dnešku patřilo, je uzavřené (buď dotaženo, nebo bezpečně vynecháno tam, kde dnes nebylo s čím pracovat).`
+        : `Dnešní ranní příprava je zatím hotová jen z části. Beru to jako rozpracovaný základ pro dnešek.`;
       confidence = terminal >= total ? "high" : "medium";
     } else {
-      text = "Dnešní ranní příprava proběhla, ale přehled kroků je dnes uložený bez počitatelné položkové struktury.";
+      text = "Dnešní ranní příprava proběhla, ale podrobnosti k jednotlivým částem teď nemám tak, abych je s jistotou popsal.";
       warnings.push("phase_jobs_snapshot_empty");
     }
   } else {
-    text = "Nemám u sebe detail o průběhu ranní přípravy, takže o jednotlivých krocích raději nic netvrdím.";
+    text = "K dnešní ranní přípravě nemám u sebe podrobnosti, takže o ní raději nic netvrdím.";
     confidence = "low";
     warnings.push("phase_jobs_snapshot_missing");
   }
@@ -235,7 +235,7 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
         .slice(0, 4)
     : [];
   const watchOnlySuffix = watchOnlyNames.length > 0
-    ? `\n\nDnes mám jen jako citlivostní kontext (watch-only, ne jako vedoucí část pro práci): ${watchOnlyNames.join(", ")}.`
+    ? `\n\nDnes je dobré mít v jemném ohledu i tyto kluky, ale ne otevírat s nimi nové téma: ${watchOnlyNames.join(", ")}.`
     : "";
 
   if (decision?.ok_for_primary_suggestion) {
@@ -263,10 +263,10 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
       "Stop signály pro dnešek: nepokoušet se otevřít nové trauma téma, neforsírovat konkrétní část a neuzavírat dnes žádné velké terapeutické rozhodnutí.",
     ].join("\n");
     const lead = matrix?.overall_decision === "blocked_centrum_missing"
-      ? "Dnes nemám potvrzený obraz částí z 00_CENTRUM, takže nemůžu volit vedoucí část před prvním kontaktem."
+      ? "Dnes ráno ještě nemám jistou jednu vedoucí část, se kterou by se dalo začít bez prvního kontaktu."
       : partName
-      ? `Pro dnešek je v úvahu ${partName} jako pracovní hypotéza, ale podle dnešních signálů z 00_CENTRUM a pipeline na ni nemám dost opory, abych ji označil jako vedoucí část.`
-      : "Dnes nemám žádnou část jako vedoucí kandidátku, protože 00_CENTRUM ani dnešní signály nedávají dost opory.";
+      ? `Pro dnešek se nabízí ${partName} jako pracovní hypotéza, ale podle dnešních signálů na ni nemám dost opory, abych ji označil jako vedoucí část.`
+      : "Dnes nemám žádnou část, kterou bych s jistotou doporučil jako vedoucí — opora pro to dnes není dost silná.";
     text = `${lead} Místo vedoucí části dnes navrhuji tento operační rámec:\n\n${fallbackPlan}${watchOnlySuffix}`;
     confidence = "low";
     warnings.push(decision?.reason ? `part_relevance_rejected:${decision.reason}` : "no_today_part_proposal");
@@ -285,10 +285,10 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
 
 function humanReason(reason: string): string {
   switch (reason) {
-    case "active_with_strong_today_evidence": return "aktivní v 00_CENTRUM a má dnes čerstvou stopu (sezení nebo živý záznam)";
-    case "active_with_fresh_team_proposal_and_evidence": return "aktivní v 00_CENTRUM, čerstvý návrh týmu a dnešní stopu";
-    case "active_with_recent_thread_only": return "aktivní v 00_CENTRUM a nedávné vlákno (≤72 h)";
-    case "dormant_with_fresh_evidence": return "v 00_CENTRUM v útlumu, ale s čerstvou stopou — proto jen po prvním kontaktu";
+    case "active_with_strong_today_evidence": return "je dnes aktivní a má čerstvou stopu (sezení nebo živý záznam)";
+    case "active_with_fresh_team_proposal_and_evidence": return "je aktivní, je k ní čerstvý návrh týmu a dnešní stopa";
+    case "active_with_recent_thread_only": return "je aktivní a má nedávné vlákno (≤72 h)";
+    case "dormant_with_fresh_evidence": return "je teď v útlumu, ale má čerstvou stopu — proto jen po prvním kontaktu";
     default: return reason;
   }
 }
