@@ -3985,7 +3985,7 @@ Deno.serve(async (req) => {
         const { data: tdRows } = await supabase
           .from("did_team_deliberations")
           .select("id, status, session_params, part_name, updated_at, created_at")
-          .eq("user_id", userId)
+          .eq("user_id", scopedUserId as string)
           .gte("updated_at", since)
           .in("status", ["approved", "signed_off", "active"])
           .order("updated_at", { ascending: false })
