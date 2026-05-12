@@ -51,7 +51,7 @@ export interface KarelBriefingVoiceRenderResult {
   errors: string[];
 }
 
-export const RENDERER_VERSION = "p33.8.0";
+export const RENDERER_VERSION = "p33.8.1";
 
 function withTerminalPunctuation(text: string): string {
   const s = safeStr(text);
