@@ -168,8 +168,8 @@ function renderDailyCycleVerified(payload: any): RenderedBriefingSection {
     const terminal = completed + skipped;
     if (total > 0) {
       text = terminal >= total
-        ? `Dnešní ranní přípravu mám hotovou — všechno, co k dnešku patřilo, je uzavřené (buď dotaženo, nebo bezpečně vynecháno tam, kde dnes nebylo s čím pracovat).`
-        : `Dnešní ranní příprava je zatím hotová jen z části. Beru to jako rozpracovaný základ pro dnešek.`;
+        ? `Dnešní ranní přípravu mám hotovou celou — všech ${total} dnešních věcí je uzavřených (buď dotaženo, nebo bezpečně vynecháno tam, kde dnes nebylo s čím pracovat).`
+        : `Z dnešní ranní přípravy mám zatím hotových ${terminal} z ${total} věcí. Beru to jako rozpracovaný základ pro dnešek.`;
       confidence = terminal >= total ? "high" : "medium";
     } else {
       text = "Dnešní ranní příprava proběhla, ale podrobnosti k jednotlivým částem teď nemám tak, abych je s jistotou popsal.";
@@ -266,7 +266,7 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
       ? "Dnes ráno ještě nemám jistou jednu vedoucí část, se kterou by se dalo začít bez prvního kontaktu."
       : partName
       ? `Pro dnešek se nabízí ${partName} jako pracovní hypotéza, ale podle dnešních signálů na ni nemám dost opory, abych ji označil jako vedoucí část.`
-      : "Dnes nemám žádnou část, kterou bych s jistotou doporučil jako vedoucí — opora pro to dnes není dost silná.";
+      : "Dnes nemám žádnou část jako vedoucí — nemám pro to dost opory.";
     text = `${lead} Místo vedoucí části dnes navrhuji tento operační rámec:\n\n${fallbackPlan}${watchOnlySuffix}`;
     confidence = "low";
     warnings.push(decision?.reason ? `part_relevance_rejected:${decision.reason}` : "no_today_part_proposal");
