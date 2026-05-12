@@ -129,6 +129,8 @@ type BriefingAskTargetType =
   | "team_deliberation"
   | "current_handling"
   | "task"
+  | "briefing"
+  | "decision"
   | "none";
 
 type BriefingAskExpectedResolution =
@@ -136,7 +138,8 @@ type BriefingAskExpectedResolution =
   | "add_observation"
   | "create_task"
   | "store_memory"
-  | "no_program_change";
+  | "no_program_change"
+  | "answer";
 
 /** Nový tvar ask položky (id+text+metadata). Edge funkce vrací tohle od 2026-04-19. */
 interface AskItemObj {
@@ -779,13 +782,36 @@ const legacyAskIdFor = (
 };
 
 /** Normalizuje libovolnou ask položku na {id,text}. */
-const toAskItem = (
+export const toAskItem = (
   raw: AskItemRaw,
   briefingId: string,
   role: "ask_hanka" | "ask_kata",
 ): AskItemObj => {
   if (raw && typeof raw === "object" && "id" in raw && "text" in raw) {
-    return { ...(raw as AskItemObj), id: String(raw.id), text: String(raw.text) };
+    const obj = raw as AskItemObj;
+    // P33.10.1 — Part B: normalize missing workspace/target fields so
+    // every visible ask item is always clickable and never opens a dead
+    // workspace. If target_item_id is null/missing, fall back to the
+    // current briefing as the addressable target.
+    const id = String(obj.id);
+    const target_item_id = obj.target_item_id != null && String(obj.target_item_id).trim() !== ""
+      ? obj.target_item_id
+      : briefingId;
+    const target_type: BriefingAskTargetType = (obj.target_type && obj.target_type !== "none")
+      ? obj.target_type
+      : ("briefing" as BriefingAskTargetType);
+    const expected_resolution: BriefingAskExpectedResolution = obj.expected_resolution
+      ?? ("answer" as BriefingAskExpectedResolution);
+    return {
+      ...obj,
+      id,
+      text: String(obj.text),
+      assignee: obj.assignee ?? (role === "ask_hanka" ? "hanka" : "kata"),
+      target_type,
+      target_item_id,
+      expected_resolution,
+      briefing_id: obj.briefing_id ?? briefingId,
+    };
   }
   const text = String(raw ?? "");
   return {
@@ -793,11 +819,11 @@ const toAskItem = (
     text,
     assignee: role === "ask_hanka" ? "hanka" : "kata",
     intent: "none",
-    target_type: "none",
-    target_item_id: null,
+    target_type: "briefing" as BriefingAskTargetType,
+    target_item_id: briefingId,
     target_part_name: null,
     requires_immediate_program_update: false,
-    expected_resolution: "store_memory",
+    expected_resolution: "answer" as BriefingAskExpectedResolution,
     source: "daily_briefing",
     briefing_id: briefingId,
   };
@@ -2003,6 +2029,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           </div>
         </>
       )}
+      </>)}
+      {/* P33.10.1 — Action workflow below MUST render even when human briefing is OK.
+          Only prose duplicates above are gated by structuredFallbackAllowed. */}
 
       {/* 4. Dnešní navržené sezení — klikatelné.
           THERAPIST-LED TRUTH PASS (2026-04-22): Tato sekce zobrazuje POUZE
@@ -2311,7 +2340,6 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           </p>
         </>
       )}
-      </>)}
     </div>
   );
 };
