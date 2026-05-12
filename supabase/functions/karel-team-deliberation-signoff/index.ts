@@ -297,11 +297,13 @@ Deno.serve(async (req: Request) => {
         sp0.session_actor === "karel_direct" ||
         sp0.ui_surface === "did_kids_playroom" ||
         sp0.session_format === "playroom";
+      const _planIdForSnapCheck = ((syncResult as any)?.bridged_plan_id as string | null) ?? updated.linked_live_session_id ?? null;
       if (
         updated.status === "approved" &&
         updated.deliberation_type === "session_plan" &&
         isPlayroomPlan0 &&
-        bridgedPlanIdEarlyOk(((syncResult as any)?.bridged_plan_id ?? updated.linked_live_session_id) as string | null)
+        typeof _planIdForSnapCheck === "string" &&
+        _planIdForSnapCheck.length > 0
       ) {
         const planIdForSnap = ((syncResult as any)?.bridged_plan_id as string | null) ?? updated.linked_live_session_id ?? null;
         const { data: planRow, error: planLoadErr } = await admin
