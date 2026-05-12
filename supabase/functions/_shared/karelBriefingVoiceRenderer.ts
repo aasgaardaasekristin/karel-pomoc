@@ -525,7 +525,24 @@ function renderExternalReality(payload: any): RenderedBriefingSection {
   // P33.7 — Source/tier manifestation per affected part.
   type PerPart = { name: string; tier: "fresh" | "checked" | "historical"; category: string; domain: string; checkedDate: string; pubDate: string | null };
   const perPart: PerPart[] = [];
-  const cleanCat = (s: any) => safeStr(s).replace(/_/g, " ").trim();
+  const CATEGORY_CS: Record<string, string> = {
+    animal_suffering: "utrpení zvířat",
+    animal_rescue: "záchrany zvířat",
+    animal_abuse: "týrání zvířat",
+    helpless_animal: "bezmocného zvířete",
+    rescue_failure: "neúspěšné záchrany",
+    other: "obecného citlivého kontextu",
+    war: "válečného kontextu",
+    violence: "násilí",
+    death: "úmrtí",
+    child_harm: "ohrožení dítěte",
+  };
+  const cleanCat = (s: any) => {
+    const raw = safeStr(s).trim().toLowerCase().replace(/\s+/g, "_");
+    if (!raw) return "";
+    if (CATEGORY_CS[raw]) return CATEGORY_CS[raw];
+    return raw.replace(/_/g, " ");
+  };
   for (const p of partsArr) {
     const name = canonicalizePartDisplayName(safeStr(p?.evidence_summary?.canonical_part_name) || safeStr(p?.part_name)) || "";
     if (!name) continue;
