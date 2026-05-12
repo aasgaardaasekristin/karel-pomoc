@@ -41,6 +41,7 @@ import {
   getPlanChangeLabel,
   hasActiveExternalCurrentEventReplan,
   isPlayroomDeliberation,
+  renderDeliberationTitle,
   sanitizeHernaVisibleText,
 } from "./deliberationRoomUiHelpers";
 
@@ -1173,7 +1174,7 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
             <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b border-border/40">
               <DialogTitle className="flex items-center gap-2 text-base">
                 <Users className="w-4 h-4 text-primary" />
-                {loading ? "Načítám…" : (d?.title ?? "Porada")}
+                {loading ? "Načítám…" : renderDeliberationTitle(d)}
               </DialogTitle>
               {d && (
                 <DialogDescription className="text-[11px] flex flex-wrap items-center gap-1.5">
