@@ -782,7 +782,7 @@ const legacyAskIdFor = (
 };
 
 /** Normalizuje libovolnou ask položku na {id,text}. */
-const toAskItem = (
+export const toAskItem = (
   raw: AskItemRaw,
   briefingId: string,
   role: "ask_hanka" | "ask_kata",
