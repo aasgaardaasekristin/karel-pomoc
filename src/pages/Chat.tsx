@@ -670,11 +670,12 @@ const Chat = () => {
         setMessages([]);
         setDidFlowState("entry");
         setActiveThread(null);
-        // P33.10.2: DB-first on DID open. Drive enrichment happens in
-        // background via safeDriveRead (12 s client budget, fail-soft).
+        // P33.10.2A: DB-only on DID/Pracovna open. NO Drive read here.
+        // Drive enrichment is allowed only after explicit user action
+        // (DidContentRouter "Načíst kontext", card detail, or live-session drive_read).
+        // Marker: chat-childcare-open-db-only
         (async () => {
           try {
-            const headers = await getAuthHeaders();
             const registryResponse = await supabase
               .from("did_part_registry")
               .select("part_name, display_name")
@@ -685,24 +686,7 @@ const Chat = () => {
               ((registryResponse.data as any[]) || []).flatMap((row) => [row.display_name, row.part_name]),
             );
             setKnownParts(registryParts.slice(0, 30));
-
-            // Drive enrichment is non-blocking and must never blank the UI.
-            const driveRes = await safeDriveRead(headers as Record<string, string>, {
-              documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb", "03_Vnitrni_Svet_Geografie", "05_Operativni_Plan", "06_Strategicky_Vyhled"],
-              subFolder: "00_CENTRUM",
-              recursive: false,
-              allowGlobalSearch: false,
-              caller: "Chat.tsx:childcare-open",
-              budgetMs: 12_000,
-              silent: true,
-            });
-            const docs = driveRes.documents || {};
-            basicDocsRef.current = Object.entries(docs)
-              .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
-              .map(([key, val]) => `[Kartoteka_DID/00_CENTRUM: ${key}]\n${val}`)
-              .join("\n\n");
-            if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
-          } catch (e) { console.warn("Basic DID docs preload failed:", e); }
+          } catch (e) { console.warn("DID registry preload failed:", e); }
         })();
       }
       prevModeRef.current = mode;
