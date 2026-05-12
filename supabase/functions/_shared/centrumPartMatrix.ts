@@ -126,11 +126,13 @@ export async function loadCentrumPartMatrix(
     warnings.push("no_drive_token");
   }
 
-  // 2) Fallback to DB mirror — explicitly marked as profile_fallback
+  // 2) Fallback to DB mirror — explicitly marked as profile_fallback.
+  // P33.9: did_part_registry has no `part_id` and no `aliases` columns.
+  // Use real columns: id, part_name, display_name, status, index_confirmed_at.
   try {
     const { data, error } = await sb
       .from("did_part_registry")
-      .select("part_id, part_name, aliases, status, index_confirmed_at")
+      .select("id, part_name, display_name, status, index_confirmed_at")
       .limit(200);
     if (error) throw error;
     const rows = Array.isArray(data) ? data : [];
@@ -138,16 +140,15 @@ export async function loadCentrumPartMatrix(
       const name = String(r?.part_name ?? "").trim();
       if (!name) continue;
       if (isExcluded(name)) continue;
-      const display = toDisplay(name);
+      const displaySource = String(r?.display_name ?? "").trim() || name;
+      const display = toDisplay(displaySource);
       if (!display) continue;
-      const aliases = Array.isArray(r?.aliases)
-        ? (r.aliases as unknown[]).map((a) => String(a)).filter((a) => a && !isExcluded(a))
-        : [];
+      if (isExcluded(display)) continue;
       matrix.rows.push({
-        id: String(r?.part_id ?? display),
+        id: String(r?.id ?? display),
         canonical_name: name,
         display_name: display,
-        aliases,
+        aliases: [],
         registry_status: normalizeStatus(String(r?.status ?? "")),
         raw_status: String(r?.status ?? ""),
         source: "db_mirror",
