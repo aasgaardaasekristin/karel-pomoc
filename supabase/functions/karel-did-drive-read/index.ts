@@ -378,8 +378,11 @@ serve(async (req) => {
 
     if (!rootFolderId) {
       return new Response(JSON.stringify({
+        ok: false,
         error: "Složka Kartoteka_DID nebyla nalezena na Google Drive",
         documents: {},
+        request_id: reqId,
+        elapsed_ms: elapsed(budget),
       }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -451,6 +454,7 @@ serve(async (req) => {
         content: null,
         error: `Card for "${partName}" not found`,
         request_id: reqId,
+        elapsed_ms: elapsed(budget),
       }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -467,7 +471,7 @@ serve(async (req) => {
 
     if (listAll) {
       const files = await listFilesInFolder(token, targetFolderId, budget, effectiveMaxFiles);
-      return new Response(JSON.stringify({ ok: true, files, folderId: targetFolderId, request_id: reqId }), {
+      return new Response(JSON.stringify({ ok: true, files, folderId: targetFolderId, request_id: reqId, elapsed_ms: elapsed(budget) }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -528,6 +532,7 @@ serve(async (req) => {
         ok: false,
         error: error instanceof Error ? error.message : "Unknown error",
         request_id: reqId,
+        elapsed_ms: elapsed(budget),
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

@@ -58,6 +58,28 @@ describe("P33.10.2 — Drive Read Containment", () => {
     });
   });
 
+  describe("P33.10.2B — request_id + elapsed_ms in every response path", () => {
+    const fn = readFile("supabase/functions/karel-did-drive-read/index.ts");
+    const responseBlocks = fn.match(/new Response\(\s*JSON\.stringify\(\{[\s\S]*?\}\)/g) || [];
+    it("at least 5 distinct JSON response paths exist", () => {
+      expect(responseBlocks.length).toBeGreaterThanOrEqual(5);
+    });
+    it("every JSON response includes request_id", () => {
+      const missing = responseBlocks.filter((b) => !/request_id/.test(b));
+      expect(missing).toEqual([]);
+    });
+    it("every JSON response includes elapsed_ms", () => {
+      const missing = responseBlocks.filter((b) => !/elapsed_ms/.test(b));
+      expect(missing).toEqual([]);
+    });
+    it("controlled_timeout helper carries request_id + elapsed_ms", () => {
+      const ct = fn.match(/function controlledTimeout[\s\S]*?\}\),\s*\{[\s\S]*?\}\s*\);/);
+      expect(ct).not.toBeNull();
+      expect(ct![0]).toMatch(/request_id:\s*budget\.reqId/);
+      expect(ct![0]).toMatch(/elapsed_ms:\s*elapsed\(budget\)/);
+    });
+  });
+
   describe("Part E — client fail-soft wrapper", () => {
     const wrap = readFile("src/lib/safeDriveRead.ts");
     it("aborts after a strict client budget", () => {
