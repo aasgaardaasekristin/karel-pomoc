@@ -11,6 +11,10 @@ import { toast } from "sonner";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import { isTherapistName, normalizeTherapist } from "@/lib/therapistIdentity";
 import { voiceGreeting, auditVoiceGuide } from "@/lib/karelVoiceGuide";
+// P33.10.2C — render path is DB-only. Drive narrative is fetched only on
+// explicit user click via safeDriveRead (bounded, fail-soft).
+import { safeDriveRead } from "@/lib/safeDriveRead";
+import { getAuthHeaders } from "@/lib/auth";
 // Shared pure-text render pipeline (UI ↔ edge mirror).
 // Source of truth: src/lib/karelRender + supabase/functions/_shared/karelRender.
 import {
@@ -426,7 +430,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
       // session record must NOT re-emerge in "co z toho plyne" or "co
       // navrhuji na dnes" without an explicit active reason (open crisis or
       // explicit reactivation in the registry).
-      const [planItemsRes, manualTasksRes, sessionsRes, questionsRes, threadsRes, interviewsRes, planRes, registryRes] = await Promise.all([
+      const [planItemsRes, manualTasksRes, sessionsRes, questionsRes, threadsRes, interviewsRes, registryRes] = await Promise.all([
         // CANONICAL primary queue
         supabase
           .from("did_plan_items")
@@ -435,14 +439,6 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
           .order("priority", { ascending: false })
           .order("created_at", { ascending: false })
           .limit(20),
-        // Adjunct: only manual tasks NOT linked to a canonical plan item.
-        // Window expanded to 14d so stale/archive-candidate tasks counted in
-        // OpsSnapshotBar are actually displayable here with a framing badge.
-        // STATUS FILTER NOTE (audited against production DB): the table only
-        // ever uses `pending` / `expired` / `archived`. `active` and
-        // `in_progress` were aspirational values that never materialized in
-        // the write path, so listing them here promised a surface state that
-        // does not exist. Open work === `pending`. Mirrors useOperationalInboxCounts.
         (supabase as any)
           .from("did_therapist_tasks")
           .select("id, task, assigned_to, status, priority, created_at, due_date, detail_instruction, plan_item_id")
@@ -454,12 +450,6 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
         supabase
           .from("did_daily_session_plans")
           .select("id, selected_part, therapist, plan_date, status")
-          // OTEVŘENÉ stavy plánu (pravda po Slice "Session Finalization State"):
-          //   generated         = vygenerováno, sezení neběží
-          //   in_progress       = právě běží live sezení
-          //   awaiting_analysis = light close — surový přepis, čeká na analýzu
-          // `done` / `skipped` / legacy `completed` se sem ZÁMĚRNĚ nedostane,
-          // aby Pracovna nelhala, že uzavřené sezení dál čeká na zahájení.
           .eq("plan_date", today)
           .in("status", ["generated", "in_progress", "awaiting_analysis"])
           .limit(3),
@@ -480,13 +470,10 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
           .gte("created_at", threeDaysAgo)
           .order("created_at", { ascending: false })
           .limit(10),
-        supabase.functions.invoke("karel-did-drive-read", {
-          body: { documents: ["05A_OPERATIVNI_PLAN"], subFolder: "00_CENTRUM" },
-        }).catch(() => ({ data: null, error: null })),
-        // Active registry — single source of truth for "is this part allowed
-        // on today's surface?". Includes 'crisis' and 'stabilizing' so a part
-        // in active crisis still surfaces, but pure 'sleeping' / 'dormant'
-        // parts are excluded.
+        // P33.10.2C — Drive read REMOVED from render path (DB-first rule).
+        // 05A_OPERATIVNI_PLAN narrative is loaded lazily by the explicit
+        // "Aktualizovat operativní přehled" button via loadOperativeNarrative().
+        // karel-daily-plan-render-db-only
         (supabase as any)
           .from("did_part_registry")
           .select("part_name, display_name, status")
@@ -586,17 +573,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
       ].filter(Boolean).sort().reverse();
       setLastAnyActivity(allDates[0] || null);
 
-      // Extract narrative from 05A
-      if (planRes.data?.documents?.["05A_OPERATIVNI_PLAN"]) {
-        const raw = planRes.data.documents["05A_OPERATIVNI_PLAN"] as string;
-        if (raw.length > 50 && !raw.startsWith("[Dokument")) {
-          const overviewMatch = raw.match(/━━━\s*6\.\s*KARL[ŮU]V\s*P[ŘR]EHLED\s*━━━\n([\s\S]*?)(?=━━━|═══|$)/i);
-          if (overviewMatch?.[1]) {
-            const lines = overviewMatch[1].trim().split("\n").filter(l => l.trim()).slice(0, 8);
-            setPlan05ANarrative(lines.join(" ").replace(/\s{2,}/g, " ").trim());
-          }
-        }
-      }
+      // P33.10.2C — 05A narrative extraction moved to loadOperativeNarrative()
+      // (explicit user click). Render path stays DB-only.
     } catch (err) {
       console.error("[KarelDailyPlan] Load failed:", err);
     } finally {
@@ -606,6 +584,36 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
   }, [snapshotCrisis?.partName, fallbackCrisisPart]);
 
   useEffect(() => { load(); }, [load, refreshTrigger]);
+
+  // P33.10.2C — Explicit, user-triggered Drive read for the 05A narrative.
+  // NEVER called on render or in an effect. Bounded + fail-soft via safeDriveRead.
+  const [loadingNarrative, setLoadingNarrative] = useState(false);
+  const loadOperativeNarrative = useCallback(async () => {
+    setLoadingNarrative(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await safeDriveRead(headers, {
+        documents: ["05A_OPERATIVNI_PLAN"],
+        subFolder: "00_CENTRUM",
+        recursive: false,
+        allowGlobalSearch: false,
+        budgetMs: 12_000,
+        caller: "KarelDailyPlan:explicit-refresh",
+      });
+      const raw = res.documents?.["05A_OPERATIVNI_PLAN"];
+      if (typeof raw === "string" && raw.length > 50 && !raw.startsWith("[Dokument")) {
+        const overviewMatch = raw.match(/━━━\s*6\.\s*KARL[ŮU]V\s*P[ŘR]EHLED\s*━━━\n([\s\S]*?)(?=━━━|═══|$)/i);
+        if (overviewMatch?.[1]) {
+          const lines = overviewMatch[1].trim().split("\n").filter(l => l.trim()).slice(0, 8);
+          setPlan05ANarrative(lines.join(" ").replace(/\s{2,}/g, " ").trim());
+        }
+      }
+    } catch (err) {
+      console.error("[KarelDailyPlan] loadOperativeNarrative failed:", err);
+    } finally {
+      setLoadingNarrative(false);
+    }
+  }, []);
 
   // ── Send therapist message ──
   const handleSendTherapistMessage = async (sender: "hanka" | "kata") => {
@@ -1205,6 +1213,20 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
           ))}
         </section>
       )}
+
+      {/* P33.10.2C — Explicit user-triggered Drive read button.
+          Render path stays DB-only; Drive only loads on click. */}
+      <div className="flex justify-end mt-2 mb-3">
+        <button
+          type="button"
+          onClick={loadOperativeNarrative}
+          disabled={loadingNarrative}
+          data-testid="karel-daily-plan-refresh-operative"
+          className="text-[11px] text-primary/60 hover:text-primary underline-offset-2 hover:underline disabled:opacity-50"
+        >
+          {loadingNarrative ? "Načítám operativní přehled…" : "Aktualizovat operativní přehled (Drive)"}
+        </button>
+      </div>
 
       {/* ── B2. 4 sekce dneška — velitelský pohled ze snapshotu ── */}
       <CommandFourSections snapshot={snapshot} navigate={navigate} />

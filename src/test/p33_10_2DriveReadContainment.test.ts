@@ -150,4 +150,38 @@ describe("P33.10.2 — Drive Read Containment", () => {
       expect(slice).not.toMatch(/throw new Error\(data\?\.error/);
     });
   });
+
+  describe("P33.10.2C — KarelDailyPlan render path is DB-only", () => {
+    const f = readFile("src/components/did/KarelDailyPlan.tsx");
+
+    it("render-path marker exists", () => {
+      expect(f).toMatch(/karel-daily-plan-render-db-only/);
+    });
+
+    it("Promise.all in load() does NOT call karel-did-drive-read", () => {
+      const idx = f.indexOf("const load = useCallback");
+      expect(idx).toBeGreaterThan(-1);
+      const end = f.indexOf("[snapshotCrisis?.partName, fallbackCrisisPart]", idx);
+      expect(end).toBeGreaterThan(-1);
+      const body = f.slice(idx, end);
+      expect(body).not.toMatch(/karel-did-drive-read/);
+      expect(body).not.toMatch(/safeDriveRead\(/);
+      expect(body).not.toMatch(/supabase\.functions\.invoke\(\s*["']karel-did-drive-read/);
+    });
+
+    it("explicit refresh callback uses bounded safeDriveRead", () => {
+      const idx = f.indexOf("loadOperativeNarrative = useCallback");
+      expect(idx).toBeGreaterThan(-1);
+      const slice = f.slice(idx, idx + 1500);
+      expect(slice).toMatch(/safeDriveRead\(/);
+      expect(slice).toMatch(/recursive:\s*false/);
+      expect(slice).toMatch(/allowGlobalSearch:\s*false/);
+      expect(slice).toMatch(/budgetMs:\s*12_000/);
+      expect(slice).toMatch(/caller:\s*"KarelDailyPlan:explicit-refresh"/);
+    });
+
+    it("explicit refresh button is rendered", () => {
+      expect(f).toMatch(/data-testid="karel-daily-plan-refresh-operative"/);
+    });
+  });
 });
