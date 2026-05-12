@@ -1625,20 +1625,21 @@ const Chat = () => {
         try {
           const headers = await getAuthHeaders();
           const docNames = mentionedParts.map(p => `Karta_${p.replace(/\s+/g, "_")}`);
-          const response = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-            { method: "POST", headers, body: JSON.stringify({ documents: docNames }) }
-          );
-          if (response.ok) {
-            const data = await response.json();
-            const docs = data.documents || {};
-            const partDocs = Object.entries(docs)
-              .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
-              .map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`)
-              .join("\n\n");
-            if (partDocs) {
-              setDidInitialContext(prev => prev + "\n\n" + partDocs);
-            }
+          const driveRes = await safeDriveRead(headers as Record<string, string>, {
+            documents: docNames,
+            recursive: false,
+            allowGlobalSearch: false,
+            caller: "Chat.tsx:msg-enrichment",
+            budgetMs: 12_000,
+            silent: true,
+          });
+          const docs = driveRes.documents || {};
+          const partDocs = Object.entries(docs)
+            .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
+            .map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`)
+            .join("\n\n");
+          if (partDocs) {
+            setDidInitialContext(prev => prev + "\n\n" + partDocs);
           }
         } catch {}
       }
