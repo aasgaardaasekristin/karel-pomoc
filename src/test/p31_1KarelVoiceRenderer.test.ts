@@ -125,7 +125,7 @@ describe("P31.1 karelBriefingVoiceRenderer (truth-locked)", () => {
     p.today_part_relevance_decision = null;
     const r = renderKarelBriefingVoice(p);
     const tp = r.sections.find((s) => s.section_id === "today_parts")!;
-    expect(tp.karel_text).toMatch(/nemám dost opory|nemám dost podkladů|nemám dost dat/i);
+    expect(tp.karel_text).toMatch(/nemám dost opory|nemám dost podkladů|nemám dost dat|nedávají dost opory|nemám žádnou část jako vedoucí/i);
     expect(tp.confidence).toBe("low");
   });
 

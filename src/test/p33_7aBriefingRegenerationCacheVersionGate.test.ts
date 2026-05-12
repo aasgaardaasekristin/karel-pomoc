@@ -20,7 +20,7 @@ function isForceRegenerate(body: any): boolean {
   );
 }
 
-const REQUIRED_RENDERER_VERSION = "p33.7.1";
+const REQUIRED_RENDERER_VERSION = "p33.8.0";
 const REQUIRED_COMPLETENESS_VERSION = "p33.7";
 
 function isCachedP337Ready(existing: any): boolean {
@@ -60,7 +60,7 @@ describe("P33.7A — force-flag compatibility", () => {
 describe("P33.7A — cache version gate", () => {
   const baseReady = {
     payload: {
-      karel_human_briefing: { ok: true, renderer_version: "p33.7.1" },
+      karel_human_briefing: { ok: true, renderer_version: "p33.8.0" },
       daily_briefing_content_completeness: {
         version: "p33.7",
         overall_status: "complete",
@@ -107,14 +107,14 @@ describe("P33.7A — cache version gate", () => {
     expect(isCachedP337Ready(blocked)).toBe(false);
   });
 
-  it("cached row with renderer p33.7.1 + completeness p33.7 + complete IS ready", () => {
+  it("cached row with renderer p33.8.0 + completeness p33.7 + complete IS ready", () => {
     expect(isCachedP337Ready(baseReady)).toBe(true);
   });
 
   it("cached row with overall_status=complete_with_controlled_missing IS ready", () => {
     const cm = {
       payload: {
-        karel_human_briefing: { ok: true, renderer_version: "p33.7.1" },
+        karel_human_briefing: { ok: true, renderer_version: "p33.8.0" },
         daily_briefing_content_completeness: {
           version: "p33.7",
           overall_status: "complete_with_controlled_missing",

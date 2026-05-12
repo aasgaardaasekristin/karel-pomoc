@@ -4,7 +4,7 @@
  * Covers:
  *  - Anička grammar guard (preposition + nominative is forbidden, safe forms allowed).
  *  - Renderer ok-gate honours daily_briefing_content_completeness.overall_status.
- *  - Cache readiness gate now requires renderer_version=p33.7.1.
+ *  - Cache readiness gate now requires renderer_version=p33.8.0.
  *  - ISO-date numbers in external_reality must not produce unsupported_number warnings
  *    (regression of the false positive that drove human_ok=false in production).
  */
@@ -174,14 +174,14 @@ describe("P33.7C — external_reality ISO-date number stripping", () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// 4. Cache readiness now requires renderer_version=p33.7.1 (P33.7C bump).
+// 4. Cache readiness now requires renderer_version=p33.8.0 (P33.7C bump).
 // ────────────────────────────────────────────────────────────────────────────
 function isCachedReady(p: any): boolean {
   const human = p?.payload?.karel_human_briefing ?? null;
   const completeness = p?.payload?.daily_briefing_content_completeness ?? null;
   return (
     human?.ok === true &&
-    human?.renderer_version === "p33.7.1" &&
+    human?.renderer_version === "p33.8.0" &&
     completeness?.version === "p33.7" &&
     ["complete", "complete_with_controlled_missing"].includes(
       String(completeness?.overall_status ?? "")
@@ -200,20 +200,20 @@ describe("P33.7C — cache readiness gate", () => {
     expect(isCachedReady(old)).toBe(false);
   });
 
-  it("p33.7.1 cached row IS ready", () => {
+  it("p33.8.0 cached row IS ready", () => {
     const ok = {
       payload: {
-        karel_human_briefing: { ok: true, renderer_version: "p33.7.1" },
+        karel_human_briefing: { ok: true, renderer_version: "p33.8.0" },
         daily_briefing_content_completeness: { version: "p33.7", overall_status: "complete" },
       },
     };
     expect(isCachedReady(ok)).toBe(true);
   });
 
-  it("p33.7.1 + complete_with_controlled_missing IS ready", () => {
+  it("p33.8.0 + complete_with_controlled_missing IS ready", () => {
     const cm = {
       payload: {
-        karel_human_briefing: { ok: true, renderer_version: "p33.7.1" },
+        karel_human_briefing: { ok: true, renderer_version: "p33.8.0" },
         daily_briefing_content_completeness: {
           version: "p33.7",
           overall_status: "complete_with_controlled_missing",
