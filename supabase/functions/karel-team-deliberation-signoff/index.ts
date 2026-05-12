@@ -275,6 +275,91 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // P33.11 — Immutable playroom_plan_snapshot (Commit 2A)
+    //
+    // Při PRVNÍM approvalu Herna-plánu zapíšeme vedle živého
+    // `urgency_breakdown.playroom_plan` immutable snapshot
+    // `urgency_breakdown.playroom_plan_snapshot`. Snapshot obsahuje
+    // version_key, snapshot_at, snapshot_source_program_status="approved",
+    // deliberation_id a payload (zmrazená kopie playroom_plan).
+    //
+    // TVRDÁ IMMUTABILITA: pokud snapshot už existuje, NIKDY ho nepřepisujeme.
+    // Re-signoff může aktualizovat živý `playroom_plan`, ale snapshot zůstává
+    // beze změny. Žádná auto-overwrite větev podle version_key.
+    // (Případná další verze by musela přijít explicitním novým flow s
+    //  `playroom_plan_snapshot_history`, ne tichým overwritem zde.)
+    try {
+      const sp0 = (updated.session_params && typeof updated.session_params === "object")
+        ? updated.session_params as Record<string, any>
+        : {};
+      const isPlayroomPlan0 =
+        sp0.session_actor === "karel_direct" ||
+        sp0.ui_surface === "did_kids_playroom" ||
+        sp0.session_format === "playroom";
+      const _planIdForSnapCheck = ((syncResult as any)?.bridged_plan_id as string | null) ?? updated.linked_live_session_id ?? null;
+      if (
+        updated.status === "approved" &&
+        updated.deliberation_type === "session_plan" &&
+        isPlayroomPlan0 &&
+        typeof _planIdForSnapCheck === "string" &&
+        _planIdForSnapCheck.length > 0
+      ) {
+        const planIdForSnap = ((syncResult as any)?.bridged_plan_id as string | null) ?? updated.linked_live_session_id ?? null;
+        const { data: planRow, error: planLoadErr } = await admin
+          .from("did_daily_session_plans")
+          .select("urgency_breakdown")
+          .eq("id", planIdForSnap as string)
+          .single();
+        if (planLoadErr) {
+          console.error("[delib-signoff] playroom_snapshot: load plan failed", planLoadErr);
+        } else {
+          const ub = (planRow?.urgency_breakdown && typeof planRow.urgency_breakdown === "object")
+            ? planRow.urgency_breakdown as Record<string, any>
+            : {};
+          const existingSnapshot = ub.playroom_plan_snapshot ?? null;
+          if (existingSnapshot) {
+            // IMMUTABLE: zachovat beze změny.
+            console.log("[delib-signoff] playroom_plan_snapshot exists — preserved verbatim", {
+              plan_id: planIdForSnap,
+              existing_version_key: (existingSnapshot as any)?.version_key ?? null,
+            });
+          } else {
+            const livePlayroomPlan = ub.playroom_plan ?? sp0.playroom_plan ?? null;
+            if (!livePlayroomPlan) {
+              console.warn("[delib-signoff] playroom_snapshot: no live playroom_plan to freeze", {
+                plan_id: planIdForSnap,
+              });
+            } else {
+              const versionKey = `v${Date.now()}_${String(deliberationId).slice(0, 8)}`;
+              const snapshot = {
+                version_key: versionKey,
+                snapshot_at: new Date().toISOString(),
+                snapshot_source_program_status: "approved",
+                deliberation_id: deliberationId,
+                payload: livePlayroomPlan,
+              };
+              const nextUb = { ...ub, playroom_plan_snapshot: snapshot };
+              const { error: snapWriteErr } = await admin
+                .from("did_daily_session_plans")
+                .update({ urgency_breakdown: nextUb, updated_at: new Date().toISOString() })
+                .eq("id", planIdForSnap as string);
+              if (snapWriteErr) {
+                console.error("[delib-signoff] playroom_snapshot: write failed", snapWriteErr);
+              } else {
+                console.log("[delib-signoff] playroom_plan_snapshot created", {
+                  plan_id: planIdForSnap,
+                  version_key: versionKey,
+                });
+              }
+            }
+          }
+        }
+      }
+    } catch (snapErr) {
+      console.error("[delib-signoff] playroom_snapshot block error:", snapErr);
+    }
+
     // BRIDGE: if approved + session_plan → propsat do did_daily_session_plans
     //
     // PROGRAM-DRAFT TRUTH PASS (2026-04-23):
