@@ -146,13 +146,17 @@ async function writeRuntimeAudit(entry: Record<string, any>) {
   }
 }
 
-async function loadApprovedPlayroomPlan(partName?: string | null) {
-  if (!partName) return null;
+type PlayroomSnapshotResult =
+  | { ok: true; plan_id: string; program_status: string | null; version_key: string | null; snapshot_at: string | null; playroom_plan: any; source: "snapshot" }
+  | { ok: false; reason: string; plan_id: string | null };
+
+async function loadApprovedPlayroomSnapshot(partName?: string | null): Promise<PlayroomSnapshotResult> {
+  if (!partName) return { ok: false, reason: "missing_part_name", plan_id: null };
   try {
     const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
-    const { data } = await sb.from("did_daily_session_plans")
+    const { data, error } = await sb.from("did_daily_session_plans")
       .select("id,plan_date,selected_part,program_status,urgency_breakdown")
       .eq("plan_date", today)
       .ilike("selected_part", partName)
@@ -160,13 +164,34 @@ async function loadApprovedPlayroomPlan(partName?: string | null) {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    const contract = data?.urgency_breakdown && typeof data.urgency_breakdown === "object" ? data.urgency_breakdown as any : null;
-    const plan = contract?.playroom_plan;
-    if (!data || !contract || !plan || !Array.isArray(plan.therapeutic_program)) return null;
-    return { id: data.id, program_status: data.program_status, contract, playroom_plan: plan };
+    if (error) {
+      console.warn("[karel-chat][playroom][snapshot] db error:", error.message);
+      return { ok: false, reason: "db_error:" + error.message, plan_id: null };
+    }
+    if (!data) return { ok: false, reason: "no_approved_plan_today", plan_id: null };
+    const contract = (data.urgency_breakdown && typeof data.urgency_breakdown === "object") ? data.urgency_breakdown as any : null;
+    if (!contract) return { ok: false, reason: "no_urgency_breakdown", plan_id: data.id };
+    const snapshot = contract.playroom_plan_snapshot;
+    if (!snapshot || typeof snapshot !== "object") {
+      return { ok: false, reason: "snapshot_missing", plan_id: data.id };
+    }
+    const payload = snapshot.payload;
+    if (!payload || typeof payload !== "object" || !Array.isArray(payload.therapeutic_program)) {
+      return { ok: false, reason: "snapshot_payload_invalid", plan_id: data.id };
+    }
+    return {
+      ok: true,
+      plan_id: data.id,
+      program_status: data.program_status ?? null,
+      version_key: snapshot.version_key ?? null,
+      snapshot_at: snapshot.snapshot_at ?? null,
+      playroom_plan: payload,
+      source: "snapshot",
+    };
   } catch (e) {
-    console.warn("[karel-chat][playroom] approved playroom plan load failed:", e);
-    return null;
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn("[karel-chat][playroom][snapshot] load failed:", msg);
+    return { ok: false, reason: "exception:" + msg, plan_id: null };
   }
 }
 
@@ -1302,10 +1327,27 @@ This overrides ALL other language instructions.
 
     if (isPlayroomMode) {
       const lastPlayroomInput = normalizeMessageContentForPrompt([...messages].reverse().find((m: any) => m.role === "user")?.content);
-      const approvedPlayroom = await loadApprovedPlayroomPlan(didPartName || didEnteredName);
-      const playroomProgramBlock = approvedPlayroom
-        ? JSON.stringify({ plan_id: approvedPlayroom.id, program_status: approvedPlayroom.program_status, playroom_plan: approvedPlayroom.playroom_plan }, null, 2)
-        : "(DNEŠNÍ SCHVÁLENÝ PLAYROOM_PLAN NEBYL NALEZEN — NEPOUŽÍVEJ PLAN_MARKDOWN SEZENÍ; drž pouze bezpečný krátký check-in.)";
+      const approvedPlayroom = await loadApprovedPlayroomSnapshot(didPartName || didEnteredName);
+      if (!approvedPlayroom.ok) {
+        console.warn("[karel-chat][playroom] snapshot unavailable:", approvedPlayroom.reason, "plan_id=", approvedPlayroom.plan_id);
+        return new Response(JSON.stringify({
+          ok: false,
+          error: "playroom_snapshot_unavailable",
+          reason: approvedPlayroom.reason,
+          plan_id: approvedPlayroom.plan_id,
+          source: "snapshot",
+          message: "Herna nemůže být spuštěna: chybí immutable snapshot schváleného programu (playroom_plan_snapshot). Live playroom_plan se jako runtime zdroj nepoužívá.",
+        }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      console.log("[karel-chat][playroom] snapshot loaded:", { plan_id: approvedPlayroom.plan_id, version_key: approvedPlayroom.version_key, snapshot_at: approvedPlayroom.snapshot_at, source: approvedPlayroom.source });
+      const playroomProgramBlock = JSON.stringify({
+        plan_id: approvedPlayroom.plan_id,
+        program_status: approvedPlayroom.program_status,
+        snapshot_version_key: approvedPlayroom.version_key,
+        snapshot_at: approvedPlayroom.snapshot_at,
+        source: "snapshot",
+        playroom_plan: approvedPlayroom.playroom_plan,
+      }, null, 2);
       systemPrompt += `\n\n═══ HERNA — POVINNÝ REŽIM VEDENÍ SEZENÍ ═══
 Toto NENÍ běžný chat ani vlákno pro vzkazy. Jsi v dětské Herně a vedeš právě schválené strukturované sezení.
 
