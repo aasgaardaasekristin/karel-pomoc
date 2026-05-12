@@ -573,17 +573,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
       ].filter(Boolean).sort().reverse();
       setLastAnyActivity(allDates[0] || null);
 
-      // Extract narrative from 05A
-      if (planRes.data?.documents?.["05A_OPERATIVNI_PLAN"]) {
-        const raw = planRes.data.documents["05A_OPERATIVNI_PLAN"] as string;
-        if (raw.length > 50 && !raw.startsWith("[Dokument")) {
-          const overviewMatch = raw.match(/━━━\s*6\.\s*KARL[ŮU]V\s*P[ŘR]EHLED\s*━━━\n([\s\S]*?)(?=━━━|═══|$)/i);
-          if (overviewMatch?.[1]) {
-            const lines = overviewMatch[1].trim().split("\n").filter(l => l.trim()).slice(0, 8);
-            setPlan05ANarrative(lines.join(" ").replace(/\s{2,}/g, " ").trim());
-          }
-        }
-      }
+      // P33.10.2C — 05A narrative extraction moved to loadOperativeNarrative()
+      // (explicit user click). Render path stays DB-only.
     } catch (err) {
       console.error("[KarelDailyPlan] Load failed:", err);
     } finally {
