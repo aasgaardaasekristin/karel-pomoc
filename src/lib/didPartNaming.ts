@@ -37,6 +37,30 @@ export const cleanDisplayName = (raw: string): string => {
   return name.charAt(0).toUpperCase() + name.slice(1);
 };
 
+/**
+ * P33.10.1A — Action dialog part-name grammar.
+ *
+ * Build a visible action / workspace title in the safe dash format:
+ *   "Plán dnešní herny — Tundrupek"
+ *   "Plán sezení — Arthur"
+ *   "Porada k části — Gustík"
+ *
+ * The dash format avoids Czech declension pitfalls like
+ * "Plán dnešní herny s tundrupek" (lowercase + wrong case).
+ *
+ * Always strips technical prefixes ("002_") and capitalizes the first
+ * letter so visible titles never contain lowercase part names.
+ *
+ * If `raw` does not yield a usable display name, falls back to `prefix`
+ * alone instead of producing a broken "prefix — " trailing dash.
+ */
+export const formatActionTitle = (prefix: string, raw: string | null | undefined): string => {
+  const cleanPrefix = (prefix ?? "").trim();
+  const display = cleanDisplayName(String(raw ?? "").trim()).trim();
+  if (!display) return cleanPrefix;
+  return `${cleanPrefix} — ${display}`;
+};
+
 const DMYTRI_ALIASES = new Set(["dmytri", "dymi", "dymytri", "dymitri"]);
 
 export const stripDiacritics = (value: string) =>

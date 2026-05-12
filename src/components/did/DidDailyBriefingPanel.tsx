@@ -48,6 +48,7 @@ import { useDidThreads } from "@/hooks/useDidThreads";
 import type { DeliberationType } from "@/types/teamDeliberation";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import ExternalLoadWarning from "@/components/did/ExternalLoadWarning";
+import { formatActionTitle } from "@/lib/didPartNaming";
 import { isKarelDebugMode } from "@/lib/karelDebugMode";
 import AiPolishCanaryPreviewPanel from "@/components/did/AiPolishCanaryPreviewPanel";
 import { getBriefingTruthStatus, pluralizeDays } from "@/lib/briefingTruthStatus";
@@ -1280,7 +1281,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       const itemId = s.id || legacyAskIdFor(briefing.id, "ask_hanka", `session::${s.part_name}`);
       setOpeningItemId(itemId);
       try {
-        const titleHint = `Plán sezení s ${s.part_name}`;
+        const titleHint = formatActionTitle("Plán sezení", s.part_name);
 
         const reasonText = [
           s.why_today,
@@ -1370,7 +1371,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       const itemId = s.id || legacyAskIdFor(briefing.id, "ask_kata", `playroom::${s.part_name}`);
       setOpeningItemId(itemId);
       try {
-        const titleHint = `Plán dnešní herny s ${s.part_name}`;
+        const titleHint = formatActionTitle("Plán dnešní herny", s.part_name);
         const program = Array.isArray(s.playroom_plan?.therapeutic_program) ? s.playroom_plan.therapeutic_program : [];
         const reasonText = [s.main_theme, s.why_this_part_today].filter(Boolean).join(" — ");
         const introBrief = [
