@@ -20,6 +20,48 @@ export function isPlayroomDeliberation(
   );
 }
 
+/**
+ * P33.10.1A — render-time grammar guard for deliberation/workspace titles.
+ *
+ * Old DB rows still hold buggy titles like "Plán dnešní herny s tundrupek"
+ * (lowercase + wrong Czech case). Whenever a known prefix is followed by
+ * " s <name>" without the safe dash separator, rebuild the title via
+ * formatActionTitle("<prefix>", subject_parts[0] ?? captured-name) so that
+ * the visible UI always shows the canonical dash form
+ * ("Plán dnešní herny — Tundrupek").
+ *
+ * Unknown / free-form titles are returned unchanged to avoid false rewrites.
+ */
+const BUGGY_TITLE_RX =
+  /^(Plán dnešní herny|Plán sezení|Porada k části)\s+s\s+(\S.*)$/i;
+
+export function renderDeliberationTitle(
+  d:
+    | (Pick<TeamDeliberation, "title" | "subject_parts" | "session_params"> & {
+        deliberation_type?: unknown;
+      })
+    | null
+    | undefined,
+): string {
+  if (!d) return "Porada";
+  const raw = String(d.title ?? "").trim();
+  if (!raw) {
+    const partRaw = d.subject_parts?.[0] ?? null;
+    const prefix = isPlayroomDeliberation(d as any)
+      ? "Plán dnešní herny"
+      : String((d as any).deliberation_type) === "session_plan"
+        ? "Plán sezení"
+        : "Porada";
+    return formatActionTitle(prefix, partRaw);
+  }
+  if (raw.includes("—")) return raw;
+  const m = raw.match(BUGGY_TITLE_RX);
+  if (!m) return raw;
+  const prefix = m[1];
+  const partRaw = d.subject_parts?.[0] ?? m[2];
+  return formatActionTitle(prefix, partRaw);
+}
+
 export function hasActiveExternalCurrentEventReplan(
   deliberation: Pick<TeamDeliberation, "session_params"> | null | undefined,
 ): boolean {
