@@ -11,6 +11,10 @@ import { toast } from "sonner";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import { isTherapistName, normalizeTherapist } from "@/lib/therapistIdentity";
 import { voiceGreeting, auditVoiceGuide } from "@/lib/karelVoiceGuide";
+// P33.10.2C — render path is DB-only. Drive narrative is fetched only on
+// explicit user click via safeDriveRead (bounded, fail-soft).
+import { safeDriveRead } from "@/lib/safeDriveRead";
+import { getAuthHeaders } from "@/lib/auth";
 // Shared pure-text render pipeline (UI ↔ edge mirror).
 // Source of truth: src/lib/karelRender + supabase/functions/_shared/karelRender.
 import {
