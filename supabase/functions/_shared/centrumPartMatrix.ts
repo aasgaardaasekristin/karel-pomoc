@@ -12,7 +12,15 @@
  *  - `registry_status` is normalized to `active|dormant|sleeping|unknown`.
  */
 
-import { loadDriveRegistryEntries, normalize, isNonDidEntity } from "./driveRegistry.ts";
+// Inlined to avoid pulling driveRegistry's xlsx URL import into the TS graph
+// when this module is referenced from src/test (vitest, jsdom).
+function normalize(s: string): string {
+  return String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "").trim();
+}
+const NON_DID_NORMALIZED = new Set(["hanicka", "hanka", "hana", "kata", "katka", "kaca", "karel"]);
+function isNonDidEntity(name: string): boolean {
+  return NON_DID_NORMALIZED.has(normalize(name));
+}
 
 // deno-lint-ignore no-explicit-any
 type SB = any;
