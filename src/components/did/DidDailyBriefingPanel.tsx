@@ -129,6 +129,8 @@ type BriefingAskTargetType =
   | "team_deliberation"
   | "current_handling"
   | "task"
+  | "briefing"
+  | "decision"
   | "none";
 
 type BriefingAskExpectedResolution =
@@ -136,7 +138,8 @@ type BriefingAskExpectedResolution =
   | "add_observation"
   | "create_task"
   | "store_memory"
-  | "no_program_change";
+  | "no_program_change"
+  | "answer";
 
 /** Nový tvar ask položky (id+text+metadata). Edge funkce vrací tohle od 2026-04-19. */
 interface AskItemObj {
