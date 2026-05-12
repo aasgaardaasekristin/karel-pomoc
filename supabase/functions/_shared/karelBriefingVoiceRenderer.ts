@@ -747,9 +747,52 @@ function renderNextStep(payload: any): RenderedBriefingSection {
   };
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// Claim checker (deterministic, static)
-// ───────────────────────────────────────────────────────────────────────────
+/**
+ * P33.8A — Bezpečné zrcadlo Hana/osobní DID-relevantního signálu.
+ */
+function renderHanaPersonalIntelligence(payload: any): RenderedBriefingSection | null {
+  const block = payload?.hana_personal_clinical_intelligence ?? null;
+  if (!block) return null;
+  const triggers = Array.isArray(block?.external_trigger_lookups) ? block.external_trigger_lookups : [];
+  const reviews = Array.isArray(block?.centrum_review_entries) ? block.centrum_review_entries : [];
+  const privacy = Array.isArray(block?.active_privacy_rules) ? block.active_privacy_rules : [];
+  if (triggers.length === 0 && reviews.length === 0 && privacy.length === 0) return null;
+
+  const lines: string[] = [];
+  for (const r of reviews.slice(0, 4)) {
+    const part = safeStr((r as any)?.related_part_name);
+    const summary = safeStr((r as any)?.safe_summary);
+    if (!summary) continue;
+    lines.push(part
+      ? `Hanička v osobním vlákně přinesla čerstvý citlivostní signál ke ${part}: ${summary}`
+      : `Hanička v osobním vlákně přinesla čerstvý citlivostní signál: ${summary}`);
+  }
+  for (const t of triggers.slice(0, 4)) {
+    const theme = safeStr((t as any)?.theme);
+    const part = safeStr((t as any)?.related_part_name);
+    if (!theme) continue;
+    lines.push(part
+      ? `Externí trigger nahlášený Hanou v souvislosti s ${part}: ${theme}. Držet bez grafických detailů; otevírat jen pokud kluci téma sami přinesou.`
+      : `Externí trigger nahlášený Hanou: ${theme}. Držet bez grafických detailů.`);
+  }
+  if (privacy.length > 0) {
+    lines.push("Hanička má aktivní privacy rule pro intimní obsah; ten v žádném dnešním child-visible výstupu být nesmí.");
+  }
+
+  const text = lines.length
+    ? lines.map(withTerminalPunctuation).join(" ")
+    : "Z osobního vlákna Hany jsem nezachytil nic, co by dnešnímu vedení změnilo směr.";
+
+  return {
+    section_id: "hana_personal_intelligence",
+    title: "Z osobního vlákna Hany",
+    karel_text: text,
+    source_fields: ["hana_personal_clinical_intelligence"],
+    confidence: lines.length ? "medium" : "low",
+    unsupported_claims_count: 0,
+    warnings: [],
+  };
+}
 
 function collectKnownPartNames(payload: any): Set<string> {
   const names = new Set<string>();
