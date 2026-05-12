@@ -491,6 +491,16 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         didInitialContext: planContract(plan, { ...currentThread, messages: nextMessages }, activeProgress),
       };
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`, { method: "POST", headers, body: JSON.stringify(body) });
+      if (response.status === 409) {
+        const diag = await response.json().catch(() => ({} as any));
+        if (diag?.error === "playroom_snapshot_unavailable") {
+          const err: any = new Error("Hernu nelze spustit, protože chybí schválený snapshot programu. Otevři prosím plán a nech ho znovu schválit.");
+          err.code = "playroom_snapshot_unavailable";
+          err.reason = diag?.reason;
+          err.plan_id = diag?.plan_id;
+          throw err;
+        }
+      }
       if (!response.ok) handleApiError(response);
       if (!response.body) throw new Error("Karel neodpověděl.");
       const assistantContent = await parseSSEStream(response.body, (partial) => {
@@ -512,9 +522,13 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
       setThread(nextThread);
       setReply("");
       uploads.clearAttachments();
-    } catch (error) {
+    } catch (error: any) {
       console.error("[DidKidsPlayroom] message save failed", error);
-      const fallbackMessages = [...nextMessages, { role: "assistant" as const, content: PLAYROOM_TECH_FALLBACK }];
+      const isSnapshotMissing = error?.code === "playroom_snapshot_unavailable";
+      const assistantContent = isSnapshotMissing
+        ? "Hernu nelze spustit, protože chybí schválený snapshot programu. Otevři prosím plán a nech ho znovu schválit."
+        : PLAYROOM_TECH_FALLBACK;
+      const fallbackMessages = [...nextMessages, { role: "assistant" as const, content: assistantContent }];
       setThread({ ...currentThread, messages: fallbackMessages });
       await (supabase as any).from("did_threads").update({ messages: fallbackMessages, last_activity_at: new Date().toISOString(), is_processed: false }).eq("id", currentThread.id);
       setReply("");
