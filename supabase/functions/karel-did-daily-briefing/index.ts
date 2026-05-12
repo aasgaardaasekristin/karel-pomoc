@@ -4009,6 +4009,53 @@ Deno.serve(async (req) => {
 
       payload.daily_part_workability_matrix = matrix;
       payload.today_part_relevance_decision = deriveRelevanceDecisionFromMatrix(matrix);
+
+      // P33.8.F/G — Session/Herna plans + therapist tasks must be gated by matrix.
+      const noPrimary = matrix.overall_decision !== "primary_part_selected";
+      const possibleAfterFirstContact = (matrix.parts ?? []).some(
+        (p: any) => p?.workability === "possible_after_first_contact",
+      );
+      if (noPrimary && !possibleAfterFirstContact) {
+        if (payload?.proposed_session && typeof payload.proposed_session === "object") {
+          payload.proposed_session.gated_by_matrix = true;
+          payload.proposed_session.matrix_overall_decision = matrix.overall_decision;
+          payload.proposed_session.previous_part_name_pre_matrix = payload.proposed_session.part_name ?? null;
+          payload.proposed_session.part_name = null;
+          payload.proposed_session.why_today =
+            "Dnes nemám potvrzenou vedoucí část. První kontakt rozhodne, zda Sezení, stabilizační Herna nebo bezpečný kontakt.";
+        }
+        if (payload?.proposed_playroom && typeof payload.proposed_playroom === "object") {
+          payload.proposed_playroom.gated_by_matrix = true;
+          payload.proposed_playroom.matrix_overall_decision = matrix.overall_decision;
+          payload.proposed_playroom.previous_part_name_pre_matrix = payload.proposed_playroom.part_name ?? null;
+          payload.proposed_playroom.part_name = null;
+          payload.proposed_playroom.why_today =
+            "Bez potvrzené vedoucí části dnes Herna pouze stabilizačně, bez nového tématu.";
+        }
+      }
+
+      const askH_p338: any[] = Array.isArray(payload?.ask_hanka) ? payload.ask_hanka : [];
+      const askK_p338: any[] = Array.isArray(payload?.ask_kata) ? payload.ask_kata : [];
+      if (askH_p338.length === 0) {
+        const hText = noPrimary
+          ? "První kontakt: krátce zjisti tělesné napětí, emoční dostupnost a ochotu kluků navázat kontakt; zaznamenej, zda se některá část přihlásila."
+          : `Při prvním kontaktu zkontroluj tělo a emoce a ověř, zda se ${matrix.selected_primary_part} skutečně přihlásí; pokud ne, vyber podle kontaktu.`;
+        payload.ask_hanka = [{ text: hText, derived_from: "p33.8_matrix" }];
+      }
+      if (askK_p338.length === 0) {
+        const watchOnly = (matrix.parts ?? [])
+          .filter((p: any) => p?.workability === "watch_only")
+          .map((p: any) => p?.display_name)
+          .filter(Boolean)
+          .slice(0, 3);
+        const watchSuffix = watchOnly.length > 0
+          ? ` Citlivostní kontext (watch-only, ne vedoucí): ${watchOnly.join(", ")}.`
+          : "";
+        const kText = noPrimary
+          ? `Risk/stop check: pokud kluci ukáží stop, tlak nebo přemíru, neotevíráme nový materiál a volíme bezpečný kontakt.${watchSuffix}`
+          : `Risk/stop check pro práci s ${matrix.selected_primary_part}; pokud cokoliv signalizuje stop, posunout téma na příště.${watchSuffix}`;
+        payload.ask_kata = [{ text: kText, derived_from: "p33.8_matrix" }];
+      }
     } catch (e) {
       console.warn("[P33.8] matrix build failed (non-fatal):", e);
       if (!payload.today_part_relevance_decision) {
