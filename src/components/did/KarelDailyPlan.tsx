@@ -430,23 +430,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
       // session record must NOT re-emerge in "co z toho plyne" or "co
       // navrhuji na dnes" without an explicit active reason (open crisis or
       // explicit reactivation in the registry).
-      const [planItemsRes, manualTasksRes, sessionsRes, questionsRes, threadsRes, interviewsRes, planRes, registryRes] = await Promise.all([
-        // CANONICAL primary queue
-        supabase
-          .from("did_plan_items")
-          .select("id, action_required, priority, status, section, plan_type, created_at")
-          .eq("status", "active")
-          .order("priority", { ascending: false })
-          .order("created_at", { ascending: false })
-          .limit(20),
-        // Adjunct: only manual tasks NOT linked to a canonical plan item.
-        // Window expanded to 14d so stale/archive-candidate tasks counted in
-        // OpsSnapshotBar are actually displayable here with a framing badge.
-        // STATUS FILTER NOTE (audited against production DB): the table only
-        // ever uses `pending` / `expired` / `archived`. `active` and
-        // `in_progress` were aspirational values that never materialized in
-        // the write path, so listing them here promised a surface state that
-        // does not exist. Open work === `pending`. Mirrors useOperationalInboxCounts.
+      const [planItemsRes, manualTasksRes, sessionsRes, questionsRes, threadsRes, interviewsRes, registryRes] = await Promise.all([
+        // ... keep existing code (planItemsRes through interviewsRes queries)
         (supabase as any)
           .from("did_therapist_tasks")
           .select("id, task, assigned_to, status, priority, created_at, due_date, detail_instruction, plan_item_id")
@@ -458,12 +443,6 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
         supabase
           .from("did_daily_session_plans")
           .select("id, selected_part, therapist, plan_date, status")
-          // OTEVŘENÉ stavy plánu (pravda po Slice "Session Finalization State"):
-          //   generated         = vygenerováno, sezení neběží
-          //   in_progress       = právě běží live sezení
-          //   awaiting_analysis = light close — surový přepis, čeká na analýzu
-          // `done` / `skipped` / legacy `completed` se sem ZÁMĚRNĚ nedostane,
-          // aby Pracovna nelhala, že uzavřené sezení dál čeká na zahájení.
           .eq("plan_date", today)
           .in("status", ["generated", "in_progress", "awaiting_analysis"])
           .limit(3),
@@ -484,13 +463,10 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
           .gte("created_at", threeDaysAgo)
           .order("created_at", { ascending: false })
           .limit(10),
-        supabase.functions.invoke("karel-did-drive-read", {
-          body: { documents: ["05A_OPERATIVNI_PLAN"], subFolder: "00_CENTRUM" },
-        }).catch(() => ({ data: null, error: null })),
-        // Active registry — single source of truth for "is this part allowed
-        // on today's surface?". Includes 'crisis' and 'stabilizing' so a part
-        // in active crisis still surfaces, but pure 'sleeping' / 'dormant'
-        // parts are excluded.
+        // P33.10.2C — Drive read REMOVED from render path (DB-first rule).
+        // 05A_OPERATIVNI_PLAN narrative is loaded lazily by the explicit
+        // "Aktualizovat operativní přehled" button via loadOperativeNarrative().
+        // karel-daily-plan-render-db-only
         (supabase as any)
           .from("did_part_registry")
           .select("part_name, display_name, status")
