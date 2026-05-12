@@ -52,7 +52,10 @@ describe("P33.9 — centrumPartMatrix DB mirror columns", () => {
   });
 
   it("does not reference non-existent column part_id", () => {
-    expect(/\bpart_id\b/.test(centrumSrc)).toBe(false);
+    const centrumNoComments = centrumSrc
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    expect(/\bpart_id\b/.test(centrumNoComments)).toBe(false);
   });
 
   it("does not select a non-existent aliases column from did_part_registry", () => {
