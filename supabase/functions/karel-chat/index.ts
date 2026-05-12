@@ -1298,14 +1298,10 @@ This overrides ALL other language instructions.
       const approvedPlayroom = await loadApprovedPlayroomSnapshot(didPartName || didEnteredName);
       if (!approvedPlayroom.ok) {
         console.warn("[karel-chat][playroom] snapshot unavailable:", approvedPlayroom.reason, "plan_id=", approvedPlayroom.plan_id);
-        return new Response(JSON.stringify({
-          ok: false,
-          error: "playroom_snapshot_unavailable",
-          reason: approvedPlayroom.reason,
-          plan_id: approvedPlayroom.plan_id,
-          source: "snapshot",
-          message: "Herna nemůže být spuštěna: chybí immutable snapshot schváleného programu (playroom_plan_snapshot). Live playroom_plan se jako runtime zdroj nepoužívá.",
-        }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(
+          JSON.stringify(buildPlayroomSnapshotUnavailableBody(approvedPlayroom)),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
       }
       console.log("[karel-chat][playroom] snapshot loaded:", { plan_id: approvedPlayroom.plan_id, version_key: approvedPlayroom.version_key, snapshot_at: approvedPlayroom.snapshot_at, source: approvedPlayroom.source });
       const playroomProgramBlock = JSON.stringify({
