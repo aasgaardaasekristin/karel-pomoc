@@ -95,7 +95,9 @@ export async function loadCentrumPartMatrix(
   // 1) Try Drive primary (01_INDEX in 00_CENTRUM/)
   if (input.driveToken) {
     try {
-      const driveEntries = await loadDriveRegistryEntries(input.driveToken);
+      // Dynamic import keeps driveRegistry's URL imports out of the test TS graph.
+      const mod: any = await import("./driveRegistry.ts" as string);
+      const driveEntries = await mod.loadDriveRegistryEntries(input.driveToken);
       if (driveEntries.length > 0) {
         for (const e of driveEntries) {
           if (isExcluded(e.primaryName)) continue;
