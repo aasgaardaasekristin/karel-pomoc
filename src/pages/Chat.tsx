@@ -50,6 +50,7 @@ import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
 import { useAuthReady } from "@/hooks/useAuthReady";
 import { APP_MODE_POLICIES, getAppModeForHub, getModePolicy, type StarterQuestion } from "@/lib/appModePolicy";
 import { buildSafetyResponse, detectSafetyMention } from "@/lib/safetyDetection";
+import { safeDriveRead } from "@/lib/safeDriveRead";
 import {
   type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
   STORAGE_KEY_PREFIX, ACTIVE_MODE_KEY, DID_DOCS_LOADED_KEY, DID_SESSION_ID_KEY, HANA_PIN_KEY, HANA_PIN_ACCESS_TOKEN_KEY,
