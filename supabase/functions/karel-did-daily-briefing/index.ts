@@ -48,6 +48,11 @@ import { renderKarelBriefingVoice } from "../_shared/karelBriefingVoiceRenderer.
 import { evaluateBriefingContentCompleteness } from "../_shared/dailyBriefingContentCompleteness.ts";
 import { generateKarelAiPolishCandidate } from "../_shared/karelBriefingVoiceAiPolish.ts";
 import { isPartTodayRelevantForPrimarySuggestion } from "../_shared/partTodayRelevance.ts";
+import { loadCentrumPartMatrix } from "../_shared/centrumPartMatrix.ts";
+import {
+  buildDailyPartWorkabilityMatrix,
+  deriveRelevanceDecisionFromMatrix,
+} from "../_shared/partWorkabilityMatrix.ts";
 
 /**
  * SLA generation methods (added 2026-04-30, morning_operational_integrity_e2e):
