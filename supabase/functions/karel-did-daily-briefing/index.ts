@@ -3955,7 +3955,7 @@ Deno.serve(async (req) => {
     // must NOT decide workability; it must only display the matrix decision). ──
     try {
       const centrum = await loadCentrumPartMatrix(supabase, {
-        userId,
+        userId: scopedUserId as string,
         datePrague: today,
         driveToken: null, // briefing fn has no Drive token; falls back to DB mirror (profile_fallback)
       });
