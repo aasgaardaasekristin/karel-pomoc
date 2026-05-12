@@ -50,6 +50,7 @@ import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
 import { useAuthReady } from "@/hooks/useAuthReady";
 import { APP_MODE_POLICIES, getAppModeForHub, getModePolicy, type StarterQuestion } from "@/lib/appModePolicy";
 import { buildSafetyResponse, detectSafetyMention } from "@/lib/safetyDetection";
+import { safeDriveRead } from "@/lib/safeDriveRead";
 import {
   type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
   STORAGE_KEY_PREFIX, ACTIVE_MODE_KEY, DID_DOCS_LOADED_KEY, DID_SESSION_ID_KEY, HANA_PIN_KEY, HANA_PIN_ACCESS_TOKEN_KEY,
@@ -669,40 +670,38 @@ const Chat = () => {
         setMessages([]);
         setDidFlowState("entry");
         setActiveThread(null);
-        // Pre-load basic docs from 00_CENTRUM in background
+        // P33.10.2: DB-first on DID open. Drive enrichment happens in
+        // background via safeDriveRead (12 s client budget, fail-soft).
         (async () => {
           try {
             const headers = await getAuthHeaders();
-            const [docsResponse, registryResponse] = await Promise.all([
-              fetch(
-                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-                { method: "POST", headers, body: JSON.stringify({ 
-                  documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb", "03_Vnitrni_Svet_Geografie", "05_Operativni_Plan", "06_Strategicky_Vyhled"],
-                  subFolder: "00_CENTRUM",
-                  allowGlobalSearch: false,
-                }) }
-              ),
-              supabase
-                .from("did_part_registry")
-                .select("part_name, display_name")
-                .eq("status", "active")
-                .order("updated_at", { ascending: false }),
-            ]);
-
-            if (docsResponse.ok) {
-              const data = await docsResponse.json();
-              const docs = data.documents || {};
-              basicDocsRef.current = Object.entries(docs)
-                .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
-                .map(([key, val]) => `[Kartoteka_DID/00_CENTRUM: ${key}]\n${val}`)
-                .join("\n\n");
-              setDidInitialContext(basicDocsRef.current);
-            }
+            const registryResponse = await supabase
+              .from("did_part_registry")
+              .select("part_name, display_name")
+              .eq("status", "active")
+              .order("updated_at", { ascending: false });
 
             const registryParts = uniqueSanitizedPartNames(
               ((registryResponse.data as any[]) || []).flatMap((row) => [row.display_name, row.part_name]),
             );
             setKnownParts(registryParts.slice(0, 30));
+
+            // Drive enrichment is non-blocking and must never blank the UI.
+            const driveRes = await safeDriveRead(headers as Record<string, string>, {
+              documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb", "03_Vnitrni_Svet_Geografie", "05_Operativni_Plan", "06_Strategicky_Vyhled"],
+              subFolder: "00_CENTRUM",
+              recursive: false,
+              allowGlobalSearch: false,
+              caller: "Chat.tsx:childcare-open",
+              budgetMs: 12_000,
+              silent: true,
+            });
+            const docs = driveRes.documents || {};
+            basicDocsRef.current = Object.entries(docs)
+              .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
+              .map(([key, val]) => `[Kartoteka_DID/00_CENTRUM: ${key}]\n${val}`)
+              .join("\n\n");
+            if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
           } catch (e) { console.warn("Basic DID docs preload failed:", e); }
         })();
       }
@@ -933,13 +932,16 @@ const Chat = () => {
     (async () => {
       try {
         const headers = await getAuthHeaders();
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-          { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${thread.partName.replace(/\s+/g, "_")}`] }) }
-        );
-        if (response.ok) {
-          const data = await response.json();
-          const docs = data.documents || {};
+        const driveRes = await safeDriveRead(headers as Record<string, string>, {
+          documents: [`Karta_${thread.partName.replace(/\s+/g, "_")}`],
+          recursive: false,
+          allowGlobalSearch: false,
+          caller: "Chat.tsx:thread-open",
+          budgetMs: 12_000,
+          silent: true,
+        });
+        const docs = driveRes.documents || {};
+        if (Object.keys(docs).length > 0) {
           const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
           setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
         }
@@ -984,13 +986,16 @@ const Chat = () => {
         (async () => {
           try {
             const headers = await getAuthHeaders();
-            const response = await fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-              { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${safePartName.replace(/\s+/g, "_")}`] }) }
-            );
-            if (response.ok) {
-              const data = await response.json();
-              const docs = data.documents || {};
+            const driveRes = await safeDriveRead(headers as Record<string, string>, {
+              documents: [`Karta_${safePartName.replace(/\s+/g, "_")}`],
+              recursive: false,
+              allowGlobalSearch: false,
+              caller: "Chat.tsx:new-cast-thread",
+              budgetMs: 12_000,
+              silent: true,
+            });
+            const docs = driveRes.documents || {};
+            if (Object.keys(docs).length > 0) {
               const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
               setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
               setDidDocsLoaded(true);
@@ -1107,13 +1112,16 @@ const Chat = () => {
     (async () => {
       try {
         const headers = await getAuthHeaders();
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-          { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${partName.replace(/\s+/g, "_")}`] }) }
-        );
-        if (response.ok) {
-          const docData = await response.json();
-          const docs = docData.documents || {};
+        const driveRes = await safeDriveRead(headers as Record<string, string>, {
+          documents: [`Karta_${partName.replace(/\s+/g, "_")}`],
+          recursive: false,
+          allowGlobalSearch: false,
+          caller: "Chat.tsx:continue-thread",
+          budgetMs: 12_000,
+          silent: true,
+        });
+        const docs = driveRes.documents || {};
+        if (Object.keys(docs).length > 0) {
           const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
           setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
         }
@@ -1526,22 +1534,20 @@ const Chat = () => {
   const loadDriveContext = async (): Promise<string> => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-        { method: "POST", headers, body: JSON.stringify({ 
-          documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb", "05_Operativni_Plan", "06_Strategicky_Vyhled"],
-          subFolder: "00_CENTRUM",
-          allowGlobalSearch: false,
-        }) }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        const docs = data.documents || {};
-        return Object.entries(docs)
-          .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
-          .map(([key, val]) => `[Kartoteka_DID/00_CENTRUM: ${key}]\n${val}`)
-          .join("\n\n");
-      }
+      const driveRes = await safeDriveRead(headers as Record<string, string>, {
+        documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb", "05_Operativni_Plan", "06_Strategicky_Vyhled"],
+        subFolder: "00_CENTRUM",
+        recursive: false,
+        allowGlobalSearch: false,
+        caller: "Chat.tsx:loadDriveContext",
+        budgetMs: 12_000,
+        silent: true,
+      });
+      const docs = driveRes.documents || {};
+      return Object.entries(docs)
+        .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
+        .map(([key, val]) => `[Kartoteka_DID/00_CENTRUM: ${key}]\n${val}`)
+        .join("\n\n");
     } catch (e) {
       console.warn("Failed to load DID docs from Drive:", e);
     }
@@ -1619,20 +1625,21 @@ const Chat = () => {
         try {
           const headers = await getAuthHeaders();
           const docNames = mentionedParts.map(p => `Karta_${p.replace(/\s+/g, "_")}`);
-          const response = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-            { method: "POST", headers, body: JSON.stringify({ documents: docNames }) }
-          );
-          if (response.ok) {
-            const data = await response.json();
-            const docs = data.documents || {};
-            const partDocs = Object.entries(docs)
-              .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
-              .map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`)
-              .join("\n\n");
-            if (partDocs) {
-              setDidInitialContext(prev => prev + "\n\n" + partDocs);
-            }
+          const driveRes = await safeDriveRead(headers as Record<string, string>, {
+            documents: docNames,
+            recursive: false,
+            allowGlobalSearch: false,
+            caller: "Chat.tsx:msg-enrichment",
+            budgetMs: 12_000,
+            silent: true,
+          });
+          const docs = driveRes.documents || {};
+          const partDocs = Object.entries(docs)
+            .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
+            .map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`)
+            .join("\n\n");
+          if (partDocs) {
+            setDidInitialContext(prev => prev + "\n\n" + partDocs);
           }
         } catch {}
       }

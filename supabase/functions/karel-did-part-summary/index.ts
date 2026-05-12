@@ -66,6 +66,9 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             documents: [`Karta_${partName.replace(/\s+/g, "_")}`],
+            recursive: false,
+            allowGlobalSearch: false,
+            caller: "karel-did-part-summary",
           }),
         });
         if (driveRes.ok) {

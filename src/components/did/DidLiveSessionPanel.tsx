@@ -711,10 +711,25 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
         const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`, {
           method: "POST",
           headers,
-          body: JSON.stringify({ partName: activePart, tailLines: 180 }),
+          body: JSON.stringify({
+            partName: activePart,
+            tailLines: 180,
+            recursive: true,
+            allowGlobalSearch: false,
+            caller: "DidLiveSessionPanel:drive_read-action",
+          }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data?.content) throw new Error(data?.error || `Drive čtení selhalo HTTP ${res.status}`);
+        if (!res.ok || data?.status === "controlled_timeout" || !data?.content) {
+          const driveNote = `📂 **Drive teď nedostupný.** Pokračuji z aktuálního DB kontextu (důvod: ${data?.reason || `HTTP ${res.status}`}).`;
+          setMessages(prev => [...prev, { role: "assistant", content: driveNote, ts: new Date().toISOString() }]);
+          const fallbackHistory: Message[] = [
+            ...updatedMessages,
+            { role: "assistant", content: driveNote },
+            { role: "user", content: `Drive není dostupný. Odpověz teď z dostupného kontextu. Požadavek: ${userMessage}` },
+          ];
+          return await streamKarelReply(fallbackHistory, ts, attached);
+        }
         const driveNote = `📂 **Drive načteno:** ${data.fileName || `karta ${activePart}`} (${data.totalChars || "?"} znaků).\n\nRelevantní výřez jsem právě přidal do kontextu sezení; teď odpovím podle něj, ne z paměti.`;
         setMessages(prev => [...prev, { role: "assistant", content: driveNote, ts: new Date().toISOString() }]);
         const actionHistory: Message[] = [
