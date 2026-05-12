@@ -161,7 +161,7 @@ describe("P33.10.2 — Drive Read Containment", () => {
     it("Promise.all in load() does NOT call karel-did-drive-read", () => {
       const idx = f.indexOf("const load = useCallback");
       expect(idx).toBeGreaterThan(-1);
-      const end = f.indexOf("], [snapshotCrisis?.partName", idx);
+      const end = f.indexOf("[snapshotCrisis?.partName, fallbackCrisisPart]", idx);
       expect(end).toBeGreaterThan(-1);
       const body = f.slice(idx, end);
       expect(body).not.toMatch(/karel-did-drive-read/);
