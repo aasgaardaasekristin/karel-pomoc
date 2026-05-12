@@ -1534,22 +1534,20 @@ const Chat = () => {
   const loadDriveContext = async (): Promise<string> => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-        { method: "POST", headers, body: JSON.stringify({ 
-          documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb", "05_Operativni_Plan", "06_Strategicky_Vyhled"],
-          subFolder: "00_CENTRUM",
-          allowGlobalSearch: false,
-        }) }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        const docs = data.documents || {};
-        return Object.entries(docs)
-          .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
-          .map(([key, val]) => `[Kartoteka_DID/00_CENTRUM: ${key}]\n${val}`)
-          .join("\n\n");
-      }
+      const driveRes = await safeDriveRead(headers as Record<string, string>, {
+        documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb", "05_Operativni_Plan", "06_Strategicky_Vyhled"],
+        subFolder: "00_CENTRUM",
+        recursive: false,
+        allowGlobalSearch: false,
+        caller: "Chat.tsx:loadDriveContext",
+        budgetMs: 12_000,
+        silent: true,
+      });
+      const docs = driveRes.documents || {};
+      return Object.entries(docs)
+        .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
+        .map(([key, val]) => `[Kartoteka_DID/00_CENTRUM: ${key}]\n${val}`)
+        .join("\n\n");
     } catch (e) {
       console.warn("Failed to load DID docs from Drive:", e);
     }
