@@ -3082,7 +3082,7 @@ Deno.serve(async (req) => {
       // P33.8 — bumped to p33.8.0 (renderer now consumes
       // daily_part_workability_matrix as the upstream authority for which
       // parts are workable today). Old p33.7.x cached rows MUST regenerate.
-      const REQUIRED_RENDERER_VERSION = "p33.8.0";
+      const REQUIRED_RENDERER_VERSION = "p33.8.1";
       const REQUIRED_COMPLETENESS_VERSION = "p33.7";
       const cachedHuman = existing?.payload?.karel_human_briefing ?? null;
       const cachedCompleteness = existing?.payload?.daily_briefing_content_completeness ?? null;
