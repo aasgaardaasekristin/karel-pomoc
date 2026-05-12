@@ -489,7 +489,7 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
         didPartName: targetPart,
         didThreadLabel: targetPart,
         didInitialContext: planContract(plan, { ...currentThread, messages: nextMessages }, activeProgress),
-        threadId: currentThread.id,
+        didThreadId: currentThread.id,
       };
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`, { method: "POST", headers, body: JSON.stringify(body) });
       if (response.status === 409) {
