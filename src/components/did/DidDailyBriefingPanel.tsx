@@ -2340,7 +2340,6 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           </p>
         </>
       )}
-      </>)}
     </div>
   );
 };
