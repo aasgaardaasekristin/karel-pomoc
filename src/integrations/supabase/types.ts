@@ -5372,6 +5372,105 @@ export type Database = {
           },
         ]
       }
+      hana_personal_centrum_review_queue: {
+        Row: {
+          created_at: string
+          id: string
+          reason: string
+          related_groups: string[]
+          related_part_name: string | null
+          safe_summary: string
+          source_ref: string
+          source_thread_id: string | null
+          status: string
+          updated_at: string
+          used_in_briefing: boolean
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          reason: string
+          related_groups?: string[]
+          related_part_name?: string | null
+          safe_summary: string
+          source_ref: string
+          source_thread_id?: string | null
+          status?: string
+          updated_at?: string
+          used_in_briefing?: boolean
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          reason?: string
+          related_groups?: string[]
+          related_part_name?: string | null
+          safe_summary?: string
+          source_ref?: string
+          source_thread_id?: string | null
+          status?: string
+          updated_at?: string
+          used_in_briefing?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
+      hana_personal_external_trigger_lookups: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          lookup_result: Json | null
+          query_terms: string[]
+          related_groups: string[]
+          related_part_name: string | null
+          source_message_ref: string | null
+          source_ref: string
+          source_thread_id: string | null
+          status: string
+          theme: string
+          updated_at: string
+          used_in_briefing: boolean
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          lookup_result?: Json | null
+          query_terms?: string[]
+          related_groups?: string[]
+          related_part_name?: string | null
+          source_message_ref?: string | null
+          source_ref: string
+          source_thread_id?: string | null
+          status?: string
+          theme: string
+          updated_at?: string
+          used_in_briefing?: boolean
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          lookup_result?: Json | null
+          query_terms?: string[]
+          related_groups?: string[]
+          related_part_name?: string | null
+          source_message_ref?: string | null
+          source_ref?: string
+          source_thread_id?: string | null
+          status?: string
+          theme?: string
+          updated_at?: string
+          used_in_briefing?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
       hana_personal_identity_audit: {
         Row: {
           created_at: string
@@ -5514,6 +5613,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      hana_personal_privacy_rules: {
+        Row: {
+          active: boolean
+          applies_to_scope: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          instruction_text: string
+          related_parts: string[]
+          source_ref: string
+          source_thread_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          applies_to_scope?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          instruction_text: string
+          related_parts?: string[]
+          source_ref: string
+          source_thread_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          applies_to_scope?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          instruction_text?: string
+          related_parts?: string[]
+          source_ref?: string
+          source_thread_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       hana_personal_response_guard_audit: {
         Row: {
