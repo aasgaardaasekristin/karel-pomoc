@@ -113,7 +113,7 @@ const EXTERNAL_TRIGGER_LEXICON: Array<{ re: RegExp; terms: string[]; theme: stri
 
 // Safety / privacy instruction lexicon.
 const PRIVACY_INSTRUCTION_RE =
-  /\b(?:nechci,?\s+aby\s+(?:to|tohle)\s+(?:[\w ]+)?(?:\u010d[ie]?[tl]\w*|videl\w*|v[ie]d[eě]l\w*)|nepi[sš]|nechci to[\W]+v\s+rep|nemus[ií] (?:to )?v[eě]d[eě]t)\b/i;
+  /\b(?:nechci(?:,)?\s+aby|nepi[sš]|nesm[ií]\s+(?:to\s+)?[čcv]?[ií]?[stl]|nem[aá]\s+to\s+[čc][ií]st|nemus[ií] (?:to )?v[eě]d[eě]t|nezve[rř]ej|d[uů]v[eě]rn[eé])\b/i;
 
 // Household / logistical content (children, money, school, transport, family).
 const HOUSEHOLD_RE =
