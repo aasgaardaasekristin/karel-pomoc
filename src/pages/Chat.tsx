@@ -41,7 +41,7 @@ import PostSessionTools from "@/components/report/PostSessionTools";
 import ResearchThreadList from "@/components/research/ResearchThreadList";
 import ResearchNewTopicDialog from "@/components/research/ResearchNewTopicDialog";
 import { useResearchThreads, type ResearchThread } from "@/hooks/useResearchThreads";
-import { sanitizePartName, uniqueSanitizedPartNames } from "@/lib/didPartNaming";
+import { sanitizePartName, uniqueSanitizedPartNames, cleanDisplayName, formatActionTitle } from "@/lib/didPartNaming";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useManualUpdate } from "@/hooks/useManualUpdate";
 import DidContentRouter from "@/components/did/DidContentRouter";
