@@ -34,11 +34,22 @@ export interface MatrixEvidenceFlags {
   excluded_non_part: boolean;
 }
 
+export interface MatrixFreshEvidenceSource {
+  source: "recent_thread" | "today_session_approved" | "live_progress" | "explicit_therapist_mention" | "hana_personal_review";
+  label: string;
+}
+
 export interface MatrixPart {
   id: string;
   canonical_name: string;
   display_name: string;
   registry_status: "active" | "dormant" | "sleeping" | "unknown";
+  status_source: "drive_index" | "db_mirror" | "db_mirror_stale" | "unknown";
+  status_last_verified_at: string | null;
+  fresh_evidence_sources: MatrixFreshEvidenceSource[];
+  dedupe_key: string;
+  display_allowed_today: boolean;
+  primary_allowed: boolean;
   workability: Workability;
   reason: string;
   evidence: MatrixEvidenceFlags;
@@ -100,6 +111,26 @@ export interface BuildMatrixInput {
   explicitTherapistMentions?: string[];
   externalRealityParts?: Array<{ part_name: string; activity_status?: string }>;
   freshTeamDeliberations?: AnyObj[];
+  hanaPersonalReviewPartNames?: string[];
+}
+
+const RECENT_ACTIVITY_WINDOW_DAYS = 14;
+
+function canonicalKey(raw: string | null | undefined): string {
+  return norm(canonicalizePartDisplayName(raw ?? "") ?? raw ?? "").replace(/[^a-z0-9]/g, "");
+}
+
+function ageDays(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return null;
+  return (Date.now() - t) / 86_400_000;
+}
+
+function statusVerifiedAt(row: CentrumPartRow): string | null {
+  return row.source === "drive_index"
+    ? (row.index_confirmed_at ?? row.updated_at ?? row.last_seen_at ?? null)
+    : (row.index_confirmed_at ?? row.last_seen_at ?? row.updated_at ?? null);
 }
 
 export function buildDailyPartWorkabilityMatrix(input: BuildMatrixInput): PartWorkabilityMatrix {
@@ -130,13 +161,37 @@ export function buildDailyPartWorkabilityMatrix(input: BuildMatrixInput): PartWo
     if (candidate) freshTeamProposalParts.add(norm(canonicalizePartDisplayName(candidate)));
   }
 
+  const rowsByKey = new Map<string, CentrumPartRow>();
   for (const row of input.centrum.rows) {
+    const key = canonicalKey(row.display_name || row.canonical_name);
+    if (!key) continue;
+    const prev = rowsByKey.get(key);
+    if (!prev) {
+      rowsByKey.set(key, row);
+      continue;
+    }
+    const rank = (r: CentrumPartRow) => (r.source === "drive_index" ? 3 : 0) + (r.registry_status === "active" ? 2 : r.registry_status === "unknown" ? 1 : 0) + (ageDays(statusVerifiedAt(r)) != null ? 1 : 0);
+    if (rank(row) > rank(prev)) rowsByKey.set(key, row);
+  }
+
+  for (const row of rowsByKey.values()) {
+    const dedupeKey = canonicalKey(row.display_name || row.canonical_name);
+    const verifiedAt = statusVerifiedAt(row);
+    const staleDbStatus = row.source === "db_mirror" && (ageDays(verifiedAt) == null || (ageDays(verifiedAt) ?? 999) > RECENT_ACTIVITY_WINDOW_DAYS);
+    const effectiveRegistryStatus = staleDbStatus && row.registry_status === "active" ? "unknown" : row.registry_status;
+    const statusSource = row.source === "drive_index" ? "drive_index" : staleDbStatus ? "db_mirror_stale" : "db_mirror";
     if (NON_PART.has(norm(row.canonical_name)) || NON_PART.has(norm(row.display_name))) {
       out.parts.push({
         id: row.id,
         canonical_name: row.canonical_name,
         display_name: row.display_name,
-        registry_status: row.registry_status,
+        registry_status: effectiveRegistryStatus,
+        status_source: statusSource,
+        status_last_verified_at: verifiedAt,
+        fresh_evidence_sources: [],
+        dedupe_key: dedupeKey,
+        display_allowed_today: false,
+        primary_allowed: false,
         workability: "excluded",
         reason: "non_part_excluded",
         recommended_route: "none",
@@ -146,7 +201,7 @@ export function buildDailyPartWorkabilityMatrix(input: BuildMatrixInput): PartWo
     }
 
     const ev: MatrixEvidenceFlags = {
-      registry_active: row.registry_status === "active",
+      registry_active: effectiveRegistryStatus === "active",
       in_recent_thread: listHas(input.recentThreadPartNames ?? [], row.display_name)
         || listHas(input.recentThreadPartNames ?? [], row.canonical_name),
       in_today_session: listHas(input.todaysSessionPartNames ?? [], row.display_name)
@@ -162,12 +217,20 @@ export function buildDailyPartWorkabilityMatrix(input: BuildMatrixInput): PartWo
         || externalSet.has(norm(row.canonical_name)),
       has_fresh_team_proposal: freshTeamProposalParts.has(norm(row.display_name))
         || freshTeamProposalParts.has(norm(row.canonical_name)),
-      registry_dormant_or_sleeping: row.registry_status === "dormant" || row.registry_status === "sleeping",
+      registry_dormant_or_sleeping: effectiveRegistryStatus === "dormant" || effectiveRegistryStatus === "sleeping",
       excluded_non_part: false,
     };
 
-    const hasFreshEvidence =
-      ev.in_recent_thread || ev.in_today_session || ev.in_live_progress || ev.in_explicit_mention;
+    const freshEvidenceSources: MatrixFreshEvidenceSource[] = [];
+    if (ev.in_recent_thread) freshEvidenceSources.push({ source: "recent_thread", label: "nedávné pracovní vlákno" });
+    if (ev.in_today_session) freshEvidenceSources.push({ source: "today_session_approved", label: "dnes schválený plán" });
+    if (ev.in_live_progress) freshEvidenceSources.push({ source: "live_progress", label: "živý kontakt" });
+    if (ev.in_explicit_mention) freshEvidenceSources.push({ source: "explicit_therapist_mention", label: "výslovné dnešní potvrzení terapeutky" });
+    const hanaReview = listHas(input.hanaPersonalReviewPartNames ?? [], row.display_name) || listHas(input.hanaPersonalReviewPartNames ?? [], row.canonical_name);
+    if (hanaReview) freshEvidenceSources.push({ source: "hana_personal_review", label: "bezpečný signál z osobního vlákna Haničky" });
+
+    const hasFreshEvidence = freshEvidenceSources.length > 0;
+    const hasPrimaryEvidence = ev.in_today_session || ev.in_live_progress || ev.in_explicit_mention || hanaReview;
 
     let workability: Workability;
     let reason: string;
@@ -184,8 +247,8 @@ export function buildDailyPartWorkabilityMatrix(input: BuildMatrixInput): PartWo
         route = "none";
       }
     } else if (ev.registry_active) {
-      // Hard rule: registry-active alone ≠ primary.
-      if (hasFreshEvidence && (ev.in_today_session || ev.in_live_progress || ev.in_explicit_mention)) {
+      // Hard rule: registry-active or pending generated plan alone ≠ primary.
+      if (hasFreshEvidence && hasPrimaryEvidence) {
         workability = "primary_candidate";
         reason = "active_with_strong_today_evidence";
         route = ev.in_live_progress || ev.in_today_session ? "session" : "first_contact";
@@ -223,11 +286,20 @@ export function buildDailyPartWorkabilityMatrix(input: BuildMatrixInput): PartWo
       }
     }
 
+    const primaryAllowed = workability === "primary_candidate" && hasPrimaryEvidence;
+    const displayAllowedToday = primaryAllowed || workability === "possible_after_first_contact" || (workability === "watch_only" && (ev.has_external_reality_signal || hasFreshEvidence));
+
     out.parts.push({
       id: row.id,
       canonical_name: row.canonical_name,
       display_name: row.display_name,
-      registry_status: row.registry_status,
+      registry_status: effectiveRegistryStatus,
+      status_source: statusSource,
+      status_last_verified_at: verifiedAt,
+      fresh_evidence_sources: freshEvidenceSources,
+      dedupe_key: dedupeKey,
+      display_allowed_today: displayAllowedToday,
+      primary_allowed: primaryAllowed,
       workability,
       reason,
       evidence: ev,

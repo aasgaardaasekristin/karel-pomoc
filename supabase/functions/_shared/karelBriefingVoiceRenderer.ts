@@ -51,7 +51,7 @@ export interface KarelBriefingVoiceRenderResult {
   errors: string[];
 }
 
-export const RENDERER_VERSION = "p33.8.1";
+export const RENDERER_VERSION = "p33.10.0";
 
 function withTerminalPunctuation(text: string): string {
   const s = safeStr(text);
@@ -69,6 +69,11 @@ function sanitizeRenderedText(text: string): string {
     .replace(/praktick[ýy]\s+report/gi, "praktickou poznámku")
     .replace(/podle\s+posledn[íi]ho\s+p[řr]esn[ěe]\s+datovan[ée]ho\s+review/gi, "podle posledního doloženého záznamu")
     .replace(/\barthure?\b/gi, (m) => (m.toLocaleLowerCase("cs") === "arthure" ? "Arthure" : "Arthur"))
+    .replace(/\bU Arthur\b/g, "U Arthura")
+    .replace(/\bU Tundrupek\b/g, "U Tundrupka")
+    .replace(/Sezen[íi]\s+s\s+Gust[íi]ka/g, "Sezení s Gustíkem")
+    .replace(/\boblast\s+other\b/gi, "oblasti obecného citlivého kontextu")
+    .replace(/\boblast\s+animal suffering\b/gi, "oblasti utrpení zvířat")
     .replace(/\btundrupek\b/gi, "Tundrupek")
     .replace(/\bgustik\b/gi, "Gustík")
     .replace(/\.\.+/g, ".")
@@ -91,6 +96,12 @@ export const FORBIDDEN_ROBOTIC_PHRASES: { pattern: RegExp; label: string }[] = [
   { pattern: /\bpayload\b/i, label: "payload" },
   { pattern: /job graph/i, label: "job graph" },
   { pattern: /truth gate/i, label: "truth gate" },
+  { pattern: /14 dne[šs]n[íi]ch v[ěe]c[íi]/i, label: "14 dnešních věcí" },
+  { pattern: /uzav[řr]en[ýy]ch krok[ůu]/i, label: "uzavřených kroků" },
+  { pattern: /[čc]erstv[áa]\s+stopa/i, label: "čerstvá stopa" },
+  { pattern: /\bsource_cycle_id\b/i, label: "source_cycle_id" },
+  { pattern: /\bprovider_status\b/i, label: "provider_status" },
+  { pattern: /\bquery_plan_version\b/i, label: "query_plan_version" },
 ];
 
 const INTERNAL_TERMS = [/\bpayload\b/i, /\btruth gate\b/i, /\bjob graph\b/i, /\bpipeline\b/i];
@@ -168,8 +179,8 @@ function renderDailyCycleVerified(payload: any): RenderedBriefingSection {
     const terminal = completed + skipped;
     if (total > 0) {
       text = terminal >= total
-        ? `Dnešní ranní přípravu mám hotovou celou — všech ${total} dnešních věcí je uzavřených (buď dotaženo, nebo bezpečně vynecháno tam, kde dnes nebylo s čím pracovat).`
-        : `Z dnešní ranní přípravy mám zatím hotových ${terminal} z ${total} věcí. Beru to jako rozpracovaný základ pro dnešek.`;
+        ? "Ranní příprava je dnes použitelná. Podklady dávají dost opory pro opatrný první krok, ale u některých témat budu raději čekat na první kontakt s kluky."
+        : "Ranní příprava je dnes jen částečná. Použiji ji jako pracovní základ, ale žádný závěr z ní nebudu přeceňovat.";
       confidence = terminal >= total ? "high" : "medium";
     } else {
       text = "Dnešní ranní příprava proběhla, ale podrobnosti k jednotlivým částem teď nemám tak, abych je s jistotou popsal.";
@@ -229,9 +240,10 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
   // Derive watch-only sensitivity context from matrix (informational only).
   const watchOnlyNames: string[] = matrix && Array.isArray(matrix.parts)
     ? matrix.parts
-        .filter((p: any) => p?.workability === "watch_only" && p?.display_name)
+        .filter((p: any) => p?.workability === "watch_only" && p?.display_allowed_today === true && p?.display_name)
         .map((p: any) => canonicalizePartDisplayName(p.display_name) ?? String(p.display_name))
         .filter(Boolean)
+        .filter((name: string, idx: number, arr: string[]) => arr.indexOf(name) === idx)
         .slice(0, 4)
     : [];
   const watchOnlySuffix = watchOnlyNames.length > 0
@@ -249,8 +261,8 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
       : route === "first_contact"
       ? " Doporučená cesta je nejdřív první kontakt a podle něj rozhodnout, zda Sezení nebo stabilizační Herna."
       : "";
-    const evidenceNote = matrixPart?.reason
-      ? ` Opírám to o: ${humanReason(matrixPart.reason)}.`
+    const evidenceNote = matrixPart?.fresh_evidence_sources?.length
+      ? ` Opírám to jen o dnešní konkrétní podklad: ${matrixPart.fresh_evidence_sources.map((s: any) => s.label).join(", ")}. Pokud se to v prvním kontaktu nepotvrdí, nebudu s touto částí pracovat jako s vedoucí.`
       : "";
     text = `Pro dnešek se mi jako pracovní vedoucí část nabízí ${partName}.${evidenceNote}${routeText}${watchOnlySuffix}`;
     confidence = decision?.confidence === "high" ? "high" : "medium";
@@ -283,15 +295,7 @@ function renderTodayParts(payload: any): RenderedBriefingSection {
   };
 }
 
-function humanReason(reason: string): string {
-  switch (reason) {
-    case "active_with_strong_today_evidence": return "je dnes aktivní a má čerstvou stopu (sezení nebo živý záznam)";
-    case "active_with_fresh_team_proposal_and_evidence": return "je aktivní, je k ní čerstvý návrh týmu a dnešní stopa";
-    case "active_with_recent_thread_only": return "je aktivní a má nedávné vlákno (≤72 h)";
-    case "dormant_with_fresh_evidence": return "je teď v útlumu, ale má čerstvou stopu — proto jen po prvním kontaktu";
-    default: return reason;
-  }
-}
+function humanReason(reason: string): string { return reason.replace(/_/g, " "); }
 
 /**
  * Section 4 — úkoly terapeutek (ask_hanka / ask_kata).

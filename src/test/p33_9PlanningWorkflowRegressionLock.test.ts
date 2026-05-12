@@ -43,6 +43,8 @@ describe("P33.9 — centrumPartMatrix DB mirror columns", () => {
       "display_name",
       "status",
       "index_confirmed_at",
+      "last_seen_at",
+      "updated_at",
     ]);
     for (const c of cols) {
       expect(allowed.has(c), `unexpected column in select: ${c}`).toBe(true);
@@ -94,17 +96,17 @@ describe("P33.9 — briefing matrix gate is annotation-only", () => {
     expect(/payload\.ask_kata\s*=\s*\[/.test(briefingSrc)).toBe(false);
   });
 
-  it("emits payload_generation_version=p33.9.0 and matrix_gate_version=p33.9_annotation_only", () => {
-    expect(briefingSrc).toMatch(/payload\.payload_generation_version\s*=\s*"p33\.9\.0"/);
+  it("emits payload_generation_version=p33.10.0 and matrix_gate_version=p33.10_source_trace_non_destructive", () => {
+    expect(briefingSrc).toMatch(/payload\.payload_generation_version\s*=\s*"p33\.10\.0"/);
     expect(briefingSrc).toMatch(
-      /payload\.matrix_gate_version\s*=\s*"p33\.9_annotation_only"/,
+      /payload\.matrix_gate_version\s*=\s*"p33\.10_source_trace_non_destructive"/,
     );
   });
 
-  it("cache gate requires p33.9 markers before reusing cached row", () => {
-    expect(briefingSrc).toMatch(/REQUIRED_PAYLOAD_GENERATION_VERSION\s*=\s*"p33\.9\.0"/);
+  it("cache gate requires p33.10 markers before reusing cached row", () => {
+    expect(briefingSrc).toMatch(/REQUIRED_PAYLOAD_GENERATION_VERSION\s*=\s*"p33\.10\.0"/);
     expect(briefingSrc).toMatch(
-      /REQUIRED_MATRIX_GATE_VERSION\s*=\s*"p33\.9_annotation_only"/,
+      /REQUIRED_MATRIX_GATE_VERSION\s*=\s*"p33\.10_source_trace_non_destructive"/,
     );
     expect(briefingSrc).toMatch(/cachedP339Ready/);
   });

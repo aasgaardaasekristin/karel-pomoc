@@ -3082,13 +3082,13 @@ Deno.serve(async (req) => {
       // P33.8 — bumped to p33.8.0 (renderer now consumes
       // daily_part_workability_matrix as the upstream authority for which
       // parts are workable today). Old p33.7.x cached rows MUST regenerate.
-      // P33.9 — additionally require payload_generation_version=p33.9.0 and
-      // matrix_gate_version=p33.9_annotation_only so old destructive-gate rows
+      // P33.10 — additionally require payload_generation_version=p33.10.0 and
+      // matrix_gate_version=p33.10_source_trace_non_destructive so old destructive/stale-source rows
       // (which nulled part_name and replaced asks) cannot be served.
-      const REQUIRED_RENDERER_VERSION = "p33.8.1";
+      const REQUIRED_RENDERER_VERSION = "p33.10.0";
       const REQUIRED_COMPLETENESS_VERSION = "p33.7";
-      const REQUIRED_PAYLOAD_GENERATION_VERSION = "p33.9.0";
-      const REQUIRED_MATRIX_GATE_VERSION = "p33.9_annotation_only";
+      const REQUIRED_PAYLOAD_GENERATION_VERSION = "p33.10.0";
+      const REQUIRED_MATRIX_GATE_VERSION = "p33.10_source_trace_non_destructive";
       const cachedHuman = existing?.payload?.karel_human_briefing ?? null;
       const cachedCompleteness = existing?.payload?.daily_briefing_content_completeness ?? null;
       const cachedP337Ready =
@@ -3431,6 +3431,9 @@ Deno.serve(async (req) => {
       target_part_name: string | null;
       requires_immediate_program_update: boolean;
       expected_resolution: "update_program" | "add_observation" | "create_task" | "store_memory" | "no_program_change";
+      workspace_type: "ask_hanka" | "ask_kata";
+      workspace_id: string;
+      status: "open" | "answered" | "closed";
       source: "daily_briefing";
       briefing_id: string | null;
       generated_at: string;
@@ -3467,6 +3470,9 @@ Deno.serve(async (req) => {
         target_part_name: targetPartName,
         requires_immediate_program_update: targetType === "proposed_playroom" || targetType === "proposed_session",
         expected_resolution: targetType === "proposed_playroom" || targetType === "proposed_session" ? "update_program" : isTask ? "create_task" : isObservation ? "add_observation" : "store_memory",
+        workspace_type: role,
+        workspace_id: id,
+        status: "open",
         source: "daily_briefing",
         briefing_id: null,
         generated_at: new Date().toISOString(),
@@ -4046,8 +4052,8 @@ Deno.serve(async (req) => {
 
       // P33.9 — explicit version markers so cache gate can reject pre-P33.9 rows
       // (which contained the destructive matrix gate).
-      payload.payload_generation_version = "p33.9.0";
-      payload.matrix_gate_version = "p33.9_annotation_only";
+      payload.payload_generation_version = "p33.10.0";
+      payload.matrix_gate_version = "p33.10_source_trace_non_destructive";
     } catch (e) {
       console.warn("[P33.8] matrix build failed (non-fatal):", e);
       if (!payload.today_part_relevance_decision) {
