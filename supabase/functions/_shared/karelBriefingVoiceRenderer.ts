@@ -51,7 +51,7 @@ export interface KarelBriefingVoiceRenderResult {
   errors: string[];
 }
 
-export const RENDERER_VERSION = "p33.8.1";
+export const RENDERER_VERSION = "p33.10.0";
 
 function withTerminalPunctuation(text: string): string {
   const s = safeStr(text);
@@ -69,6 +69,11 @@ function sanitizeRenderedText(text: string): string {
     .replace(/praktick[ýy]\s+report/gi, "praktickou poznámku")
     .replace(/podle\s+posledn[íi]ho\s+p[řr]esn[ěe]\s+datovan[ée]ho\s+review/gi, "podle posledního doloženého záznamu")
     .replace(/\barthure?\b/gi, (m) => (m.toLocaleLowerCase("cs") === "arthure" ? "Arthure" : "Arthur"))
+    .replace(/\bU Arthur\b/g, "U Arthura")
+    .replace(/\bU Tundrupek\b/g, "U Tundrupka")
+    .replace(/Sezen[íi]\s+s\s+Gust[íi]ka/g, "Sezení s Gustíkem")
+    .replace(/\boblast\s+other\b/gi, "oblasti obecného citlivého kontextu")
+    .replace(/\boblast\s+animal suffering\b/gi, "oblasti utrpení zvířat")
     .replace(/\btundrupek\b/gi, "Tundrupek")
     .replace(/\bgustik\b/gi, "Gustík")
     .replace(/\.\.+/g, ".")
@@ -91,6 +96,12 @@ export const FORBIDDEN_ROBOTIC_PHRASES: { pattern: RegExp; label: string }[] = [
   { pattern: /\bpayload\b/i, label: "payload" },
   { pattern: /job graph/i, label: "job graph" },
   { pattern: /truth gate/i, label: "truth gate" },
+  { pattern: /14 dne[šs]n[íi]ch v[ěe]c[íi]/i, label: "14 dnešních věcí" },
+  { pattern: /uzav[řr]en[ýy]ch krok[ůu]/i, label: "uzavřených kroků" },
+  { pattern: /[čc]erstv[áa]\s+stopa/i, label: "čerstvá stopa" },
+  { pattern: /\bsource_cycle_id\b/i, label: "source_cycle_id" },
+  { pattern: /\bprovider_status\b/i, label: "provider_status" },
+  { pattern: /\bquery_plan_version\b/i, label: "query_plan_version" },
 ];
 
 const INTERNAL_TERMS = [/\bpayload\b/i, /\btruth gate\b/i, /\bjob graph\b/i, /\bpipeline\b/i];
