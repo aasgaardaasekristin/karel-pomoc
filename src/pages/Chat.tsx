@@ -669,40 +669,38 @@ const Chat = () => {
         setMessages([]);
         setDidFlowState("entry");
         setActiveThread(null);
-        // Pre-load basic docs from 00_CENTRUM in background
+        // P33.10.2: DB-first on DID open. Drive enrichment happens in
+        // background via safeDriveRead (12 s client budget, fail-soft).
         (async () => {
           try {
             const headers = await getAuthHeaders();
-            const [docsResponse, registryResponse] = await Promise.all([
-              fetch(
-                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-                { method: "POST", headers, body: JSON.stringify({ 
-                  documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb", "03_Vnitrni_Svet_Geografie", "05_Operativni_Plan", "06_Strategicky_Vyhled"],
-                  subFolder: "00_CENTRUM",
-                  allowGlobalSearch: false,
-                }) }
-              ),
-              supabase
-                .from("did_part_registry")
-                .select("part_name, display_name")
-                .eq("status", "active")
-                .order("updated_at", { ascending: false }),
-            ]);
-
-            if (docsResponse.ok) {
-              const data = await docsResponse.json();
-              const docs = data.documents || {};
-              basicDocsRef.current = Object.entries(docs)
-                .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
-                .map(([key, val]) => `[Kartoteka_DID/00_CENTRUM: ${key}]\n${val}`)
-                .join("\n\n");
-              setDidInitialContext(basicDocsRef.current);
-            }
+            const registryResponse = await supabase
+              .from("did_part_registry")
+              .select("part_name, display_name")
+              .eq("status", "active")
+              .order("updated_at", { ascending: false });
 
             const registryParts = uniqueSanitizedPartNames(
               ((registryResponse.data as any[]) || []).flatMap((row) => [row.display_name, row.part_name]),
             );
             setKnownParts(registryParts.slice(0, 30));
+
+            // Drive enrichment is non-blocking and must never blank the UI.
+            const driveRes = await safeDriveRead(headers as Record<string, string>, {
+              documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb", "03_Vnitrni_Svet_Geografie", "05_Operativni_Plan", "06_Strategicky_Vyhled"],
+              subFolder: "00_CENTRUM",
+              recursive: false,
+              allowGlobalSearch: false,
+              caller: "Chat.tsx:childcare-open",
+              budgetMs: 12_000,
+              silent: true,
+            });
+            const docs = driveRes.documents || {};
+            basicDocsRef.current = Object.entries(docs)
+              .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
+              .map(([key, val]) => `[Kartoteka_DID/00_CENTRUM: ${key}]\n${val}`)
+              .join("\n\n");
+            if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
           } catch (e) { console.warn("Basic DID docs preload failed:", e); }
         })();
       }
