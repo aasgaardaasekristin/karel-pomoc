@@ -454,6 +454,7 @@ serve(async (req) => {
         content: null,
         error: `Card for "${partName}" not found`,
         request_id: reqId,
+        elapsed_ms: elapsed(budget),
       }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
