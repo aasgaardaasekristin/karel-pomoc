@@ -431,7 +431,14 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
       // navrhuji na dnes" without an explicit active reason (open crisis or
       // explicit reactivation in the registry).
       const [planItemsRes, manualTasksRes, sessionsRes, questionsRes, threadsRes, interviewsRes, registryRes] = await Promise.all([
-        // ... keep existing code (planItemsRes through interviewsRes queries)
+        // CANONICAL primary queue
+        supabase
+          .from("did_plan_items")
+          .select("id, action_required, priority, status, section, plan_type, created_at")
+          .eq("status", "active")
+          .order("priority", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(20),
         (supabase as any)
           .from("did_therapist_tasks")
           .select("id, task, assigned_to, status, priority, created_at, due_date, detail_instruction, plan_item_id")
