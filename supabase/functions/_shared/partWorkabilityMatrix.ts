@@ -230,7 +230,7 @@ export function buildDailyPartWorkabilityMatrix(input: BuildMatrixInput): PartWo
     if (hanaReview) freshEvidenceSources.push({ source: "hana_personal_review", label: "bezpečný signál z osobního vlákna Haničky" });
 
     const hasFreshEvidence = freshEvidenceSources.length > 0;
-    const hasPrimaryEvidence = ev.in_live_progress || ev.in_explicit_mention || hanaReview;
+    const hasPrimaryEvidence = ev.in_today_session || ev.in_live_progress || ev.in_explicit_mention || hanaReview;
 
     let workability: Workability;
     let reason: string;
