@@ -188,6 +188,133 @@ function stripPlayroomProgressMarker(output: string) {
   return String(output || "").replace(/\[PLAYROOM_PROGRESS:(stay|advance|fallback|stop)\]/gi, "");
 }
 
+// ─── Commit 2C: Playroom runtime state machine ──────────────────────
+type PlayroomRuntimeRow = {
+  id: string;
+  thread_id: string;
+  playroom_plan_id: string | null;
+  phase: string;
+  current_block_index: number;
+  consecutive_stabilize_count: number;
+  program_snapshot: any;
+};
+
+async function loadOrInitPlayroomRuntimeState(args: {
+  threadId: string;
+  ownerUserId: string;
+  planId: string | null;
+  snapshotPayload: any;
+}): Promise<PlayroomRuntimeRow | null> {
+  try {
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: existing, error: selErr } = await sb
+      .from("did_playroom_runtime_state")
+      .select("id,thread_id,playroom_plan_id,phase,current_block_index,consecutive_stabilize_count,program_snapshot")
+      .eq("thread_id", args.threadId)
+      .maybeSingle();
+    if (selErr) console.warn("[karel-chat][playroom][runtime] select failed:", selErr.message);
+    if (existing) {
+      console.log("[karel-chat][playroom][runtime] loaded existing:", { thread_id: args.threadId, phase: existing.phase, current_block_index: existing.current_block_index, consecutive_stabilize_count: existing.consecutive_stabilize_count });
+      return existing as PlayroomRuntimeRow;
+    }
+    // Init exclusively from snapshot payload — never live playroom_plan
+    const program = Array.isArray(args.snapshotPayload?.therapeutic_program)
+      ? args.snapshotPayload.therapeutic_program
+      : [];
+    const { data: inserted, error: insErr } = await sb
+      .from("did_playroom_runtime_state")
+      .insert({
+        thread_id: args.threadId,
+        owner_user_id: args.ownerUserId,
+        playroom_plan_id: args.planId,
+        phase: "checkin",
+        current_block_index: 0,
+        consecutive_stabilize_count: 0,
+        program_snapshot: program,
+        metadata: { source: "snapshot", initialized_by: "karel-chat" },
+      })
+      .select("id,thread_id,playroom_plan_id,phase,current_block_index,consecutive_stabilize_count,program_snapshot")
+      .maybeSingle();
+    if (insErr) {
+      console.warn("[karel-chat][playroom][runtime] insert failed:", insErr.message);
+      return null;
+    }
+    console.log("[karel-chat][playroom][runtime] initialized:", { thread_id: args.threadId, phase: "checkin", current_block_index: 0, program_blocks: program.length });
+    return inserted as PlayroomRuntimeRow;
+  } catch (e) {
+    console.warn("[karel-chat][playroom][runtime] load/init exception:", e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
+function parsePlayroomProgressTag(text: string): "stay" | "advance" | "fallback" | "stop" | null {
+  const m = /\[PLAYROOM_PROGRESS:(stay|advance|fallback|stop)\]/i.exec(String(text || ""));
+  return m ? (m[1].toLowerCase() as any) : null;
+}
+
+function decidePlayroomTransition(
+  state: PlayroomRuntimeRow,
+  aiTag: "stay" | "advance" | "fallback" | "stop" | null,
+): { phase: string; current_block_index: number; consecutive_stabilize_count: number; overridden: boolean; reason: string; ai_tag: string } {
+  const programLen = Array.isArray(state.program_snapshot) ? state.program_snapshot.length : 0;
+  const isLastBlock = programLen > 0 && state.current_block_index >= programLen - 1;
+  const tag = aiTag ?? "stay";
+  let phase = state.phase;
+  let idx = state.current_block_index;
+  let cnt = state.consecutive_stabilize_count;
+  let overridden = false;
+  let reason = `ai_tag:${tag}`;
+  if (tag === "stop") {
+    phase = "soft_close";
+    cnt = 0;
+  } else if (tag === "advance") {
+    if (isLastBlock) {
+      phase = "soft_close";
+      reason = "advance_at_last_block->soft_close";
+    } else {
+      phase = "program";
+      idx = idx + 1;
+    }
+    cnt = 0;
+  } else {
+    // stay | fallback → stabilize-ish; anti-loop guard caps at 2 in a row
+    const proposed = cnt + 1;
+    if (proposed > 2) {
+      overridden = true;
+      cnt = 0;
+      if (isLastBlock) {
+        phase = "soft_close";
+        reason = `anti_loop:stabilize_>2->soft_close (ai=${tag})`;
+      } else {
+        phase = "program";
+        idx = idx + 1;
+        reason = `anti_loop:stabilize_>2->advance (ai=${tag})`;
+      }
+    } else {
+      phase = "stabilization";
+      cnt = proposed;
+    }
+  }
+  return { phase, current_block_index: idx, consecutive_stabilize_count: cnt, overridden, reason, ai_tag: tag };
+}
+
+async function persistPlayroomRuntimeTransition(
+  rowId: string,
+  next: { phase: string; current_block_index: number; consecutive_stabilize_count: number },
+): Promise<void> {
+  try {
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const patch: any = { ...next };
+    if (next.phase === "soft_close") patch.closed_at = new Date().toISOString();
+    const { error } = await sb.from("did_playroom_runtime_state").update(patch).eq("id", rowId);
+    if (error) console.warn("[karel-chat][playroom][runtime] update failed:", error.message);
+  } catch (e) {
+    console.warn("[karel-chat][playroom][runtime] update exception:", e instanceof Error ? e.message : String(e));
+  }
+}
+
 function hasPlayroomInternalLanguage(output: string) {
   const text = normalizePlayroomText(stripPlayroomProgressMarker(output));
   return /(dalsi bod je|aktualni blok|programovy krok|mekke uzavreni|symbolicka hra|cilem je|karel nabidne|terapeuticky plan|schvaleny program|dostupnost casti|runtime|index|\bblok\b|interni znacka|playroom_progress)/i.test(text);
@@ -355,6 +482,7 @@ serve(async (req) => {
     const lastRequestUserText = normalizeMessageContentForPrompt([...(messages || [])].reverse().find((m: any) => m.role === "user")?.content);
     const requestSafety = detectSafetyMention(lastRequestUserText);
     const isPlayroomMode = didSubMode === "playroom";
+    let playroomRuntimeRow: PlayroomRuntimeRow | null = null;
     const isTherapistLiveSession = mode === "live-session" || didSubMode === "therapist_session" || didSubMode === "session";
     const runtimePacketId = crypto.randomUUID();
     const promptContractVersion = isPlayroomMode
@@ -1305,6 +1433,18 @@ This overrides ALL other language instructions.
         );
       }
       console.log("[karel-chat][playroom] snapshot loaded:", { plan_id: approvedPlayroom.plan_id, version_key: approvedPlayroom.version_key, snapshot_at: approvedPlayroom.snapshot_at, source: approvedPlayroom.source, threadId: didThreadId ?? "(none)" });
+      // Commit 2C: state machine activates only with non-empty didThreadId + known user
+      const playroomThreadIdActive = typeof didThreadId === "string" && didThreadId.trim().length > 0;
+      if (playroomThreadIdActive && requestUserId) {
+        playroomRuntimeRow = await loadOrInitPlayroomRuntimeState({
+          threadId: didThreadId,
+          ownerUserId: requestUserId,
+          planId: approvedPlayroom.plan_id,
+          snapshotPayload: approvedPlayroom.playroom_plan,
+        });
+      } else {
+        console.log("[karel-chat][playroom][runtime] skipped (no threadId or userId): threadId=", didThreadId ?? "(none)", "user=", requestUserId ?? "(none)");
+      }
       const playroomProgramBlock = JSON.stringify({
         plan_id: approvedPlayroom.plan_id,
         program_status: approvedPlayroom.program_status,
@@ -1666,6 +1806,18 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         part_name: didPartName || null,
         metadata: { off_rail: offRail, premature_closing: prematureClosing, passive_drift: passiveDrift, symbolic_escape: symbolicEscape, internal_language: hasPlayroomInternalLanguage(guardedPlayroomResponse), current_block: playroomProgress.current, final_block: playroomProgress.max },
       });
+      // Commit 2C: edge has final authority over phase transition
+      if (playroomRuntimeRow) {
+        const aiTag = parsePlayroomProgressTag(guardedPlayroomResponse);
+        const decision = decidePlayroomTransition(playroomRuntimeRow, aiTag);
+        console.log("[karel-chat][playroom][runtime] transition:", { thread_id: playroomRuntimeRow.thread_id, prev: { phase: playroomRuntimeRow.phase, idx: playroomRuntimeRow.current_block_index, stab: playroomRuntimeRow.consecutive_stabilize_count }, ai_tag: decision.ai_tag, next: { phase: decision.phase, idx: decision.current_block_index, stab: decision.consecutive_stabilize_count }, overridden: decision.overridden, reason: decision.reason });
+        // Fire-and-forget; failure must NOT block the child's response
+        persistPlayroomRuntimeTransition(playroomRuntimeRow.id, {
+          phase: decision.phase,
+          current_block_index: decision.current_block_index,
+          consecutive_stabilize_count: decision.consecutive_stabilize_count,
+        }).catch((e) => console.warn("[karel-chat][playroom][runtime] persist exception:", e instanceof Error ? e.message : String(e)));
+      }
       return streamPlayroomText(childSafePlayroomResponse);
     }
 
