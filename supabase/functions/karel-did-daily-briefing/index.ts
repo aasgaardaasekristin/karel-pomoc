@@ -582,6 +582,129 @@ function isOpenedPartialSessionReview(review: any): boolean {
     || /opened_or_partial_activity_detected|started_partial|safety_net_opened_partial/i.test(JSON.stringify(review?.analysis_json ?? {}));
 }
 
+// P33.x Fix A2 — sémantický rewrite veřejného playroom briefingu.
+// Veřejná pole MUSÍ být klinický briefing pro tým (3. osoba, neinstrukčně).
+// Operativní phrasing („Karel nabídne…", „nezačínat…", „držet…") patří
+// VÝHRADNĚ do `backend_context_inputs.runtime_directive`.
+const lowerFirstCs = (s: string): string => {
+  const text = String(s ?? "").trim();
+  if (!text) return "";
+  return text.charAt(0).toLocaleLowerCase("cs") + text.slice(1);
+};
+
+const stripTrailingPunct = (s: string): string => String(s ?? "").replace(/[\s.;,:]+$/u, "").trim();
+
+const firstClinicalSentence = (value: unknown, max = 240): string => {
+  const cleaned = cleanBlockText(value).replace(/\s+/g, " ");
+  if (!cleaned) return "";
+  const m = cleaned.match(/^[^.!?\n]{12,}[.!?]/);
+  return trimSentence(m ? m[0] : cleaned, max);
+};
+
+export type ClinicalPlayroomBriefing = {
+  why_this_part_today: string;
+  main_theme: string;
+  goals: string[];
+  program_blocks: Array<{ block: string; minutes: number; detail: string }>;
+};
+
+export const buildClinicalPlayroomBriefing = (
+  y: any | null,
+  partName: string,
+  fallback?: { whyToday?: string; realityCorrectionPresent?: boolean },
+): ClinicalPlayroomBriefing => {
+  const partLabel = capitalizePartName(partName);
+  const partGen = partGenitive(String(partName ?? "").trim()) || partLabel;
+
+  const playLabel = y?.is_yesterday
+    ? "Včerejší Herna"
+    : y?.days_since_today === 2
+      ? "Předevčerejší Herna"
+      : y?.session_date_iso
+        ? `Poslední doložená Herna (${formatClinicalDate(y.session_date_iso)}${y?.human_recency_label ? ", " + y.human_recency_label : ""})`
+        : "Předchozí doložená Herna";
+
+  const reportSentence = y ? firstClinicalSentence(y?.practical_report_text) : "";
+  const hypothesisSource = y ? firstClinicalSentence(y?.implications_for_part || y?.detailed_analysis_text) : "";
+  const todaySource = y
+    ? firstClinicalSentence(y?.recommendations_for_next_playroom || y?.recommendations_for_therapists)
+    : firstClinicalSentence(fallback?.whyToday);
+
+  const whyParts: string[] = [];
+  if (y && reportSentence) {
+    whyParts.push(`${playLabel} odkryla, že ${lowerFirstCs(stripTrailingPunct(reportSentence))}.`);
+  } else if (y) {
+    whyParts.push(`${playLabel} přinesla materiál, který je dnes potřeba dál opatrně sledovat.`);
+  } else {
+    whyParts.push(`Část ${partLabel} byla pro dnešní Hernu vybrána ranním klinickým přehledem na základě signálů z posledních dnů.`);
+  }
+  if (hypothesisSource) {
+    whyParts.push(`Karel pracovně rozumí stavu části tak, že ${lowerFirstCs(stripTrailingPunct(hypothesisSource))}.`);
+  } else if (!y) {
+    whyParts.push(`Karel pracovně rozumí stavu části tak, že aktuální klinické signály jsou slabé a vyžadují primárně diagnostické zmapování dostupnosti.`);
+  }
+  if (todaySource) {
+    whyParts.push(`Pro dnešní práci z toho plyne ${lowerFirstCs(stripTrailingPunct(todaySource))}.`);
+  } else {
+    whyParts.push(`Pro dnešní práci z toho plyne potřeba bezpečného nízkoprahového kontaktu bez vynucování témat.`);
+  }
+  const why_this_part_today = sanitizeKarelClinicalText(whyParts.join(" "));
+
+  const main_theme = sanitizeKarelClinicalText(
+    todaySource
+      ? `Klinické ohnisko dne u části ${partLabel}: ${lowerFirstCs(stripTrailingPunct(firstClinicalSentence(todaySource, 160)))}.`
+      : y
+        ? `Klinické ohnisko dne u části ${partLabel}: opatrné zmapování dopadu materiálu z předchozí Herny.`
+        : `Klinické ohnisko dne u části ${partLabel}: diagnostické zmapování aktuální dostupnosti a bezpečí.`,
+  );
+
+  const goals: string[] = [];
+  goals.push(`Ověřit, zda je ${partLabel} dnes tělesně a emočně dostupný/á po materiálu z předchozí Herny.`);
+  if (hypothesisSource) {
+    goals.push(`Sledovat, zda se klinicky potvrzuje pracovní hypotéza, že ${lowerFirstCs(stripTrailingPunct(firstClinicalSentence(hypothesisSource, 160)))}.`);
+  } else {
+    goals.push(`Získat čerstvý klinický materiál, který umožní upřesnit pracovní hypotézu o aktuálním stavu části.`);
+  }
+  if (todaySource) {
+    goals.push(`Vytvořit prostor pro to, co z předchozí Herny vyplynulo: ${lowerFirstCs(stripTrailingPunct(firstClinicalSentence(todaySource, 200)))}.`);
+  } else {
+    goals.push(`Rozlišit u části aktuální zatížení od staršího reziduálního materiálu.`);
+  }
+  goals.push(`Neuzavírat dnes definitivní klinický závěr; ponechat materiál otevřený pro následné review.`);
+
+  const program_blocks: Array<{ block: string; minutes: number; detail: string }> = [
+    {
+      block: "Otevření prostoru",
+      minutes: 4,
+      detail: `Diagnostické okno pro aktuální dostupnost ${partGen}; sleduje se způsob, jakým se část samovolně přihlašuje k dnešnímu dni a kontaktu, bez výkladu za ni.`,
+    },
+    {
+      block: "Tělesná a emoční mapa",
+      minutes: 6,
+      detail: `Krátké klinické zmapování aktuálního tělesného a emočního stavu části. Terapeutický význam — odlišit aktuální zatížení od reziduálního materiálu z předchozí Herny.`,
+    },
+    {
+      block: "Doložený zdroj se souhlasem části",
+      minutes: 7,
+      detail: `Prostor pro materiál z předchozí Herny pouze tehdy, pokud ho část sama přinese. Sleduje se, zda dříve doložený zdroj nadále drží funkci bezpečí, nebo zda se jeho význam pro část mění.`,
+    },
+    {
+      block: "Návaznost na pracovní hypotézu",
+      minutes: 5,
+      detail: hypothesisSource
+        ? `Klinické okno pro to, jak část reaguje na téma odpovídající pracovní hypotéze (${lowerFirstCs(stripTrailingPunct(firstClinicalSentence(hypothesisSource, 140)))}). Bez tlaku na výkon, bez interpretace za část.`
+        : `Klinické okno pro to, jak část reaguje na téma vyplývající z předchozí Herny. Bez tlaku na výkon, bez interpretace za část.`,
+    },
+    {
+      block: "Stabilizační uzavírací rámec",
+      minutes: 3,
+      detail: `Stabilizační závěr. Terapeutický význam — uzavřít diagnostické okno tak, aby zůstal otevřený materiál pro následné klinické review, ne pro otevírání nových témat.`,
+    },
+  ];
+
+  return { why_this_part_today, main_theme, goals: goals.slice(0, 4), program_blocks };
+};
+
 const buildMandatoryPlayroomProposal = (payload: any, context: any, candidates: Array<{ part_name: string; score: number; reasons: string[] }>) => {
   const entries = operationalContextEntries(context);
   const realitySummary = summarizeRealityCorrections(entries);
@@ -589,41 +712,35 @@ const buildMandatoryPlayroomProposal = (payload: any, context: any, candidates: 
   const whyToday = cleanBlockText(payload?.proposed_session?.why_today)
     || cleanBlockText(candidates?.[0]?.reasons?.join(", "))
     || cleanBlockText(context?.last_3_days)
-    || "Ranní přehled musí každý den připravit samostatnou Hernu; aktuální signály jsou slabé, proto volím bezpečný nízkoprahový diagnosticko-terapeutický program.";
-  // P33.x Fix A: why_this_part_today musí být čistý klinický důvod pro UI/terapeuty.
-  // Provozní směrnice (realitySummary, instrukce „držet…", „ověřit…") se NIKDY
-  // nelepí do veřejného pole — patří jen do neveřejného runtime_directive.
-  const runtimeDirective = realitySummary
-    ? `${realitySummary} Pokud se téma samo objeví, držet ho jako skutečnou událost a emoční kontext; nejprve ověřit, co část sama ví, co cítí a co potřebuje.`.trim()
-    : "";
+    || "";
+
+  // P33.x Fix A2: i fallback bez review musí mít VEŘEJNĚ klinický briefing.
+  // Operativní instrukce („držet…", „ověřit…", „Karel nabídne…") žijí pouze
+  // v neveřejném runtime_directive.
+  const clinical = buildClinicalPlayroomBriefing(null, selectedPart, { whyToday, realityCorrectionPresent: !!realitySummary });
+
+  const runtimeDirectiveParts: string[] = [];
+  if (realitySummary) {
+    runtimeDirectiveParts.push(`${realitySummary} Pokud se téma samo objeví, držet ho jako skutečnou událost a emoční kontext; nejprve ověřit, co část sama ví, co cítí a co potřebuje.`);
+  }
+  runtimeDirectiveParts.push("Karel vede Hernu nízkoprahově: nabízí volbu mezi slovem, symbolem a tichem; nezačíná přímým dotazem na traumatický materiál; držet krátký, předvídatelný rámec a měkké zakončení; ukončit při stop signálu.");
 
   return {
     part_name: selectedPart,
     status: "awaiting_therapist_review",
-    why_this_part_today: whyToday,
-    backend_context_inputs: runtimeDirective ? { runtime_directive: runtimeDirective } : {},
-    main_theme: realitySummary ? "Bezpečný kontakt s real-world kontextem bez interpretace za kluky" : `Bezpečný kontakt a zmapování toho, co ${selectedPart} dnes unese`,
+    why_this_part_today: clinical.why_this_part_today,
+    main_theme: clinical.main_theme,
+    backend_context_inputs: { runtime_directive: runtimeDirectiveParts.join(" ").trim() },
     evidence_sources: ["ranní briefing", "poslední tři dny", "kandidáti dnešního sezení"],
-    goals: [
-      "navázat kontakt bez tlaku na výkon",
-      "rozlišit aktuální bezpečí, ochotu a únavu části",
-      "získat konkrétní materiál pro následné klinické review",
-      "ukončit včas při zahlcení nebo stažení",
-    ],
+    goals: clinical.goals,
     playroom_plan: {
-      therapeutic_program: [
-        { block: "Bezpečný práh", minutes: 3, detail: "Karel nabídne odpověď slovem, symbolem nebo tichem; cílem je zjistit dostupnost části, ne vynutit výkon." },
-        { block: "Vnitřní počasí", minutes: 6, detail: realitySummary ? "Část může říct, co o reálné situaci sama ví, co cítí v těle a co potřebuje; Karel nic nevyvozuje za ni." : "Část vybere barvu, obraz nebo jedno slovo pro dnešní stav. Karel sleduje konkrétnost, vyhýbání a toleranci kontaktu." },
-        { block: "Symbolická postava", minutes: 8, detail: "Krátká bezpečná imaginativní hra s jednou postavou nebo předmětem, bez otevírání traumatické paměti." },
-        { block: "Jeden malý krok", minutes: 5, detail: "Karel hledá jeden zvládnutelný krok pro tělo, klid nebo kontakt; bez slibů a bez konfrontace." },
-        { block: "Měkké uzavření", minutes: 3, detail: "Karel shrne slyšené, nabídne zakotvení a označí podklady pro review." },
-      ],
-      child_safe_version: "Dnes si spolu opatrně zkusíme, jaké je uvnitř počasí, kdo tam je poblíž a co by pomohlo, aby toho nebylo moc.",
-      micro_steps: ["zvolit způsob odpovědi", "pojmenovat obraz nebo barvu", "nechat symbol něco říct", "vybrat jeden pomocný krok", "společně hru zavřít"],
-      expected_child_reactions: ["krátké odpovědi", "nejistota", "odmítnutí tématu", "zájem o symbol", "únava"],
-      recommended_karel_responses: ["zpomalit", "nabídnout volbu", "potvrdit právo neodpovědět", "držet symbolickou rovinu", "ukončit při stop signálu"],
+      therapeutic_program: clinical.program_blocks,
+      // child_safe_version a forbidden_directions jsou operativní vrstva pro
+      // Karla → patří do runtime_directive, ne do veřejného UI; necháváme je
+      // v plánu jako technická metadata jen tehdy, pokud je render schopen
+      // odlišit veřejné/runtime — fallback je zde prázdný seznam.
+      forbidden_directions: [],
       risks_and_stop_signals: ["náhlé stažení", "zmatek v čase nebo místě", "somatické zhoršení", "tlak na tajemství", "výrazné odpojení"],
-      forbidden_directions: ["nevynucovat vzpomínky", "neinterpretovat externí real-world událost jako symbol/projekci/diagnostický signál bez reakce části", "neinterpretovat kresbu jako diagnózu bez review", "neeskalovat trauma", "nepokračovat přes stop signál"],
       runtime_packet_seed: { source: "mandatory_backend_fallback" },
     },
     questions_for_hanka: ["Je dnes pro tuto část bezpečnější krátká Herna vedená Karlem, nebo má být Hanička fyzicky poblíž?"],
