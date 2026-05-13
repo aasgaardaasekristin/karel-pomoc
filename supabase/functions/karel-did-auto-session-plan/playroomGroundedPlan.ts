@@ -503,18 +503,54 @@ export async function buildPlayroomPlanGrounded(opts: {
         continue;
       }
 
-      // Decorate plan with provenance + meta
+      // Decorate plan with provenance + meta (P33.11 KROK 3 — conditions B + C)
+      const tokens = summary.groundingTokens;
+      const dataSufficiency: "low" | "medium" | "high" =
+        tokens.length === 0 ? "low" : tokens.length < 4 ? "medium" : "high";
+      const effectiveStatus: "grounded" | "weakly_grounded" =
+        tokens.length === 0 ? "weakly_grounded" : "grounded";
+
+      // Per-block provenance audit
+      const sourcesUsedBySource = new Set<string>(
+        gather.sourceRefs.filter((r) => r.ok).map((r) => r.source),
+      );
+      const blocks = parsed.therapeutic_program as any[];
+      for (const b of blocks) {
+        const composite = [
+          String(b?.title ?? ""),
+          String(b?.child_facing_prompt_draft ?? ""),
+          String(b?.play_metaphor ?? ""),
+          String(b?.why_for_this_part ?? ""),
+          String(b?.why_today ?? ""),
+          String(b?.clinical_intent ?? ""),
+        ].join(" \n ").toLowerCase();
+        const groundingHits = tokens.filter((tok) => composite.includes(tok));
+        const whichSourcesUsed: string[] = [];
+        if (sourcesUsedBySource.has("did_part_registry")) whichSourcesUsed.push("registry");
+        if (sourcesUsedBySource.has("did_active_part_daily_brief")) whichSourcesUsed.push("brief");
+        if (sourcesUsedBySource.has("did_session_reviews")) whichSourcesUsed.push("last_session");
+        if (sourcesUsedBySource.has("hana_personal_memory")) whichSourcesUsed.push("hana");
+        b.provenance = {
+          which_sources_used: whichSourcesUsed,
+          grounding_hits: groundingHits,
+          derived_from: groundingHits.length > 0
+            ? `odvozeno z: ${whichSourcesUsed.join(", ")} — kotveno přes [${groundingHits.join(", ")}]`
+            : `odvozeno z: ${whichSourcesUsed.join(", ") || "fallback"} (bez konkrétního kotvícího tokenu)`,
+        };
+      }
+
       parsed.version = "playroom_plan_grounded_v1";
       parsed.part_name = opts.partName;
       parsed.date = opts.todayPrague;
       parsed.readiness_today = opts.readiness;
       parsed.meta = {
-        source_status: "grounded",
+        source_status: effectiveStatus,
+        data_sufficiency: dataSufficiency,
         sources_used: gather.sourceRefs,
-        grounding_tokens_available: summary.groundingTokens,
+        grounding_tokens_available: tokens,
         generator: "playroomGroundedPlan@v1",
       };
-      return { status: "grounded", plan: parsed, sourcesUsed: gather.sourceRefs, summary, attempts, rawAi: raw };
+      return { status: effectiveStatus, plan: parsed, sourcesUsed: gather.sourceRefs, summary, attempts, rawAi: raw };
     } catch (e) {
       lastReason = `exception: ${(e as Error).message}`;
     }
