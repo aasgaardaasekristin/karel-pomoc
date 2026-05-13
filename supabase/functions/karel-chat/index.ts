@@ -357,9 +357,12 @@ function playroomOutputFollowsRuntimeStep(output: string, runtimeContext?: strin
   return keywords.length === 0 || keywords.some((word) => haystack.includes(word));
 }
 
-function buildPlayroomRailReply(runtimeContext: string | null | undefined, childName?: string | null, lastInput?: string | null) {
+function buildPlayroomRailReply(runtimeContext: string | null | undefined, childName?: string | null, lastInput?: string | null, approvedStep?: any) {
   const normalizedInput = normalizePlayroomText(lastInput || "");
   const childAddress = (childName || "").toLocaleUpperCase("cs-CZ") === "TUNDRUPEK" ? "Tundrupku" : (childName || "");
+  const approvedPrompt = (approvedStep && typeof approvedStep === "object" && typeof approvedStep.child_facing_prompt_draft === "string")
+    ? approvedStep.child_facing_prompt_draft.trim()
+    : "";
   const stepText = normalizePlayroomText(`${extractPlayroomCurrentBlockTitle(runtimeContext)} ${extractPlayroomCurrentProgramPrompt(runtimeContext)}`);
   const attune = /^(a|a\)|slovo)$/i.test(normalizedInput)
     ? "Dob\u0159e, beru jedno mal\u00e9 slovo."
