@@ -300,56 +300,15 @@ function decidePlayroomTransition(
 }
 
 // ─── P33.11 STEP 2 — Opening Gate (intelligent PHASE 0) ─────────────
-export type OpeningGateOutput = {
-  child_present: boolean;
-  probable_match: "yes" | "unclear" | "no";
-  baseline: "ready" | "fragile" | "unsafe";
-  can_start_program_now: boolean;
-  attune_text: string;
-  next_micro_step: string;
-  soft_close_text: string;
-  reason: string;
-};
-
-export type OpeningGateDecision = {
-  phase: "program" | "stabilization" | "soft_close" | "checkin";
-  reason: string;
-};
-
-/**
- * Pure mapping gate output → next phase.
- * Contract (P33.11 STEP 2):
- *   - probable_match=no OR baseline=unsafe          → soft_close
- *   - can_start_program_now=true AND baseline=ready → program
- *   - baseline=fragile                              → stabilization (re-evaluate next turn)
- *   - else                                          → checkin (multi-turn opening gate)
- *
- * Anti-loop: if previous phase was already "stabilization" twice in a row and
- * baseline is still fragile (not unsafe), allow ONE more stabilization, then
- * the next stuck turn must drop into soft_close (caller enforces via
- * consecutive_stabilize_count, mirroring decidePlayroomTransition guard).
- */
-export function decideOpeningGateNextPhase(
-  gate: OpeningGateOutput,
-  consecutiveStabilizeCount = 0,
-): OpeningGateDecision {
-  if (gate.probable_match === "no") {
-    return { phase: "soft_close", reason: "probable_match=no → no contact / mismatch" };
-  }
-  if (gate.baseline === "unsafe") {
-    return { phase: "soft_close", reason: "baseline=unsafe → defer / soft close" };
-  }
-  if (gate.can_start_program_now === true && gate.baseline === "ready" && gate.child_present === true && gate.probable_match !== "unclear") {
-    return { phase: "program", reason: "gate=READY → enter approved program" };
-  }
-  if (gate.baseline === "fragile") {
-    if (consecutiveStabilizeCount >= 2) {
-      return { phase: "soft_close", reason: "anti_loop: fragile after 2 stabilize turns → soft close" };
-    }
-    return { phase: "stabilization", reason: "baseline=fragile → one micro-step, then re-evaluate" };
-  }
-  return { phase: "checkin", reason: "gate not yet conclusive → stay in opening gate" };
-}
+// Pure decision helper lives in ./openingGate.ts so it can be unit-tested
+// without booting the full edge-function module.
+import {
+  decideOpeningGateNextPhase,
+  type OpeningGateDecision,
+  type OpeningGateOutput,
+} from "./openingGate.ts";
+export { decideOpeningGateNextPhase };
+export type { OpeningGateDecision, OpeningGateOutput };
 
 /**
  * Calls the AI gateway with a constrained JSON schema to evaluate the child's
