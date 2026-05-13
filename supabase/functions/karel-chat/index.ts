@@ -1432,6 +1432,18 @@ This overrides ALL other language instructions.
         );
       }
       console.log("[karel-chat][playroom] snapshot loaded:", { plan_id: approvedPlayroom.plan_id, version_key: approvedPlayroom.version_key, snapshot_at: approvedPlayroom.snapshot_at, source: approvedPlayroom.source, threadId: didThreadId ?? "(none)" });
+      // Commit 2C: state machine activates only with non-empty didThreadId + known user
+      const playroomThreadIdActive = typeof didThreadId === "string" && didThreadId.trim().length > 0;
+      if (playroomThreadIdActive && requestUserId) {
+        playroomRuntimeRow = await loadOrInitPlayroomRuntimeState({
+          threadId: didThreadId,
+          ownerUserId: requestUserId,
+          planId: approvedPlayroom.plan_id,
+          snapshotPayload: approvedPlayroom.playroom_plan,
+        });
+      } else {
+        console.log("[karel-chat][playroom][runtime] skipped (no threadId or userId): threadId=", didThreadId ?? "(none)", "user=", requestUserId ?? "(none)");
+      }
       const playroomProgramBlock = JSON.stringify({
         plan_id: approvedPlayroom.plan_id,
         program_status: approvedPlayroom.program_status,
