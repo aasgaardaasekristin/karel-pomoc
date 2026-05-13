@@ -173,6 +173,7 @@ const explicitStepPrompt = (step: any) => childSafe(step?.child_facing_prompt_dr
 
 const buildRailReply = (plan: PlayroomPlanRow | null, progress: PlayroomProgressState, childAddress: string, lastUserText: string) => {
   const step = currentStepForThread(plan, null, progress);
+  const approvedPrompt = (step?.child_facing_prompt_draft || "").trim();
   const stepText = `${step?.title || ""} ${step?.method || ""} ${step?.detail || ""} ${step?.child_facing_prompt_draft || ""} ${step?.karel_response_strategy || ""}`.toLocaleLowerCase("cs-CZ");
   const normalizedInput = lastUserText.trim().toLocaleLowerCase("cs-CZ");
   const attune = /^(a|a\)|slovo)$/i.test(normalizedInput)
@@ -188,6 +189,11 @@ const buildRailReply = (plan: PlayroomPlanRow | null, progress: PlayroomProgress
     : /bl[íi]zko|u tebe|se mnou/i.test(lastUserText)
       ? "Slyším, že mám být blízko, a zůstávám tady s tebou."
       : "Slyším tě a beru to jako odpověď na náš krok.";
+  // STEP 1 (P33.11): if approved child_facing_prompt_draft exists, use it as rail reply.
+  const blockIdx = Math.max(0, progress?.currentBlockIndex || 0);
+  if (approvedPrompt) {
+    return `${attune} ${childAddress}, ${approvedPrompt} [PHASE: PROGRAM] [BLOCK: ${blockIdx + 1}] [SOURCE: approved child_facing_prompt_draft (rail reply)]`;
+  }
   const childStep = /^(a|a\)|slovo)$/i.test(normalizedInput)
     ? "Teď mi pošli to jedno konkrétní slovo. Může být třeba: domov, světlo, křídla, klid — nebo úplně jiné."
     : /^(b|b\)|symbol|emoji)$/i.test(normalizedInput)
@@ -205,7 +211,7 @@ const buildRailReply = (plan: PlayroomPlanRow | null, progress: PlayroomProgress
         : /počasí|teplo|chlad|sluníčko|vločka/i.test(stepText)
           ? "Zůstaneme jen u toho, jaké to tam uvnitř je. Vyber si: A) sluníčko, B) vločka, C) nevím."
           : "Nekončíme narychlo, zůstaneme jen u jednoho malého kousku. Vyber si: A) jedno slovo, B) jeden symbol, C) ticho a já budu blízko.";
-  return `${attune} ${childAddress}, ${childStep}`;
+  return `${attune} ${childAddress}, ${childStep} [PHASE: PROGRAM] [BLOCK: ${blockIdx + 1}] [SOURCE: fallback rail reply used]`;
 };
 
 const responseFollowsCurrentStep = (assistantText: string, plan: PlayroomPlanRow | null, progress: PlayroomProgressState) => {
