@@ -1,7 +1,7 @@
 // P33.11 STEP 2 — Opening Gate decision contract tests.
 // Pure helper: maps gate output → next phase. No AI, no network.
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { decideOpeningGateNextPhase, type OpeningGateOutput } from "./index.ts";
+import { decideOpeningGateNextPhase, type OpeningGateOutput } from "./openingGate.ts";
 
 const base = (): OpeningGateOutput => ({
   child_present: true,
