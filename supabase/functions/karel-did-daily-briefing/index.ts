@@ -973,6 +973,7 @@ function injectPlayroomReviewIntoProposal(payload: any) {
     used_yesterday_playroom_review: true,
     practical_report_excerpt: sanitizeKarelClinicalText(report).slice(0, 1200),
     next_playroom_recommendation_excerpt: sanitizeKarelClinicalText(next).slice(0, 1200),
+    runtime_directive: [pp.backend_context_inputs?.runtime_directive, injectedDirective].filter(Boolean).join(" ").trim(),
   };
   const seed = pp.playroom_plan?.runtime_packet_seed && typeof pp.playroom_plan.runtime_packet_seed === "object" ? pp.playroom_plan.runtime_packet_seed : {};
   pp.playroom_plan = {
