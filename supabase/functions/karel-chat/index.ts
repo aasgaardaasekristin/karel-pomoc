@@ -396,12 +396,17 @@ function buildPlayroomRailReply(runtimeContext: string | null | undefined, child
         : /pocasi|teplo|chlad|slunicko|vlocka/i.test(stepText)
           ? "Z\u016fstaneme jen u toho, jak\u00e9 to tam uvnit\u0159 je. Vyber si: A) slun\u00ed\u010dko, B) vlo\u010dka, C) nev\u00edm."
           : "Nekon\u010d\u00edme narychlo, z\u016fstaneme jen u jednoho mal\u00e9ho kousku. Vyber si: A) jedno slovo, B) jeden symbol, C) ticho a j\u00e1 budu bl\u00edzko.";
+  // STEP 1 (P33.11): if approved child_facing_prompt_draft exists for current block,
+  // it MUST be the rail reply — hardcoded sluníčko/vločka stays as last-resort fallback.
+  if (approvedPrompt) {
+    return `${attune}${childAddress ? ` ${childAddress},` : ""} ${approvedPrompt} [PLAYROOM_PROGRESS:stay]`;
+  }
   return `${attune}${childAddress ? ` ${childAddress},` : ""} ${childStep} [PLAYROOM_PROGRESS:stay]`;
 }
 
-function sanitizePlayroomChildVisibleText(output: string, runtimeContext?: string | null, childName?: string | null, lastInput?: string | null) {
+function sanitizePlayroomChildVisibleText(output: string, runtimeContext?: string | null, childName?: string | null, lastInput?: string | null, approvedStep?: any) {
   if (!hasPlayroomInternalLanguage(output)) return output;
-  return buildPlayroomRailReply(runtimeContext, childName, lastInput);
+  return buildPlayroomRailReply(runtimeContext, childName, lastInput, approvedStep);
 }
 
 function isExplicitPlayroomContinuationRequest(input: string) {
