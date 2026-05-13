@@ -357,9 +357,12 @@ function playroomOutputFollowsRuntimeStep(output: string, runtimeContext?: strin
   return keywords.length === 0 || keywords.some((word) => haystack.includes(word));
 }
 
-function buildPlayroomRailReply(runtimeContext: string | null | undefined, childName?: string | null, lastInput?: string | null) {
+function buildPlayroomRailReply(runtimeContext: string | null | undefined, childName?: string | null, lastInput?: string | null, approvedStep?: any) {
   const normalizedInput = normalizePlayroomText(lastInput || "");
   const childAddress = (childName || "").toLocaleUpperCase("cs-CZ") === "TUNDRUPEK" ? "Tundrupku" : (childName || "");
+  const approvedPrompt = (approvedStep && typeof approvedStep === "object" && typeof approvedStep.child_facing_prompt_draft === "string")
+    ? approvedStep.child_facing_prompt_draft.trim()
+    : "";
   const stepText = normalizePlayroomText(`${extractPlayroomCurrentBlockTitle(runtimeContext)} ${extractPlayroomCurrentProgramPrompt(runtimeContext)}`);
   const attune = /^(a|a\)|slovo)$/i.test(normalizedInput)
     ? "Dob\u0159e, beru jedno mal\u00e9 slovo."
@@ -393,12 +396,17 @@ function buildPlayroomRailReply(runtimeContext: string | null | undefined, child
         : /pocasi|teplo|chlad|slunicko|vlocka/i.test(stepText)
           ? "Z\u016fstaneme jen u toho, jak\u00e9 to tam uvnit\u0159 je. Vyber si: A) slun\u00ed\u010dko, B) vlo\u010dka, C) nev\u00edm."
           : "Nekon\u010d\u00edme narychlo, z\u016fstaneme jen u jednoho mal\u00e9ho kousku. Vyber si: A) jedno slovo, B) jeden symbol, C) ticho a j\u00e1 budu bl\u00edzko.";
+  // STEP 1 (P33.11): if approved child_facing_prompt_draft exists for current block,
+  // it MUST be the rail reply — hardcoded sluníčko/vločka stays as last-resort fallback.
+  if (approvedPrompt) {
+    return `${attune}${childAddress ? ` ${childAddress},` : ""} ${approvedPrompt} [PLAYROOM_PROGRESS:stay]`;
+  }
   return `${attune}${childAddress ? ` ${childAddress},` : ""} ${childStep} [PLAYROOM_PROGRESS:stay]`;
 }
 
-function sanitizePlayroomChildVisibleText(output: string, runtimeContext?: string | null, childName?: string | null, lastInput?: string | null) {
+function sanitizePlayroomChildVisibleText(output: string, runtimeContext?: string | null, childName?: string | null, lastInput?: string | null, approvedStep?: any) {
   if (!hasPlayroomInternalLanguage(output)) return output;
-  return buildPlayroomRailReply(runtimeContext, childName, lastInput);
+  return buildPlayroomRailReply(runtimeContext, childName, lastInput, approvedStep);
 }
 
 function isExplicitPlayroomContinuationRequest(input: string) {
@@ -1785,12 +1793,28 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
       const passiveDrift = isPassivePlayroomDrift(rawPlayroomResponse);
       const symbolicEscape = isSymbolicEscapeWithoutAnchor(rawPlayroomResponse);
       const hardReplaceNeeded = prematureClosing || symbolicEscape || hasPlayroomInternalLanguage(rawPlayroomResponse);
-      const guardedPlayroomResponse = mustStayOnRails && hardReplaceNeeded
-        ? buildPlayroomRailReply(runtimeContext, didPartName, lastPlayroomInput)
+      // STEP 1 (P33.11): pull approved step from runtime snapshot — single source of truth.
+      const approvedStep = (playroomRuntimeRow && Array.isArray(playroomRuntimeRow.program_snapshot))
+        ? playroomRuntimeRow.program_snapshot[playroomRuntimeRow.current_block_index] || null
+        : null;
+      const blockIdxForProof = playroomRuntimeRow?.current_block_index ?? 0;
+      const phaseForProof = (playroomRuntimeRow?.phase || "program").toString().toUpperCase();
+      const usedRailReply = mustStayOnRails && hardReplaceNeeded;
+      const guardedPlayroomResponse = usedRailReply
+        ? buildPlayroomRailReply(runtimeContext, didPartName, lastPlayroomInput, approvedStep)
         : rawPlayroomResponse.includes("[PLAYROOM_PROGRESS:")
           ? rawPlayroomResponse
           : `${rawPlayroomResponse.trim()} [PLAYROOM_PROGRESS:stay]`;
-      const childSafePlayroomResponse = sanitizePlayroomChildVisibleText(guardedPlayroomResponse, runtimeContext, didPartName, lastPlayroomInput);
+      const sanitized = sanitizePlayroomChildVisibleText(guardedPlayroomResponse, runtimeContext, didPartName, lastPlayroomInput, approvedStep);
+      const sanitizerReplaced = sanitized !== guardedPlayroomResponse;
+      // STEP 1 visible proof (temporary debug instrumentation):
+      const proofSource = (usedRailReply || sanitizerReplaced)
+        ? (approvedStep && typeof approvedStep === "object" && typeof approvedStep.child_facing_prompt_draft === "string" && approvedStep.child_facing_prompt_draft.trim()
+            ? "approved child_facing_prompt_draft (rail reply)"
+            : "fallback rail reply used")
+        : "ai output (approved program in context)";
+      const proofTag = ` [PHASE: ${phaseForProof}] [BLOCK: ${blockIdxForProof + 1}] [SOURCE: ${proofSource}]`;
+      const childSafePlayroomResponse = sanitized + proofTag;
       if (canWriteRuntimeAudit) await writeRuntimeAudit({
         user_id: requestUserId,
         runtime_packet_id: runtimePacketId,
@@ -1804,14 +1828,13 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         evaluation_status: offRail || prematureClosing || passiveDrift || symbolicEscape || hasPlayroomInternalLanguage(guardedPlayroomResponse) ? "playroom_rail_guard_replaced" : "playroom_rail_guard_passed",
         request_mode: mode,
         part_name: didPartName || null,
-        metadata: { off_rail: offRail, premature_closing: prematureClosing, passive_drift: passiveDrift, symbolic_escape: symbolicEscape, internal_language: hasPlayroomInternalLanguage(guardedPlayroomResponse), current_block: playroomProgress.current, final_block: playroomProgress.max },
+        metadata: { off_rail: offRail, premature_closing: prematureClosing, passive_drift: passiveDrift, symbolic_escape: symbolicEscape, internal_language: hasPlayroomInternalLanguage(guardedPlayroomResponse), current_block: playroomProgress.current, final_block: playroomProgress.max, p33_11_proof_source: proofSource, p33_11_phase: phaseForProof, p33_11_block_index: blockIdxForProof },
       });
       // Commit 2C: edge has final authority over phase transition
       if (playroomRuntimeRow) {
         const aiTag = parsePlayroomProgressTag(guardedPlayroomResponse);
         const decision = decidePlayroomTransition(playroomRuntimeRow, aiTag);
         console.log("[karel-chat][playroom][runtime] transition:", { thread_id: playroomRuntimeRow.thread_id, prev: { phase: playroomRuntimeRow.phase, idx: playroomRuntimeRow.current_block_index, stab: playroomRuntimeRow.consecutive_stabilize_count }, ai_tag: decision.ai_tag, next: { phase: decision.phase, idx: decision.current_block_index, stab: decision.consecutive_stabilize_count }, overridden: decision.overridden, reason: decision.reason });
-        // Fire-and-forget; failure must NOT block the child's response
         persistPlayroomRuntimeTransition(playroomRuntimeRow.id, {
           phase: decision.phase,
           current_block_index: decision.current_block_index,
