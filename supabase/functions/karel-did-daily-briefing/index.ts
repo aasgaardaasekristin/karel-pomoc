@@ -590,14 +590,18 @@ const buildMandatoryPlayroomProposal = (payload: any, context: any, candidates: 
     || cleanBlockText(candidates?.[0]?.reasons?.join(", "))
     || cleanBlockText(context?.last_3_days)
     || "Ranní přehled musí každý den připravit samostatnou Hernu; aktuální signály jsou slabé, proto volím bezpečný nízkoprahový diagnosticko-terapeutický program.";
-  const framedWhyToday = realitySummary
-    ? `${realitySummary} Pokud se téma samo objeví, držet ho jako skutečnou událost a emoční kontext; nejprve ověřit, co část sama ví, co cítí a co potřebuje. ${whyToday}`.trim()
-    : whyToday;
+  // P33.x Fix A: why_this_part_today musí být čistý klinický důvod pro UI/terapeuty.
+  // Provozní směrnice (realitySummary, instrukce „držet…", „ověřit…") se NIKDY
+  // nelepí do veřejného pole — patří jen do neveřejného runtime_directive.
+  const runtimeDirective = realitySummary
+    ? `${realitySummary} Pokud se téma samo objeví, držet ho jako skutečnou událost a emoční kontext; nejprve ověřit, co část sama ví, co cítí a co potřebuje.`.trim()
+    : "";
 
   return {
     part_name: selectedPart,
     status: "awaiting_therapist_review",
-    why_this_part_today: framedWhyToday,
+    why_this_part_today: whyToday,
+    backend_context_inputs: runtimeDirective ? { runtime_directive: runtimeDirective } : {},
     main_theme: realitySummary ? "Bezpečný kontakt s real-world kontextem bez interpretace za kluky" : `Bezpečný kontakt a zmapování toho, co ${selectedPart} dnes unese`,
     evidence_sources: ["ranní briefing", "poslední tři dny", "kandidáti dnešního sezení"],
     goals: [
@@ -948,7 +952,14 @@ function injectPlayroomReviewIntoProposal(payload: any) {
   const playPrefix = recencyIntro(y, "playroom");
   const playLabel = y.is_yesterday ? "včerejší Hernu" : y.days_since_today === 2 ? "předevčerejší Hernu" : `poslední Hernu z ${formatClinicalDate(y.session_date_iso)}, ${y.human_recency_label}`;
   pp.evidence_sources = Array.from(new Set([...(Array.isArray(pp.evidence_sources) ? pp.evidence_sources : []), `${y.visible_label ?? "Poslední Herna"} — PRAKTICKÝ REPORT`, `${y.visible_label ?? "Poslední Herna"} — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ`]));
-  pp.why_this_part_today = sanitizeKarelClinicalText(`${playPrefix} Dnešní návrh nenavazuje automaticky; vychází z ${playLabel} a začíná novým bezpečným check-inem. Symboly z tohoto materiálu používat primárně s ${y.part_name || pp.part_name || "touto částí"} a jen tehdy, pokud je část sama přinese nebo na ně klidně reaguje; u ostatních částí je nepřenášet automaticky. ${cleanBlockText(pp.why_this_part_today)}`);
+  // P33.x Fix A: why_this_part_today zůstává čistý klinický důvod (žádné slepování
+  // s provozními instrukcemi). Operační směrnice se ukládají do
+  // backend_context_inputs.runtime_directive (neveřejné pole).
+  const existingWhy = cleanBlockText(pp.why_this_part_today);
+  pp.why_this_part_today = sanitizeKarelClinicalText(
+    existingWhy || `${playPrefix} Dnešní návrh navazuje na ${playLabel} a začíná novým bezpečným check-inem.`
+  );
+  const injectedDirective = `${playPrefix} Dnešní návrh nenavazuje automaticky; vychází z ${playLabel} a začíná novým bezpečným check-inem. Symboly z tohoto materiálu používat primárně s ${y.part_name || pp.part_name || "touto částí"} a jen tehdy, pokud je část sama přinese nebo na ně klidně reaguje; u ostatních částí je nepřenášet automaticky.`;
   pp.main_theme = `Jemný check-in bezpečného místa a dnešního vnitřního počasí, ne automatické pokračování hluboké symbolické práce`;
   pp.goals = Array.from(new Set([
     "ověřit dnešní tělesnou a emoční dostupnost bez tlaku",
@@ -962,6 +973,7 @@ function injectPlayroomReviewIntoProposal(payload: any) {
     used_yesterday_playroom_review: true,
     practical_report_excerpt: sanitizeKarelClinicalText(report).slice(0, 1200),
     next_playroom_recommendation_excerpt: sanitizeKarelClinicalText(next).slice(0, 1200),
+    runtime_directive: [pp.backend_context_inputs?.runtime_directive, injectedDirective].filter(Boolean).join(" ").trim(),
   };
   const seed = pp.playroom_plan?.runtime_packet_seed && typeof pp.playroom_plan.runtime_packet_seed === "object" ? pp.playroom_plan.runtime_packet_seed : {};
   pp.playroom_plan = {
