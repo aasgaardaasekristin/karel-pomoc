@@ -299,6 +299,140 @@ function decidePlayroomTransition(
   return { phase, current_block_index: idx, consecutive_stabilize_count: cnt, overridden, reason, ai_tag: tag };
 }
 
+// ─── P33.11 STEP 2 — Opening Gate (intelligent PHASE 0) ─────────────
+export type OpeningGateOutput = {
+  child_present: boolean;
+  probable_match: "yes" | "unclear" | "no";
+  baseline: "ready" | "fragile" | "unsafe";
+  can_start_program_now: boolean;
+  attune_text: string;
+  next_micro_step: string;
+  soft_close_text: string;
+  reason: string;
+};
+
+export type OpeningGateDecision = {
+  phase: "program" | "stabilization" | "soft_close" | "checkin";
+  reason: string;
+};
+
+/**
+ * Pure mapping gate output → next phase.
+ * Contract (P33.11 STEP 2):
+ *   - probable_match=no OR baseline=unsafe          → soft_close
+ *   - can_start_program_now=true AND baseline=ready → program
+ *   - baseline=fragile                              → stabilization (re-evaluate next turn)
+ *   - else                                          → checkin (multi-turn opening gate)
+ *
+ * Anti-loop: if previous phase was already "stabilization" twice in a row and
+ * baseline is still fragile (not unsafe), allow ONE more stabilization, then
+ * the next stuck turn must drop into soft_close (caller enforces via
+ * consecutive_stabilize_count, mirroring decidePlayroomTransition guard).
+ */
+export function decideOpeningGateNextPhase(
+  gate: OpeningGateOutput,
+  consecutiveStabilizeCount = 0,
+): OpeningGateDecision {
+  if (gate.probable_match === "no") {
+    return { phase: "soft_close", reason: "probable_match=no → no contact / mismatch" };
+  }
+  if (gate.baseline === "unsafe") {
+    return { phase: "soft_close", reason: "baseline=unsafe → defer / soft close" };
+  }
+  if (gate.can_start_program_now === true && gate.baseline === "ready" && gate.child_present === true && gate.probable_match !== "unclear") {
+    return { phase: "program", reason: "gate=READY → enter approved program" };
+  }
+  if (gate.baseline === "fragile") {
+    if (consecutiveStabilizeCount >= 2) {
+      return { phase: "soft_close", reason: "anti_loop: fragile after 2 stabilize turns → soft close" };
+    }
+    return { phase: "stabilization", reason: "baseline=fragile → one micro-step, then re-evaluate" };
+  }
+  return { phase: "checkin", reason: "gate not yet conclusive → stay in opening gate" };
+}
+
+/**
+ * Calls the AI gateway with a constrained JSON schema to evaluate the child's
+ * last opening turn(s). Falls back to a safe "stay in checkin" output on any
+ * failure (never blocks the conversation).
+ */
+export async function evaluateOpeningGate(args: {
+  apiKey: string;
+  childRegisteredName: string | null;
+  lastUserInput: string;
+  recentMessages: Array<{ role: string; content: string }>;
+  approvedProgramTitle: string | null;
+}): Promise<OpeningGateOutput> {
+  const safeFallback: OpeningGateOutput = {
+    child_present: true,
+    probable_match: "unclear",
+    baseline: "fragile",
+    can_start_program_now: false,
+    attune_text: "Slyším tě. Jsem tady a nikam nespěchám. Můžeš mi říct, jak se teď vevnitř cítíš?",
+    next_micro_step: "Jeden malý krok: napiš jedno slovo, jak ti teď je — třeba klid, divné, bezpečno, nebo svoje slovo.",
+    soft_close_text: "Dneska to necháme jen u toho, že jsem tě slyšel. Vrátím se, až budeš chtít.",
+    reason: "gate_eval_unavailable_safe_default",
+  };
+  try {
+    const transcript = args.recentMessages.slice(-6).map((m) => `[${m.role === "user" ? "DÍTĚ" : "KAREL"}]: ${typeof m.content === "string" ? m.content : JSON.stringify(m.content)}`).join("\n");
+    const sys = `Jsi opening-gate vyhodnocovač pro dětskou Hernu (DID). Tvůj úkol NENÍ vést rozhovor. Tvůj úkol je analyzovat poslední otevírací výměnu mezi Karlem a dítětem a vrátit POUZE JSON s rozhodnutím, zda lze bezpečně začít schválený terapeutický program, nebo zda zůstat ve check-inu / stabilizaci / měkkém uzavření.
+
+Vyhodnocuj OBSAH zprávy dítěte, ne počet zpráv. Nikdy nepřechazej do programu jen proto, že už proběhla 1–2 výměny.
+
+Pravidla:
+- child_present=true POUZE pokud je v posledních zprávách živý kontakt s dítětem (odpověď, projev, ne jen ticho/automat).
+- probable_match=yes pokud styl/jazyk/téma odpovídá registrovanému dítěti "${args.childRegisteredName ?? "(neznámé)"}". unclear pokud je to nejisté. no pokud je to evidentně někdo jiný / mimo / zmatené.
+- baseline=ready pokud je dítě klidné, zvědavé, ochotné. fragile pokud je opatrné, smutné, váhavé, „nechci“, „nevím“. unsafe pokud je strach, panika, krize, sebepoškození, disociace bez kontaktu.
+- can_start_program_now=true POUZE když je child_present=true, probable_match=yes, baseline=ready a obsah poslední zprávy nesignalizuje váhání.
+- attune_text: jedna krátká česká věta, kterou Karel řekne JAKO REAKCI na konkrétní obsah poslední zprávy dítěte (ne generická otázka). Bez interních termínů.
+- next_micro_step: pokud baseline=fragile, jeden malý stabilizační krok (jedno slovo / volba A/B / ticho). Jinak prázdné.
+- soft_close_text: pokud probable_match=no nebo baseline=unsafe, krátká bezpečná uzavírka. Jinak prázdné.
+- reason: 1 věta, proč právě toto rozhodnutí.`;
+    const usr = `POSLEDNÍ ZPRÁVA DÍTĚTE: """${args.lastUserInput}"""
+
+POSLEDNÍ VÝMĚNY (max 6):
+${transcript || "(žádné)"}
+
+REGISTROVANÉ DÍTĚ: ${args.childRegisteredName ?? "(neznámé)"}
+SCHVÁLENÝ PROGRAM (název prvního bloku): ${args.approvedProgramTitle ?? "(neznámé)"}
+
+Vrať POUZE validní JSON s klíči: child_present (bool), probable_match ("yes"|"unclear"|"no"), baseline ("ready"|"fragile"|"unsafe"), can_start_program_now (bool), attune_text (string), next_micro_step (string), soft_close_text (string), reason (string).`;
+    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${args.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        messages: [
+          { role: "system", content: sys },
+          { role: "user", content: usr },
+        ],
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!resp.ok) {
+      console.warn("[karel-chat][opening-gate] gateway error:", resp.status);
+      return safeFallback;
+    }
+    const data = await resp.json();
+    const raw = data?.choices?.[0]?.message?.content || "";
+    const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
+    const norm = (v: any, allowed: string[], def: string) => allowed.includes(String(v)) ? String(v) : def;
+    return {
+      child_present: parsed.child_present === true,
+      probable_match: norm(parsed.probable_match, ["yes", "unclear", "no"], "unclear") as any,
+      baseline: norm(parsed.baseline, ["ready", "fragile", "unsafe"], "fragile") as any,
+      can_start_program_now: parsed.can_start_program_now === true,
+      attune_text: typeof parsed.attune_text === "string" && parsed.attune_text.trim() ? parsed.attune_text.trim() : safeFallback.attune_text,
+      next_micro_step: typeof parsed.next_micro_step === "string" ? parsed.next_micro_step.trim() : "",
+      soft_close_text: typeof parsed.soft_close_text === "string" ? parsed.soft_close_text.trim() : "",
+      reason: typeof parsed.reason === "string" && parsed.reason.trim() ? parsed.reason.trim() : "no_reason",
+    };
+  } catch (e) {
+    console.warn("[karel-chat][opening-gate] exception:", e instanceof Error ? e.message : String(e));
+    return safeFallback;
+  }
+}
+
 async function persistPlayroomRuntimeTransition(
   rowId: string,
   next: { phase: string; current_block_index: number; consecutive_stabilize_count: number },
