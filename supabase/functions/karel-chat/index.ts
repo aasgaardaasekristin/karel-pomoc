@@ -1849,6 +1849,68 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
       }
     }
 
+    // ─── P33.11 STEP 2 — Opening Gate intercept (PHASE 0 = checkin / stabilization) ───
+    if (isPlayroomMode && playroomRuntimeRow && (playroomRuntimeRow.phase === "checkin" || playroomRuntimeRow.phase === "stabilization")) {
+      const lastInputForGate = normalizeMessageContentForPrompt([...messages].reverse().find((m: any) => m.role === "user")?.content) || "";
+      const recentForGate = (messages as any[]).slice(-6).map((m: any) => ({ role: String(m.role || ""), content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) }));
+      const firstApproved = (Array.isArray(playroomRuntimeRow.program_snapshot) && playroomRuntimeRow.program_snapshot[0]) || null;
+      const programTitle = firstApproved && typeof firstApproved === "object" ? (firstApproved.title || firstApproved.method || null) : null;
+      const gate = await evaluateOpeningGate({
+        apiKey: LOVABLE_API_KEY,
+        childRegisteredName: didPartName || null,
+        lastUserInput: lastInputForGate,
+        recentMessages: recentForGate,
+        approvedProgramTitle: programTitle,
+      });
+      const decision = decideOpeningGateNextPhase(gate, playroomRuntimeRow.consecutive_stabilize_count || 0);
+      const phaseLabel = decision.phase === "program" ? "PROGRAM" : decision.phase === "stabilization" ? "STABILIZE" : decision.phase === "soft_close" ? "SOFT CLOSE" : "CHECKIN";
+      let bodyText: string;
+      if (decision.phase === "program") {
+        const approvedPrompt = (firstApproved && typeof firstApproved === "object" && typeof firstApproved.child_facing_prompt_draft === "string")
+          ? firstApproved.child_facing_prompt_draft.trim()
+          : "";
+        bodyText = `${gate.attune_text}${approvedPrompt ? ` ${approvedPrompt}` : ""}`.trim();
+      } else if (decision.phase === "stabilization") {
+        bodyText = `${gate.attune_text}${gate.next_micro_step ? ` ${gate.next_micro_step}` : ""}`.trim();
+      } else if (decision.phase === "soft_close") {
+        bodyText = (gate.soft_close_text || gate.attune_text).trim();
+      } else {
+        bodyText = gate.attune_text.trim();
+      }
+      const proofTag = ` [PHASE: ${phaseLabel}] [GATE: child_present=${gate.child_present ? "yes" : "no"} probable_match=${gate.probable_match} baseline=${gate.baseline} can_start=${gate.can_start_program_now ? "true" : "false"}] [REASON: ${decision.reason}]`;
+      const nextStabilizeCnt = decision.phase === "stabilization"
+        ? (playroomRuntimeRow.consecutive_stabilize_count || 0) + 1
+        : 0;
+      persistPlayroomRuntimeTransition(playroomRuntimeRow.id, {
+        phase: decision.phase,
+        current_block_index: playroomRuntimeRow.current_block_index,
+        consecutive_stabilize_count: nextStabilizeCnt,
+      }).catch((e) => console.warn("[karel-chat][opening-gate] persist exception:", e instanceof Error ? e.message : String(e)));
+      console.log("[karel-chat][playroom][opening-gate]", { thread_id: playroomRuntimeRow.thread_id, prev_phase: playroomRuntimeRow.phase, next_phase: decision.phase, gate, reason: decision.reason });
+      if (canWriteRuntimeAudit) await writeRuntimeAudit({
+        user_id: requestUserId,
+        runtime_packet_id: runtimePacketId,
+        function_name: "karel-chat",
+        model_used: "google/gemini-2.5-flash-lite",
+        model_tier: modelTier("google/gemini-2.5-flash-lite"),
+        did_sub_mode: didSubMode || null,
+        prompt_contract_version: promptContractVersion,
+        has_multimodal_input: requestHasMultimodalInput,
+        has_drive_sync: false,
+        evaluation_status: `opening_gate_${decision.phase}`,
+        request_mode: mode,
+        part_name: didPartName || null,
+        metadata: {
+          p33_11_step: 2,
+          opening_gate: gate,
+          opening_gate_decision: decision,
+          prev_phase: playroomRuntimeRow.phase,
+          consecutive_stabilize_count: nextStabilizeCnt,
+        },
+      });
+      return streamPlayroomText(bodyText + proofTag);
+    }
+
     const primaryModel = isPlayroomMode ? "google/gemini-3-flash-preview" : "google/gemini-3-flash-preview";
     console.log(`[karel-chat] Primary model: ${primaryModel}; subMode=${didSubMode || "none"}`);
     if (canWriteRuntimeAudit) await writeRuntimeAudit({
