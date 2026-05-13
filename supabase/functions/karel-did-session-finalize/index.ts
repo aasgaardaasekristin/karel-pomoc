@@ -254,7 +254,7 @@ serve(async (req: Request) => {
 
       const { data: matchingThreads } = await sb
         .from("did_threads")
-        .select("id, messages, workspace_type, workspace_id")
+        .select("id, messages, workspace_type, workspace_id, sub_mode, last_activity_at")
         .eq("workspace_type", "session")
         .eq("workspace_id", planId)
         .limit(3);
@@ -268,7 +268,56 @@ serve(async (req: Request) => {
       const artifactCount = Object.values(liveProgress?.artifacts_by_block ?? {}).reduce((sum: number, value: any) => sum + (Array.isArray(value) ? value.length : value && typeof value === "object" ? Object.keys(value).length : 0), 0);
       const planOpened = !!plan.started_at || ["in_progress", "active", "started"].includes(String(plan.lifecycle_status ?? plan.status ?? "").toLowerCase());
       const sessionStarted = planOpened || !!liveProgress || (liveProgress?.completed_blocks ?? 0) > 0 || hasNonEmptyTurns(liveProgress?.turns_by_block ?? {}) || hasNonEmptyObservations(items) || artifactCount > 0 || hasThreadUserResponse(matchingThreads ?? []);
-      const sessionActor = plan.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown.session_actor : null;
+      const ub = plan.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown : {};
+      const sessionActor = ub.session_actor ?? null;
+      const uiSurface = ub.ui_surface ?? null;
+      const isPlayroom = sessionActor === "karel_direct" && uiSurface === "did_kids_playroom";
+
+      // Fix B: route auto_safety_net for already-started Herna to playroom evaluator
+      if (source === "auto_safety_net" && isPlayroom) {
+        if (!sessionStarted) {
+          // Herna nezačala vůbec — nezakládat stub karel_direct_session, jen označit planned_not_started
+          const resultPayload = await persistPlannedNotStarted(sb, plan, jobBase, jobId, reason);
+          return json({ ok: true, job_id: jobId, job_status: "completed", dedupe_key: dedupeKey, route: "playroom_planned_not_started", ...resultPayload });
+        }
+        const playroomThread = (matchingThreads ?? [])
+          .filter((t: any) => ["playroom", "karel_part_session"].includes(String(t?.sub_mode ?? "")))
+          .sort((a: any, b: any) => String(b?.last_activity_at ?? "").localeCompare(String(a?.last_activity_at ?? "")))[0]
+          ?? (matchingThreads ?? [])[0];
+        const playroomThreadId = playroomThread?.id ?? null;
+        if (playroomThreadId) {
+          console.log(`[finalize] Routing auto_safety_net to karel-did-playroom-evaluate plan=${planId} thread=${playroomThreadId}`);
+          const evalRes = await fetch(`${supabaseUrl}/functions/v1/karel-did-playroom-evaluate`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              planId,
+              threadId: playroomThreadId,
+              endedReason: "auto_safety_net_partial",
+              partName: plan.selected_part,
+              completedBlocks: liveProgress?.completed_blocks,
+              totalBlocks: liveProgress?.total_blocks,
+              turnsByBlock: liveProgress?.turns_by_block ?? {},
+              observationsByBlock,
+              force: true,
+            }),
+          });
+          const evalPayload = await evalRes.json().catch(() => ({}));
+          const resultPayload = { plan_id: planId, review_id: evalPayload?.review_id ?? null, review_status: evalPayload?.status ?? null, route: "playroom_auto_safety_net_partial" };
+          await sb.from("karel_action_jobs").update({
+            status: evalRes.ok && evalPayload?.ok !== false ? "completed" : "failed",
+            completed_at: new Date().toISOString(),
+            result_summary: evalRes.ok ? "Playroom safety-net evaluated" : "Playroom safety-net evaluator failed",
+            result_payload: resultPayload,
+            error_message: evalRes.ok ? null : (evalPayload?.error || `HTTP ${evalRes.status}`),
+          }).eq("id", jobId);
+          return json({ ok: evalRes.ok && evalPayload?.ok !== false, job_id: jobId, job_status: evalRes.ok ? "completed" : "failed", dedupe_key: dedupeKey, ...resultPayload, ...evalPayload }, evalRes.ok ? 200 : 500);
+        }
+        // No bound thread — fall back to planned_not_started so we don't create a stub
+        const resultPayload = await persistPlannedNotStarted(sb, plan, jobBase, jobId, `${reason}:playroom_no_bound_thread`);
+        return json({ ok: true, job_id: jobId, job_status: "completed", dedupe_key: dedupeKey, route: "playroom_no_bound_thread", ...resultPayload });
+      }
+
       if (source === "auto_safety_net" && !sessionStarted && sessionActor !== "karel_direct") {
         const resultPayload = await persistPlannedNotStarted(sb, plan, jobBase, jobId, reason);
         return json({ ok: true, job_id: jobId, job_status: "completed", dedupe_key: dedupeKey, ...resultPayload });

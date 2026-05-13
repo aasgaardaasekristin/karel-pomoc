@@ -141,6 +141,10 @@ function buildTranscript(thread: any, turnsByBlock: Record<string, any[]>) {
 function buildPrompt(ctx: any, input: any, transcript: { clinical: any[]; excluded: any[] }) {
   const p = ctx.plan;
   const playroomPlan = p.urgency_breakdown?.playroom_plan;
+  const isAutoSafetyNetPartial = String(input.endedReason || "") === "auto_safety_net_partial";
+  const partialDirective = isAutoSafetyNetPartial
+    ? `\n\nDŮLEŽITÉ — AUTO SAFETY-NET PARTIAL:\nHerna NEBYLA ručně ukončena dítětem ani terapeutkou; byla auto-uzavřena safety-netem. Reálný transcript a live progress ale existují a mají klinickou hodnotu. Vyhodnocení MUSÍ být plnohodnotné (klinické nálezy, doporučení pro terapeutky, doporučení pro další Hernu), ale completion_status nastav na "evidence_limited" (NIKDY "completed"). V detailed_analysis_text i practical_report_text uveď, že Herna byla částečná / auto-uzavřená a které části programu reálně proběhly. Závěry opírej výhradně o reálný transcript, live progress a kartu části — nikdy nedoplňuj nic, co v datech není.`
+    : "";
   return `IDENTIFIKACE HERNY
 - plan_id: ${p.id}
 - thread_id: ${ctx.thread.id}
@@ -169,7 +173,7 @@ ${transcript.excluded.map((t) => `${t.from}: ${t.text}`).join("\n") || "(žádn�
 Vytvoř dvě oddělené vrstvy výstupu:
 (1) detailní profesionální analýzu — dlouhou strukturovanou zprávu se vztahem k playroom_plan, blokům, evidenci dokončení, tomu, co část skutečně řekla/udělala, limitům evidence, rizikům, stabilizačním faktorům a doporučením.
 (2) praktický report — kratší praktický výstup pro ranní přehled, terapeutky a návrh další Herny.
-Pokud evidence nestačí, nastav completion_status=evidence_limited a jasně napiš, co lze a nelze vyvodit. Nepoužívej plan_markdown jako náhradu playroom_plan.`;
+Pokud evidence nestačí, nastav completion_status=evidence_limited a jasně napiš, co lze a nelze vyvodit. Nepoužívej plan_markdown jako náhradu playroom_plan.${partialDirective}`;
 }
 
 function practicalLogMarkdown(args: any) {
@@ -224,7 +228,13 @@ async function upsertReview(sb: any, ctx: any, input: any, review: any, transcri
   const now = new Date().toISOString();
   const completedBlocks = Number(input.completedBlocks ?? ctx.liveProgress?.completed_blocks ?? 0);
   const totalBlocks = Number(input.totalBlocks ?? ctx.liveProgress?.total_blocks ?? (Array.isArray(ctx.liveProgress?.items) ? ctx.liveProgress.items.length : 0));
-  const status = review.completion_status === "completed" && transcript.clinical.some((t: any) => t.from === "child") ? "analyzed" : review.completion_status === "partial" ? "partially_analyzed" : "evidence_limited";
+  const isAutoSafetyNetPartial = String(input.endedReason || "") === "auto_safety_net_partial";
+  if (isAutoSafetyNetPartial && review.completion_status === "completed") {
+    review.completion_status = "evidence_limited";
+  }
+  const status = isAutoSafetyNetPartial
+    ? "evidence_limited"
+    : (review.completion_status === "completed" && transcript.clinical.some((t: any) => t.from === "child") ? "analyzed" : review.completion_status === "partial" ? "partially_analyzed" : "evidence_limited");
   const programEvidence = { completed_blocks: completedBlocks, total_blocks: totalBlocks, completion_ratio: totalBlocks ? completedBlocks / totalBlocks : null, items: ctx.liveProgress?.items ?? [], turns_by_block: ctx.liveProgress?.turns_by_block ?? {}, artifacts_by_block: ctx.liveProgress?.artifacts_by_block ?? {} };
   const analysisJson = {
     schema: "did_playroom_review.v1",
@@ -245,6 +255,8 @@ async function upsertReview(sb: any, ctx: any, input: any, review: any, transcri
     open_questions: review.open_questions ?? [],
     hypothesis_changes: review.hypothesis_changes ?? [],
     plan_changes: review.plan_changes ?? [],
+    auto_safety_net_partial: isAutoSafetyNetPartial,
+    ended_reason: input.endedReason || "manual_end",
   };
   const payload = {
     user_id: ctx.plan.user_id,
@@ -255,7 +267,7 @@ async function upsertReview(sb: any, ctx: any, input: any, review: any, transcri
     review_kind: "karel_direct_playroom",
     status,
     analysis_version: "did-playroom-review-v1",
-    source_data_summary: `playroom:${completedBlocks}/${totalBlocks}:clinical_turns=${transcript.clinical.length}:technical_fallbacks=${transcript.excluded.length}`,
+    source_data_summary: `playroom:${completedBlocks}/${totalBlocks}:clinical_turns=${transcript.clinical.length}:technical_fallbacks=${transcript.excluded.length}${isAutoSafetyNetPartial ? ":auto_safety_net_partial" : ""}`,
     evidence_items: [
       { kind: "approved_playroom_plan", available: true, source_table: "did_daily_session_plans", source_id: ctx.plan.id },
       { kind: "bound_thread", available: true, source_table: "did_threads", source_id: ctx.thread.id, message_count: Array.isArray(ctx.thread.messages) ? ctx.thread.messages.length : 0 },
@@ -278,7 +290,9 @@ async function upsertReview(sb: any, ctx: any, input: any, review: any, transcri
     therapeutic_implications: review.implications_for_part,
     team_implications: review.recommendations_for_therapists,
     next_session_recommendation: review.recommendations_for_next_session,
-    evidence_limitations: status === "evidence_limited" ? "Evidence Herny je omezená; závěry jsou pracovní a vycházejí jen ze skutečně uloženého transcriptu/progressu." : null,
+    evidence_limitations: isAutoSafetyNetPartial
+      ? "Herna byla auto-uzavřena safety-netem (nebyla ručně dokončena). Závěry vycházejí z reálného, ale částečného transcriptu/progressu — označeno jako partial / evidence_limited."
+      : (status === "evidence_limited" ? "Evidence Herny je omezená; závěry jsou pracovní a vycházejí jen ze skutečně uloženého transcriptu/progressu." : null),
     main_topic: review.main_theme,
     program_title: ctx.plan.urgency_breakdown?.playroom_plan?.title || ctx.plan.urgency_breakdown?.main_topic || `Herna — ${ctx.plan.selected_part}`,
     lead_person: "Karel",
