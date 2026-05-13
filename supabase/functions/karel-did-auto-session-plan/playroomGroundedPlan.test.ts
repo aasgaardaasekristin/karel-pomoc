@@ -174,3 +174,82 @@ Deno.test("buildPlayroomPlanGrounded: no api key → fallback (no AI call)", asy
 Deno.test("REQUIRED_BLOCK_FIELDS contains the 10 required keys", () => {
   assertEquals(REQUIRED_BLOCK_FIELDS.length, 10);
 });
+
+// ── P33.11 KROK 3 — conditions A, B, C ──
+
+Deno.test("A: fake_personalization — only 1 hit total is rejected", () => {
+  const plan = FULL_PLAN();
+  // strip Tibet from everywhere; keep exactly 1 Timmy mention in why_today
+  for (const b of plan.therapeutic_program) {
+    b.title = "Hra s kamínky";
+    b.play_metaphor = "obecná hra";
+    b.child_facing_prompt_draft = "Pojď si hrát s kamínky.";
+    b.why_for_this_part = "obecná část";
+    b.why_today = "obecný den";
+    b.why_this_form_fits = "obecně sedí";
+    b.clinical_intent = "obecné";
+    b.hidden_diagnostic_aim = "obecný cíl";
+    b.what_to_watch = "obecné signály";
+    b.stop_criteria = "obecné stop";
+  }
+  plan.title = "Obecná hra";
+  plan.clinical_goal = "obecné";
+  plan.why_today = "Timmy"; // jediný hit
+  plan.play_through_line = "obecné";
+  plan.data_provenance = "obecné";
+  const r = validateGroundedPlan(plan, { partName: "Tundrupek", groundingTokens: ["timmy", "tibet", "drak"] });
+  assertEquals(r.ok, false);
+  if (!r.ok) assertEquals(r.reason, "fake_personalization");
+});
+
+Deno.test("A: fake_personalization — 2 hits but none in key fields is rejected", () => {
+  const plan = FULL_PLAN();
+  for (const b of plan.therapeutic_program) {
+    b.title = "Hra s kamínky";
+    b.play_metaphor = "obecná hra";
+    b.child_facing_prompt_draft = "Pojď si hrát s kamínky.";
+    b.why_for_this_part = "obecná část";
+    b.why_today = "obecný den";
+    b.why_this_form_fits = "obecně sedí";
+    b.clinical_intent = "obecné";
+    b.hidden_diagnostic_aim = "obecný cíl";
+    b.what_to_watch = "obecné signály";
+    b.stop_criteria = "obecné stop";
+  }
+  // 2 hity ale jen v meta polích planu, ne v blocích
+  plan.title = "Obecné";
+  plan.clinical_goal = "Timmy a tibet kontext";
+  plan.why_today = "Timmy a tibet kontext";
+  plan.play_through_line = "obecné";
+  plan.data_provenance = "obecné";
+  const r = validateGroundedPlan(plan, { partName: "Tundrupek", groundingTokens: ["timmy", "tibet"] });
+  assertEquals(r.ok, false);
+  if (!r.ok) assertEquals(r.reason, "fake_personalization");
+});
+
+Deno.test("B: empty groundingTokens → status=weakly_grounded, data_sufficiency=low", async () => {
+  const out = await buildPlayroomPlanGrounded({
+    sb: fakeSb({ did_part_registry: { part_name: "Tundrupek", known_triggers: [], known_strengths: [] } }),
+    userId: "u1", partName: "Tundrupek", todayPrague: "2026-05-13",
+    readiness: "amber", apiKey: "fake",
+    __aiRawOverride: JSON.stringify(FULL_PLAN()),
+  });
+  assertEquals(out.status, "weakly_grounded");
+  assertEquals(out.plan?.meta?.source_status, "weakly_grounded");
+  assertEquals(out.plan?.meta?.data_sufficiency, "low");
+});
+
+Deno.test("C: each block carries provenance with which_sources_used + grounding_hits", async () => {
+  const out = await buildPlayroomPlanGrounded({
+    sb: fakeSb(), userId: "u1", partName: "Tundrupek", todayPrague: "2026-05-13",
+    readiness: "amber", apiKey: "fake",
+    __aiRawOverride: JSON.stringify(FULL_PLAN()),
+  });
+  assertEquals(out.status, "grounded");
+  for (const b of out.plan!.therapeutic_program) {
+    assert(Array.isArray(b.provenance?.which_sources_used), "missing which_sources_used");
+    assert(Array.isArray(b.provenance?.grounding_hits), "missing grounding_hits");
+    assert(typeof b.provenance?.derived_from === "string" && b.provenance.derived_from.length > 0);
+    assert(b.provenance.which_sources_used.includes("registry"), "registry should be used");
+  }
+});
