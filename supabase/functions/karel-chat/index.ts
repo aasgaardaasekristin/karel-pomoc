@@ -1806,6 +1806,18 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         part_name: didPartName || null,
         metadata: { off_rail: offRail, premature_closing: prematureClosing, passive_drift: passiveDrift, symbolic_escape: symbolicEscape, internal_language: hasPlayroomInternalLanguage(guardedPlayroomResponse), current_block: playroomProgress.current, final_block: playroomProgress.max },
       });
+      // Commit 2C: edge has final authority over phase transition
+      if (playroomRuntimeRow) {
+        const aiTag = parsePlayroomProgressTag(guardedPlayroomResponse);
+        const decision = decidePlayroomTransition(playroomRuntimeRow, aiTag);
+        console.log("[karel-chat][playroom][runtime] transition:", { thread_id: playroomRuntimeRow.thread_id, prev: { phase: playroomRuntimeRow.phase, idx: playroomRuntimeRow.current_block_index, stab: playroomRuntimeRow.consecutive_stabilize_count }, ai_tag: decision.ai_tag, next: { phase: decision.phase, idx: decision.current_block_index, stab: decision.consecutive_stabilize_count }, overridden: decision.overridden, reason: decision.reason });
+        // Fire-and-forget; failure must NOT block the child's response
+        persistPlayroomRuntimeTransition(playroomRuntimeRow.id, {
+          phase: decision.phase,
+          current_block_index: decision.current_block_index,
+          consecutive_stabilize_count: decision.consecutive_stabilize_count,
+        }).catch((e) => console.warn("[karel-chat][playroom][runtime] persist exception:", e instanceof Error ? e.message : String(e)));
+      }
       return streamPlayroomText(childSafePlayroomResponse);
     }
 
