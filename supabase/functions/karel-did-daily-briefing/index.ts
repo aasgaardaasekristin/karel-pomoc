@@ -952,7 +952,14 @@ function injectPlayroomReviewIntoProposal(payload: any) {
   const playPrefix = recencyIntro(y, "playroom");
   const playLabel = y.is_yesterday ? "včerejší Hernu" : y.days_since_today === 2 ? "předevčerejší Hernu" : `poslední Hernu z ${formatClinicalDate(y.session_date_iso)}, ${y.human_recency_label}`;
   pp.evidence_sources = Array.from(new Set([...(Array.isArray(pp.evidence_sources) ? pp.evidence_sources : []), `${y.visible_label ?? "Poslední Herna"} — PRAKTICKÝ REPORT`, `${y.visible_label ?? "Poslední Herna"} — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ`]));
-  pp.why_this_part_today = sanitizeKarelClinicalText(`${playPrefix} Dnešní návrh nenavazuje automaticky; vychází z ${playLabel} a začíná novým bezpečným check-inem. Symboly z tohoto materiálu používat primárně s ${y.part_name || pp.part_name || "touto částí"} a jen tehdy, pokud je část sama přinese nebo na ně klidně reaguje; u ostatních částí je nepřenášet automaticky. ${cleanBlockText(pp.why_this_part_today)}`);
+  // P33.x Fix A: why_this_part_today zůstává čistý klinický důvod (žádné slepování
+  // s provozními instrukcemi). Operační směrnice se ukládají do
+  // backend_context_inputs.runtime_directive (neveřejné pole).
+  const existingWhy = cleanBlockText(pp.why_this_part_today);
+  pp.why_this_part_today = sanitizeKarelClinicalText(
+    existingWhy || `${playPrefix} Dnešní návrh navazuje na ${playLabel} a začíná novým bezpečným check-inem.`
+  );
+  const injectedDirective = `${playPrefix} Dnešní návrh nenavazuje automaticky; vychází z ${playLabel} a začíná novým bezpečným check-inem. Symboly z tohoto materiálu používat primárně s ${y.part_name || pp.part_name || "touto částí"} a jen tehdy, pokud je část sama přinese nebo na ně klidně reaguje; u ostatních částí je nepřenášet automaticky.`;
   pp.main_theme = `Jemný check-in bezpečného místa a dnešního vnitřního počasí, ne automatické pokračování hluboké symbolické práce`;
   pp.goals = Array.from(new Set([
     "ověřit dnešní tělesnou a emoční dostupnost bez tlaku",
