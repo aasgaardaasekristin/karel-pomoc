@@ -211,7 +211,7 @@ async function loadOrInitPlayroomRuntimeState(args: {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: existing, error: selErr } = await sb
       .from("did_playroom_runtime_state")
-      .select("id,thread_id,playroom_plan_id,phase,current_block_index,consecutive_stabilize_count,program_snapshot")
+      .select("id,thread_id,playroom_plan_id,phase,current_block_index,consecutive_stabilize_count,program_snapshot,metadata")
       .eq("thread_id", args.threadId)
       .maybeSingle();
     if (selErr) console.warn("[karel-chat][playroom][runtime] select failed:", selErr.message);
@@ -235,7 +235,7 @@ async function loadOrInitPlayroomRuntimeState(args: {
         program_snapshot: program,
         metadata: { source: "snapshot", initialized_by: "karel-chat" },
       })
-      .select("id,thread_id,playroom_plan_id,phase,current_block_index,consecutive_stabilize_count,program_snapshot")
+      .select("id,thread_id,playroom_plan_id,phase,current_block_index,consecutive_stabilize_count,program_snapshot,metadata")
       .maybeSingle();
     if (insErr) {
       console.warn("[karel-chat][playroom][runtime] insert failed:", insErr.message);
