@@ -4,6 +4,7 @@ import { corsHeaders } from "../_shared/auth.ts";
 import { loadEntityRegistry } from "../_shared/entityRegistry.ts";
 import { resolveEntity } from "../_shared/entityResolution.ts";
 import { snapshotProtectedMutation } from "../_shared/mutationSnapshotGuard.ts";
+import { buildPlayroomPlanGrounded } from "./playroomGroundedPlan.ts";
 
 /**
  * karel-did-auto-session-plan
