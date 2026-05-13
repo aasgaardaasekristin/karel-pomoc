@@ -255,6 +255,8 @@ async function upsertReview(sb: any, ctx: any, input: any, review: any, transcri
     open_questions: review.open_questions ?? [],
     hypothesis_changes: review.hypothesis_changes ?? [],
     plan_changes: review.plan_changes ?? [],
+    auto_safety_net_partial: isAutoSafetyNetPartial,
+    ended_reason: input.endedReason || "manual_end",
   };
   const payload = {
     user_id: ctx.plan.user_id,
