@@ -371,6 +371,22 @@ Child-facing text:
 - ŽÁDNÁ klinická terminologie (zákazaná slova: klinický, diagnostický, regulace, stabilizace, tolerance, projektivní)
 - vzbuzuje chuť zapojit se
 
+KOTVENÍ DO DAT (TVRDÉ PRAVIDLO — jinak bude plán odmítnut jako fake_personalization):
+1. Z poskytnutých GROUNDING TOKENS (viz user prompt) MUSÍŠ DOSLOVA použít alespoň 2 různé tokeny v rámci celého plánu.
+2. Alespoň jeden grounding token MUSÍ být použit DOSLOVA v textu pole \`child_facing_prompt_draft\` NEBO \`play_metaphor\` NEBO \`why_for_this_part\` u alespoň jednoho bloku (ideálně u více bloků).
+3. Tokeny se nepřepisují, neparafrázují — píšou se přesně tak, jak ti je dám (např. když dostaneš "timmy", napiš "Timmy" — ne "velryba" nebo "to zvíře z internetu").
+4. Pokud token nedává smysl pro konkrétní blok, najdi jiný blok, kam ho přirozeně vetkáš. Nedělej hru o tokenu, kde nepatří — ale aspoň 1 blok ho MUSÍ obsahovat.
+
+PŘÍKLAD SPRÁVNÉHO KOTVENÍ (pouze pro inspiraci formy, ne pro kopírování obsahu):
+Když dostaneš grounding tokens: ["timmy", "tibet", "locík"], pak správný blok vypadá např. takto:
+{
+  "title": "Cesta k Timmymu — kdo by mu donesl klid",
+  "play_metaphor": "Představ si, že jdeme přes Tibet a v dálce je velryba Timmy. Co bys mu dal do batohu, aby se mu líp dýchalo?",
+  "child_facing_prompt_draft": "Tundrupku, slyšel jsem o Timmym. Kdyby Locík byl s námi, co myslíš, že by si v batohu pro Timmyho přibalil on?",
+  "why_for_this_part": "Tundrupek je citlivý na utrpení zvířat a má hluboký vztah k Locíkovi — Timmy a Locík jsou z reálných dat poslední dny."
+}
+Vidíš: tři tokeny (Timmy, Tibet, Locík) jsou DOSLOVA v textu, ne jako "to zvíře" / "ta hora" / "ten kamarád".
+
 Otázky pro terapeutky:
 - 1–3 úzké otázky, které když odpoví, MĚNÍ konkrétní blok
 - ne obecné "jak to vypadá"
