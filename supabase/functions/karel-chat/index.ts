@@ -299,6 +299,99 @@ function decidePlayroomTransition(
   return { phase, current_block_index: idx, consecutive_stabilize_count: cnt, overridden, reason, ai_tag: tag };
 }
 
+// ─── P33.11 STEP 2 — Opening Gate (intelligent PHASE 0) ─────────────
+// Pure decision helper lives in ./openingGate.ts so it can be unit-tested
+// without booting the full edge-function module.
+import {
+  decideOpeningGateNextPhase,
+  type OpeningGateDecision,
+  type OpeningGateOutput,
+} from "./openingGate.ts";
+export { decideOpeningGateNextPhase };
+export type { OpeningGateDecision, OpeningGateOutput };
+
+/**
+ * Calls the AI gateway with a constrained JSON schema to evaluate the child's
+ * last opening turn(s). Falls back to a safe "stay in checkin" output on any
+ * failure (never blocks the conversation).
+ */
+export async function evaluateOpeningGate(args: {
+  apiKey: string;
+  childRegisteredName: string | null;
+  lastUserInput: string;
+  recentMessages: Array<{ role: string; content: string }>;
+  approvedProgramTitle: string | null;
+}): Promise<OpeningGateOutput> {
+  const safeFallback: OpeningGateOutput = {
+    child_present: true,
+    probable_match: "unclear",
+    baseline: "fragile",
+    can_start_program_now: false,
+    attune_text: "Slyším tě. Jsem tady a nikam nespěchám. Můžeš mi říct, jak se teď vevnitř cítíš?",
+    next_micro_step: "Jeden malý krok: napiš jedno slovo, jak ti teď je — třeba klid, divné, bezpečno, nebo svoje slovo.",
+    soft_close_text: "Dneska to necháme jen u toho, že jsem tě slyšel. Vrátím se, až budeš chtít.",
+    reason: "gate_eval_unavailable_safe_default",
+  };
+  try {
+    const transcript = args.recentMessages.slice(-6).map((m) => `[${m.role === "user" ? "DÍTĚ" : "KAREL"}]: ${typeof m.content === "string" ? m.content : JSON.stringify(m.content)}`).join("\n");
+    const sys = `Jsi opening-gate vyhodnocovač pro dětskou Hernu (DID). Tvůj úkol NENÍ vést rozhovor. Tvůj úkol je analyzovat poslední otevírací výměnu mezi Karlem a dítětem a vrátit POUZE JSON s rozhodnutím, zda lze bezpečně začít schválený terapeutický program, nebo zda zůstat ve check-inu / stabilizaci / měkkém uzavření.
+
+Vyhodnocuj OBSAH zprávy dítěte, ne počet zpráv. Nikdy nepřechazej do programu jen proto, že už proběhla 1–2 výměny.
+
+Pravidla:
+- child_present=true POUZE pokud je v posledních zprávách živý kontakt s dítětem (odpověď, projev, ne jen ticho/automat).
+- probable_match=yes pokud styl/jazyk/téma odpovídá registrovanému dítěti "${args.childRegisteredName ?? "(neznámé)"}". unclear pokud je to nejisté. no pokud je to evidentně někdo jiný / mimo / zmatené.
+- baseline=ready pokud je dítě klidné, zvědavé, ochotné. fragile pokud je opatrné, smutné, váhavé, „nechci“, „nevím“. unsafe pokud je strach, panika, krize, sebepoškození, disociace bez kontaktu.
+- can_start_program_now=true POUZE když je child_present=true, probable_match=yes, baseline=ready a obsah poslední zprávy nesignalizuje váhání.
+- attune_text: jedna krátká česká věta, kterou Karel řekne JAKO REAKCI na konkrétní obsah poslední zprávy dítěte (ne generická otázka). Bez interních termínů.
+- next_micro_step: pokud baseline=fragile, jeden malý stabilizační krok (jedno slovo / volba A/B / ticho). Jinak prázdné.
+- soft_close_text: pokud probable_match=no nebo baseline=unsafe, krátká bezpečná uzavírka. Jinak prázdné.
+- reason: 1 věta, proč právě toto rozhodnutí.`;
+    const usr = `POSLEDNÍ ZPRÁVA DÍTĚTE: """${args.lastUserInput}"""
+
+POSLEDNÍ VÝMĚNY (max 6):
+${transcript || "(žádné)"}
+
+REGISTROVANÉ DÍTĚ: ${args.childRegisteredName ?? "(neznámé)"}
+SCHVÁLENÝ PROGRAM (název prvního bloku): ${args.approvedProgramTitle ?? "(neznámé)"}
+
+Vrať POUZE validní JSON s klíči: child_present (bool), probable_match ("yes"|"unclear"|"no"), baseline ("ready"|"fragile"|"unsafe"), can_start_program_now (bool), attune_text (string), next_micro_step (string), soft_close_text (string), reason (string).`;
+    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${args.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        messages: [
+          { role: "system", content: sys },
+          { role: "user", content: usr },
+        ],
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!resp.ok) {
+      console.warn("[karel-chat][opening-gate] gateway error:", resp.status);
+      return safeFallback;
+    }
+    const data = await resp.json();
+    const raw = data?.choices?.[0]?.message?.content || "";
+    const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
+    const norm = (v: any, allowed: string[], def: string) => allowed.includes(String(v)) ? String(v) : def;
+    return {
+      child_present: parsed.child_present === true,
+      probable_match: norm(parsed.probable_match, ["yes", "unclear", "no"], "unclear") as any,
+      baseline: norm(parsed.baseline, ["ready", "fragile", "unsafe"], "fragile") as any,
+      can_start_program_now: parsed.can_start_program_now === true,
+      attune_text: typeof parsed.attune_text === "string" && parsed.attune_text.trim() ? parsed.attune_text.trim() : safeFallback.attune_text,
+      next_micro_step: typeof parsed.next_micro_step === "string" ? parsed.next_micro_step.trim() : "",
+      soft_close_text: typeof parsed.soft_close_text === "string" ? parsed.soft_close_text.trim() : "",
+      reason: typeof parsed.reason === "string" && parsed.reason.trim() ? parsed.reason.trim() : "no_reason",
+    };
+  } catch (e) {
+    console.warn("[karel-chat][opening-gate] exception:", e instanceof Error ? e.message : String(e));
+    return safeFallback;
+  }
+}
+
 async function persistPlayroomRuntimeTransition(
   rowId: string,
   next: { phase: string; current_block_index: number; consecutive_stabilize_count: number },
@@ -1713,6 +1806,68 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
       } catch (switchErr) {
         console.warn("[karel-chat] Switching detection error (non-fatal):", switchErr);
       }
+    }
+
+    // ─── P33.11 STEP 2 — Opening Gate intercept (PHASE 0 = checkin / stabilization) ───
+    if (isPlayroomMode && playroomRuntimeRow && (playroomRuntimeRow.phase === "checkin" || playroomRuntimeRow.phase === "stabilization")) {
+      const lastInputForGate = normalizeMessageContentForPrompt([...messages].reverse().find((m: any) => m.role === "user")?.content) || "";
+      const recentForGate = (messages as any[]).slice(-6).map((m: any) => ({ role: String(m.role || ""), content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) }));
+      const firstApproved = (Array.isArray(playroomRuntimeRow.program_snapshot) && playroomRuntimeRow.program_snapshot[0]) || null;
+      const programTitle = firstApproved && typeof firstApproved === "object" ? (firstApproved.title || firstApproved.method || null) : null;
+      const gate = await evaluateOpeningGate({
+        apiKey: LOVABLE_API_KEY,
+        childRegisteredName: didPartName || null,
+        lastUserInput: lastInputForGate,
+        recentMessages: recentForGate,
+        approvedProgramTitle: programTitle,
+      });
+      const decision = decideOpeningGateNextPhase(gate, playroomRuntimeRow.consecutive_stabilize_count || 0);
+      const phaseLabel = decision.phase === "program" ? "PROGRAM" : decision.phase === "stabilization" ? "STABILIZE" : decision.phase === "soft_close" ? "SOFT CLOSE" : "CHECKIN";
+      let bodyText: string;
+      if (decision.phase === "program") {
+        const approvedPrompt = (firstApproved && typeof firstApproved === "object" && typeof firstApproved.child_facing_prompt_draft === "string")
+          ? firstApproved.child_facing_prompt_draft.trim()
+          : "";
+        bodyText = `${gate.attune_text}${approvedPrompt ? ` ${approvedPrompt}` : ""}`.trim();
+      } else if (decision.phase === "stabilization") {
+        bodyText = `${gate.attune_text}${gate.next_micro_step ? ` ${gate.next_micro_step}` : ""}`.trim();
+      } else if (decision.phase === "soft_close") {
+        bodyText = (gate.soft_close_text || gate.attune_text).trim();
+      } else {
+        bodyText = gate.attune_text.trim();
+      }
+      const proofTag = ` [PHASE: ${phaseLabel}] [GATE: child_present=${gate.child_present ? "yes" : "no"} probable_match=${gate.probable_match} baseline=${gate.baseline} can_start=${gate.can_start_program_now ? "true" : "false"}] [REASON: ${decision.reason}]`;
+      const nextStabilizeCnt = decision.phase === "stabilization"
+        ? (playroomRuntimeRow.consecutive_stabilize_count || 0) + 1
+        : 0;
+      persistPlayroomRuntimeTransition(playroomRuntimeRow.id, {
+        phase: decision.phase,
+        current_block_index: playroomRuntimeRow.current_block_index,
+        consecutive_stabilize_count: nextStabilizeCnt,
+      }).catch((e) => console.warn("[karel-chat][opening-gate] persist exception:", e instanceof Error ? e.message : String(e)));
+      console.log("[karel-chat][playroom][opening-gate]", { thread_id: playroomRuntimeRow.thread_id, prev_phase: playroomRuntimeRow.phase, next_phase: decision.phase, gate, reason: decision.reason });
+      if (canWriteRuntimeAudit) await writeRuntimeAudit({
+        user_id: requestUserId,
+        runtime_packet_id: runtimePacketId,
+        function_name: "karel-chat",
+        model_used: "google/gemini-2.5-flash-lite",
+        model_tier: modelTier("google/gemini-2.5-flash-lite"),
+        did_sub_mode: didSubMode || null,
+        prompt_contract_version: promptContractVersion,
+        has_multimodal_input: requestHasMultimodalInput,
+        has_drive_sync: false,
+        evaluation_status: `opening_gate_${decision.phase}`,
+        request_mode: mode,
+        part_name: didPartName || null,
+        metadata: {
+          p33_11_step: 2,
+          opening_gate: gate,
+          opening_gate_decision: decision,
+          prev_phase: playroomRuntimeRow.phase,
+          consecutive_stabilize_count: nextStabilizeCnt,
+        },
+      });
+      return streamPlayroomText(bodyText + proofTag);
     }
 
     const primaryModel = isPlayroomMode ? "google/gemini-3-flash-preview" : "google/gemini-3-flash-preview";
