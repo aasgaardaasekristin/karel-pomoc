@@ -1813,25 +1813,38 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
       }
     }
 
-    // ─── P33.11 STEP 2 — Opening Gate intercept (PHASE 0 = checkin / stabilization) ───
+    // ─── P33.11 STEP 2 (revised) — Opening Gate intercept ───
     if (isPlayroomMode && playroomRuntimeRow && (playroomRuntimeRow.phase === "checkin" || playroomRuntimeRow.phase === "stabilization")) {
       const lastInputForGate = normalizeMessageContentForPrompt([...messages].reverse().find((m: any) => m.role === "user")?.content) || "";
       const recentForGate = (messages as any[]).slice(-6).map((m: any) => ({ role: String(m.role || ""), content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) }));
-      const firstApproved = (Array.isArray(playroomRuntimeRow.program_snapshot) && playroomRuntimeRow.program_snapshot[0]) || null;
-      const programTitle = firstApproved && typeof firstApproved === "object" ? (firstApproved.title || firstApproved.method || null) : null;
-      const gate = await evaluateOpeningGate({
+      // BUG FIX #1 — use ACTUAL current_block_index, not [0]
+      const programArr = Array.isArray(playroomRuntimeRow.program_snapshot) ? playroomRuntimeRow.program_snapshot : [];
+      const currentIdx = Math.max(0, Math.min(playroomRuntimeRow.current_block_index || 0, Math.max(0, programArr.length - 1)));
+      const currentApprovedStep = programArr[currentIdx] || null;
+      const programTitle = currentApprovedStep && typeof currentApprovedStep === "object" ? (currentApprovedStep.title || currentApprovedStep.method || null) : null;
+
+      const rawGate = await evaluateOpeningGate({
         apiKey: LOVABLE_API_KEY,
         childRegisteredName: didPartName || null,
         lastUserInput: lastInputForGate,
         recentMessages: recentForGate,
         approvedProgramTitle: programTitle,
       });
-      const decision = decideOpeningGateNextPhase(gate, playroomRuntimeRow.consecutive_stabilize_count || 0);
-      const phaseLabel = decision.phase === "program" ? "PROGRAM" : decision.phase === "stabilization" ? "STABILIZE" : decision.phase === "soft_close" ? "SOFT CLOSE" : "CHECKIN";
+      // FIX #2 + #3 — deterministic hard guards (downgrade-only) on top of AI gate
+      const gate = applyHardGuards(rawGate, lastInputForGate);
+
+      const meta = (playroomRuntimeRow.metadata && typeof playroomRuntimeRow.metadata === "object") ? playroomRuntimeRow.metadata : {};
+      const openingTurnCountPrev: number = Number(meta.opening_turn_count) || 0;
+
+      const baseDecision = decideOpeningGateNextPhase(gate, playroomRuntimeRow.consecutive_stabilize_count || 0);
+      // FIX #4 — anti-stall against bottomless check-in
+      const decision = applyAntiStall(baseDecision, openingTurnCountPrev, gate.baseline);
+      const status = checkInStatus(decision, gate);
+
       let bodyText: string;
       if (decision.phase === "program") {
-        const approvedPrompt = (firstApproved && typeof firstApproved === "object" && typeof firstApproved.child_facing_prompt_draft === "string")
-          ? firstApproved.child_facing_prompt_draft.trim()
+        const approvedPrompt = (currentApprovedStep && typeof currentApprovedStep === "object" && typeof currentApprovedStep.child_facing_prompt_draft === "string")
+          ? currentApprovedStep.child_facing_prompt_draft.trim()
           : "";
         bodyText = `${gate.attune_text}${approvedPrompt ? ` ${approvedPrompt}` : ""}`.trim();
       } else if (decision.phase === "stabilization") {
@@ -1841,16 +1854,29 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
       } else {
         bodyText = gate.attune_text.trim();
       }
-      const proofTag = ` [PHASE: ${phaseLabel}] [GATE: child_present=${gate.child_present ? "yes" : "no"} probable_match=${gate.probable_match} baseline=${gate.baseline} can_start=${gate.can_start_program_now ? "true" : "false"}] [REASON: ${decision.reason}]`;
+
+      // FIX #5 — simplified visible proof. Detailed gate JSON only in audit.
+      const phaseLabelPublic = decision.phase === "program" ? "PROGRAM"
+        : decision.phase === "stabilization" ? "STABILIZE"
+        : decision.phase === "soft_close" ? "SOFT CLOSE"
+        : "CHECK-IN";
+      const blockNumberPublic = decision.phase === "program" ? (currentIdx + 1) : (currentIdx + 1);
+      const proofTag = ` [PHASE: ${phaseLabelPublic}] [CHECK-IN STATUS: ${status}] [BLOCK: ${blockNumberPublic}]`;
+
       const nextStabilizeCnt = decision.phase === "stabilization"
         ? (playroomRuntimeRow.consecutive_stabilize_count || 0) + 1
         : 0;
+      // opening_turn_count: increment while still in opening (checkin), reset otherwise
+      const nextOpeningTurnCount = decision.phase === "checkin" ? openingTurnCountPrev + 1 : 0;
+      const nextMetadata = { ...meta, opening_turn_count: nextOpeningTurnCount, last_check_in_status: status };
+
       persistPlayroomRuntimeTransition(playroomRuntimeRow.id, {
         phase: decision.phase,
-        current_block_index: playroomRuntimeRow.current_block_index,
+        current_block_index: currentIdx,
         consecutive_stabilize_count: nextStabilizeCnt,
+        metadata: nextMetadata,
       }).catch((e) => console.warn("[karel-chat][opening-gate] persist exception:", e instanceof Error ? e.message : String(e)));
-      console.log("[karel-chat][playroom][opening-gate]", { thread_id: playroomRuntimeRow.thread_id, prev_phase: playroomRuntimeRow.phase, next_phase: decision.phase, gate, reason: decision.reason });
+      console.log("[karel-chat][playroom][opening-gate]", { thread_id: playroomRuntimeRow.thread_id, prev_phase: playroomRuntimeRow.phase, next_phase: decision.phase, status, current_block_index: currentIdx, opening_turn_count: nextOpeningTurnCount, gate_raw: rawGate, gate_guarded: gate, reason: decision.reason });
       if (canWriteRuntimeAudit) await writeRuntimeAudit({
         user_id: requestUserId,
         runtime_packet_id: runtimePacketId,
@@ -1866,8 +1892,12 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         part_name: didPartName || null,
         metadata: {
           p33_11_step: 2,
-          opening_gate: gate,
+          opening_gate_raw: rawGate,
+          opening_gate_guarded: gate,
           opening_gate_decision: decision,
+          check_in_status: status,
+          current_block_index: currentIdx,
+          opening_turn_count: nextOpeningTurnCount,
           prev_phase: playroomRuntimeRow.phase,
           consecutive_stabilize_count: nextStabilizeCnt,
         },
