@@ -228,7 +228,13 @@ async function upsertReview(sb: any, ctx: any, input: any, review: any, transcri
   const now = new Date().toISOString();
   const completedBlocks = Number(input.completedBlocks ?? ctx.liveProgress?.completed_blocks ?? 0);
   const totalBlocks = Number(input.totalBlocks ?? ctx.liveProgress?.total_blocks ?? (Array.isArray(ctx.liveProgress?.items) ? ctx.liveProgress.items.length : 0));
-  const status = review.completion_status === "completed" && transcript.clinical.some((t: any) => t.from === "child") ? "analyzed" : review.completion_status === "partial" ? "partially_analyzed" : "evidence_limited";
+  const isAutoSafetyNetPartial = String(input.endedReason || "") === "auto_safety_net_partial";
+  if (isAutoSafetyNetPartial && review.completion_status === "completed") {
+    review.completion_status = "evidence_limited";
+  }
+  const status = isAutoSafetyNetPartial
+    ? "evidence_limited"
+    : (review.completion_status === "completed" && transcript.clinical.some((t: any) => t.from === "child") ? "analyzed" : review.completion_status === "partial" ? "partially_analyzed" : "evidence_limited");
   const programEvidence = { completed_blocks: completedBlocks, total_blocks: totalBlocks, completion_ratio: totalBlocks ? completedBlocks / totalBlocks : null, items: ctx.liveProgress?.items ?? [], turns_by_block: ctx.liveProgress?.turns_by_block ?? {}, artifacts_by_block: ctx.liveProgress?.artifacts_by_block ?? {} };
   const analysisJson = {
     schema: "did_playroom_review.v1",
