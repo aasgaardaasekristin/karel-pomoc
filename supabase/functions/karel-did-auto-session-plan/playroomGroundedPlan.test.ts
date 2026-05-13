@@ -88,6 +88,7 @@ Deno.test("validateGroundedPlan: fake personalization rejected when grounding to
   plan.why_today = "obecný den";
   plan.play_through_line = "obecná hra";
   plan.data_provenance = "obecné";
+  plan.therapist_questions = ["Změnil se kontakt s rodinou v posledních 24h?", "Spal v noci celistvě nebo s probouzením?"];
   const r = validateGroundedPlan(plan, { partName: "Tundrupek", groundingTokens: ["timmy", "tibet", "drak"] });
   assertEquals(r.ok, false);
   if (!r.ok) assertEquals(r.reason, "fake_personalization");
