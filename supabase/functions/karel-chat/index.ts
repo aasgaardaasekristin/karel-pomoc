@@ -482,6 +482,7 @@ serve(async (req) => {
     const lastRequestUserText = normalizeMessageContentForPrompt([...(messages || [])].reverse().find((m: any) => m.role === "user")?.content);
     const requestSafety = detectSafetyMention(lastRequestUserText);
     const isPlayroomMode = didSubMode === "playroom";
+    let playroomRuntimeRow: PlayroomRuntimeRow | null = null;
     const isTherapistLiveSession = mode === "live-session" || didSubMode === "therapist_session" || didSubMode === "session";
     const runtimePacketId = crypto.randomUUID();
     const promptContractVersion = isPlayroomMode
