@@ -727,3 +727,5 @@ const DidKidsPlayroom = ({ onBack }: { onBack: () => void }) => {
 };
 
 export default DidKidsPlayroom;
+// STEP 1 (P33.11) test surface — pure helper export, no runtime impact:
+export { buildRailReply as __test_buildRailReply };
