@@ -4,6 +4,7 @@ import { corsHeaders } from "../_shared/auth.ts";
 import { loadEntityRegistry } from "../_shared/entityRegistry.ts";
 import { resolveEntity } from "../_shared/entityResolution.ts";
 import { snapshotProtectedMutation } from "../_shared/mutationSnapshotGuard.ts";
+import { buildPlayroomPlanGrounded } from "./playroomGroundedPlan.ts";
 
 /**
  * karel-did-auto-session-plan
@@ -284,7 +285,34 @@ async function ensureKarelDirectCandidate(sb: any, args: { userId: string; today
   }
 
   const contract = deriveKarelDirectContract(args.selectedPart, args.forcePart);
-  const playroomPlan = buildPlayroomPlan({ selectedPart: args.selectedPart, forcePart: args.forcePart, todayPrague: args.todayPrague, crisisEventId: args.crisisEventId, partReg: args.partReg });
+
+  // P33.11 KROK 3 — try grounded plan first; fallback to hardcoded if it fails any guard.
+  const readiness: "red" | "amber" | "green" =
+    args.selectedPart.breakdown?.crisis ? "red" : args.selectedPart.score >= 6 ? "amber" : "green";
+  const apiKey = Deno.env.get("LOVABLE_API_KEY") ?? null;
+  let playroomPlan: any;
+  let groundedMeta: any = null;
+  try {
+    const grounded = await buildPlayroomPlanGrounded({
+      sb, userId: args.userId, partName: args.selectedPart.partName,
+      todayPrague: args.todayPrague, readiness, apiKey,
+    });
+    if (grounded.status === "grounded" && grounded.plan) {
+      playroomPlan = grounded.plan;
+      groundedMeta = { status: "grounded", attempts: grounded.attempts, sources_used: grounded.sourcesUsed };
+      console.log(`[auto-session-plan] grounded playroom plan OK for ${args.selectedPart.partName} (attempts=${grounded.attempts})`);
+    } else {
+      console.warn(`[auto-session-plan] grounded plan FAILED → fallback. reason=${grounded.reason}`);
+      playroomPlan = buildPlayroomPlan({ selectedPart: args.selectedPart, forcePart: args.forcePart, todayPrague: args.todayPrague, crisisEventId: args.crisisEventId, partReg: args.partReg });
+      groundedMeta = { status: "fallback", reason: grounded.reason, attempts: grounded.attempts, sources_used: grounded.sourcesUsed };
+    }
+  } catch (e) {
+    console.error(`[auto-session-plan] grounded plan EXCEPTION → fallback`, e);
+    playroomPlan = buildPlayroomPlan({ selectedPart: args.selectedPart, forcePart: args.forcePart, todayPrague: args.todayPrague, crisisEventId: args.crisisEventId, partReg: args.partReg });
+    groundedMeta = { status: "fallback", reason: `exception: ${(e as Error).message}` };
+  }
+  if (groundedMeta) playroomPlan.meta = { ...(playroomPlan.meta ?? {}), ...groundedMeta };
+
   const markdown = playroomPlanToMarkdown(playroomPlan);
   const { data, error } = await sb.from("did_daily_session_plans").insert({
     user_id: args.userId,
@@ -304,7 +332,7 @@ async function ensureKarelDirectCandidate(sb: any, args: { userId: string; today
     crisis_event_id: args.crisisEventId ?? null,
   }).select("id").single();
   if (error) throw error;
-  return { created: true, planId: data?.id };
+  return { created: true, planId: data?.id, playroom_plan_status: groundedMeta?.status };
 }
 
 // ═══ Urgency scoring v2 ═══
