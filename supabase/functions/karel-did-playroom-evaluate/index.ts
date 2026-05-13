@@ -267,7 +267,7 @@ async function upsertReview(sb: any, ctx: any, input: any, review: any, transcri
     review_kind: "karel_direct_playroom",
     status,
     analysis_version: "did-playroom-review-v1",
-    source_data_summary: `playroom:${completedBlocks}/${totalBlocks}:clinical_turns=${transcript.clinical.length}:technical_fallbacks=${transcript.excluded.length}`,
+    source_data_summary: `playroom:${completedBlocks}/${totalBlocks}:clinical_turns=${transcript.clinical.length}:technical_fallbacks=${transcript.excluded.length}${isAutoSafetyNetPartial ? ":auto_safety_net_partial" : ""}`,
     evidence_items: [
       { kind: "approved_playroom_plan", available: true, source_table: "did_daily_session_plans", source_id: ctx.plan.id },
       { kind: "bound_thread", available: true, source_table: "did_threads", source_id: ctx.thread.id, message_count: Array.isArray(ctx.thread.messages) ? ctx.thread.messages.length : 0 },
