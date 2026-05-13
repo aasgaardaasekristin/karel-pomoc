@@ -290,7 +290,9 @@ async function upsertReview(sb: any, ctx: any, input: any, review: any, transcri
     therapeutic_implications: review.implications_for_part,
     team_implications: review.recommendations_for_therapists,
     next_session_recommendation: review.recommendations_for_next_session,
-    evidence_limitations: status === "evidence_limited" ? "Evidence Herny je omezená; závěry jsou pracovní a vycházejí jen ze skutečně uloženého transcriptu/progressu." : null,
+    evidence_limitations: isAutoSafetyNetPartial
+      ? "Herna byla auto-uzavřena safety-netem (nebyla ručně dokončena). Závěry vycházejí z reálného, ale částečného transcriptu/progressu — označeno jako partial / evidence_limited."
+      : (status === "evidence_limited" ? "Evidence Herny je omezená; závěry jsou pracovní a vycházejí jen ze skutečně uloženého transcriptu/progressu." : null),
     main_topic: review.main_theme,
     program_title: ctx.plan.urgency_breakdown?.playroom_plan?.title || ctx.plan.urgency_breakdown?.main_topic || `Herna — ${ctx.plan.selected_part}`,
     lead_person: "Karel",
