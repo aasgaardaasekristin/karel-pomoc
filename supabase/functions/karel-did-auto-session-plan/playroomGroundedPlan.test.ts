@@ -6,7 +6,7 @@ import {
   REQUIRED_BLOCK_FIELDS,
 } from "./playroomGroundedPlan.ts";
 
-const FULL_BLOCK = (overrides: Record<string, string> = {}) => ({
+const FULL_BLOCK = (overrides: Record<string, any> = {}) => ({
   step: 1,
   duration_min: 5,
   title: "Mapa Tibetu — kde dnes stojím",
