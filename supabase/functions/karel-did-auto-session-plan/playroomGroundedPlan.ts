@@ -443,7 +443,7 @@ export async function buildPlayroomPlanGrounded(opts: {
   /** Optional override for tests — bypass real fetch and return this raw JSON instead. */
   __aiRawOverride?: string;
 }): Promise<{
-  status: "grounded" | "fallback";
+  status: "grounded" | "weakly_grounded" | "fallback";
   plan: any | null;
   sourcesUsed: GatherResult["sourceRefs"];
   summary: PlayroomContextSummary;
