@@ -197,6 +197,7 @@ type PlayroomRuntimeRow = {
   current_block_index: number;
   consecutive_stabilize_count: number;
   program_snapshot: any;
+  metadata: any;
 };
 
 async function loadOrInitPlayroomRuntimeState(args: {
