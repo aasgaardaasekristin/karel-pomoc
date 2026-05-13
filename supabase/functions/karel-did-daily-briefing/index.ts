@@ -590,14 +590,18 @@ const buildMandatoryPlayroomProposal = (payload: any, context: any, candidates: 
     || cleanBlockText(candidates?.[0]?.reasons?.join(", "))
     || cleanBlockText(context?.last_3_days)
     || "Ranní přehled musí každý den připravit samostatnou Hernu; aktuální signály jsou slabé, proto volím bezpečný nízkoprahový diagnosticko-terapeutický program.";
-  const framedWhyToday = realitySummary
-    ? `${realitySummary} Pokud se téma samo objeví, držet ho jako skutečnou událost a emoční kontext; nejprve ověřit, co část sama ví, co cítí a co potřebuje. ${whyToday}`.trim()
-    : whyToday;
+  // P33.x Fix A: why_this_part_today musí být čistý klinický důvod pro UI/terapeuty.
+  // Provozní směrnice (realitySummary, instrukce „držet…", „ověřit…") se NIKDY
+  // nelepí do veřejného pole — patří jen do neveřejného runtime_directive.
+  const runtimeDirective = realitySummary
+    ? `${realitySummary} Pokud se téma samo objeví, držet ho jako skutečnou událost a emoční kontext; nejprve ověřit, co část sama ví, co cítí a co potřebuje.`.trim()
+    : "";
 
   return {
     part_name: selectedPart,
     status: "awaiting_therapist_review",
-    why_this_part_today: framedWhyToday,
+    why_this_part_today: whyToday,
+    backend_context_inputs: runtimeDirective ? { runtime_directive: runtimeDirective } : {},
     main_theme: realitySummary ? "Bezpečný kontakt s real-world kontextem bez interpretace za kluky" : `Bezpečný kontakt a zmapování toho, co ${selectedPart} dnes unese`,
     evidence_sources: ["ranní briefing", "poslední tři dny", "kandidáti dnešního sezení"],
     goals: [
