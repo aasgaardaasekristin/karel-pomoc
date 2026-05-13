@@ -399,7 +399,7 @@ Vrať POUZE validní JSON s klíči: child_present (bool), probable_match ("yes"
 
 async function persistPlayroomRuntimeTransition(
   rowId: string,
-  next: { phase: string; current_block_index: number; consecutive_stabilize_count: number },
+  next: { phase: string; current_block_index: number; consecutive_stabilize_count: number; metadata?: any },
 ): Promise<void> {
   try {
     const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
