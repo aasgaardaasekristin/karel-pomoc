@@ -471,6 +471,7 @@ export async function buildPlayroomPlanGrounded(opts: {
           }),
         });
         if (!res.ok) {
+          try { await res.body?.cancel(); } catch { /* ignore */ }
           lastReason = `ai_http_${res.status}`;
           continue;
         }
