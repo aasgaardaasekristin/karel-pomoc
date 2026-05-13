@@ -297,10 +297,10 @@ async function ensureKarelDirectCandidate(sb: any, args: { userId: string; today
       sb, userId: args.userId, partName: args.selectedPart.partName,
       todayPrague: args.todayPrague, readiness, apiKey,
     });
-    if (grounded.status === "grounded" && grounded.plan) {
+    if ((grounded.status === "grounded" || grounded.status === "weakly_grounded") && grounded.plan) {
       playroomPlan = grounded.plan;
-      groundedMeta = { status: "grounded", attempts: grounded.attempts, sources_used: grounded.sourcesUsed };
-      console.log(`[auto-session-plan] grounded playroom plan OK for ${args.selectedPart.partName} (attempts=${grounded.attempts})`);
+      groundedMeta = { status: grounded.status, attempts: grounded.attempts, sources_used: grounded.sourcesUsed, data_sufficiency: grounded.plan?.meta?.data_sufficiency };
+      console.log(`[auto-session-plan] ${grounded.status} playroom plan OK for ${args.selectedPart.partName} (attempts=${grounded.attempts}, sufficiency=${grounded.plan?.meta?.data_sufficiency})`);
     } else {
       console.warn(`[auto-session-plan] grounded plan FAILED → fallback. reason=${grounded.reason}`);
       playroomPlan = buildPlayroomPlan({ selectedPart: args.selectedPart, forcePart: args.forcePart, todayPrague: args.todayPrague, crisisEventId: args.crisisEventId, partReg: args.partReg });
