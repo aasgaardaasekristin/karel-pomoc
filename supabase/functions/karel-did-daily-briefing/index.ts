@@ -1068,47 +1068,50 @@ function injectPlayroomReviewIntoProposal(payload: any) {
   const next = cleanBlockText(y.recommendations_for_next_playroom || y.recommendations_for_therapists || y.recommendations_for_next_session);
   const playPrefix = recencyIntro(y, "playroom");
   const playLabel = y.is_yesterday ? "včerejší Hernu" : y.days_since_today === 2 ? "předevčerejší Hernu" : `poslední Hernu z ${formatClinicalDate(y.session_date_iso)}, ${y.human_recency_label}`;
-  pp.evidence_sources = Array.from(new Set([...(Array.isArray(pp.evidence_sources) ? pp.evidence_sources : []), `${y.visible_label ?? "Poslední Herna"} — PRAKTICKÝ REPORT`, `${y.visible_label ?? "Poslední Herna"} — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ`]));
-  // P33.x Fix A: why_this_part_today zůstává čistý klinický důvod (žádné slepování
-  // s provozními instrukcemi). Operační směrnice se ukládají do
-  // backend_context_inputs.runtime_directive (neveřejné pole).
-  const existingWhy = cleanBlockText(pp.why_this_part_today);
-  pp.why_this_part_today = sanitizeKarelClinicalText(
-    existingWhy || `${playPrefix} Dnešní návrh navazuje na ${playLabel} a začíná novým bezpečným check-inem.`
-  );
-  const injectedDirective = `${playPrefix} Dnešní návrh nenavazuje automaticky; vychází z ${playLabel} a začíná novým bezpečným check-inem. Symboly z tohoto materiálu používat primárně s ${y.part_name || pp.part_name || "touto částí"} a jen tehdy, pokud je část sama přinese nebo na ně klidně reaguje; u ostatních částí je nepřenášet automaticky.`;
-  pp.main_theme = `Jemný check-in bezpečného místa a dnešního vnitřního počasí, ne automatické pokračování hluboké symbolické práce`;
-  pp.goals = Array.from(new Set([
-    "ověřit dnešní tělesnou a emoční dostupnost bez tlaku",
-    "připomenout starší zdroje jen pokud jsou dnes bezpečné",
-    "držet krátký rámec a měkké zakončení",
-    ...(Array.isArray(pp.goals) ? pp.goals : []),
-  ])).slice(0, 4);
+  pp.evidence_sources = Array.from(new Set([
+    ...(Array.isArray(pp.evidence_sources) ? pp.evidence_sources : []),
+    `${y.visible_label ?? "Poslední Herna"} — PRAKTICKÝ REPORT`,
+    `${y.visible_label ?? "Poslední Herna"} — DOPORUČENÍ PRO DALŠÍ PLÁNOVÁNÍ`,
+  ]));
+
+  // P33.x Fix A2 — sémantický rewrite: veřejná pole jdou z klinického
+  // helperu (3. osoba, neinstrukčně). Veškerý mikroplán vedení a instrukční
+  // phrasing („Karel nezačíná otázkou…", „Krátce ověřit…", child_safe_version,
+  // forbidden_directions) se MERGEUJE pouze do `runtime_directive`.
+  const clinical = buildClinicalPlayroomBriefing(y, String(y.part_name || pp.part_name || ""));
+  pp.why_this_part_today = clinical.why_this_part_today;
+  pp.main_theme = clinical.main_theme;
+  pp.goals = clinical.goals;
+
+  const runtimeChunks: string[] = [
+    pp.backend_context_inputs?.runtime_directive,
+    `${playPrefix} Dnešní návrh nenavazuje automaticky; vychází z ${playLabel} a začíná novým bezpečným check-inem. Symboly z tohoto materiálu používat primárně s ${y.part_name || pp.part_name || "touto částí"} a jen tehdy, pokud je část sama přinese nebo na ně klidně reaguje; u ostatních částí je nepřenášet automaticky.`,
+    "Karel nezačíná přímým dotazem na ochranné bytosti; nabízí volbu mezi bezpečným místem poblíž, dnešním vnitřním počasím nebo tichem a jedním slovem.",
+    "Karel krátce ověří tělesnou dostupnost (nepříjemné/únavné/bezpečné) bez rozebírání; jen mapa aktuální dostupnosti.",
+    "Symboly světla, domova nebo ochrany Karel nevkládá jako povinnost — pouze pokud je část sama přinese nebo na ně klidně reaguje.",
+    "Pokud se objeví bezpečný symbol, Karel pomáhá ho spojit s přítomným tělem, dnešním dnem a bezpečnými dospělými, ne s odchodem mimo realitu.",
+    "Karel oznámí blížící se konec, nabídne poslední stabilizační krok a neotevírá nové těžké téma.",
+    "Forbidden: nezačínat přímým dotazem na ochranné bytosti; nepřenášet Tundrupkovy symboly automaticky na ostatní části; neposilovat představu, že bezpečí existuje jen mimo současný život.",
+    "Child-safe verbální nabídka: „Chceš dnes jen zkontrolovat, jestli je to bezpečné místo pořád někde poblíž, nebo chceš raději začít dnešním vnitřním počasím? Nemusíme pokračovat v ničem hlubokém.“",
+  ];
   pp.backend_context_inputs = {
     ...(pp.backend_context_inputs ?? {}),
     yesterday_playroom_review_id: y.review_id ?? null,
     used_yesterday_playroom_review: true,
     practical_report_excerpt: sanitizeKarelClinicalText(report).slice(0, 1200),
     next_playroom_recommendation_excerpt: sanitizeKarelClinicalText(next).slice(0, 1200),
-    runtime_directive: [pp.backend_context_inputs?.runtime_directive, injectedDirective].filter(Boolean).join(" ").trim(),
+    runtime_directive: runtimeChunks.filter(Boolean).join(" ").trim(),
   };
+
   const seed = pp.playroom_plan?.runtime_packet_seed && typeof pp.playroom_plan.runtime_packet_seed === "object" ? pp.playroom_plan.runtime_packet_seed : {};
   pp.playroom_plan = {
     ...(pp.playroom_plan ?? {}),
-    child_safe_version: "Chceš dnes jen zkontrolovat, jestli je to bezpečné místo pořád někde poblíž, nebo chceš raději začít dnešním vnitřním počasím? Nemusíme pokračovat v ničem hlubokém.",
-    therapeutic_program: [
-      { block: "Jemný práh", minutes: 3, detail: "Karel nezačíná otázkou na ochranné bytosti. Nabídne volbu: bezpečné místo poblíž, dnešní vnitřní počasí, nebo jen ticho a jedno slovo." },
-      { block: "Tělo a den", minutes: 5, detail: "Krátce ověřit, jestli je v těle něco nepříjemného, únavného nebo bezpečného. Bez rozebírání, jen mapa aktuální dostupnosti." },
-      { block: "Zdroj jen se souhlasem", minutes: 7, detail: "Symboly světla, domova nebo ochrany použít pouze tehdy, pokud je část sama přinese nebo na ně klidně reaguje. Nevkládat je jako povinnost." },
-      { block: "Malý přenos do přítomnosti", minutes: 5, detail: "Pokud se objeví bezpečný symbol, pomoci ho spojit s přítomným tělem, dnešním dnem a bezpečnými dospělými, ne s odchodem mimo realitu." },
-      { block: "Měkké zavření", minutes: 4, detail: "Oznámit blížící se konec, nabídnout poslední stabilizační krok, ujistit, že bezpečné místo nezmizí, a neotevírat nové těžké téma." },
-    ],
-    forbidden_directions: Array.from(new Set([
-      "nezačínat přímým dotazem na ochranné bytosti",
-      "nepřenášet Tundrupkovy symboly automaticky na ostatní části",
-      "neposilovat představu, že bezpečí existuje jen mimo současný život",
-      ...(Array.isArray(pp.playroom_plan?.forbidden_directions) ? pp.playroom_plan.forbidden_directions : []),
-    ])).slice(0, 8),
+    // Veřejné: jen klinické bloky z helperu (popisují záměr, ne instrukci pro Karla).
+    therapeutic_program: clinical.program_blocks,
+    // child_safe_version a forbidden_directions jsou operativní vrstva pro Karla
+    // — žijí v runtime_directive, ve veřejné struktuře je vyprazdňujeme.
+    child_safe_version: "",
+    forbidden_directions: [],
     risks_and_stop_signals: Array.from(new Set([
       "duchovní symbolika se stáčí k odpojení od reality nebo k touze nebýt",
       "část se cítí tlačená pokračovat v symbolu, který dnes sama nepřinesla",
