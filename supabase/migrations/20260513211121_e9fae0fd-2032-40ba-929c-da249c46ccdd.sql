@@ -1,0 +1,1 @@
+DELETE FROM public.did_daily_session_plans WHERE id='9026b98b-1bc2-4fde-9c38-17bb822eea41';
