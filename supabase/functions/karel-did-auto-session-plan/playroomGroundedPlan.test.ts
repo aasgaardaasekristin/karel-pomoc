@@ -97,7 +97,7 @@ Deno.test("validateGroundedPlan: fake personalization rejected when grounding to
 Deno.test("validateGroundedPlan: weak generic therapist questions rejected", () => {
   const plan = FULL_PLAN();
   plan.therapist_questions = ["Jak to vypadá?"];
-  const r = validateGroundedPlan(plan, { partName: "Tundrupek", groundingTokens: ["timmy"] });
+  const r = validateGroundedPlan(plan, { partName: "Tundrupek", groundingTokens: [] });
   assertEquals(r.ok, false);
   if (!r.ok) assertEquals(r.reason, "weak_questions");
 });
