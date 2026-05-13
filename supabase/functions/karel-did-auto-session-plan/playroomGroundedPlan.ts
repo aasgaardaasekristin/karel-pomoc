@@ -442,7 +442,14 @@ function buildUserPrompt(summary: PlayroomContextSummary, todayPrague: string, r
   if (summary.recentHanaSafeSummaries.length) lines.push(`\nRECENT HANA SAFE-SUMMARIES (filtr: zmiňují tuto část):\n- ${summary.recentHanaSafeSummaries.join("\n- ")}`);
 
   if (summary.groundingTokens.length) {
-    lines.push(`\nKOTVENÍ: program MUSÍ konkrétně zapracovat alespoň jeden z těchto motivů/triggerů (jinak je odmítnut jako fake_personalization): ${summary.groundingTokens.slice(0, 12).join(", ")}`);
+    const top = summary.groundingTokens.slice(0, 12);
+    lines.push(`\n=== GROUNDING TOKENS (POVINNÉ KOTVENÍ) ===`);
+    lines.push(`Tokeny:\n- ${top.join("\n- ")}`);
+    lines.push(`\nTVRDÝ POŽADAVEK:`);
+    lines.push(`1) V CELÉM JSON plánu se MUSÍ DOSLOVA objevit ALESPOŇ 2 různé tokeny z výše uvedeného seznamu.`);
+    lines.push(`2) ALESPOŇ JEDEN z těchto tokenů MUSÍ být DOSLOVA použit v poli "child_facing_prompt_draft" NEBO "play_metaphor" NEBO "why_for_this_part" u alespoň jednoho bloku.`);
+    lines.push(`3) Tokeny se neparafrázují (např. "${top[0]}" se píše jako "${top[0]}", ne jako synonymum).`);
+    lines.push(`Pokud toto nesplníš, plán bude odmítnut jako fake_personalization a nedostane se k dítěti.`);
   }
 
   lines.push(`\nNAVRHNI nyní 4–6 bloků (řazené step 1..N). Vrať POUZE JSON.\n\n${buildSchemaInstruction()}`);
