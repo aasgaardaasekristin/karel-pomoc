@@ -311,13 +311,26 @@ export function validateGroundedPlan(
     }
   }
 
-  // fake_personalization: at least 1 grounding token must appear in the program
-  // (skip if there were literally no grounding tokens — then there is nothing
-  //  to anchor against and we cannot blame the AI for it).
+  // fake_personalization (P33.11 KROK 3 — strict, condition A):
+  //   - ≥2 grounding token hits anywhere in plan, AND
+  //   - ≥1 grounding token in some block's child_facing_prompt_draft | play_metaphor | why_for_this_part
+  // Skipped only when there are no grounding tokens (then data_sufficiency=low marker is set later).
   if (ctx.groundingTokens.length > 0) {
-    const hits = ctx.groundingTokens.filter((tok) => fullJson.includes(tok));
-    if (hits.length === 0) {
-      return { ok: false, reason: "fake_personalization", detail: `no grounding token from [${ctx.groundingTokens.slice(0, 6).join(", ")}…] present anywhere in plan` };
+    const tokens = ctx.groundingTokens;
+    const hitsTotal = tokens.filter((tok) => fullJson.includes(tok));
+    if (hitsTotal.length < 2) {
+      return { ok: false, reason: "fake_personalization", detail: `only ${hitsTotal.length} grounding token hit(s) in plan; need ≥2. tokens=[${tokens.slice(0, 6).join(", ")}…]` };
+    }
+    const hitsInKeyFields = blocks.some((b: any) => {
+      const composite = [
+        String(b?.child_facing_prompt_draft ?? ""),
+        String(b?.play_metaphor ?? ""),
+        String(b?.why_for_this_part ?? ""),
+      ].join(" \n ").toLowerCase();
+      return tokens.some((tok) => composite.includes(tok));
+    });
+    if (!hitsInKeyFields) {
+      return { ok: false, reason: "fake_personalization", detail: `no grounding token in any block's child_facing_prompt_draft|play_metaphor|why_for_this_part` };
     }
   }
 
