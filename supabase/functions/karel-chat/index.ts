@@ -305,10 +305,14 @@ function decidePlayroomTransition(
 // without booting the full edge-function module.
 import {
   decideOpeningGateNextPhase,
+  applyHardGuards,
+  applyAntiStall,
+  checkInStatus,
+  OPENING_TURN_LIMIT,
   type OpeningGateDecision,
   type OpeningGateOutput,
 } from "./openingGate.ts";
-export { decideOpeningGateNextPhase };
+export { decideOpeningGateNextPhase, applyHardGuards, applyAntiStall, checkInStatus, OPENING_TURN_LIMIT };
 export type { OpeningGateDecision, OpeningGateOutput };
 
 /**
