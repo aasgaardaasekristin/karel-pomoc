@@ -389,43 +389,35 @@ const PostSessionForm = ({
 const KarelOpeningSection = ({ opening }: { opening: string }) => (
   <>
     <SectionHead>Karlova promluva</SectionHead>
-    <Prose>{opening}</Prose>
+    {opening ? (
+      <Prose>{opening}</Prose>
+    ) : (
+      <p className="text-[12px] text-muted-foreground italic">
+        Karlova promluva pro tuto hernu zatím nebyla vygenerována.
+      </p>
+    )}
   </>
 );
 
-const buildLastSession = (plan: any, review?: LastPlayroomReview | null) => {
+/**
+ * BLOK 1 contract: čistě DB-driven. Žádné fallback věty, žádná syntéza textu.
+ * Sekce, pro kterou DB neposkytne strukturovaná data, se nezobrazí vůbec.
+ */
+const buildLastSession = (plan: any) => {
   const ls = pickFromPlan(plan, "last_session_summary")
     ?? pickFromPlan(plan, "last_playroom_summary")
     ?? pickFromPlan(plan, "previous_playroom_summary")
-    ?? pickFromPlan(plan, "yesterday_playroom_summary")
-    ?? {};
-  const happened = clinicalList(ls.happened ?? ls.what_happened ?? ls.completed, [review?.practical_report || review?.karel_summary || "Poslední herna je evidovaná; pro dnešní rozhodnutí z ní bereme jen ověřené reakce a průběh, ne hotové závěry."]);
-  const not_happened = clinicalList(ls.not_happened ?? ls.what_did_not_happen ?? ls.not_completed, ["V dostupném zápisu zatím není odděleně označeno, co z plánovaného programu odpadlo."]);
-  const worked = clinicalList(ls.worked ?? ls.what_worked ?? ls.helped, [review?.key_finding_about_part || review?.recommendations_for_next_playroom || "Jako použitelný opěrný bod bereme jen to, co část unesla bez tlaku a bez ztráty bezpečí."]);
-  const destabilized = clinicalList(ls.destabilized ?? ls.destabilising ?? ls.what_failed_or_backfired, ["Dnes nepřidávat výklad ani tlak tam, kde se objeví stažení, zmatek nebo tělesné zahlcení."]);
-  const stop_signals = clinicalList(ls.stop_signals ?? ls.stop_rules ?? ls.risks_and_stop_signals, clinicalList(plan?.risks_and_stop_signals, ["stažení", "zahlcení", "zmatek", "odmítnutí pokračovat"]));
-  return { happened, not_happened, worked, destabilized, stop_signals };
-};
-
-const buildClinicalOpening = (args: {
-  explicit: string;
-  partName: string;
-  whyToday: string;
-  lastSession: ReturnType<typeof buildLastSession>;
-  directionGoal: string;
-  contraindications: string[];
-  questions: string[];
-}) => {
-  if (args.explicit) return args.explicit;
-  const last = args.lastSession.happened[0] || "navazuji na poslední doloženou hernu opatrně a bez předčasného výkladu";
-  const goal = args.directionGoal || "dnes ověřit bezpečný kontakt, aktuální dostupnost a jeden malý další krok";
-  const caution = args.contraindications[0] || args.lastSession.destabilized[0] || "nepůjdu přes stažení, zahlcení ani nejasný stop signál";
-  const need = args.questions[0] || "potřebuji od vás před schválením potvrdit bezpečný rámec a hranici, kde hernu zastavit";
-  return [
-    `Haničko a Káťo, dnešní hernu s ${args.partName} chápu jako úzký pracovní prostor pro ověření, ne jako hotový závěr.`,
-    `Vycházím z toho, že ${last}. ${args.whyToday || "Dnešní zaměření proto držím u bezpečného kontaktu a přímých reakcí kluků."}`,
-    `Navrhuji držet hlavní cíl: ${goal}. Zároveň platí hranice: ${caution}. Před schválením ${need}.`,
-  ].map(clinicalText).filter(Boolean).join("\n\n");
+    ?? pickFromPlan(plan, "yesterday_playroom_summary");
+  if (!ls || typeof ls !== "object") {
+    return { happened: [], not_happened: [], worked: [], destabilized: [], stop_signals: [] };
+  }
+  return {
+    happened: clinicalList(ls.happened ?? ls.what_happened ?? ls.completed),
+    not_happened: clinicalList(ls.not_happened ?? ls.what_did_not_happen ?? ls.not_completed),
+    worked: clinicalList(ls.worked ?? ls.what_worked ?? ls.helped),
+    destabilized: clinicalList(ls.destabilized ?? ls.destabilising ?? ls.what_failed_or_backfired),
+    stop_signals: clinicalList(ls.stop_signals ?? ls.stop_rules ?? ls.risks_and_stop_signals),
+  };
 };
 
 const preApprovalQuestionsFromPlan = (plan: any): string[] => clinicalList(
@@ -441,7 +433,7 @@ const PlayroomDecisionCard = ({
   view,
   contextSummary,
   contextLabel,
-  lastPlayroomReview,
+  lastPlayroomReview: _lastPlayroomReview,
   onOpenDeliberation,
 }: Props) => {
   const plan = playroom.playroom_plan || {};
@@ -451,117 +443,80 @@ const PlayroomDecisionCard = ({
     [view.rationale, playroom.why_this_part_today, playroom.main_theme],
   );
 
-  // 3. Co víme z minulé herny
-  const lastSession = useMemo(() => {
-    return buildLastSession(plan, lastPlayroomReview);
-  }, [plan, lastPlayroomReview]);
+  // 3. Co víme z minulé herny — DB-only, bez fallback vět
+  const lastSession = useMemo(() => buildLastSession(plan), [plan]);
+  const hasLastSession = lastSession.happened.length || lastSession.not_happened.length
+    || lastSession.worked.length || lastSession.destabilized.length || lastSession.stop_signals.length;
 
-  // 4. Pracovní dedukce
+  // 4. Pracovní dedukce — render jen pokud DB má `deductions`
   const deductions = useMemo(() => {
     const d = pickFromPlan(plan, "deductions");
-    const confirmedFallback = clinicalList(plan?.evidence_to_record).length ? clinicalList(plan?.evidence_to_record).slice(0, 3) : lastSession.happened.slice(0, 2);
-    const workingFallback = [clinicalRationale, lastPlayroomReview?.implications_for_plan].map(clinicalText).filter(Boolean).slice(0, 2);
-    const unknownFallback = preApprovalQuestionsFromPlan(plan).slice(0, 3);
-    if (!d || typeof d !== "object") return {
-      confirmed: confirmedFallback,
-      working: workingFallback,
-      unknowns: unknownFallback.length ? unknownFallback : ["Potřebujeme ověřit přímou reakci kluků v průběhu herny."],
-    };
+    if (!d || typeof d !== "object") return null;
     return {
-      confirmed: clinicalList(d.confirmed, confirmedFallback),
-      working: clinicalList(d.working, workingFallback),
-      unknowns: clinicalList(d.unknowns, unknownFallback),
+      confirmed: clinicalList(d.confirmed),
+      working: clinicalList(d.working),
+      unknowns: clinicalList(d.unknowns),
     };
-  }, [plan, lastSession.happened, lastPlayroomReview?.implications_for_plan, clinicalRationale]);
+  }, [plan]);
 
-  // 5. Dnešní směr práce
+  // 5. Dnešní směr práce — render jen pokud DB má `direction`
   const direction = useMemo(() => {
     const d = pickFromPlan(plan, "direction");
-    const fallbackStop = clinicalList(plan?.risks_and_stop_signals, lastSession.stop_signals);
-    if (!d || typeof d !== "object") return {
-      phase: "pracovní ověření bezpečného kontaktu",
-      readiness: "čeká na potvrzení terapeutkami",
-      goal_primary: clinicalText(plan?.clinical_goal || view.goals[0] || clinicalRationale || "ověřit dnešní dostupnost bez tlaku na výkon"),
-      goal_secondary: clinicalText(view.goals[1] || "získat přímý materiál pro další plán"),
-      not_today: clinicalList(plan?.forbidden_directions, ["neotevírat trauma ani interpretace bez přímé reakce kluků"]),
-      contraindications: fallbackStop,
-      stop_rules: fallbackStop,
-      fallback: clinicalText(plan?.fallback || "při zahlcení zastavit program a přejít na bezpečný kontakt"),
-    };
+    if (!d || typeof d !== "object") return null;
     return {
       phase: clinicalText(d.phase),
       readiness: clinicalText(d.readiness),
-      goal_primary: firstText(d.goal_primary, plan?.clinical_goal, view.goals[0]),
-      goal_secondary: firstText(d.goal_secondary, view.goals[1]),
-      not_today: clinicalList(d.not_today, clinicalList(plan?.forbidden_directions)),
-      contraindications: clinicalList(d.contraindications, fallbackStop),
-      stop_rules: clinicalList(d.stop_rules, fallbackStop),
-      fallback: firstText(d.fallback, plan?.fallback),
+      goal_primary: clinicalText(d.goal_primary),
+      goal_secondary: clinicalText(d.goal_secondary),
+      not_today: clinicalList(d.not_today),
+      contraindications: clinicalList(d.contraindications),
+      stop_rules: clinicalList(d.stop_rules),
+      fallback: clinicalText(d.fallback),
     };
-  }, [plan, lastSession.stop_signals, view.goals, clinicalRationale]);
+  }, [plan]);
 
   const hasDirection = direction
     && (direction.phase || direction.readiness || direction.goal_primary
       || direction.goal_secondary || direction.not_today.length || direction.contraindications.length
       || direction.stop_rules.length || direction.fallback);
 
-  // 6/7. Doporučení per terapeutka
+  // 6/7. Doporučení per terapeutka — render jen pokud DB má `therapist_actions`
   const therapistActions = useMemo(() => {
     const ta = pickFromPlan(plan, "therapist_actions");
-    if (!ta || typeof ta !== "object") {
-      return {
-        hanka: clinicalList(playroom.questions_for_hanka, ["Před schválením ověřit, zda je pro tuto část dnes bezpečnější krátká herna, nebo jen přítomná opora bez programu."]),
-        kata: clinicalList(playroom.questions_for_kata, ["Zkontrolovat riziko zahlcení a hranici, kdy má zůstat jen stabilizační kontakt."]),
-      };
-    }
+    if (!ta || typeof ta !== "object") return { hanka: [], kata: [] };
     return {
-      hanka: clinicalList(ta.hanka, clinicalList(playroom.questions_for_hanka)),
-      kata: clinicalList(ta.kata, clinicalList(playroom.questions_for_kata)),
+      hanka: clinicalList(ta.hanka),
+      kata: clinicalList(ta.kata),
     };
-  }, [plan, playroom]);
-
-  // 9. Otázky před schválením
-  const preApprovalQuestions = useMemo(() => {
-    const questions = preApprovalQuestionsFromPlan(plan);
-    return questions.length ? questions : [
-      "Je dnešní herna pro tuto část bezpečná jako krátký kontakt, nebo má zůstat jen stabilizační opora?",
-      "Který stop signál má dnes program okamžitě ukončit?",
-    ];
   }, [plan]);
 
+  // Karlova promluva — výhradně z DB (`opening_monologue` nebo `karel_opening`).
+  // Žádná syntéza ze sekcí. Pokud chybí → honest empty state v `KarelOpeningSection`.
   const opening = useMemo(() => {
     const raw = pickFromPlan(plan, "opening_monologue") ?? pickFromPlan(plan, "karel_opening");
-    const explicit = typeof raw === "string" ? clinicalText(raw) : raw && typeof raw === "object" ? firstText((raw as any).text, (raw as any).opening_monologue_text) : "";
-    return buildClinicalOpening({
-      explicit,
-      partName,
-      whyToday: clinicalRationale,
-      lastSession,
-      directionGoal: direction?.goal_primary || clinicalText(plan?.clinical_goal),
-      contraindications: direction?.contraindications || [],
-      questions: preApprovalQuestions,
-    });
-  }, [plan, partName, clinicalRationale, lastSession, direction, preApprovalQuestions]);
+    if (typeof raw === "string") return clinicalText(raw);
+    if (raw && typeof raw === "object") return firstText((raw as any).text, (raw as any).opening_monologue_text);
+    return "";
+  }, [plan]);
 
   // Debug detaily jen pod debug guardem
   const debug = isKarelDebugMode();
 
   return (
     <div className="mt-2 w-full p-3 rounded-lg border border-primary/20 bg-primary/5 space-y-1">
-      {/* HEADER — bez ozdobných chipů, jen název části + střízlivý textový stav */}
+      {/* HEADER — „Herna – {část}" */}
       <div className="flex items-baseline justify-between gap-3 flex-wrap">
         <h3 className="text-[15px] font-semibold text-foreground/90 flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-primary" />
-          Plán dnešní herny — {partName}
+          Herna – {partName}
         </h3>
         <span className="text-[11px] text-muted-foreground italic">{statusToText(playroom.status)}</span>
       </div>
 
-      {/* 1. Karlova promluva */}
+      {/* 1. Karlova promluva (read-only, DB-only, honest empty state) */}
       <KarelOpeningSection opening={opening} />
 
-
-      {/* 2. Proč právě dnes */}
+      {/* 2. Proč právě dnes — render jen pokud máme reálný text */}
       {clinicalRationale && (
         <>
           <SectionHead>Proč právě dnes</SectionHead>
@@ -569,31 +524,28 @@ const PlayroomDecisionCard = ({
         </>
       )}
 
-      {/* 3. Co víme z minulé herny */}
-      <SectionHead>Co víme z minulé herny</SectionHead>
-      {lastSession && (lastSession.happened.length || lastSession.not_happened.length
-        || lastSession.worked.length || lastSession.destabilized.length || lastSession.stop_signals.length) ? (
-        <div className="space-y-2">
-          {lastSession.happened.length > 0 && (
-            <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co proběhlo</p><BulletList items={lastSession.happened} /></div>
-          )}
-          {lastSession.not_happened.length > 0 && (
-            <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co neproběhlo</p><BulletList items={lastSession.not_happened} /></div>
-          )}
-          {lastSession.worked.length > 0 && (
-            <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co fungovalo</p><BulletList items={lastSession.worked} /></div>
-          )}
-          {lastSession.destabilized.length > 0 && (
-            <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co destabilizovalo</p><BulletList items={lastSession.destabilized} /></div>
-          )}
-          {lastSession.stop_signals.length > 0 && (
-            <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Stop signály</p><BulletList items={lastSession.stop_signals} /></div>
-          )}
-        </div>
-      ) : (
-        <p className="text-[12px] text-muted-foreground italic">
-          Z minulé herny zatím nemám podklad.
-        </p>
+      {/* 3. Co víme z minulé herny — render jen pokud DB má strukturovaná data */}
+      {hasLastSession && (
+        <>
+          <SectionHead>Co víme z minulé herny</SectionHead>
+          <div className="space-y-2">
+            {lastSession.happened.length > 0 && (
+              <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co proběhlo</p><BulletList items={lastSession.happened} /></div>
+            )}
+            {lastSession.not_happened.length > 0 && (
+              <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co neproběhlo</p><BulletList items={lastSession.not_happened} /></div>
+            )}
+            {lastSession.worked.length > 0 && (
+              <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co fungovalo</p><BulletList items={lastSession.worked} /></div>
+            )}
+            {lastSession.destabilized.length > 0 && (
+              <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co destabilizovalo</p><BulletList items={lastSession.destabilized} /></div>
+            )}
+            {lastSession.stop_signals.length > 0 && (
+              <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Stop signály</p><BulletList items={lastSession.stop_signals} /></div>
+            )}
+          </div>
+        </>
       )}
 
       {/* 4. Pracovní dedukce */}
