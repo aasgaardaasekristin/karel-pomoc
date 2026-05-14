@@ -63,6 +63,7 @@ import { selectBestBriefing, isFullRenderableBriefing } from "@/lib/briefingSele
 import { sanitizeKarelVisibleText } from "@/lib/karelBriefingVisibleSanitizer";
 import { auditVisibleKarelSections } from "@/lib/karelVisibleTextQuality";
 import { canonicalizePartDisplayName } from "@/lib/partTodayRelevance";
+import PlayroomDecisionCard from "@/components/did/PlayroomDecisionCard";
 
 interface BriefingDecision {
   /** SLICE 3 — stabilní serverové UUID briefing itemu (linked_briefing_item_id). */
