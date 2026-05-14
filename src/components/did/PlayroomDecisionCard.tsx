@@ -651,54 +651,8 @@ const PlayroomDecisionCard = ({
         </>
       )}
 
-      {/* 8. Návrh programu herny */}
-      {view.blocks.length > 0 && (
-        <>
-          <SectionHead>Návrh programu herny</SectionHead>
-          <div className="space-y-1.5">
-            {view.blocks.map((block, index) => (
-              <p key={`${index}-${block.title}`} className="text-[13px] leading-relaxed text-foreground/85">
-                <span className="font-medium text-foreground/95">{index + 1}. {block.title}</span> — {block.aim}
-              </p>
-            ))}
-          </div>
-          {view.child_safe_text && (
-            <>
-              <p className="mt-2 text-[11px] uppercase tracking-wide text-muted-foreground">Dětsky bezpečná verze</p>
-              <Prose>{view.child_safe_text}</Prose>
-            </>
-          )}
-          {view.stop_rules.length > 0 && (
-            <>
-              <p className="mt-2 text-[11px] uppercase tracking-wide text-muted-foreground">Stop signály v programu</p>
-              <BulletList items={view.stop_rules.slice(0, 4)} />
-            </>
-          )}
-        </>
-      )}
-
-      {/* 9. Otázky před schválením — inline */}
-      {preApprovalQuestions.length > 0 && (
-        <>
-          <SectionHead>Otázky před schválením</SectionHead>
-          <PreApprovalQuestions
-            partName={partName}
-            questions={preApprovalQuestions.slice(0, 5)}
-            planId={playroom.id}
-          />
-        </>
-      )}
-
-      {/* 10. Co zapsat po sezení */}
-      <SectionHead>Co zapsat po sezení</SectionHead>
-      <PostSessionForm partName={partName} planId={playroom.id} />
-
-      {/* 11. Co se zapíše dál (statický popis writeback destinací) */}
-      <SectionHead>Co se zapíše dál</SectionHead>
-      <p className="text-[12px] leading-relaxed text-muted-foreground">
-        Karta části — vždy. Operativní plán — vždy. Dlouhodobý plán — pouze když validita dat dovolí.
-        Karlova paměť — pouze pro vztahové a workflow implikace, nikdy ne raw transcript.
-      </p>
+      {/* Návrh programu herny, otázky před schválením, post-session zápis a writeback
+          patří do podvrstvy „Otevřít poradu ke schválení Herny" — zde se nezobrazují. */}
 
       {/* Akce: otevřít poradu ke schválení */}
       <div className="pt-3 mt-2 border-t border-border/40">
