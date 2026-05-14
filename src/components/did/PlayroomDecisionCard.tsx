@@ -435,58 +435,60 @@ const PlayroomDecisionCard = ({
   view,
   contextSummary,
   contextLabel,
+  lastPlayroomReview,
   onOpenDeliberation,
 }: Props) => {
   const plan = playroom.playroom_plan || {};
   const partName = view.part_name || playroom.part_name;
 
-  // 1. Karlova promluva (jen pokud reálně existuje v datech)
-  const opening: string = useMemo(() => {
-    const v = pickFromPlan(plan, "opening_monologue") ?? pickFromPlan(plan, "karel_opening");
-    if (typeof v === "string") return cleanStr(v);
-    if (v && typeof v === "object" && typeof v.text === "string") return cleanStr(v.text);
-    return "";
-  }, [plan]);
-
   // 3. Co víme z minulé herny
   const lastSession = useMemo(() => {
-    const ls = pickFromPlan(plan, "last_session_summary");
-    if (!ls || typeof ls !== "object") return null;
-    return {
-      happened: cleanList(ls.happened),
-      not_happened: cleanList(ls.not_happened),
-      worked: cleanList(ls.worked),
-      destabilized: cleanList(ls.destabilized),
-      stop_signals: cleanList(ls.stop_signals),
-    };
-  }, [plan]);
+    return buildLastSession(plan, lastPlayroomReview);
+  }, [plan, lastPlayroomReview]);
 
   // 4. Pracovní dedukce
   const deductions = useMemo(() => {
     const d = pickFromPlan(plan, "deductions");
-    if (!d || typeof d !== "object") return null;
-    return {
-      confirmed: cleanList(d.confirmed),
-      working: cleanList(d.working),
-      unknowns: cleanList(d.unknowns),
+    const confirmedFallback = clinicalList(plan?.evidence_to_record).length ? clinicalList(plan?.evidence_to_record).slice(0, 3) : lastSession.happened.slice(0, 2);
+    const workingFallback = [view.rationale, lastPlayroomReview?.implications_for_plan].map(clinicalText).filter(Boolean).slice(0, 2);
+    const unknownFallback = preApprovalQuestionsFromPlan(plan).slice(0, 3);
+    if (!d || typeof d !== "object") return {
+      confirmed: confirmedFallback,
+      working: workingFallback,
+      unknowns: unknownFallback.length ? unknownFallback : ["Potřebujeme ověřit přímou reakci kluků v průběhu herny."],
     };
-  }, [plan]);
+    return {
+      confirmed: clinicalList(d.confirmed, confirmedFallback),
+      working: clinicalList(d.working, workingFallback),
+      unknowns: clinicalList(d.unknowns, unknownFallback),
+    };
+  }, [plan, lastSession.happened, lastPlayroomReview?.implications_for_plan, view.rationale]);
 
   // 5. Dnešní směr práce
   const direction = useMemo(() => {
     const d = pickFromPlan(plan, "direction");
-    if (!d || typeof d !== "object") return null;
-    return {
-      phase: cleanStr(d.phase),
-      readiness: cleanStr(d.readiness),
-      goal_primary: cleanStr(d.goal_primary),
-      goal_secondary: cleanStr(d.goal_secondary),
-      not_today: cleanList(d.not_today),
-      contraindications: cleanList(d.contraindications),
-      stop_rules: cleanList(d.stop_rules),
-      fallback: cleanStr(d.fallback),
+    const fallbackStop = clinicalList(plan?.risks_and_stop_signals, lastSession.stop_signals);
+    if (!d || typeof d !== "object") return {
+      phase: "pracovní ověření bezpečného kontaktu",
+      readiness: "čeká na potvrzení terapeutkami",
+      goal_primary: clinicalText(plan?.clinical_goal || view.goals[0] || view.rationale || "ověřit dnešní dostupnost bez tlaku na výkon"),
+      goal_secondary: clinicalText(view.goals[1] || "získat přímý materiál pro další plán"),
+      not_today: clinicalList(plan?.forbidden_directions, ["neotevírat trauma ani interpretace bez přímé reakce kluků"]),
+      contraindications: fallbackStop,
+      stop_rules: fallbackStop,
+      fallback: clinicalText(plan?.fallback || "při zahlcení zastavit program a přejít na bezpečný kontakt"),
     };
-  }, [plan]);
+    return {
+      phase: clinicalText(d.phase),
+      readiness: clinicalText(d.readiness),
+      goal_primary: firstText(d.goal_primary, plan?.clinical_goal, view.goals[0]),
+      goal_secondary: firstText(d.goal_secondary, view.goals[1]),
+      not_today: clinicalList(d.not_today, clinicalList(plan?.forbidden_directions)),
+      contraindications: clinicalList(d.contraindications, fallbackStop),
+      stop_rules: clinicalList(d.stop_rules, fallbackStop),
+      fallback: firstText(d.fallback, plan?.fallback),
+    };
+  }, [plan, lastSession.stop_signals, view.goals, view.rationale]);
 
   const hasDirection = direction
     && (direction.phase || direction.readiness || direction.goal_primary
