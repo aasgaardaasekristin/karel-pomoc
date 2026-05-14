@@ -384,26 +384,14 @@ const PostSessionForm = ({
   );
 };
 
-/* -------------------- Karlova promluva (jen z DB, bez ručního inputu) -------------------- */
+/* -------------------- Karlova promluva -------------------- */
 
-const KarelOpeningSection = ({ dbOpening }: { dbOpening: string }) => {
-  if (dbOpening) {
-    return (
-      <>
-        <SectionHead>Karlova promluva</SectionHead>
-        <Prose>{dbOpening}</Prose>
-      </>
-    );
-  }
-  return (
-    <>
-      <SectionHead>Karlova promluva</SectionHead>
-      <p className="text-[13px] leading-relaxed text-muted-foreground italic">
-        Karel zatím nemá k této herně formulovanou promluvu.
-      </p>
-    </>
-  );
-};
+const KarelOpeningSection = ({ opening }: { opening: string }) => (
+  <>
+    <SectionHead>Karlova promluva</SectionHead>
+    <Prose>{opening}</Prose>
+  </>
+);
 
 /* -------------------- main card -------------------- */
 
