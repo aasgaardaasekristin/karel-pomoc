@@ -29,11 +29,6 @@ import DidLiveSessionPanel from "./DidLiveSessionPanel";
 import { getAuthHeaders } from "@/lib/auth";
 import { liveStartStatusText, planApprovalSynced } from "@/lib/dailyPlanStartPolicy";
 import {
-  getGroundingTokenCount,
-  getPlanQualityScore,
-  getPlanSourceStatus,
-} from "@/lib/dailyPlanSelection";
-import {
   signoffProgress,
   type TeamDeliberation,
   type DeliberationQuestion,
@@ -592,54 +587,6 @@ function ClinicalContractPanel({ d }: { d: TeamDeliberation }) {
           ))}
         </ul>
       )}
-    </section>
-  );
-}
-
-function DeliberationPlanDebugPanel({
-  d,
-  linkedPlan,
-}: {
-  d: TeamDeliberation;
-  linkedPlan: LiveSessionPlanRow | null;
-}) {
-  const sp =
-    d.session_params && typeof d.session_params === "object"
-      ? (d.session_params as Record<string, any>)
-      : {};
-  const playroomPlan =
-    linkedPlan?.urgency_breakdown?.playroom_plan &&
-    typeof linkedPlan.urgency_breakdown.playroom_plan === "object"
-      ? (linkedPlan.urgency_breakdown.playroom_plan as Record<string, any>)
-      : sp.playroom_plan && typeof sp.playroom_plan === "object"
-        ? (sp.playroom_plan as Record<string, any>)
-        : null;
-  const hasProgram =
-    !!playroomPlan &&
-    Array.isArray(playroomPlan.therapeutic_program) &&
-    playroomPlan.therapeutic_program.length > 0;
-  const sourceForScore = linkedPlan ?? {
-    id: d.linked_live_session_id ?? d.id,
-    created_at: d.created_at,
-    urgency_breakdown: { playroom_plan: playroomPlan },
-    plan_markdown: d.reason ?? d.karel_proposed_plan ?? "",
-  };
-  return (
-    <section className="rounded-lg border border-primary/25 bg-primary/5 p-3 text-[10px] leading-4 text-foreground/85">
-      <div className="font-semibold text-primary">DEBUG modal render path — dočasně</div>
-      <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
-        <span>selected plan id: {linkedPlan?.id ?? d.linked_live_session_id ?? "nepropojeno"}</span>
-        <span>created_at: {linkedPlan?.created_at ?? d.created_at}</span>
-        <span>source_status: {getPlanSourceStatus(sourceForScore)}</span>
-        <span>quality_score: {getPlanQualityScore(sourceForScore)}</span>
-        <span>token_count: {getGroundingTokenCount(sourceForScore)}</span>
-        <span>has_playroom_plan: {playroomPlan ? "true" : "false"}</span>
-        <span>has_therapeutic_program: {hasProgram ? "true" : "false"}</span>
-        <span>program_draft: {Array.isArray((d as any).program_draft) ? (d as any).program_draft.length : 0}</span>
-      </div>
-      <div className="text-muted-foreground">
-        JSX větev: DeliberationRoom → LiveProgramDraftPanel → {getLiveProgramTitle(d)}
-      </div>
     </section>
   );
 }
@@ -1302,7 +1249,7 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                   <section className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                     <h4 className="text-[11px] font-semibold text-primary mb-1.5">
                       {d.deliberation_type === "session_plan"
-                        ? "Lidský návrh k poradě"
+                        ? "Podklad pro poradu"
                         : "Karlův pracovní návrh"}
                     </h4>
                     {d.deliberation_type === "session_plan" ? (
@@ -1319,9 +1266,6 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                   {/* THERAPIST-LED TRUTH PASS — Živý program (program_draft).
                   Pro session_plan nahrazuje statickou agendu + Karlovu syntézu.
                   Karel sem dopisuje po každé odpovědi/podnětu terapeutek. */}
-                  {isPlayroomPlan && (
-                    <DeliberationPlanDebugPanel d={d} linkedPlan={linkedPlan} />
-                  )}
                   {d.deliberation_type === "session_plan" && (
                     <LiveProgramDraftPanel
                       d={d}

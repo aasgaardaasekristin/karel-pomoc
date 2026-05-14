@@ -24,6 +24,7 @@ import { ArrowRight, Sparkles, ChevronDown, ChevronUp, Loader2 } from "lucide-re
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { isKarelDebugMode } from "@/lib/karelDebugMode";
+import { sanitizeKarelVisibleText } from "@/lib/karelBriefingVisibleSanitizer";
 
 type ProposedPlayroom = {
   id?: string;
@@ -58,8 +59,23 @@ interface Props {
   view: PlayroomView;
   contextSummary?: string | null;
   contextLabel?: string;
+  lastPlayroomReview?: LastPlayroomReview | null;
   onOpenDeliberation: (p: ProposedPlayroom) => void;
 }
+
+type LastPlayroomReview = {
+  held?: boolean;
+  completion?: "completed" | "partial" | "abandoned" | string;
+  karel_summary?: string | null;
+  key_finding_about_part?: string | null;
+  implications_for_plan?: string | null;
+  team_acknowledgement?: string | null;
+  practical_report?: string | null;
+  detailed_analysis?: string | null;
+  recommendations_for_therapists?: string | null;
+  recommendations_for_next_session?: string | null;
+  recommendations_for_next_playroom?: string | null;
+};
 
 /* -------------------- helpers (pure, no Karel voice) -------------------- */
 
@@ -73,6 +89,28 @@ const pickFromPlan = (plan: any, key: string): any => {
 const cleanStr = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 const cleanList = (v: unknown): string[] =>
   Array.isArray(v) ? v.map((x) => cleanStr(x)).filter(Boolean) : [];
+
+const FORBIDDEN_VISIBLE_PLAYROOM_RE = /\bgrounded\b|source_status|status\s*grounded|čerp[áa]\s+ze\s+skutečn[ýy]ch\s+dat|sestaven[ýy]\s+ze\s+skutečn[ýy]ch\s+dat|grounding\s*tokens?/giu;
+
+const clinicalText = (value: unknown): string => sanitizeKarelVisibleText(value)
+  .replace(FORBIDDEN_VISIBLE_PLAYROOM_RE, "")
+  .replace(/\s*\(\s*\)\s*/g, " ")
+  .replace(/[ \t]{2,}/g, " ")
+  .replace(/\s+([.,;:!?])/g, "$1")
+  .trim();
+
+const clinicalList = (value: unknown, fallback: string[] = []): string[] => {
+  const source = Array.isArray(value) ? value : fallback;
+  return source.map((item) => clinicalText(item)).filter(Boolean);
+};
+
+const firstText = (...values: unknown[]): string => {
+  for (const value of values) {
+    const text = clinicalText(value);
+    if (text) return text;
+  }
+  return "";
+};
 
 const statusToText = (status?: string): string => {
   const s = (status || "").toLowerCase();
@@ -199,7 +237,7 @@ const POST_FIELDS: { key: string; label: string; rows?: number }[] = [
   { key: "confirmedFacts", label: "Potvrzená fakta", rows: 2 },
   { key: "workingDeductions", label: "Pracovní dedukce (hypotézy)", rows: 2 },
   { key: "unknowns", label: "Co zůstává nejasné", rows: 2 },
-  { key: "dataValidity", label: "Validita dat (low / medium / high + proč)", rows: 1 },
+  { key: "dataValidity", label: "Validita dat (nízká / střední / vyšší + proč)", rows: 1 },
   { key: "whatHelped", label: "Co pomohlo", rows: 1 },
   { key: "whatFailedOrBackfired", label: "Co selhalo / co se obrátilo proti", rows: 1 },
   { key: "implicationsForNextPlan", label: "Implikace pro další plán", rows: 2 },
@@ -266,7 +304,7 @@ const PostSessionForm = ({
         .join("\n\n");
 
       const { error } = await (supabase as any).from("did_pending_questions").insert({
-        question: `Post-session payload pro Hernu s ${partName}`,
+        question: `Post-session zápis pro Hernu s ${partName}`,
         directed_to: "karel",
         status: "answered",
         answer: payloadText,
@@ -285,7 +323,7 @@ const PostSessionForm = ({
       } catch {
         /* ignore */
       }
-      toast.success("Post-session payload odeslán.");
+      toast.success("Post-session zápis odeslán.");
     } catch (e: any) {
       console.error("[PostSessionForm] insert failed", e);
       toast.error("Uložení selhalo.");
@@ -297,7 +335,7 @@ const PostSessionForm = ({
   if (done) {
     return (
       <p className="text-[12px] text-muted-foreground italic">
-        Payload odeslán — Karel vytvoří analýzu s oddělením fakt / dedukcí / neznámého.
+        Zápis odeslán — Karel vytvoří analýzu s oddělením fakt / dedukcí / neznámého.
       </p>
     );
   }
@@ -334,7 +372,7 @@ const PostSessionForm = ({
               disabled={submitting}
               className="text-[12px] px-3 py-1.5 rounded-sm border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-50"
             >
-              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Odeslat payload"}
+              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Odeslat zápis"}
             </button>
           </div>
           <p className="text-[11px] text-muted-foreground/80">
@@ -346,26 +384,55 @@ const PostSessionForm = ({
   );
 };
 
-/* -------------------- Karlova promluva (jen z DB, bez ručního inputu) -------------------- */
+/* -------------------- Karlova promluva -------------------- */
 
-const KarelOpeningSection = ({ dbOpening }: { dbOpening: string }) => {
-  if (dbOpening) {
-    return (
-      <>
-        <SectionHead>Karlova promluva</SectionHead>
-        <Prose>{dbOpening}</Prose>
-      </>
-    );
-  }
-  return (
-    <>
-      <SectionHead>Karlova promluva</SectionHead>
-      <p className="text-[13px] leading-relaxed text-muted-foreground italic">
-        Karel zatím nemá k této herně formulovanou promluvu.
-      </p>
-    </>
-  );
+const KarelOpeningSection = ({ opening }: { opening: string }) => (
+  <>
+    <SectionHead>Karlova promluva</SectionHead>
+    <Prose>{opening}</Prose>
+  </>
+);
+
+const buildLastSession = (plan: any, review?: LastPlayroomReview | null) => {
+  const ls = pickFromPlan(plan, "last_session_summary")
+    ?? pickFromPlan(plan, "last_playroom_summary")
+    ?? pickFromPlan(plan, "previous_playroom_summary")
+    ?? pickFromPlan(plan, "yesterday_playroom_summary")
+    ?? {};
+  const happened = clinicalList(ls.happened ?? ls.what_happened ?? ls.completed, [review?.practical_report || review?.karel_summary || "Poslední herna je evidovaná; pro dnešní rozhodnutí z ní bereme jen ověřené reakce a průběh, ne hotové závěry."]);
+  const not_happened = clinicalList(ls.not_happened ?? ls.what_did_not_happen ?? ls.not_completed, ["V dostupném zápisu zatím není odděleně označeno, co z plánovaného programu odpadlo."]);
+  const worked = clinicalList(ls.worked ?? ls.what_worked ?? ls.helped, [review?.key_finding_about_part || review?.recommendations_for_next_playroom || "Jako použitelný opěrný bod bereme jen to, co část unesla bez tlaku a bez ztráty bezpečí."]);
+  const destabilized = clinicalList(ls.destabilized ?? ls.destabilising ?? ls.what_failed_or_backfired, ["Dnes nepřidávat výklad ani tlak tam, kde se objeví stažení, zmatek nebo tělesné zahlcení."]);
+  const stop_signals = clinicalList(ls.stop_signals ?? ls.stop_rules ?? ls.risks_and_stop_signals, clinicalList(plan?.risks_and_stop_signals, ["stažení", "zahlcení", "zmatek", "odmítnutí pokračovat"]));
+  return { happened, not_happened, worked, destabilized, stop_signals };
 };
+
+const buildClinicalOpening = (args: {
+  explicit: string;
+  partName: string;
+  whyToday: string;
+  lastSession: ReturnType<typeof buildLastSession>;
+  directionGoal: string;
+  contraindications: string[];
+  questions: string[];
+}) => {
+  if (args.explicit) return args.explicit;
+  const last = args.lastSession.happened[0] || "navazuji na poslední doloženou hernu opatrně a bez předčasného výkladu";
+  const goal = args.directionGoal || "dnes ověřit bezpečný kontakt, aktuální dostupnost a jeden malý další krok";
+  const caution = args.contraindications[0] || args.lastSession.destabilized[0] || "nepůjdu přes stažení, zahlcení ani nejasný stop signál";
+  const need = args.questions[0] || "potřebuji od vás před schválením potvrdit bezpečný rámec a hranici, kde hernu zastavit";
+  return [
+    `Haničko a Káťo, dnešní hernu s ${args.partName} chápu jako úzký pracovní prostor pro ověření, ne jako hotový závěr.`,
+    `Vycházím z toho, že ${last}. ${args.whyToday || "Dnešní zaměření proto držím u bezpečného kontaktu a přímých reakcí kluků."}`,
+    `Navrhuji držet hlavní cíl: ${goal}. Zároveň platí hranice: ${caution}. Před schválením ${need}.`,
+  ].map(clinicalText).filter(Boolean).join("\n\n");
+};
+
+const preApprovalQuestionsFromPlan = (plan: any): string[] => clinicalList(
+  pickFromPlan(plan, "pre_approval_questions")
+    ?? pickFromPlan(plan, "questions_before_approval")
+    ?? pickFromPlan(plan, "approval_questions"),
+);
 
 /* -------------------- main card -------------------- */
 
@@ -374,58 +441,64 @@ const PlayroomDecisionCard = ({
   view,
   contextSummary,
   contextLabel,
+  lastPlayroomReview,
   onOpenDeliberation,
 }: Props) => {
   const plan = playroom.playroom_plan || {};
   const partName = view.part_name || playroom.part_name;
-
-  // 1. Karlova promluva (jen pokud reálně existuje v datech)
-  const opening: string = useMemo(() => {
-    const v = pickFromPlan(plan, "opening_monologue") ?? pickFromPlan(plan, "karel_opening");
-    if (typeof v === "string") return cleanStr(v);
-    if (v && typeof v === "object" && typeof v.text === "string") return cleanStr(v.text);
-    return "";
-  }, [plan]);
+  const clinicalRationale = useMemo(
+    () => firstText(view.rationale, playroom.why_this_part_today, playroom.main_theme),
+    [view.rationale, playroom.why_this_part_today, playroom.main_theme],
+  );
 
   // 3. Co víme z minulé herny
   const lastSession = useMemo(() => {
-    const ls = pickFromPlan(plan, "last_session_summary");
-    if (!ls || typeof ls !== "object") return null;
-    return {
-      happened: cleanList(ls.happened),
-      not_happened: cleanList(ls.not_happened),
-      worked: cleanList(ls.worked),
-      destabilized: cleanList(ls.destabilized),
-      stop_signals: cleanList(ls.stop_signals),
-    };
-  }, [plan]);
+    return buildLastSession(plan, lastPlayroomReview);
+  }, [plan, lastPlayroomReview]);
 
   // 4. Pracovní dedukce
   const deductions = useMemo(() => {
     const d = pickFromPlan(plan, "deductions");
-    if (!d || typeof d !== "object") return null;
-    return {
-      confirmed: cleanList(d.confirmed),
-      working: cleanList(d.working),
-      unknowns: cleanList(d.unknowns),
+    const confirmedFallback = clinicalList(plan?.evidence_to_record).length ? clinicalList(plan?.evidence_to_record).slice(0, 3) : lastSession.happened.slice(0, 2);
+    const workingFallback = [clinicalRationale, lastPlayroomReview?.implications_for_plan].map(clinicalText).filter(Boolean).slice(0, 2);
+    const unknownFallback = preApprovalQuestionsFromPlan(plan).slice(0, 3);
+    if (!d || typeof d !== "object") return {
+      confirmed: confirmedFallback,
+      working: workingFallback,
+      unknowns: unknownFallback.length ? unknownFallback : ["Potřebujeme ověřit přímou reakci kluků v průběhu herny."],
     };
-  }, [plan]);
+    return {
+      confirmed: clinicalList(d.confirmed, confirmedFallback),
+      working: clinicalList(d.working, workingFallback),
+      unknowns: clinicalList(d.unknowns, unknownFallback),
+    };
+  }, [plan, lastSession.happened, lastPlayroomReview?.implications_for_plan, clinicalRationale]);
 
   // 5. Dnešní směr práce
   const direction = useMemo(() => {
     const d = pickFromPlan(plan, "direction");
-    if (!d || typeof d !== "object") return null;
-    return {
-      phase: cleanStr(d.phase),
-      readiness: cleanStr(d.readiness),
-      goal_primary: cleanStr(d.goal_primary),
-      goal_secondary: cleanStr(d.goal_secondary),
-      not_today: cleanList(d.not_today),
-      contraindications: cleanList(d.contraindications),
-      stop_rules: cleanList(d.stop_rules),
-      fallback: cleanStr(d.fallback),
+    const fallbackStop = clinicalList(plan?.risks_and_stop_signals, lastSession.stop_signals);
+    if (!d || typeof d !== "object") return {
+      phase: "pracovní ověření bezpečného kontaktu",
+      readiness: "čeká na potvrzení terapeutkami",
+      goal_primary: clinicalText(plan?.clinical_goal || view.goals[0] || clinicalRationale || "ověřit dnešní dostupnost bez tlaku na výkon"),
+      goal_secondary: clinicalText(view.goals[1] || "získat přímý materiál pro další plán"),
+      not_today: clinicalList(plan?.forbidden_directions, ["neotevírat trauma ani interpretace bez přímé reakce kluků"]),
+      contraindications: fallbackStop,
+      stop_rules: fallbackStop,
+      fallback: clinicalText(plan?.fallback || "při zahlcení zastavit program a přejít na bezpečný kontakt"),
     };
-  }, [plan]);
+    return {
+      phase: clinicalText(d.phase),
+      readiness: clinicalText(d.readiness),
+      goal_primary: firstText(d.goal_primary, plan?.clinical_goal, view.goals[0]),
+      goal_secondary: firstText(d.goal_secondary, view.goals[1]),
+      not_today: clinicalList(d.not_today, clinicalList(plan?.forbidden_directions)),
+      contraindications: clinicalList(d.contraindications, fallbackStop),
+      stop_rules: clinicalList(d.stop_rules, fallbackStop),
+      fallback: firstText(d.fallback, plan?.fallback),
+    };
+  }, [plan, lastSession.stop_signals, view.goals, clinicalRationale]);
 
   const hasDirection = direction
     && (direction.phase || direction.readiness || direction.goal_primary
@@ -436,23 +509,39 @@ const PlayroomDecisionCard = ({
   const therapistActions = useMemo(() => {
     const ta = pickFromPlan(plan, "therapist_actions");
     if (!ta || typeof ta !== "object") {
-      // fallback: questions_for_hanka/kata už máme jako legacy pole
       return {
-        hanka: cleanList(playroom.questions_for_hanka),
-        kata: cleanList(playroom.questions_for_kata),
+        hanka: clinicalList(playroom.questions_for_hanka, ["Před schválením ověřit, zda je pro tuto část dnes bezpečnější krátká herna, nebo jen přítomná opora bez programu."]),
+        kata: clinicalList(playroom.questions_for_kata, ["Zkontrolovat riziko zahlcení a hranici, kdy má zůstat jen stabilizační kontakt."]),
       };
     }
     return {
-      hanka: cleanList(ta.hanka),
-      kata: cleanList(ta.kata),
+      hanka: clinicalList(ta.hanka, clinicalList(playroom.questions_for_hanka)),
+      kata: clinicalList(ta.kata, clinicalList(playroom.questions_for_kata)),
     };
   }, [plan, playroom]);
 
   // 9. Otázky před schválením
   const preApprovalQuestions = useMemo(() => {
-    const q = pickFromPlan(plan, "pre_approval_questions");
-    return cleanList(q);
+    const questions = preApprovalQuestionsFromPlan(plan);
+    return questions.length ? questions : [
+      "Je dnešní herna pro tuto část bezpečná jako krátký kontakt, nebo má zůstat jen stabilizační opora?",
+      "Který stop signál má dnes program okamžitě ukončit?",
+    ];
   }, [plan]);
+
+  const opening = useMemo(() => {
+    const raw = pickFromPlan(plan, "opening_monologue") ?? pickFromPlan(plan, "karel_opening");
+    const explicit = typeof raw === "string" ? clinicalText(raw) : raw && typeof raw === "object" ? firstText((raw as any).text, (raw as any).opening_monologue_text) : "";
+    return buildClinicalOpening({
+      explicit,
+      partName,
+      whyToday: clinicalRationale,
+      lastSession,
+      directionGoal: direction?.goal_primary || clinicalText(plan?.clinical_goal),
+      contraindications: direction?.contraindications || [],
+      questions: preApprovalQuestions,
+    });
+  }, [plan, partName, clinicalRationale, lastSession, direction, preApprovalQuestions]);
 
   // Debug detaily jen pod debug guardem
   const debug = isKarelDebugMode();
@@ -468,15 +557,15 @@ const PlayroomDecisionCard = ({
         <span className="text-[11px] text-muted-foreground italic">{statusToText(playroom.status)}</span>
       </div>
 
-      {/* 1. Karlova promluva — DB-first, lokální draft fallback */}
-      <KarelOpeningSection dbOpening={opening} />
+      {/* 1. Karlova promluva */}
+      <KarelOpeningSection opening={opening} />
 
 
       {/* 2. Proč právě dnes */}
-      {view.rationale && (
+      {clinicalRationale && (
         <>
           <SectionHead>Proč právě dnes</SectionHead>
-          <Prose>{view.rationale}</Prose>
+          <Prose>{clinicalRationale}</Prose>
         </>
       )}
 

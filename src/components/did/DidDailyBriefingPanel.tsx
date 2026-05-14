@@ -44,10 +44,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  getGroundingTokenCount,
   getPlanQualityScore,
   getPlanSourceStatus,
-  getPlanSourceStatusLabel,
   selectCanonicalPlan,
 } from "@/lib/dailyPlanSelection";
 import { toast } from "sonner";
@@ -967,14 +965,14 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           status: "awaiting_therapist_review",
           why_this_part_today: pp.why_this_part_today
             || pp.main_theme
-            || `Grounded program Herny pro ${partName} sestavený ze skutečných dat (status: ${meta.source_status ?? "unknown"}).`,
+            || `Dnešní herna s ${partName} má držet bezpečný kontakt, ověřit aktuální dostupnost a vytvořit podklad pro další klinické plánování.`,
           main_theme: pp.main_theme || pp.title || `Herna na dnes: ${partName}`,
           evidence_sources: Array.isArray(meta.sources_used)
             ? meta.sources_used.map((s: any) => (typeof s === "string" ? s : (s?.source ? `${s.source}:${s.ref ?? ""}` : "zdroj"))).filter(Boolean)
-            : ["did_daily_session_plans (grounded generator)"],
+            : ["dnešní plán herny"],
           goals: Array.isArray(pp.goals) && pp.goals.length > 0 ? pp.goals : [
             "navázat kontakt přes ukotvený program",
-            "sledovat reakce v rámci grounded materiálu",
+            "sledovat reakce v bezpečném programu",
             "ukončit včas při zahlcení",
           ],
           playroom_plan: pp,
@@ -2255,6 +2253,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               view={playroomView}
               contextSummary={playroomContextSummary}
               contextLabel={playRecency?.is_yesterday ? "Použitý včerejší kontext" : "Použitý kontext z posledních dní"}
+              lastPlayroomReview={yesterdayPlayroomReview}
               onOpenDeliberation={openProposedPlayroomDeliberation}
             />
           </>
