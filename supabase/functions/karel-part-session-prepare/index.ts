@@ -338,18 +338,25 @@ serve(async (req) => {
     const planId = isUuid(body?.plan_id) ? String(body.plan_id) : null;
     let planContract: Record<string, unknown> = {};
     let planProgramStatus = "";
+    let planRowForPipeline: any | null = null;
     if (planId) {
       const { data: plan, error: planErr } = await sb
         .from("did_daily_session_plans")
-        .select("urgency_breakdown,program_status,user_id")
+        .select("id,plan_date,selected_part,urgency_breakdown,program_status,user_id")
         .eq("id", planId)
         .maybeSingle();
       if (planErr) return jsonRes({ ok: false, error: planErr.message }, 500);
+      planRowForPipeline = plan ?? null;
       if (!isServiceCall && plan?.user_id && authenticatedUserId && plan.user_id !== authenticatedUserId) {
         return jsonRes({ ok: false, error: "user_scope_mismatch" }, 403);
       }
       planContract = plan?.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown : {};
       planProgramStatus = String((plan as any)?.program_status ?? "");
+      const hasAnyPlayroomProgram = !!((planContract as any).playroom_plan && typeof (planContract as any).playroom_plan === "object" && Array.isArray((planContract as any).playroom_plan.therapeutic_program) && (planContract as any).playroom_plan.therapeutic_program.length > 0);
+      if (!hasAnyPlayroomProgram) {
+        const gate = await checkPlayroomPipeline(sb, authHeader, { userId: authenticatedUserId ?? plan?.user_id ?? null, partName, planId, planRow: planRowForPipeline });
+        if (!gate.ok) return gate.response ?? jsonRes({ ok: false, error: "pipeline_broken", missing_layers: gate.missing, stopped_at: gate.stoppedAt, required_action: gate.requiredAction }, 409);
+      }
       if (!hasApprovedPlayroomContract(planContract) || !["approved", "ready_to_start", "in_progress"].includes(planProgramStatus)) {
         return jsonRes({
           ok: false,
@@ -416,6 +423,11 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
       userId = anyThread?.user_id ?? null;
+    }
+
+    const pipelineGate = await checkPlayroomPipeline(sb, authHeader, { userId, partName, planId, planRow: planRowForPipeline });
+    if (!pipelineGate.ok) {
+      return pipelineGate.response ?? jsonRes({ ok: false, error: "pipeline_broken", missing_layers: pipelineGate.missing, stopped_at: pipelineGate.stoppedAt, required_action: pipelineGate.requiredAction }, 409);
     }
 
     if (sessionActor === "karel_direct" && sessionMode === "deferred") {
