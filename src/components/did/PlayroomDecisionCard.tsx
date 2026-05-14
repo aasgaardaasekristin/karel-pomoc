@@ -19,12 +19,27 @@
  * text musí přijít z DB.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Sparkles, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { isKarelDebugMode } from "@/lib/karelDebugMode";
 import { sanitizeKarelVisibleText } from "@/lib/karelBriefingVisibleSanitizer";
+
+/** FÁZE 1: runtime preview kontrakt z karel-playroom-preview. */
+type PlayroomRuntimePreview = {
+  status: "preview_ready" | "pipeline_repair_required" | "pipeline_broken";
+  plannedpart?: string;
+  treatmentphase?: string;
+  readinessstatus?: "green" | "amber" | "red" | "unknown";
+  card_opening_message?: string;
+  reason?: string;
+  broken_step?: string | null;
+  repair_action?: { required: boolean; function: string | null; for_date: string; priority: string } | null;
+  source?: { daily_snapshot: boolean; working_memory: boolean; session_plan: boolean };
+  action_label?: string;
+  target_surface?: string;
+};
 
 type ProposedPlayroom = {
   id?: string;
