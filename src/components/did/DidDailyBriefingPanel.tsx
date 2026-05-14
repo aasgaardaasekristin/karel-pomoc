@@ -2170,8 +2170,10 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">{playroomView.part_name}</Badge>
               <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{playroomView.approval_label}</Badge>
               <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{playroomView.lead_label}</Badge>
+              <ProposedPlayroomSourceBadge playroom={playroomProposal} />
               <ArrowRight className="w-3.5 h-3.5 text-primary/60 ml-auto" />
             </div>
+            <ProposedPlayroomDebugPanel playroom={playroomProposal} />
             <div>
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Cíl</p>
               <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{playroomView.title}</p>
