@@ -1551,6 +1551,7 @@ const PlanCard = ({
             <Dices className="mr-0.5 h-2.5 w-2.5" /> Karlova herna
           </Badge>
         )}
+        <PlanSourceBadge plan={plan} />
         {legacyDraft && (
           <Badge
             variant="outline"
