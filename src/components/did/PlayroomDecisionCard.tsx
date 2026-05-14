@@ -60,7 +60,8 @@ interface Props {
   contextSummary?: string | null;
   contextLabel?: string;
   lastPlayroomReview?: LastPlayroomReview | null;
-  onOpenDeliberation: (p: ProposedPlayroom) => void;
+  /** FÁZE 1: CTA „Otevřít dnešní workspace" — žádné poradní napojení. */
+  onOpenWorkspace: (p: ProposedPlayroom) => void;
 }
 
 type LastPlayroomReview = {
