@@ -2154,8 +2154,39 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
-      {/* 4.5 Dnešní navržená Herna — samostatný program vedený Karlem po schválení terapeutkami, nikdy ne plán terapeutického Sezení. */}
-      {playroomProposal && playroomView && (
+      {/* 4.5 Dnešní navržená Herna — samostatný program vedený Karlem po schválení terapeutkami, nikdy ne plán terapeutického Sezení.
+          GUARD (Scénář D, Část 1b): pokud je zdroj návrhu legacy_unknown / markdown_only / empty,
+          NESMÍME zobrazit legacy klinický text jako "živý návrh". Místo toho ukážeme jasný
+          bezpečný fallback bez pseudo-otázek pro terapeutky. */}
+      {playroomProposal && playroomView && (() => {
+        const _probe = proposedPlayroomSelectionProbe(playroomProposal);
+        const _status = getPlanSourceStatus(_probe);
+        const _isLegacyOrEmpty = _status === "legacy_unknown" || _status === "markdown_only" || _status === "empty";
+        if (_isLegacyOrEmpty) {
+          return (
+            <>
+              <NarrativeDivider />
+              <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary" />}>
+                Návrh pro dnešní hernu
+              </SectionHead>
+              <div className="mt-2 w-full p-3 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{playroomView.part_name}</Badge>
+                  <ProposedPlayroomSourceBadge playroom={playroomProposal} />
+                </div>
+                <p className="text-[13px] leading-relaxed text-foreground/85">
+                  Dnes nemám pro {playroomView.part_name || "tuto část"} připravený živý grounded program Herny.
+                </p>
+                <p className="text-[12px] leading-relaxed text-muted-foreground">
+                  Starý návrh z předchozího cyklu se tu zobrazovat nebude — není to aktuální klinický podklad.
+                  Hernu dnes neplánovat, dokud nevznikne nový grounded program; do té doby držet jen bezpečný kontakt
+                  podle pokynů Haničky a Káti.
+                </p>
+              </div>
+            </>
+          );
+        }
+        return (
         <>
           <NarrativeDivider />
           <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary" />}>
@@ -2205,7 +2236,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             <p className="text-[11px] text-primary/70 italic">Otevřít poradu ke schválení Herny →</p>
           </button>
         </>
-      )}
+        );
+      })()}
 
       {/* DUPLICITY GUARD — když porada už schválena, briefing nezdvojuje plán.
           Autoritativní karta je v Pracovna → Dnes → "Plán dnešního sezení". */}
