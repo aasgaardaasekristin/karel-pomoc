@@ -63,6 +63,7 @@ import { selectBestBriefing, isFullRenderableBriefing } from "@/lib/briefingSele
 import { sanitizeKarelVisibleText } from "@/lib/karelBriefingVisibleSanitizer";
 import { auditVisibleKarelSections } from "@/lib/karelVisibleTextQuality";
 import { canonicalizePartDisplayName } from "@/lib/partTodayRelevance";
+import PlayroomDecisionCard from "@/components/did/PlayroomDecisionCard";
 
 interface BriefingDecision {
   /** SLICE 3 — stabilní serverové UUID briefing itemu (linked_briefing_item_id). */
@@ -650,37 +651,11 @@ const proposedPlayroomSelectionProbe = (playroom: ProposedPlayroom) => ({
   urgency_breakdown: { playroom_plan: playroom.playroom_plan },
 });
 
-const ProposedPlayroomSourceBadge = ({ playroom }: { playroom: ProposedPlayroom }) => {
-  const probe = proposedPlayroomSelectionProbe(playroom);
-  const status = getPlanSourceStatus(probe);
-  const tokens = getGroundingTokenCount(probe);
-  return (
-    <Badge variant="outline" className="text-[10px] h-5 px-2 border-primary/30 text-primary bg-primary/5">
-      {getPlanSourceStatusLabel(status)}{tokens > 0 ? ` · grounding tokens: ${tokens}` : ""}
-    </Badge>
-  );
-};
+// REMOVED 2026-05-14: ProposedPlayroomSourceBadge a ProposedPlayroomDebugPanel
+// odstraněny z produkčního renderu. Žádný debug text/badge (source_status,
+// grounding tokens, quality_score, render path) v produkčním terapeutickém view.
+// Render karty herny převzal PlayroomDecisionCard.
 
-const ProposedPlayroomDebugPanel = ({ playroom }: { playroom: ProposedPlayroom }) => {
-  const probe = proposedPlayroomSelectionProbe(playroom);
-  const pp = playroom.playroom_plan;
-  const hasProgram = Array.isArray(pp?.therapeutic_program) && pp.therapeutic_program.length > 0;
-  return (
-    <div className="rounded-md border border-primary/25 bg-primary/5 p-2 text-[10px] leading-4 text-foreground/85">
-      <div className="font-semibold text-primary">DEBUG briefing render path — dočasně</div>
-      <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
-        <span>selected plan id: {probe.id}</span>
-        <span>created_at: null / briefing payload</span>
-        <span>source_status: {getPlanSourceStatus(probe)}</span>
-        <span>quality_score: {getPlanQualityScore(probe)}</span>
-        <span>token_count: {getGroundingTokenCount(probe)}</span>
-        <span>has_playroom_plan: {pp ? "true" : "false"}</span>
-        <span>has_therapeutic_program: {hasProgram ? "true" : "false"}</span>
-      </div>
-      <div className="text-muted-foreground">JSX větev: DidDailyBriefingPanel → proposed_playroom → Návrh pro dnešní hernu</div>
-    </div>
-  );
-};
 
 interface BriefingRow {
   id: string;
@@ -2238,10 +2213,15 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
-      {/* 4.5 Dnešní navržená Herna — samostatný program vedený Karlem po schválení terapeutkami, nikdy ne plán terapeutického Sezení.
-          GUARD (Scénář D, Část 1b): pokud je zdroj návrhu legacy_unknown / markdown_only / empty,
-          NESMÍME zobrazit legacy klinický text jako "živý návrh". Místo toho ukážeme jasný
-          bezpečný fallback bez pseudo-otázek pro terapeutky. */}
+      {/* 4.5 Plán dnešní herny — klinický decision surface (P33.11+, 2026-05-14).
+          REMOVED: ProposedPlayroomSourceBadge, ProposedPlayroomDebugPanel,
+          approval_label/lead_label chipy, duplicitní Cíl/Title boxy.
+          Kompletní render přesunut do PlayroomDecisionCard, který:
+          - skrývá sekce bez podkladu (žádné placeholder věty),
+          - zobrazí strukturu Co víme / Dedukce / Směr / Doporučení per terapeutka,
+          - inline otázky před schválením do did_pending_questions,
+          - post-session formulář (localStorage draft + did_pending_questions).
+          Legacy fallback (legacy_unknown / markdown_only / empty) je zachován. */}
       {playroomProposal && playroomView && (() => {
         const _probe = proposedPlayroomSelectionProbe(playroomProposal);
         const _status = getPlanSourceStatus(_probe);
@@ -2250,20 +2230,17 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           return (
             <>
               <NarrativeDivider />
-              <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary" />}>
-                Návrh pro dnešní hernu
-              </SectionHead>
               <div className="mt-2 w-full p-3 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 space-y-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{playroomView.part_name}</Badge>
-                  <ProposedPlayroomSourceBadge playroom={playroomProposal} />
-                </div>
+                <h3 className="text-[15px] font-semibold text-foreground/90 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-primary" />
+                  Plán dnešní herny — {playroomView.part_name}
+                </h3>
                 <p className="text-[13px] leading-relaxed text-foreground/85">
-                  Dnes nemám pro {playroomView.part_name || "tuto část"} připravený živý grounded program Herny.
+                  Dnes pro {playroomView.part_name || "tuto část"} nemám připravený aktuální podklad pro hernu.
                 </p>
                 <p className="text-[12px] leading-relaxed text-muted-foreground">
-                  Starý návrh z předchozího cyklu se tu zobrazovat nebude — není to aktuální klinický podklad.
-                  Hernu dnes neplánovat, dokud nevznikne nový grounded program; do té doby držet jen bezpečný kontakt
+                  Starý návrh z předchozího cyklu se tu nezobrazí — není to aktuální klinický podklad.
+                  Hernu dnes neplánovat, dokud nevznikne nový podklad; do té doby držet jen bezpečný kontakt
                   podle pokynů Haničky a Káti.
                 </p>
               </div>
@@ -2271,55 +2248,16 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           );
         }
         return (
-        <>
-          <NarrativeDivider />
-          <SectionHead icon={<Sparkles className="w-3.5 h-3.5 text-primary" />}>
-            Návrh pro dnešní hernu
-          </SectionHead>
-          <button
-            type="button"
-            onClick={() => openProposedPlayroomDeliberation(playroomProposal)}
-            className="mt-2 w-full text-left p-3 rounded-lg border border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors space-y-3 cursor-pointer"
-          >
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">{playroomView.part_name}</Badge>
-              <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{playroomView.approval_label}</Badge>
-              <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{playroomView.lead_label}</Badge>
-              <ProposedPlayroomSourceBadge playroom={playroomProposal} />
-              <ArrowRight className="w-3.5 h-3.5 text-primary/60 ml-auto" />
-            </div>
-            <ProposedPlayroomDebugPanel playroom={playroomProposal} />
-            <div>
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Cíl</p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{playroomView.title}</p>
-            </div>
-            <div>
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Proč dnes</p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomView.rationale}</p>
-            </div>
-            {playroomContextSummary && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">{playRecency?.is_yesterday ? "Použitý včerejší kontext" : "Použitý kontext z posledních dní"}</p><p className="mt-0.5 text-[12px] leading-relaxed text-foreground/75 whitespace-pre-line">{sanitizeProse(playroomContextSummary)}</p></div>}
-            {Array.isArray(playroomProposal.goals) && playroomProposal.goals.length > 0 && (
-              <div>
-                <ul className="mt-1 space-y-1 text-[13px] leading-relaxed text-foreground/80">
-                  {playroomView.goals.slice(0, 4).map((goal, index) => <li key={`${goal}-${index}`}>{index + 1}. {goal}</li>)}
-                </ul>
-              </div>
-            )}
-            {playroomView.blocks.length > 0 && (
-              <div>
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Program pro Hernu</p>
-                <div className="mt-1 space-y-1.5">
-                  {playroomView.blocks.map((block, index) => (
-                    <p key={`${block.title}-${index}`} className="text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line"><span className="font-medium text-foreground/90">{index + 1}. {block.title}</span> — {block.aim}</p>
-                  ))}
-                </div>
-              </div>
-            )}
-            {playroomView.child_safe_text && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Dětsky bezpečná verze</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomView.child_safe_text}</p></div>}
-            {playroomView.stop_rules.length > 0 && <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Rizika a stop signály</p><p className="mt-0.5 text-[13px] leading-relaxed text-foreground/80 whitespace-pre-line">{playroomView.stop_rules.slice(0, 4).map((x) => `- ${x}`).join("\n")}</p></div>}
-            <p className="text-[11px] text-primary/70 italic">Otevřít poradu ke schválení Herny →</p>
-          </button>
-        </>
+          <>
+            <NarrativeDivider />
+            <PlayroomDecisionCard
+              playroom={playroomProposal}
+              view={playroomView}
+              contextSummary={playroomContextSummary}
+              contextLabel={playRecency?.is_yesterday ? "Použitý včerejší kontext" : "Použitý kontext z posledních dní"}
+              onOpenDeliberation={openProposedPlayroomDeliberation}
+            />
+          </>
         );
       })()}
 
