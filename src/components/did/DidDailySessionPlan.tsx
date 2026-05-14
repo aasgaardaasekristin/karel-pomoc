@@ -754,11 +754,12 @@ const DidDailySessionPlan = ({
       "true";
 
   // Split plans into runtime, hidden legacy/analytic drafts, and archived.
-  const pendingPlans = plans.filter(
+  const pendingPlanCandidates = plans.filter(
     (p) =>
       (p.status === "generated" || p.status === "in_progress") &&
       !isQuarantinedPlan(p),
   );
+  const pendingPlans = selectCanonicalPlansByPart(pendingPlanCandidates);
   const playroomPlans = pendingPlans.filter(isKarelDirectPlan);
   const therapistSessionPlans = pendingPlans.filter(
     (p) => !isKarelDirectPlan(p),
