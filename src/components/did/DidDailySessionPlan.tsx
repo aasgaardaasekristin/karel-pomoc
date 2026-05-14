@@ -186,7 +186,8 @@ const selectCanonicalPlansByPart = (rows: SessionPlan[]) => {
     .filter((plan): plan is SessionPlan => !!plan)
     .sort(
       (a, b) =>
-        Date.parse(b.created_at ?? "") - Date.parse(a.created_at ?? ""),
+        (Date.parse(b.created_at ?? "") || 0) -
+        (Date.parse(a.created_at ?? "") || 0),
     );
 };
 
