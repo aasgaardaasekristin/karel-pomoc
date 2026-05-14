@@ -1682,9 +1682,21 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const proposedPartName = (p.proposed_session?.part_name ?? "").trim();
   const proposedAlreadyApproved =
     proposedPartName.length > 0 && approvedTodayParts.has(proposedPartName);
-  const playroomProposal = p.proposed_playroom?.part_name
-    ? p.proposed_playroom
-    : createFallbackPlayroomProposal(p);
+  // P33.11 — preferuj grounded řádek z DB (did_daily_session_plans) přes
+  // zacacheovaný payload.proposed_playroom. Klíč = part_name (lower) z payloadu
+  // nebo z proposed_session, aby se UI napojilo i když briefing payload má jen fallback.
+  const _payloadPlayroom = p.proposed_playroom?.part_name ? p.proposed_playroom : null;
+  const _payloadPartKey = (_payloadPlayroom?.part_name || p.proposed_session?.part_name || "").trim().toLowerCase();
+  const _dbPlayroom = _payloadPartKey ? dbCanonicalPlayrooms[_payloadPartKey] : undefined;
+  const _payloadScore = _payloadPlayroom
+    ? getPlanQualityScore({ id: "payload", urgency_breakdown: { playroom_plan: _payloadPlayroom.playroom_plan } })
+    : -1;
+  const _dbScore = _dbPlayroom
+    ? getPlanQualityScore({ id: "db", urgency_breakdown: { playroom_plan: _dbPlayroom.playroom_plan } })
+    : -1;
+  const playroomProposal = (_dbPlayroom && _dbScore >= _payloadScore)
+    ? _dbPlayroom
+    : (_payloadPlayroom ?? createFallbackPlayroomProposal(p));
   // ── KALENDÁŘNÍ INTEGRITA: viewer-side revalidace ──
   // Cached briefing může být zafrozený z dřívějšího dne (např. user otevřel
   // dashboard ráno po půlnoci a vidí včerejší briefing). Recency MUSÍME
