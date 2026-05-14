@@ -346,32 +346,9 @@ const PostSessionForm = ({
   );
 };
 
-/* -------------------- Karlova promluva (DB-first, local draft fallback) -------------------- */
+/* -------------------- Karlova promluva (jen z DB, bez ručního inputu) -------------------- */
 
-const openingDraftKey = (partName: string, planId?: string) =>
-  `playroom_karel_opening_draft:${partName || "unknown"}`;
-
-const KarelOpeningSection = ({
-  partName,
-  planId,
-  dbOpening,
-}: {
-  partName: string;
-  planId?: string;
-  dbOpening: string;
-}) => {
-  const key = openingDraftKey(partName, planId);
-  const [draft, setDraft] = useState<string>(() => {
-    if (typeof window === "undefined") return "";
-    try {
-      return window.localStorage.getItem(key) || "";
-    } catch {
-      return "";
-    }
-  });
-  const [editing, setEditing] = useState(false);
-
-  // DB opening má přednost
+const KarelOpeningSection = ({ dbOpening }: { dbOpening: string }) => {
   if (dbOpening) {
     return (
       <>
@@ -380,51 +357,12 @@ const KarelOpeningSection = ({
       </>
     );
   }
-
-  const save = (v: string) => {
-    setDraft(v);
-    try {
-      if (v.trim()) window.localStorage.setItem(key, v);
-      else window.localStorage.removeItem(key);
-    } catch {
-      /* ignore */
-    }
-  };
-
   return (
     <>
       <SectionHead>Karlova promluva</SectionHead>
-      {draft && !editing ? (
-        <div className="space-y-1">
-          <Prose>{draft}</Prose>
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="text-[11px] text-muted-foreground hover:text-primary underline-offset-2 hover:underline"
-            >
-              upravit lokální koncept
-            </button>
-            <span className="text-[11px] text-muted-foreground/70 italic">
-              uloženo lokálně, dokud nedorazí grounded plán
-            </span>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-1.5">
-          <textarea
-            value={draft}
-            onChange={(e) => save(e.target.value)}
-            onBlur={() => setEditing(false)}
-            placeholder="Krátká promluva Karla k terapeutkám — koncept se ukládá lokálně, dokud nepřijde grounded plán."
-            rows={3}
-            className="w-full text-[13px] leading-relaxed rounded-sm border border-border/60 bg-background/70 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary/40"
-          />
-          <p className="text-[11px] text-muted-foreground/80 italic">
-            Lokální koncept (jen v tomto prohlížeči). Až dorazí grounded plán, ten ho přepíše.
-          </p>
-        </div>
-      )}
+      <p className="text-[13px] leading-relaxed text-muted-foreground italic">
+        Karel zatím nemá k této herně formulovanou promluvu.
+      </p>
     </>
   );
 };
