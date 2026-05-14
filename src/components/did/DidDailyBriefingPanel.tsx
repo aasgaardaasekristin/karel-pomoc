@@ -48,6 +48,7 @@ import {
   getPlanQualityScore,
   getPlanSourceStatus,
   getPlanSourceStatusLabel,
+  selectCanonicalPlan,
 } from "@/lib/dailyPlanSelection";
 import { toast } from "sonner";
 import { useDidThreads } from "@/hooks/useDidThreads";
@@ -945,6 +946,76 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
    * a zobrazí pouze info, že plán je schválený a leží v Pracovna → Dnes.
    */
   const [approvedTodayParts, setApprovedTodayParts] = useState<Set<string>>(new Set());
+  /**
+   * P33.11 — UI musí brát Herna program ze skutečného grounded řádku
+   * v `did_daily_session_plans`, ne ze zacacheovaného `briefing.payload.proposed_playroom`,
+   * který může být fallback i když v DB pro tentýž den existuje grounded plán
+   * (vyšší kvalitní skóre přes `selectCanonicalPlan`).
+   * Klíč mapy = lower-case part_name.
+   */
+  const [dbCanonicalPlayrooms, setDbCanonicalPlayrooms] = useState<Record<string, ProposedPlayroom>>({});
+
+  const loadCanonicalPlayroomsFromDb = useCallback(async () => {
+    try {
+      const today = pragueTodayISO();
+      const { data, error } = await supabase
+        .from("did_daily_session_plans")
+        .select("id,selected_part,created_at,plan_markdown,urgency_breakdown")
+        .eq("plan_date", today);
+      if (error) throw error;
+      const rows = (data ?? []) as Array<{
+        id: string;
+        selected_part: string | null;
+        created_at: string | null;
+        plan_markdown: string | null;
+        urgency_breakdown: Record<string, any> | null;
+      }>;
+      const byPart = new Map<string, typeof rows>();
+      for (const r of rows) {
+        const key = (r.selected_part || "").trim().toLowerCase();
+        if (!key) continue;
+        const arr = byPart.get(key) ?? [];
+        arr.push(r);
+        byPart.set(key, arr);
+      }
+      const out: Record<string, ProposedPlayroom> = {};
+      for (const [partKey, list] of byPart.entries()) {
+        const canonical = selectCanonicalPlan(list);
+        if (!canonical) continue;
+        const pp = canonical.urgency_breakdown?.playroom_plan;
+        if (!pp || typeof pp !== "object") continue;
+        if (!Array.isArray(pp.therapeutic_program) || pp.therapeutic_program.length === 0) continue;
+        const partName = (canonical.selected_part || partKey).trim();
+        const meta = pp.meta ?? {};
+        out[partKey] = {
+          part_name: partName,
+          status: "awaiting_therapist_review",
+          why_this_part_today: pp.why_this_part_today
+            || pp.main_theme
+            || `Grounded program Herny pro ${partName} sestavený ze skutečných dat (status: ${meta.source_status ?? "unknown"}).`,
+          main_theme: pp.main_theme || pp.title || `Herna na dnes: ${partName}`,
+          evidence_sources: Array.isArray(meta.sources_used)
+            ? meta.sources_used.map((s: any) => (typeof s === "string" ? s : (s?.source ? `${s.source}:${s.ref ?? ""}` : "zdroj"))).filter(Boolean)
+            : ["did_daily_session_plans (grounded generator)"],
+          goals: Array.isArray(pp.goals) && pp.goals.length > 0 ? pp.goals : [
+            "navázat kontakt přes ukotvený program",
+            "sledovat reakce v rámci grounded materiálu",
+            "ukončit včas při zahlcení",
+          ],
+          playroom_plan: pp,
+          questions_for_hanka: Array.isArray(pp.questions_for_hanka) ? pp.questions_for_hanka : [],
+          questions_for_kata: Array.isArray(pp.questions_for_kata) ? pp.questions_for_kata : [],
+          backend_context_inputs: pp.backend_context_inputs ?? undefined,
+          // diagnostic stamp — zviditelní v UI badge přes getPlanSourceStatus
+          db_row_id: canonical.id,
+        } as ProposedPlayroom & { db_row_id?: string };
+      }
+      setDbCanonicalPlayrooms(out);
+    } catch (e) {
+      console.error("[DidDailyBriefingPanel] loadCanonicalPlayroomsFromDb failed:", e);
+      setDbCanonicalPlayrooms({});
+    }
+  }, []);
 
   const loadApprovedToday = useCallback(async () => {
     try {
@@ -1124,7 +1195,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     loadLatest();
     loadApprovedToday();
     loadYesterdayFallback();
-  }, [loadLatest, loadApprovedToday, loadYesterdayFallback, refreshTrigger]);
+    loadCanonicalPlayroomsFromDb();
+  }, [loadLatest, loadApprovedToday, loadYesterdayFallback, loadCanonicalPlayroomsFromDb, refreshTrigger]);
 
   // Auto-refresh při nově vygenerovaném briefingu i při doplnění včerejšího review,
   // aby sekce Včerejší herna naskočila bez ručního reloadu dashboardu.
@@ -1610,9 +1682,21 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const proposedPartName = (p.proposed_session?.part_name ?? "").trim();
   const proposedAlreadyApproved =
     proposedPartName.length > 0 && approvedTodayParts.has(proposedPartName);
-  const playroomProposal = p.proposed_playroom?.part_name
-    ? p.proposed_playroom
-    : createFallbackPlayroomProposal(p);
+  // P33.11 — preferuj grounded řádek z DB (did_daily_session_plans) přes
+  // zacacheovaný payload.proposed_playroom. Klíč = part_name (lower) z payloadu
+  // nebo z proposed_session, aby se UI napojilo i když briefing payload má jen fallback.
+  const _payloadPlayroom = p.proposed_playroom?.part_name ? p.proposed_playroom : null;
+  const _payloadPartKey = (_payloadPlayroom?.part_name || p.proposed_session?.part_name || "").trim().toLowerCase();
+  const _dbPlayroom = _payloadPartKey ? dbCanonicalPlayrooms[_payloadPartKey] : undefined;
+  const _payloadScore = _payloadPlayroom
+    ? getPlanQualityScore({ id: "payload", urgency_breakdown: { playroom_plan: _payloadPlayroom.playroom_plan } })
+    : -1;
+  const _dbScore = _dbPlayroom
+    ? getPlanQualityScore({ id: "db", urgency_breakdown: { playroom_plan: _dbPlayroom.playroom_plan } })
+    : -1;
+  const playroomProposal = (_dbPlayroom && _dbScore >= _payloadScore)
+    ? _dbPlayroom
+    : (_payloadPlayroom ?? createFallbackPlayroomProposal(p));
   // ── KALENDÁŘNÍ INTEGRITA: viewer-side revalidace ──
   // Cached briefing může být zafrozený z dřívějšího dne (např. user otevřel
   // dashboard ráno po půlnoci a vidí včerejší briefing). Recency MUSÍME
