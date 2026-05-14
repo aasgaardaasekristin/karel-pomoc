@@ -2236,7 +2236,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             <p className="text-[11px] text-primary/70 italic">Otevřít poradu ke schválení Herny →</p>
           </button>
         </>
-      )}
+        );
+      })()}
 
       {/* DUPLICITY GUARD — když porada už schválena, briefing nezdvojuje plán.
           Autoritativní karta je v Pracovna → Dnes → "Plán dnešního sezení". */}
