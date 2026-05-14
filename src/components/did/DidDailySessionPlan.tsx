@@ -50,11 +50,6 @@ import { signoffProgress } from "@/types/teamDeliberation";
 import { finalizeDidSessionWithJob } from "@/lib/karelFinalizeJobs";
 import {
   selectCanonicalPlan,
-  getPlanSourceStatus,
-  getPlanSourceStatusLabel,
-  getGroundingTokenCount,
-  getPlanQualityScore,
-  type PlanSourceStatus,
 } from "@/lib/dailyPlanSelection";
 
 interface SessionPlan {
@@ -942,14 +937,6 @@ const DidDailySessionPlan = ({
             </p>
             {playroomPlans.map((plan) => (
               <div key={plan.id} className="space-y-1">
-                <PlanSelectionDebugPanel
-                  plan={plan}
-                  candidates={pendingPlanCandidates.filter(
-                    (candidate) =>
-                      canonicalPlanGroupKey(candidate) === canonicalPlanGroupKey(plan),
-                  )}
-                  renderBranch="DidDailySessionPlan → playroomPlans → PlanCard → karelDirect/playroomPlan"
-                />
                 <PlanCard
                   plan={plan}
                   isExpanded={expandedPlanId === plan.id}
@@ -1551,7 +1538,6 @@ const PlanCard = ({
             <Dices className="mr-0.5 h-2.5 w-2.5" /> Karlova herna
           </Badge>
         )}
-        <PlanSourceBadge plan={plan} />
         {legacyDraft && (
           <Badge
             variant="outline"
@@ -1988,7 +1974,6 @@ const PlanCard = ({
                     Pro: <strong>{plan.selected_part}</strong> · Stav:{" "}
                     {hernaStatusLabel}
                   </p>
-                  <PlanSourceBadge plan={plan} />
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <p>
@@ -2074,7 +2059,6 @@ const PlanCard = ({
               </div>
             ) : (
               <div className="space-y-2">
-                <PlanSourceBadge plan={plan} />
                 <RichMarkdown compact>{plan.plan_markdown}</RichMarkdown>
               </div>
             )}
