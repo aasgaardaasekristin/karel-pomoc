@@ -48,6 +48,7 @@ import {
   getPlanQualityScore,
   getPlanSourceStatus,
   getPlanSourceStatusLabel,
+  selectCanonicalPlan,
 } from "@/lib/dailyPlanSelection";
 import { toast } from "sonner";
 import { useDidThreads } from "@/hooks/useDidThreads";
