@@ -446,6 +446,10 @@ const PlayroomDecisionCard = ({
 }: Props) => {
   const plan = playroom.playroom_plan || {};
   const partName = view.part_name || playroom.part_name;
+  const clinicalRationale = useMemo(
+    () => firstText(view.rationale, playroom.why_this_part_today, playroom.main_theme),
+    [view.rationale, playroom.why_this_part_today, playroom.main_theme],
+  );
 
   // 3. Co víme z minulé herny
   const lastSession = useMemo(() => {
@@ -456,7 +460,7 @@ const PlayroomDecisionCard = ({
   const deductions = useMemo(() => {
     const d = pickFromPlan(plan, "deductions");
     const confirmedFallback = clinicalList(plan?.evidence_to_record).length ? clinicalList(plan?.evidence_to_record).slice(0, 3) : lastSession.happened.slice(0, 2);
-    const workingFallback = [view.rationale, lastPlayroomReview?.implications_for_plan].map(clinicalText).filter(Boolean).slice(0, 2);
+    const workingFallback = [clinicalRationale, lastPlayroomReview?.implications_for_plan].map(clinicalText).filter(Boolean).slice(0, 2);
     const unknownFallback = preApprovalQuestionsFromPlan(plan).slice(0, 3);
     if (!d || typeof d !== "object") return {
       confirmed: confirmedFallback,
@@ -468,7 +472,7 @@ const PlayroomDecisionCard = ({
       working: clinicalList(d.working, workingFallback),
       unknowns: clinicalList(d.unknowns, unknownFallback),
     };
-  }, [plan, lastSession.happened, lastPlayroomReview?.implications_for_plan, view.rationale]);
+  }, [plan, lastSession.happened, lastPlayroomReview?.implications_for_plan, clinicalRationale]);
 
   // 5. Dnešní směr práce
   const direction = useMemo(() => {
@@ -477,7 +481,7 @@ const PlayroomDecisionCard = ({
     if (!d || typeof d !== "object") return {
       phase: "pracovní ověření bezpečného kontaktu",
       readiness: "čeká na potvrzení terapeutkami",
-      goal_primary: clinicalText(plan?.clinical_goal || view.goals[0] || view.rationale || "ověřit dnešní dostupnost bez tlaku na výkon"),
+      goal_primary: clinicalText(plan?.clinical_goal || view.goals[0] || clinicalRationale || "ověřit dnešní dostupnost bez tlaku na výkon"),
       goal_secondary: clinicalText(view.goals[1] || "získat přímý materiál pro další plán"),
       not_today: clinicalList(plan?.forbidden_directions, ["neotevírat trauma ani interpretace bez přímé reakce kluků"]),
       contraindications: fallbackStop,
@@ -494,7 +498,7 @@ const PlayroomDecisionCard = ({
       stop_rules: clinicalList(d.stop_rules, fallbackStop),
       fallback: firstText(d.fallback, plan?.fallback),
     };
-  }, [plan, lastSession.stop_signals, view.goals, view.rationale]);
+  }, [plan, lastSession.stop_signals, view.goals, clinicalRationale]);
 
   const hasDirection = direction
     && (direction.phase || direction.readiness || direction.goal_primary
@@ -531,13 +535,13 @@ const PlayroomDecisionCard = ({
     return buildClinicalOpening({
       explicit,
       partName,
-      whyToday: clinicalText(view.rationale),
+      whyToday: clinicalRationale,
       lastSession,
       directionGoal: direction?.goal_primary || clinicalText(plan?.clinical_goal),
       contraindications: direction?.contraindications || [],
       questions: preApprovalQuestions,
     });
-  }, [plan, partName, view.rationale, lastSession, direction, preApprovalQuestions]);
+  }, [plan, partName, clinicalRationale, lastSession, direction, preApprovalQuestions]);
 
   // Debug detaily jen pod debug guardem
   const debug = isKarelDebugMode();
@@ -558,10 +562,10 @@ const PlayroomDecisionCard = ({
 
 
       {/* 2. Proč právě dnes */}
-      {view.rationale && (
+      {clinicalRationale && (
         <>
           <SectionHead>Proč právě dnes</SectionHead>
-          <Prose>{view.rationale}</Prose>
+          <Prose>{clinicalRationale}</Prose>
         </>
       )}
 
