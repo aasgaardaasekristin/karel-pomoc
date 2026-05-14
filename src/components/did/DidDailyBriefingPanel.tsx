@@ -2228,19 +2228,22 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           return (
             <>
               <NarrativeDivider />
-              <div className="mt-2 w-full p-3 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 space-y-2">
+              <div className="mt-2 w-full p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 space-y-2">
                 <h3 className="text-[15px] font-semibold text-foreground/90 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-primary" />
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
                   Herna – {playroomView.part_name}
                 </h3>
                 <p className="text-[13px] leading-relaxed text-foreground/85">
-                  Dnes pro {playroomView.part_name || "tuto část"} nemám připravený aktuální podklad pro hernu.
+                  Pipeline Herny je rozbitá: pro {playroomView.part_name || "tuto část"} chybí dnešní neprázdný playroom_plan.
                 </p>
                 <p className="text-[12px] leading-relaxed text-muted-foreground">
-                  Starý návrh z předchozího cyklu se tu nezobrazí — není to aktuální klinický podklad.
-                  Hernu dnes neplánovat, dokud nevznikne nový podklad; do té doby držet jen bezpečný kontakt
-                  podle pokynů Haničky a Káti.
+                  UI nesmí otevřít prázdnou Hernu. Povinný další krok: znovu spustit denní přehled, aby backend ověřil canonical snapshot,
+                  working memory a vytvořil dnešní session plán / playroom_plan; pokud se to nepovede, musí vrátit pipeline_broken s důvodem.
                 </p>
+                <Button size="sm" variant="outline" onClick={handleRegenerate} disabled={regenerating} className="text-[12px]">
+                  {regenerating ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1.5" />}
+                  Opravit pipeline a přegenerovat
+                </Button>
               </div>
             </>
           );

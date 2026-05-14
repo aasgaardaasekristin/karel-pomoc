@@ -196,6 +196,104 @@ function isUuid(value: unknown): value is string {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value ?? ""));
 }
 
+type PipelineCheck = {
+  ok: boolean;
+  missing: string[];
+  stoppedAt: string | null;
+  requiredAction: string | null;
+  response?: Response;
+};
+
+async function invokeRepairStep(fnName: string, authHeader: string, body: Record<string, unknown>) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  if (!authHeader?.startsWith("Bearer ")) return { ok: false, status: 401, text: "missing auth header" };
+  const res = await fetch(`${supabaseUrl}/functions/v1/${fnName}`, {
+    method: "POST",
+    headers: { Authorization: authHeader, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text().catch(() => "");
+  return { ok: res.ok, status: res.status, text: text.slice(0, 600) };
+}
+
+async function checkPlayroomPipeline(sb: any, authHeader: string, args: { userId: string | null; partName: string; planId: string | null; planRow: any | null }): Promise<PipelineCheck> {
+  const today = pragueTodayISO();
+  const userId = args.userId;
+  if (!userId) {
+    return { ok: false, missing: ["user_scope"], stoppedAt: "canonical user scope", requiredAction: "resolve canonical user before playroom workspace" };
+  }
+
+  const readState = async () => {
+    const [ctxRes, wmRes, planRes] = await Promise.all([
+      sb.from("did_daily_context").select("id, context_date, updated_at").eq("user_id", userId).eq("context_date", today).maybeSingle(),
+      sb.from("karel_working_memory_snapshots").select("id, snapshot_key, generated_at, updated_at").eq("user_id", userId).eq("snapshot_key", today).maybeSingle(),
+      args.planId
+        ? sb.from("did_daily_session_plans").select("id, plan_date, selected_part, urgency_breakdown").eq("id", args.planId).maybeSingle()
+        : sb.from("did_daily_session_plans").select("id, plan_date, selected_part, urgency_breakdown").eq("user_id", userId).eq("plan_date", today).ilike("selected_part", args.partName).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    const plan = planRes.data ?? args.planRow;
+    const hasPlayroomPlan = !!(plan?.urgency_breakdown?.playroom_plan && typeof plan.urgency_breakdown.playroom_plan === "object" && Array.isArray(plan.urgency_breakdown.playroom_plan.therapeutic_program) && plan.urgency_breakdown.playroom_plan.therapeutic_program.length > 0);
+    return {
+      contextOk: !!ctxRes.data && !ctxRes.error,
+      wmOk: !!wmRes.data && !wmRes.error,
+      planOk: !!plan && String(plan.plan_date || today).slice(0, 10) === today && hasPlayroomPlan,
+      errors: [ctxRes.error?.message, wmRes.error?.message, planRes.error?.message].filter(Boolean),
+    };
+  };
+
+  let state = await readState();
+  const missingBefore = [
+    !state.contextOk ? "diddailycontext.contextjson" : null,
+    !state.wmOk ? "karelworkingmemorysnapshots.snapshotjson" : null,
+    !state.planOk ? "dnešní session plán / playroom_plan" : null,
+  ].filter(Boolean) as string[];
+
+  if (missingBefore.length > 0) {
+    if (!state.contextOk) await invokeRepairStep("karel-daily-refresh", authHeader, { source: "playroom_pipeline_self_heal", userId });
+    state = await readState();
+    if (!state.wmOk || !state.contextOk) await invokeRepairStep("karel-wm-bootstrap", authHeader, { snapshot_key: today, user_id: userId });
+    state = await readState();
+    if (!state.planOk || !state.wmOk || !state.contextOk) await invokeRepairStep("karel-did-daily-briefing", authHeader, { method: "manual", force: true, source: "playroom_pipeline_self_heal", userId });
+    state = await readState();
+  }
+
+  const missingAfter = [
+    !state.contextOk ? "diddailycontext.contextjson" : null,
+    !state.wmOk ? "karelworkingmemorysnapshots.snapshotjson" : null,
+    !state.planOk ? "dnešní session plán / playroom_plan" : null,
+  ].filter(Boolean) as string[];
+
+  if (missingAfter.length === 0) return { ok: true, missing: [], stoppedAt: null, requiredAction: null };
+
+  const stoppedAt = !state.contextOk ? "karel-daily-refresh" : !state.wmOk ? "karel-wm-bootstrap" : "karel-did-daily-briefing / generování session plánu";
+  const requiredAction = `Znovu spustit ${stoppedAt} pro ${today} a ověřit, že vznikne neprázdný playroom_plan pro ${args.partName}.`;
+  await sb.from("did_pending_questions").insert({
+    question: `Pipeline Herny je rozbitá pro ${args.partName}: chybí ${missingAfter.join(", ")}.`,
+    context: requiredAction,
+    subject_type: "pipeline_health",
+    subject_id: args.planId ?? `${args.partName}:${today}:playroom`,
+    directed_to: "karel",
+    blocking: "playroom_pipeline_broken",
+    status: "open",
+  });
+  return {
+    ok: false,
+    missing: missingAfter,
+    stoppedAt,
+    requiredAction,
+    response: jsonRes({
+      ok: false,
+      error: "pipeline_broken",
+      pipeline_broken: true,
+      message: `Pro dnešek chybí výstup z kroku ${stoppedAt}, proto nemohu bezpečně vytvořit Hernu.`,
+      missing_layers: missingAfter,
+      stopped_at: stoppedAt,
+      required_action: requiredAction,
+      follow_up_action: `Vznikl technický follow-up pro Karla; UI nesmí zobrazit prázdnou Hernu.`,
+    }, 409),
+  };
+}
+
 async function createFollowUpQuestion(sb: any, args: { userId: string | null; planId: string | null; partName: string; reason: string }) {
   const question = `Haničko, ${args.partName} dnes v Karlově přímém kontaktu nebyl dostupný. Viděla jsi dnes známky stažení, únavy nebo přítomnosti jiné části?`;
   const { data: existing } = await sb
@@ -240,18 +338,25 @@ serve(async (req) => {
     const planId = isUuid(body?.plan_id) ? String(body.plan_id) : null;
     let planContract: Record<string, unknown> = {};
     let planProgramStatus = "";
+    let planRowForPipeline: any | null = null;
     if (planId) {
       const { data: plan, error: planErr } = await sb
         .from("did_daily_session_plans")
-        .select("urgency_breakdown,program_status,user_id")
+        .select("id,plan_date,selected_part,urgency_breakdown,program_status,user_id")
         .eq("id", planId)
         .maybeSingle();
       if (planErr) return jsonRes({ ok: false, error: planErr.message }, 500);
+      planRowForPipeline = plan ?? null;
       if (!isServiceCall && plan?.user_id && authenticatedUserId && plan.user_id !== authenticatedUserId) {
         return jsonRes({ ok: false, error: "user_scope_mismatch" }, 403);
       }
       planContract = plan?.urgency_breakdown && typeof plan.urgency_breakdown === "object" ? plan.urgency_breakdown : {};
       planProgramStatus = String((plan as any)?.program_status ?? "");
+      const hasAnyPlayroomProgram = !!((planContract as any).playroom_plan && typeof (planContract as any).playroom_plan === "object" && Array.isArray((planContract as any).playroom_plan.therapeutic_program) && (planContract as any).playroom_plan.therapeutic_program.length > 0);
+      if (!hasAnyPlayroomProgram) {
+        const gate = await checkPlayroomPipeline(sb, authHeader, { userId: authenticatedUserId ?? plan?.user_id ?? null, partName, planId, planRow: planRowForPipeline });
+        if (!gate.ok) return gate.response ?? jsonRes({ ok: false, error: "pipeline_broken", missing_layers: gate.missing, stopped_at: gate.stoppedAt, required_action: gate.requiredAction }, 409);
+      }
       if (!hasApprovedPlayroomContract(planContract) || !["approved", "ready_to_start", "in_progress"].includes(planProgramStatus)) {
         return jsonRes({
           ok: false,
@@ -318,6 +423,11 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
       userId = anyThread?.user_id ?? null;
+    }
+
+    const pipelineGate = await checkPlayroomPipeline(sb, authHeader, { userId, partName, planId, planRow: planRowForPipeline });
+    if (!pipelineGate.ok) {
+      return pipelineGate.response ?? jsonRes({ ok: false, error: "pipeline_broken", missing_layers: pipelineGate.missing, stopped_at: pipelineGate.stoppedAt, required_action: pipelineGate.requiredAction }, 409);
     }
 
     if (sessionActor === "karel_direct" && sessionMode === "deferred") {
