@@ -1,16 +1,17 @@
 /**
- * karel-playroom-preview — FÁZE 1 (HERNA runtime preview)
+ * karel-playroom-preview — FÁZE 1 (HERNA runtime preview, revize 2026-05-14)
  *
- * Read-only helper, který sestaví terapeutickou kartu Herny POUZE z runtime dat:
- *   1) did_daily_context.context_json          (canonical daily snapshot)
- *   2) karel_working_memory_snapshots          (derived WM continuity)
- *   3) did_daily_session_plans / playroom_plan (dnešní session plan)
+ * Read-only helper. Tři režimy:
+ *   - preview_ready              — máme snapshot + WM + dnešní session plan
+ *   - preview_degraded           — máme aspoň jeden bezpečný podklad (snapshot
+ *                                  nebo dnešní session plan / part context),
+ *                                  postavíme stabilizační therapist-facing opening
+ *                                  + pipeline_notice o tom, co chybí
+ *   - pipeline_repair_required   — žádný bezpečný podklad pro therapist-facing
+ *                                  opening (poslední možnost, ne default)
  *
- * Nezasahuje do workspace flow. Vrací stabilní `preview_ready` payload, který je
- * strukturálně kompatibilní s budoucím karel-part-session-prepare kontraktem
- * (workspace_ready | pipeline_repair_required | pipeline_broken).
- *
- * ŽÁDNÝ child-facing text. ŽÁDNÝ fallback. ŽÁDNÉ poradní CTA.
+ * Karta NIKDY nesmí dostat hlavně diagnostickou hlášku, pokud existuje aspoň
+ * minimální bezpečný podklad. ŽÁDNÝ child-facing text. ŽÁDNÝ AI fallback.
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -50,8 +51,8 @@ function pickPlannedPart(plan: any, contract: any, fallback: string): string {
 }
 
 /**
- * Deterministický terapeutický opening.
- * Vychází POUZE z runtime polí, které vrátily 3 vrstvy — žádný AI, žádný placeholder.
+ * Deterministický terapeutický opening (žádné AI, žádné child-facing).
+ * Vychází POUZE z runtime polí. V degraded režimu drží stabilizační rámec.
  */
 function buildCardOpening(args: {
   partName: string;
@@ -59,21 +60,24 @@ function buildCardOpening(args: {
   phase: string;
   whyToday: string | null;
   contextHeadline: string | null;
+  degraded: boolean;
 }): { opening: string; reason: string } {
   const part = args.partName || "dnešní část";
-  const readinessClause =
-    args.readiness === "red"
+  const readinessClause = args.degraded
+    ? `Dnes u ${part} dává smysl držet jen krátký, bezpečný kontakt v jemném stabilizačním režimu, bez tlaku na obsah. Herna má být spíš klidný check-in než hluboká práce.`
+    : args.readiness === "red"
       ? `${part} dnes drží jen úzké stabilizační okno; workspace má smysl otevřít, jen pokud je kontakt minimální a krátký.`
       : args.readiness === "amber"
         ? `Dnes dává smysl otevřít pro ${part} jen krátký, bezpečný workspace se zátěží drženou nízko.`
         : args.readiness === "green"
           ? `${part} je dnes v dosahu; workspace může běžet v klidném pracovním tempu, bez tlaku na hloubku.`
           : `Pro ${part} je workspace připravený k otevření v jemném diagnostickém režimu, dokud nebude readiness jednoznačně potvrzen.`;
-  const opening = readinessClause;
   const reason = (args.whyToday && args.whyToday.trim())
     || (args.contextHeadline && args.contextHeadline.trim())
-    || `V dnešním snapshotu je kontakt s ${part} možný, ale jen v jemném režimu fáze ${args.phase}.`;
-  return { opening, reason };
+    || (args.degraded
+      ? `Pro dnešek nejsou všechny pipeline vrstvy hotové, ale podklad pro bezpečný stabilizační kontakt s ${part} existuje.`
+      : `V dnešním snapshotu je kontakt s ${part} možný, ale jen v jemném režimu fáze ${args.phase}.`);
+  return { opening: readinessClause, reason };
 }
 
 serve(async (req) => {
@@ -82,7 +86,7 @@ serve(async (req) => {
   const authResult = await requireAuth(req);
   if (authResult instanceof Response) return authResult;
   const userId = String((authResult as { user: any }).user?.id ?? "");
-  if (!userId) return jsonRes({ status: "pipeline_broken", broken_step: "auth", reason: "missing user_id" }, 401);
+  if (!userId) return jsonRes({ status: "pipeline_repair_required", broken_step: "auth", reason: "missing user_id" }, 401);
 
   let body: any = {};
   try { body = await req.json(); } catch { /* ignore */ }
@@ -114,22 +118,37 @@ serve(async (req) => {
   const plan = planRes.data ?? null;
   const contract = (plan?.urgency_breakdown && typeof plan.urgency_breakdown === "object") ? plan.urgency_breakdown as any : {};
 
+  const has = { snapshot: !!ctx, wm: !!wm, plan: !!plan };
   const missing: string[] = [];
-  if (!ctx) missing.push("diddailycontext.contextjson");
-  if (!wm) missing.push("karelworkingmemorysnapshots.snapshotjson");
+  if (!ctx) missing.push("did_daily_context.context_json");
+  if (!wm) missing.push("karel_working_memory_snapshots.snapshot_json");
   if (!plan) missing.push("did_daily_session_plans (dnešní session plan)");
 
-  if (missing.length > 0) {
-    const broken_step = !ctx ? "karel-daily-refresh" : !wm ? "karel-wm-bootstrap" : "generate-session-plan";
+  const broken_step = !ctx ? "karel-daily-refresh" : !wm ? "karel-wm-bootstrap" : !plan ? "generate-session-plan" : null;
+  const pipeline_notice = missing.length > 0 ? {
+    level: missing.length >= 2 ? "warning" : "info",
+    broken_step,
+    reason: `Chybí: ${missing.join(", ")}`,
+    repair_action: broken_step ? { required: true, function: broken_step, for_date: today, priority: "immediate" } : null,
+  } : null;
+
+  // Pokud nemáme ANI snapshot ANI plan → nemáme z čeho bezpečně sestavit therapist-facing opening.
+  if (!ctx && !plan) {
     return jsonRes({
       status: "pipeline_repair_required",
       requested_part: requestedPart || null,
-      broken_step,
-      reason: `Pro dnešek (${today}) chybí: ${missing.join(", ")}`,
-      repair_action: { required: true, function: broken_step, for_date: today, priority: "immediate" },
-      source: { daily_snapshot: !!ctx, working_memory: !!wm, session_plan: !!plan },
-      workspace: null,
-      follow_up_actions: [`Spustit ${broken_step} pro ${today} a znovu otevřít náhled Herny.`],
+      plannedpart: requestedPart || null,
+      treatmentphase: "stabilization",
+      readinessstatus: "unknown",
+      card_opening_message: `Pro dnešek (${today}) nemám u ${requestedPart || "této části"} žádný bezpečný podklad pro Hernu — než ji otevřeme, je potřeba opravit pipeline.`,
+      reason: `Chybí canonical snapshot i dnešní session plan.`,
+      source: { daily_snapshot: false, working_memory: !!wm, session_plan: false },
+      pipeline_notice,
+      target_surface: "did_part_session_workspace",
+      runtime_status: "pipeline_repair_required",
+      action_label: "Otevřít dnešní workspace",
+      plan_id: null,
+      generated_for_date: today,
     }, 200);
   }
 
@@ -144,19 +163,26 @@ serve(async (req) => {
   const whyToday =
     String(contract?.playroom_plan?.why_this_part_today ?? contract?.why_this_part_today ?? "").trim() || null;
 
-  const { opening, reason } = buildCardOpening({ partName, readiness, phase, whyToday, contextHeadline });
+  const fullyReady = has.snapshot && has.wm && has.plan;
+  const status = fullyReady ? "preview_ready" : "preview_degraded";
+
+  const { opening, reason } = buildCardOpening({
+    partName, readiness, phase, whyToday, contextHeadline,
+    degraded: !fullyReady,
+  });
 
   return jsonRes({
-    status: "preview_ready",
+    status,
     requested_part: requestedPart || partName,
     plannedpart: partName,
     treatmentphase: phase,
     readinessstatus: readiness,
     card_opening_message: opening,
     reason,
-    source: { daily_snapshot: true, working_memory: true, session_plan: true },
+    source: { daily_snapshot: has.snapshot, working_memory: has.wm, session_plan: has.plan },
+    pipeline_notice,
     target_surface: "did_part_session_workspace",
-    runtime_status: "preview_ready",
+    runtime_status: status,
     action_label: "Otevřít dnešní workspace",
     plan_id: plan?.id ?? null,
     generated_for_date: today,
