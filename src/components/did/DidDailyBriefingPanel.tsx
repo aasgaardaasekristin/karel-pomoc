@@ -2223,7 +2223,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       {playroomProposal && playroomView && (() => {
         const _probe = proposedPlayroomSelectionProbe(playroomProposal);
         const _status = getPlanSourceStatus(_probe);
-        const _isLegacyOrEmpty = _status === "legacy_unknown" || _status === "markdown_only" || _status === "empty";
+        const _isLegacyOrEmpty = _status === "fallback" || _status === "legacy_unknown" || _status === "markdown_only" || _status === "empty";
         if (_isLegacyOrEmpty) {
           return (
             <>
