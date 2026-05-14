@@ -346,6 +346,89 @@ const PostSessionForm = ({
   );
 };
 
+/* -------------------- Karlova promluva (DB-first, local draft fallback) -------------------- */
+
+const openingDraftKey = (partName: string, planId?: string) =>
+  `playroom_karel_opening_draft:${partName || "unknown"}`;
+
+const KarelOpeningSection = ({
+  partName,
+  planId,
+  dbOpening,
+}: {
+  partName: string;
+  planId?: string;
+  dbOpening: string;
+}) => {
+  const key = openingDraftKey(partName, planId);
+  const [draft, setDraft] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      return window.localStorage.getItem(key) || "";
+    } catch {
+      return "";
+    }
+  });
+  const [editing, setEditing] = useState(false);
+
+  // DB opening má přednost
+  if (dbOpening) {
+    return (
+      <>
+        <SectionHead>Karlova promluva</SectionHead>
+        <Prose>{dbOpening}</Prose>
+      </>
+    );
+  }
+
+  const save = (v: string) => {
+    setDraft(v);
+    try {
+      if (v.trim()) window.localStorage.setItem(key, v);
+      else window.localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <>
+      <SectionHead>Karlova promluva</SectionHead>
+      {draft && !editing ? (
+        <div className="space-y-1">
+          <Prose>{draft}</Prose>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="text-[11px] text-muted-foreground hover:text-primary underline-offset-2 hover:underline"
+            >
+              upravit lokální koncept
+            </button>
+            <span className="text-[11px] text-muted-foreground/70 italic">
+              uloženo lokálně, dokud nedorazí grounded plán
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          <textarea
+            value={draft}
+            onChange={(e) => save(e.target.value)}
+            onBlur={() => setEditing(false)}
+            placeholder="Krátká promluva Karla k terapeutkám — koncept se ukládá lokálně, dokud nepřijde grounded plán."
+            rows={3}
+            className="w-full text-[13px] leading-relaxed rounded-sm border border-border/60 bg-background/70 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary/40"
+          />
+          <p className="text-[11px] text-muted-foreground/80 italic">
+            Lokální koncept (jen v tomto prohlížeči). Až dorazí grounded plán, ten ho přepíše.
+          </p>
+        </div>
+      )}
+    </>
+  );
+};
+
 /* -------------------- main card -------------------- */
 
 const PlayroomDecisionCard = ({
@@ -447,13 +530,9 @@ const PlayroomDecisionCard = ({
         <span className="text-[11px] text-muted-foreground italic">{statusToText(playroom.status)}</span>
       </div>
 
-      {/* 1. Karlova promluva */}
-      {opening && (
-        <>
-          <SectionHead>Karlova promluva</SectionHead>
-          <Prose>{opening}</Prose>
-        </>
-      )}
+      {/* 1. Karlova promluva — DB-first, lokální draft fallback */}
+      <KarelOpeningSection partName={partName} planId={playroom.id} dbOpening={opening} />
+
 
       {/* 2. Proč právě dnes */}
       {view.rationale && (
