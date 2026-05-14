@@ -48,6 +48,13 @@ import RichMarkdown from "@/components/ui/RichMarkdown";
 import { useSessionPrepRoom } from "@/hooks/useSessionPrepRoom";
 import { signoffProgress } from "@/types/teamDeliberation";
 import { finalizeDidSessionWithJob } from "@/lib/karelFinalizeJobs";
+import {
+  selectCanonicalPlan,
+  getPlanSourceStatus,
+  getPlanSourceStatusLabel,
+  getGroundingTokenCount,
+  type PlanSourceStatus,
+} from "@/lib/dailyPlanSelection";
 
 interface SessionPlan {
   id: string;
