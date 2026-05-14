@@ -19,12 +19,27 @@
  * text musí přijít z DB.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Sparkles, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { isKarelDebugMode } from "@/lib/karelDebugMode";
 import { sanitizeKarelVisibleText } from "@/lib/karelBriefingVisibleSanitizer";
+
+/** FÁZE 1: runtime preview kontrakt z karel-playroom-preview. */
+type PlayroomRuntimePreview = {
+  status: "preview_ready" | "pipeline_repair_required" | "pipeline_broken";
+  plannedpart?: string;
+  treatmentphase?: string;
+  readinessstatus?: "green" | "amber" | "red" | "unknown";
+  card_opening_message?: string;
+  reason?: string;
+  broken_step?: string | null;
+  repair_action?: { required: boolean; function: string | null; for_date: string; priority: string } | null;
+  source?: { daily_snapshot: boolean; working_memory: boolean; session_plan: boolean };
+  action_label?: string;
+  target_surface?: string;
+};
 
 type ProposedPlayroom = {
   id?: string;
@@ -60,7 +75,8 @@ interface Props {
   contextSummary?: string | null;
   contextLabel?: string;
   lastPlayroomReview?: LastPlayroomReview | null;
-  onOpenDeliberation: (p: ProposedPlayroom) => void;
+  /** FÁZE 1: CTA „Otevřít dnešní workspace" — žádné poradní napojení. */
+  onOpenWorkspace: (p: ProposedPlayroom) => void;
 }
 
 type LastPlayroomReview = {
@@ -112,15 +128,15 @@ const firstText = (...values: unknown[]): string => {
   return "";
 };
 
-const statusToText = (status?: string): string => {
+const statusToText = (status?: string, runtime?: string): string => {
+  if (runtime === "preview_ready") return "stav: runtime náhled připraven";
+  if (runtime === "pipeline_repair_required") return "stav: pipeline vyžaduje opravu";
+  if (runtime === "pipeline_broken") return "stav: pipeline rozbitá";
   const s = (status || "").toLowerCase();
   if (s === "approved" || s === "ready_to_start") return "stav: schváleno";
   if (s === "in_progress") return "stav: v běhu";
   if (s === "completed" || s === "evaluated") return "stav: dokončeno";
-  if (s === "in_revision") return "stav: revidováno, čeká na vstupy";
-  if (s === "awaiting_therapist_review") return "stav: čeká na vstupy terapeutek";
-  if (s === "draft") return "stav: pracovní návrh";
-  return "stav: čeká na vstupy";
+  return "stav: vyžaduje runtime ověření workspace";
 };
 
 /* -------------------- subcomponents -------------------- */
@@ -428,13 +444,32 @@ const PlayroomDecisionCard = ({
   contextSummary,
   contextLabel,
   lastPlayroomReview: _lastPlayroomReview,
-  onOpenDeliberation,
+  onOpenWorkspace,
 }: Props) => {
   const plan = playroom.playroom_plan || {};
   const partName = view.part_name || playroom.part_name;
+
+  // FÁZE 1: runtime preview z karel-playroom-preview (canonical snapshot + WM + plan).
+  const [runtime, setRuntime] = useState<PlayroomRuntimePreview | null>(null);
+  const [runtimeLoading, setRuntimeLoading] = useState<boolean>(true);
+  useEffect(() => {
+    let cancelled = false;
+    setRuntimeLoading(true);
+    (supabase as any).functions
+      .invoke("karel-playroom-preview", { body: { part_name: partName } })
+      .then(({ data, error }: any) => {
+        if (cancelled) return;
+        if (error) { setRuntime(null); return; }
+        if (data && typeof data === "object") setRuntime(data as PlayroomRuntimePreview);
+      })
+      .catch(() => { if (!cancelled) setRuntime(null); })
+      .finally(() => { if (!cancelled) setRuntimeLoading(false); });
+    return () => { cancelled = true; };
+  }, [partName]);
+
   const clinicalRationale = useMemo(
-    () => firstText(view.rationale, playroom.why_this_part_today, playroom.main_theme),
-    [view.rationale, playroom.why_this_part_today, playroom.main_theme],
+    () => firstText(runtime?.reason, view.rationale, playroom.why_this_part_today, playroom.main_theme),
+    [runtime?.reason, view.rationale, playroom.why_this_part_today, playroom.main_theme],
   );
 
   // 3. Co víme z minulé herny — DB-only, bez fallback vět
@@ -442,7 +477,6 @@ const PlayroomDecisionCard = ({
   const hasLastSession = Boolean(lastSession.happened.length || lastSession.not_happened.length
     || lastSession.worked.length || lastSession.destabilized.length || lastSession.stop_signals.length);
 
-  // 4. Pracovní dedukce — render jen pokud DB má `deductions`
   const deductions = useMemo(() => {
     const d = pickFromPlan(plan, "deductions");
     if (!d || typeof d !== "object") return null;
@@ -453,7 +487,6 @@ const PlayroomDecisionCard = ({
     };
   }, [plan]);
 
-  // 5. Dnešní směr práce — render jen pokud DB má `direction`
   const direction = useMemo(() => {
     const d = pickFromPlan(plan, "direction");
     if (!d || typeof d !== "object") return null;
@@ -474,7 +507,6 @@ const PlayroomDecisionCard = ({
       || direction.goal_secondary || direction.not_today.length || direction.contraindications.length
       || direction.stop_rules.length || direction.fallback);
 
-  // 6/7. Doporučení per terapeutka — render jen pokud DB má `therapist_actions`
   const therapistActions = useMemo(() => {
     const ta = pickFromPlan(plan, "therapist_actions");
     if (!ta || typeof ta !== "object") return { hanka: [], kata: [] };
@@ -484,19 +516,18 @@ const PlayroomDecisionCard = ({
     };
   }, [plan]);
 
-  // Karlova promluva — výhradně z DB polí. Žádná syntéza na frontendu;
-  // pokud dedicated opening chybí, použije se první child-facing prompt z uloženého programu.
+  // FÁZE 1: Karlova promluva = výhradně runtime preview (canonical+WM+plan) nebo
+  // explicitní therapist-facing pole z DB. ŽÁDNÝ child-facing draft / first_question.
   const opening = useMemo(() => {
-    const firstBlock = Array.isArray(plan?.therapeutic_program) ? plan.therapeutic_program[0] : null;
+    const runtimeText = clinicalText(runtime?.card_opening_message);
+    if (runtimeText) return runtimeText;
     const raw = pickFromPlan(plan, "opening_monologue")
       ?? pickFromPlan(plan, "karel_opening")
-      ?? pickFromPlan(plan, "opening_message")
-      ?? pickFromPlan(plan, "first_question")
-      ?? firstBlock?.child_facing_prompt_draft;
+      ?? pickFromPlan(plan, "opening_message");
     if (typeof raw === "string") return clinicalText(raw);
     if (raw && typeof raw === "object") return firstText((raw as any).text, (raw as any).opening_monologue_text);
     return "";
-  }, [plan]);
+  }, [runtime?.card_opening_message, plan]);
 
   // Debug detaily jen pod debug guardem
   const debug = isKarelDebugMode();
@@ -509,11 +540,33 @@ const PlayroomDecisionCard = ({
           <Sparkles className="w-3.5 h-3.5 text-primary" />
           Herna – {partName}
         </h3>
-        <span className="text-[11px] text-muted-foreground italic">{statusToText(playroom.status)}</span>
+        <span className="text-[11px] text-muted-foreground italic">
+          {runtimeLoading ? "stav: načítám runtime náhled…" : statusToText(playroom.status, runtime?.status)}
+        </span>
       </div>
 
-      {/* 1. Karlova promluva (read-only, DB-only; nikdy ne placeholder) */}
+      {/* Runtime meta z karel-playroom-preview */}
+      {runtime?.status === "preview_ready" && (
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+          {runtime.plannedpart && <span>Část: <span className="text-foreground/80">{runtime.plannedpart}</span></span>}
+          {runtime.treatmentphase && <span>Fáze: <span className="text-foreground/80">{runtime.treatmentphase}</span></span>}
+          {runtime.readinessstatus && <span>Readiness: <span className="text-foreground/80">{runtime.readinessstatus}</span></span>}
+        </div>
+      )}
+
+      {/* 1. Karlova promluva (runtime preview → DB therapist-facing pole; nikdy child-facing) */}
       {opening && <KarelOpeningSection opening={opening} />}
+
+      {/* Pipeline diagnóza místo prázdné karty */}
+      {!runtimeLoading && runtime && runtime.status !== "preview_ready" && (
+        <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-[12px] text-foreground/85 space-y-1">
+          <p><span className="font-medium">{runtime.status === "pipeline_broken" ? "Pipeline rozbitá" : "Pipeline vyžaduje opravu"}</span>{runtime.broken_step ? ` — krok: ${runtime.broken_step}` : ""}</p>
+          {runtime.reason && <p className="text-muted-foreground">{runtime.reason}</p>}
+          {runtime.repair_action?.function && (
+            <p className="text-muted-foreground">Doporučený rerun: <code className="text-[11px]">{runtime.repair_action.function}</code> pro {runtime.repair_action.for_date}.</p>
+          )}
+        </div>
+      )}
 
       {/* 2. Proč právě dnes — render jen pokud máme reálný text */}
       {clinicalRationale && (
@@ -605,14 +658,15 @@ const PlayroomDecisionCard = ({
       {/* Návrh programu herny, otázky před schválením, post-session zápis a writeback
           patří do podvrstvy „Otevřít poradu ke schválení Herny" — zde se nezobrazují. */}
 
-      {/* Akce: otevřít poradu ke schválení */}
+      {/* Akce: otevřít dnešní workspace (FÁZE 1 — žádné poradní napojení) */}
       <div className="pt-3 mt-2 border-t border-border/40">
         <button
           type="button"
-          onClick={() => onOpenDeliberation(playroom)}
+          onClick={() => onOpenWorkspace(playroom)}
           className="w-full flex items-center justify-center gap-1.5 text-[12px] text-primary hover:bg-primary/10 py-1.5 rounded-sm transition-colors"
+          data-testid="playroom-open-workspace"
         >
-          Otevřít poradu ke schválení Herny
+          {runtime?.action_label || "Otevřít dnešní workspace"}
           <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>

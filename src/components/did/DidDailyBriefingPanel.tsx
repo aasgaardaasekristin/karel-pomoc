@@ -1538,6 +1538,48 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     [briefing, navigate, onOpenDeliberation, openingItemId],
   );
 
+  /**
+   * FÁZE 1 — Klik na CTA „Otevřít dnešní workspace" v PlayroomDecisionCard.
+   * Volá idempotentní karel-part-session-prepare a deep-linkuje do workspace
+   * vlákna (sub_mode=karel_part_session). Pokud backend vrátí pipeline_broken
+   * nebo program ještě není schválený, ukáže toast a kartu nechá v jejím
+   * runtime preview stavu — NIKDY neotevírá poradní vrstvu.
+   */
+  const openProposedPlayroomWorkspace = useCallback(
+    async (s: ProposedPlayroom) => {
+      if (openingItemId) return;
+      setOpeningItemId(s.id || `playroom::${s.part_name}`);
+      try {
+        const { data, error } = await (supabase as any).functions.invoke(
+          "karel-part-session-prepare",
+          { body: { part_name: s.part_name, plan_id: (s as any)?.id ?? null } },
+        );
+        if (error) throw error;
+        const threadId = (data as any)?.thread_id;
+        if (threadId) {
+          markBriefingOrigin();
+          navigate(`/chat?workspace_thread=${threadId}`);
+          return;
+        }
+        if ((data as any)?.error === "pipeline_broken" || (data as any)?.pipeline_broken) {
+          toast.error((data as any)?.message || "Pipeline Herny je rozbitá — workspace nelze otevřít.");
+          return;
+        }
+        if ((data as any)?.error === "playroom_program_not_approved") {
+          toast.error("Program Herny ještě nebyl schválen — workspace zatím nelze otevřít.");
+          return;
+        }
+        toast.error("Workspace nelze otevřít — chybí thread_id v odpovědi.");
+      } catch (e: any) {
+        console.error("[DidDailyBriefingPanel] openProposedPlayroomWorkspace failed:", e);
+        toast.error(e?.message || "Nepodařilo se otevřít workspace.");
+      } finally {
+        setOpeningItemId(null);
+      }
+    },
+    [navigate, openingItemId],
+  );
+
   const openProgramAskDeliberation = useCallback(
     async (role: "ask_hanka" | "ask_kata", item: AskItemObj) => {
       if (!briefing) return false;
@@ -2257,7 +2299,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               contextSummary={playroomContextSummary}
               contextLabel={playRecency?.is_yesterday ? "Použitý včerejší kontext" : "Použitý kontext z posledních dní"}
               lastPlayroomReview={yesterdayPlayroomReview}
-              onOpenDeliberation={openProposedPlayroomDeliberation}
+              onOpenWorkspace={openProposedPlayroomWorkspace}
             />
           </>
         );
