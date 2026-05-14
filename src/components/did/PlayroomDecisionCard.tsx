@@ -393,6 +393,41 @@ const KarelOpeningSection = ({ opening }: { opening: string }) => (
   </>
 );
 
+const buildLastSession = (plan: any, review?: LastPlayroomReview | null) => {
+  const ls = pickFromPlan(plan, "last_session_summary")
+    ?? pickFromPlan(plan, "last_playroom_summary")
+    ?? pickFromPlan(plan, "previous_playroom_summary")
+    ?? pickFromPlan(plan, "yesterday_playroom_summary")
+    ?? {};
+  const happened = clinicalList(ls.happened ?? ls.what_happened ?? ls.completed, [review?.practical_report || review?.karel_summary || "Poslední herna je evidovaná; pro dnešní rozhodnutí z ní bereme jen ověřené reakce a průběh, ne hotové závěry."]);
+  const not_happened = clinicalList(ls.not_happened ?? ls.what_did_not_happen ?? ls.not_completed, ["V dostupném zápisu zatím není odděleně označeno, co z plánovaného programu odpadlo."]);
+  const worked = clinicalList(ls.worked ?? ls.what_worked ?? ls.helped, [review?.key_finding_about_part || review?.recommendations_for_next_playroom || "Jako použitelný opěrný bod bereme jen to, co část unesla bez tlaku a bez ztráty bezpečí."]);
+  const destabilized = clinicalList(ls.destabilized ?? ls.destabilising ?? ls.what_failed_or_backfired, ["Dnes nepřidávat výklad ani tlak tam, kde se objeví stažení, zmatek nebo tělesné zahlcení."]);
+  const stop_signals = clinicalList(ls.stop_signals ?? ls.stop_rules ?? ls.risks_and_stop_signals, clinicalList(plan?.risks_and_stop_signals, ["stažení", "zahlcení", "zmatek", "odmítnutí pokračovat"]));
+  return { happened, not_happened, worked, destabilized, stop_signals };
+};
+
+const buildClinicalOpening = (args: {
+  explicit: string;
+  partName: string;
+  whyToday: string;
+  lastSession: ReturnType<typeof buildLastSession>;
+  directionGoal: string;
+  contraindications: string[];
+  questions: string[];
+}) => {
+  if (args.explicit) return args.explicit;
+  const last = args.lastSession.happened[0] || "navazuji na poslední doloženou hernu opatrně a bez předčasného výkladu";
+  const goal = args.directionGoal || "dnes ověřit bezpečný kontakt, aktuální dostupnost a jeden malý další krok";
+  const caution = args.contraindications[0] || args.lastSession.destabilized[0] || "nepůjdu přes stažení, zahlcení ani nejasný stop signál";
+  const need = args.questions[0] || "potřebuji od vás před schválením potvrdit bezpečný rámec a hranici, kde hernu zastavit";
+  return [
+    `Haničko a Káťo, dnešní hernu s ${args.partName} chápu jako úzký pracovní prostor pro ověření, ne jako hotový závěr.`,
+    `Vycházím z toho, že ${last}. ${args.whyToday || "Dnešní zaměření proto držím u bezpečného kontaktu a přímých reakcí kluků."}`,
+    `Navrhuji držet hlavní cíl: ${goal}. Zároveň platí hranice: ${caution}. Před schválením ${need}.`,
+  ].map(clinicalText).filter(Boolean).join("\n\n");
+};
+
 /* -------------------- main card -------------------- */
 
 const PlayroomDecisionCard = ({
