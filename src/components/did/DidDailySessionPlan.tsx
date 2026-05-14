@@ -53,6 +53,7 @@ import {
   getPlanSourceStatus,
   getPlanSourceStatusLabel,
   getGroundingTokenCount,
+  getPlanQualityScore,
   type PlanSourceStatus,
 } from "@/lib/dailyPlanSelection";
 
@@ -170,6 +171,24 @@ const isQuarantinedPlan = (plan: SessionPlan) =>
   LEGACY_PLAN_GENERATORS.has(plan.generated_by) ||
   (ANALYTIC_PLAN_GENERATORS.has(plan.generated_by) &&
     !hasExplicitRoleContract(plan));
+
+const canonicalPlanGroupKey = (plan: SessionPlan) =>
+  `${plan.plan_date}::${String(plan.selected_part ?? "").trim().toLocaleLowerCase("cs-CZ")}`;
+
+const selectCanonicalPlansByPart = (rows: SessionPlan[]) => {
+  const groups = new Map<string, SessionPlan[]>();
+  rows.forEach((plan) => {
+    const key = canonicalPlanGroupKey(plan);
+    groups.set(key, [...(groups.get(key) ?? []), plan]);
+  });
+  return Array.from(groups.values())
+    .map((group) => selectCanonicalPlan(group))
+    .filter((plan): plan is SessionPlan => !!plan)
+    .sort(
+      (a, b) =>
+        Date.parse(b.created_at ?? "") - Date.parse(a.created_at ?? ""),
+    );
+};
 
 interface PreviousSession {
   therapist: string;
