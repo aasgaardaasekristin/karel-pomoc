@@ -26,17 +26,23 @@ import { toast } from "sonner";
 import { isKarelDebugMode } from "@/lib/karelDebugMode";
 import { sanitizeKarelVisibleText } from "@/lib/karelBriefingVisibleSanitizer";
 
-/** FÁZE 1: runtime preview kontrakt z karel-playroom-preview. */
+/** FÁZE 1 (revize 2026-05-14): runtime preview kontrakt z karel-playroom-preview. */
+type PipelineNotice = {
+  level: "info" | "warning" | "error";
+  broken_step?: string | null;
+  reason?: string;
+  repair_action?: { required: boolean; function: string | null; for_date: string; priority: string } | null;
+};
 type PlayroomRuntimePreview = {
-  status: "preview_ready" | "pipeline_repair_required" | "pipeline_broken";
+  status: "preview_ready" | "preview_degraded" | "pipeline_repair_required";
   plannedpart?: string;
   treatmentphase?: string;
   readinessstatus?: "green" | "amber" | "red" | "unknown";
   card_opening_message?: string;
   reason?: string;
-  broken_step?: string | null;
-  repair_action?: { required: boolean; function: string | null; for_date: string; priority: string } | null;
   source?: { daily_snapshot: boolean; working_memory: boolean; session_plan: boolean };
+  pipeline_notice?: PipelineNotice | null;
+  runtime_status?: "preview_ready" | "preview_degraded" | "pipeline_repair_required";
   action_label?: string;
   target_surface?: string;
 };
@@ -130,8 +136,8 @@ const firstText = (...values: unknown[]): string => {
 
 const statusToText = (status?: string, runtime?: string): string => {
   if (runtime === "preview_ready") return "stav: runtime náhled připraven";
-  if (runtime === "pipeline_repair_required") return "stav: pipeline vyžaduje opravu";
-  if (runtime === "pipeline_broken") return "stav: pipeline rozbitá";
+  if (runtime === "preview_degraded") return "stav: runtime náhled omezený (pipeline neúplná)";
+  if (runtime === "pipeline_repair_required") return "stav: pipeline vyžaduje opravu (bez bezpečného náhledu)";
   const s = (status || "").toLowerCase();
   if (s === "approved" || s === "ready_to_start") return "stav: schváleno";
   if (s === "in_progress") return "stav: v běhu";
@@ -545,8 +551,8 @@ const PlayroomDecisionCard = ({
         </span>
       </div>
 
-      {/* Runtime meta z karel-playroom-preview */}
-      {runtime?.status === "preview_ready" && (
+      {/* Runtime meta z karel-playroom-preview (preview_ready i preview_degraded) */}
+      {(runtime?.status === "preview_ready" || runtime?.status === "preview_degraded") && (
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
           {runtime.plannedpart && <span>Část: <span className="text-foreground/80">{runtime.plannedpart}</span></span>}
           {runtime.treatmentphase && <span>Fáze: <span className="text-foreground/80">{runtime.treatmentphase}</span></span>}
@@ -554,19 +560,8 @@ const PlayroomDecisionCard = ({
         </div>
       )}
 
-      {/* 1. Karlova promluva (runtime preview → DB therapist-facing pole; nikdy child-facing) */}
+      {/* 1. Karlova therapist-facing promluva — VŽDY primární obsah, pokud existuje */}
       {opening && <KarelOpeningSection opening={opening} />}
-
-      {/* Pipeline diagnóza místo prázdné karty */}
-      {!runtimeLoading && runtime && runtime.status !== "preview_ready" && (
-        <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-[12px] text-foreground/85 space-y-1">
-          <p><span className="font-medium">{runtime.status === "pipeline_broken" ? "Pipeline rozbitá" : "Pipeline vyžaduje opravu"}</span>{runtime.broken_step ? ` — krok: ${runtime.broken_step}` : ""}</p>
-          {runtime.reason && <p className="text-muted-foreground">{runtime.reason}</p>}
-          {runtime.repair_action?.function && (
-            <p className="text-muted-foreground">Doporučený rerun: <code className="text-[11px]">{runtime.repair_action.function}</code> pro {runtime.repair_action.for_date}.</p>
-          )}
-        </div>
-      )}
 
       {/* 2. Proč právě dnes — render jen pokud máme reálný text */}
       {clinicalRationale && (
@@ -575,6 +570,21 @@ const PlayroomDecisionCard = ({
           <Prose>{clinicalRationale}</Prose>
         </>
       )}
+
+      {/* Pipeline notice — kompaktní podružná vrstva pod hlavním obsahem. */}
+      {!runtimeLoading && runtime?.pipeline_notice && (
+        <div className="mt-3 rounded-sm border border-border/40 bg-muted/20 px-2 py-1.5 text-[11px] text-muted-foreground space-y-0.5">
+          <p>
+            <span className="font-medium text-foreground/70">Pipeline – {runtime.pipeline_notice.level === "error" ? "chyba" : runtime.pipeline_notice.level === "warning" ? "varování" : "info"}</span>
+            {runtime.pipeline_notice.broken_step ? ` · krok: ${runtime.pipeline_notice.broken_step}` : ""}
+          </p>
+          {runtime.pipeline_notice.reason && <p>{runtime.pipeline_notice.reason}</p>}
+          {runtime.pipeline_notice.repair_action?.function && (
+            <p>Doporučený rerun: <code className="text-[10px]">{runtime.pipeline_notice.repair_action.function}</code> pro {runtime.pipeline_notice.repair_action.for_date}.</p>
+          )}
+        </div>
+      )}
+
 
       {/* 3. Co víme z minulé herny — render jen pokud DB má strukturovaná data */}
       {hasLastSession && (
