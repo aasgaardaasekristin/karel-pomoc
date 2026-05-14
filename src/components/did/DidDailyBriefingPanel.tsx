@@ -2253,6 +2253,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               view={playroomView}
               contextSummary={playroomContextSummary}
               contextLabel={playRecency?.is_yesterday ? "Použitý včerejší kontext" : "Použitý kontext z posledních dní"}
+              lastPlayroomReview={yesterdayPlayroomReview}
               onOpenDeliberation={openProposedPlayroomDeliberation}
             />
           </>
