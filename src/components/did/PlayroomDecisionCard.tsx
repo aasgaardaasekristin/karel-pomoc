@@ -469,7 +469,7 @@ const PlayroomDecisionCard = ({
       </div>
 
       {/* 1. Karlova promluva — DB-first, lokální draft fallback */}
-      <KarelOpeningSection partName={partName} planId={playroom.id} dbOpening={opening} />
+      <KarelOpeningSection dbOpening={opening} />
 
 
       {/* 2. Proč právě dnes */}
