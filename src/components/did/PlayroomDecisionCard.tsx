@@ -136,8 +136,8 @@ const firstText = (...values: unknown[]): string => {
 
 const statusToText = (status?: string, runtime?: string): string => {
   if (runtime === "preview_ready") return "stav: runtime náhled připraven";
-  if (runtime === "pipeline_repair_required") return "stav: pipeline vyžaduje opravu";
-  if (runtime === "pipeline_broken") return "stav: pipeline rozbitá";
+  if (runtime === "preview_degraded") return "stav: runtime náhled omezený (pipeline neúplná)";
+  if (runtime === "pipeline_repair_required") return "stav: pipeline vyžaduje opravu (bez bezpečného náhledu)";
   const s = (status || "").toLowerCase();
   if (s === "approved" || s === "ready_to_start") return "stav: schváleno";
   if (s === "in_progress") return "stav: v běhu";
