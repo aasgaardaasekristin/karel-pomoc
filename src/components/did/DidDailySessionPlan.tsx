@@ -48,6 +48,13 @@ import RichMarkdown from "@/components/ui/RichMarkdown";
 import { useSessionPrepRoom } from "@/hooks/useSessionPrepRoom";
 import { signoffProgress } from "@/types/teamDeliberation";
 import { finalizeDidSessionWithJob } from "@/lib/karelFinalizeJobs";
+import {
+  selectCanonicalPlan,
+  getPlanSourceStatus,
+  getPlanSourceStatusLabel,
+  getGroundingTokenCount,
+  type PlanSourceStatus,
+} from "@/lib/dailyPlanSelection";
 
 interface SessionPlan {
   id: string;
@@ -249,14 +256,17 @@ const DidDailySessionPlan = ({
     timeZone: "Europe/Prague",
   }).format(new Date());
 
-  // First pending plan TODAY only (no stale plans from yesterday allowed as "today's reality")
-  const firstPendingPlan =
-    plans.find(
-      (p) =>
-        (p.status === "generated" || p.status === "in_progress") &&
-        p.plan_date === todayPragueKey &&
-        !isQuarantinedPlan(p),
-    ) || null;
+  // SCÉNÁŘ D FIX (2026-05-13): kanonický dnešní plán = nejvyšší kvalita
+  // obsahu, ne nejnovější created_at. Dříve novější "prázdný" manual řádek
+  // přebil grounded plán a Herna pak ukazovala šablonový text. Viz
+  // src/lib/dailyPlanSelection.ts a src/test/dailyPlanSelection.test.ts.
+  const eligibleTodayPlans = plans.filter(
+    (p) =>
+      (p.status === "generated" || p.status === "in_progress") &&
+      p.plan_date === todayPragueKey &&
+      !isQuarantinedPlan(p),
+  );
+  const firstPendingPlan = selectCanonicalPlan(eligibleTodayPlans);
 
   const loadTodayPlans = useCallback(async () => {
     setLoading(true);
@@ -1947,6 +1957,7 @@ const PlanCard = ({
                     Pro: <strong>{plan.selected_part}</strong> · Stav:{" "}
                     {hernaStatusLabel}
                   </p>
+                  <PlanSourceBadge plan={plan} />
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <p>
@@ -2031,7 +2042,10 @@ const PlanCard = ({
                 </div>
               </div>
             ) : (
-              <RichMarkdown compact>{plan.plan_markdown}</RichMarkdown>
+              <div className="space-y-2">
+                <PlanSourceBadge plan={plan} />
+                <RichMarkdown compact>{plan.plan_markdown}</RichMarkdown>
+              </div>
             )}
           </div>
 
@@ -2152,6 +2166,43 @@ const PlanCard = ({
         <p className="text-[0.625rem] text-muted-foreground line-clamp-1">
           {plan.plan_markdown.replace(/[#*\-]/g, "").slice(0, 100)}…
         </p>
+      )}
+    </div>
+  );
+};
+
+/**
+ * SCÉNÁŘ D FIX (2026-05-13): vizuálně rozliš, jakou kvalitu má plán,
+ * který vidíš. Bez badge se grounded a fallback tváří identicky a UI
+ * pak maskuje produktovou chybu šablonou.
+ */
+const PlanSourceBadge = ({ plan }: { plan: SessionPlan }) => {
+  const status = getPlanSourceStatus(plan);
+  const tokens = getGroundingTokenCount(plan);
+  const label = getPlanSourceStatusLabel(status);
+  const tone: Record<PlanSourceStatus, string> = {
+    grounded:
+      "bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-300",
+    weakly_grounded:
+      "bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-300",
+    fallback:
+      "bg-orange-500/15 text-orange-700 border-orange-500/30 dark:text-orange-300",
+    legacy_unknown:
+      "bg-zinc-500/15 text-zinc-700 border-zinc-500/30 dark:text-zinc-300",
+    markdown_only:
+      "bg-rose-500/10 text-rose-700 border-rose-500/30 dark:text-rose-300",
+    empty:
+      "bg-rose-500/10 text-rose-700 border-rose-500/30 dark:text-rose-300",
+  };
+  return (
+    <div
+      className={`mt-1 inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[0.625rem] font-medium ${tone[status]}`}
+      data-testid="plan-source-badge"
+      data-source-status={status}
+    >
+      <span>{label}</span>
+      {(status === "grounded" || status === "weakly_grounded") && (
+        <span className="opacity-80">· grounding tokens: {tokens}</span>
       )}
     </div>
   );
