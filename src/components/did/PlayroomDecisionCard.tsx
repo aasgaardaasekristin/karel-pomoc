@@ -530,13 +530,9 @@ const PlayroomDecisionCard = ({
         <span className="text-[11px] text-muted-foreground italic">{statusToText(playroom.status)}</span>
       </div>
 
-      {/* 1. Karlova promluva */}
-      {opening && (
-        <>
-          <SectionHead>Karlova promluva</SectionHead>
-          <Prose>{opening}</Prose>
-        </>
-      )}
+      {/* 1. Karlova promluva — DB-first, lokální draft fallback */}
+      <KarelOpeningSection partName={partName} planId={playroom.id} dbOpening={opening} />
+
 
       {/* 2. Proč právě dnes */}
       {view.rationale && (
