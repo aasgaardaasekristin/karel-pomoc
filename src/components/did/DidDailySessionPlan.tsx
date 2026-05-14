@@ -940,24 +940,33 @@ const DidDailySessionPlan = ({
               Herna na dnes
             </p>
             {playroomPlans.map((plan) => (
-              <PlanCard
-                key={plan.id}
-                plan={plan}
-                isExpanded={expandedPlanId === plan.id}
-                onToggleExpand={() =>
-                  setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)
-                }
-                onStartSession={() => startSession(plan)}
-                onEndSession={() => endSession(plan)}
-                onRevert={() => revertStatus(plan)}
-                onMarkDone={() => markDone(plan.id)}
-                onDelete={() => deletePlan(plan.id)}
-                onRegenerate={() => handlePartSelected(plan.selected_part)}
-                onOpenLive={() => setActiveLivePlanId(plan.id)}
-                prevSession={null}
-                compact={compact}
-                onOpenPrepRoom={onOpenPrepRoom}
-              />
+              <div key={plan.id} className="space-y-1">
+                <PlanSelectionDebugPanel
+                  plan={plan}
+                  candidates={pendingPlanCandidates.filter(
+                    (candidate) =>
+                      canonicalPlanGroupKey(candidate) === canonicalPlanGroupKey(plan),
+                  )}
+                  renderBranch="DidDailySessionPlan → playroomPlans → PlanCard → karelDirect/playroomPlan"
+                />
+                <PlanCard
+                  plan={plan}
+                  isExpanded={expandedPlanId === plan.id}
+                  onToggleExpand={() =>
+                    setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)
+                  }
+                  onStartSession={() => startSession(plan)}
+                  onEndSession={() => endSession(plan)}
+                  onRevert={() => revertStatus(plan)}
+                  onMarkDone={() => markDone(plan.id)}
+                  onDelete={() => deletePlan(plan.id)}
+                  onRegenerate={() => handlePartSelected(plan.selected_part)}
+                  onOpenLive={() => setActiveLivePlanId(plan.id)}
+                  prevSession={null}
+                  compact={compact}
+                  onOpenPrepRoom={onOpenPrepRoom}
+                />
+              </div>
             ))}
           </div>
         )}
