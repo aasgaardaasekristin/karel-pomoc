@@ -115,6 +115,7 @@ interface ProposedPlayroom {
     risks_and_stop_signals?: string[];
     forbidden_directions?: string[];
     runtime_packet_seed?: Record<string, unknown>;
+    meta?: Record<string, unknown>;
   };
   questions_for_hanka?: string[];
   questions_for_kata?: string[];
