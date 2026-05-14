@@ -540,11 +540,33 @@ const PlayroomDecisionCard = ({
           <Sparkles className="w-3.5 h-3.5 text-primary" />
           Herna – {partName}
         </h3>
-        <span className="text-[11px] text-muted-foreground italic">{statusToText(playroom.status)}</span>
+        <span className="text-[11px] text-muted-foreground italic">
+          {runtimeLoading ? "stav: načítám runtime náhled…" : statusToText(playroom.status, runtime?.status)}
+        </span>
       </div>
 
-      {/* 1. Karlova promluva (read-only, DB-only; nikdy ne placeholder) */}
+      {/* Runtime meta z karel-playroom-preview */}
+      {runtime?.status === "preview_ready" && (
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+          {runtime.plannedpart && <span>Část: <span className="text-foreground/80">{runtime.plannedpart}</span></span>}
+          {runtime.treatmentphase && <span>Fáze: <span className="text-foreground/80">{runtime.treatmentphase}</span></span>}
+          {runtime.readinessstatus && <span>Readiness: <span className="text-foreground/80">{runtime.readinessstatus}</span></span>}
+        </div>
+      )}
+
+      {/* 1. Karlova promluva (runtime preview → DB therapist-facing pole; nikdy child-facing) */}
       {opening && <KarelOpeningSection opening={opening} />}
+
+      {/* Pipeline diagnóza místo prázdné karty */}
+      {!runtimeLoading && runtime && runtime.status !== "preview_ready" && (
+        <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-[12px] text-foreground/85 space-y-1">
+          <p><span className="font-medium">{runtime.status === "pipeline_broken" ? "Pipeline rozbitá" : "Pipeline vyžaduje opravu"}</span>{runtime.broken_step ? ` — krok: ${runtime.broken_step}` : ""}</p>
+          {runtime.reason && <p className="text-muted-foreground">{runtime.reason}</p>}
+          {runtime.repair_action?.function && (
+            <p className="text-muted-foreground">Doporučený rerun: <code className="text-[11px]">{runtime.repair_action.function}</code> pro {runtime.repair_action.for_date}.</p>
+          )}
+        </div>
+      )}
 
       {/* 2. Proč právě dnes — render jen pokud máme reálný text */}
       {clinicalRationale && (
