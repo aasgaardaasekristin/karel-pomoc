@@ -29,6 +29,11 @@ import DidLiveSessionPanel from "./DidLiveSessionPanel";
 import { getAuthHeaders } from "@/lib/auth";
 import { liveStartStatusText, planApprovalSynced } from "@/lib/dailyPlanStartPolicy";
 import {
+  getGroundingTokenCount,
+  getPlanQualityScore,
+  getPlanSourceStatus,
+} from "@/lib/dailyPlanSelection";
+import {
   signoffProgress,
   type TeamDeliberation,
   type DeliberationQuestion,
@@ -69,6 +74,7 @@ interface LiveSessionPlanRow {
   lifecycle_status?: string | null;
   program_status?: string | null;
   approved_at?: string | null;
+  created_at?: string | null;
   urgency_breakdown?: Record<string, unknown> | null;
 }
 
