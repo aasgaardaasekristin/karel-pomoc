@@ -237,7 +237,7 @@ const POST_FIELDS: { key: string; label: string; rows?: number }[] = [
   { key: "confirmedFacts", label: "Potvrzená fakta", rows: 2 },
   { key: "workingDeductions", label: "Pracovní dedukce (hypotézy)", rows: 2 },
   { key: "unknowns", label: "Co zůstává nejasné", rows: 2 },
-  { key: "dataValidity", label: "Validita dat (low / medium / high + proč)", rows: 1 },
+  { key: "dataValidity", label: "Validita dat (nízká / střední / vyšší + proč)", rows: 1 },
   { key: "whatHelped", label: "Co pomohlo", rows: 1 },
   { key: "whatFailedOrBackfired", label: "Co selhalo / co se obrátilo proti", rows: 1 },
   { key: "implicationsForNextPlan", label: "Implikace pro další plán", rows: 2 },
@@ -304,7 +304,7 @@ const PostSessionForm = ({
         .join("\n\n");
 
       const { error } = await (supabase as any).from("did_pending_questions").insert({
-        question: `Post-session payload pro Hernu s ${partName}`,
+        question: `Post-session zápis pro Hernu s ${partName}`,
         directed_to: "karel",
         status: "answered",
         answer: payloadText,
@@ -323,7 +323,7 @@ const PostSessionForm = ({
       } catch {
         /* ignore */
       }
-      toast.success("Post-session payload odeslán.");
+      toast.success("Post-session zápis odeslán.");
     } catch (e: any) {
       console.error("[PostSessionForm] insert failed", e);
       toast.error("Uložení selhalo.");
@@ -335,7 +335,7 @@ const PostSessionForm = ({
   if (done) {
     return (
       <p className="text-[12px] text-muted-foreground italic">
-        Payload odeslán — Karel vytvoří analýzu s oddělením fakt / dedukcí / neznámého.
+        Zápis odeslán — Karel vytvoří analýzu s oddělením fakt / dedukcí / neznámého.
       </p>
     );
   }
@@ -372,7 +372,7 @@ const PostSessionForm = ({
               disabled={submitting}
               className="text-[12px] px-3 py-1.5 rounded-sm border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-50"
             >
-              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Odeslat payload"}
+              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Odeslat zápis"}
             </button>
           </div>
           <p className="text-[11px] text-muted-foreground/80">
