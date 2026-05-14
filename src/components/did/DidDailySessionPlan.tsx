@@ -2042,7 +2042,10 @@ const PlanCard = ({
                 </div>
               </div>
             ) : (
-              <RichMarkdown compact>{plan.plan_markdown}</RichMarkdown>
+              <div className="space-y-2">
+                <PlanSourceBadge plan={plan} />
+                <RichMarkdown compact>{plan.plan_markdown}</RichMarkdown>
+              </div>
             )}
           </div>
 
