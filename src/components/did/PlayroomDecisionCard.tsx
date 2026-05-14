@@ -26,17 +26,23 @@ import { toast } from "sonner";
 import { isKarelDebugMode } from "@/lib/karelDebugMode";
 import { sanitizeKarelVisibleText } from "@/lib/karelBriefingVisibleSanitizer";
 
-/** FÁZE 1: runtime preview kontrakt z karel-playroom-preview. */
+/** FÁZE 1 (revize 2026-05-14): runtime preview kontrakt z karel-playroom-preview. */
+type PipelineNotice = {
+  level: "info" | "warning" | "error";
+  broken_step?: string | null;
+  reason?: string;
+  repair_action?: { required: boolean; function: string | null; for_date: string; priority: string } | null;
+};
 type PlayroomRuntimePreview = {
-  status: "preview_ready" | "pipeline_repair_required" | "pipeline_broken";
+  status: "preview_ready" | "preview_degraded" | "pipeline_repair_required";
   plannedpart?: string;
   treatmentphase?: string;
   readinessstatus?: "green" | "amber" | "red" | "unknown";
   card_opening_message?: string;
   reason?: string;
-  broken_step?: string | null;
-  repair_action?: { required: boolean; function: string | null; for_date: string; priority: string } | null;
   source?: { daily_snapshot: boolean; working_memory: boolean; session_plan: boolean };
+  pipeline_notice?: PipelineNotice | null;
+  runtime_status?: "preview_ready" | "preview_degraded" | "pipeline_repair_required";
   action_label?: string;
   target_surface?: string;
 };
