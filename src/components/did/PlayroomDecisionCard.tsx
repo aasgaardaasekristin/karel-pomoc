@@ -444,13 +444,32 @@ const PlayroomDecisionCard = ({
   contextSummary,
   contextLabel,
   lastPlayroomReview: _lastPlayroomReview,
-  onOpenDeliberation,
+  onOpenWorkspace,
 }: Props) => {
   const plan = playroom.playroom_plan || {};
   const partName = view.part_name || playroom.part_name;
+
+  // FÁZE 1: runtime preview z karel-playroom-preview (canonical snapshot + WM + plan).
+  const [runtime, setRuntime] = useState<PlayroomRuntimePreview | null>(null);
+  const [runtimeLoading, setRuntimeLoading] = useState<boolean>(true);
+  useEffect(() => {
+    let cancelled = false;
+    setRuntimeLoading(true);
+    (supabase as any).functions
+      .invoke("karel-playroom-preview", { body: { part_name: partName } })
+      .then(({ data, error }: any) => {
+        if (cancelled) return;
+        if (error) { setRuntime(null); return; }
+        if (data && typeof data === "object") setRuntime(data as PlayroomRuntimePreview);
+      })
+      .catch(() => { if (!cancelled) setRuntime(null); })
+      .finally(() => { if (!cancelled) setRuntimeLoading(false); });
+    return () => { cancelled = true; };
+  }, [partName]);
+
   const clinicalRationale = useMemo(
-    () => firstText(view.rationale, playroom.why_this_part_today, playroom.main_theme),
-    [view.rationale, playroom.why_this_part_today, playroom.main_theme],
+    () => firstText(runtime?.reason, view.rationale, playroom.why_this_part_today, playroom.main_theme),
+    [runtime?.reason, view.rationale, playroom.why_this_part_today, playroom.main_theme],
   );
 
   // 3. Co víme z minulé herny — DB-only, bez fallback vět
@@ -458,7 +477,6 @@ const PlayroomDecisionCard = ({
   const hasLastSession = Boolean(lastSession.happened.length || lastSession.not_happened.length
     || lastSession.worked.length || lastSession.destabilized.length || lastSession.stop_signals.length);
 
-  // 4. Pracovní dedukce — render jen pokud DB má `deductions`
   const deductions = useMemo(() => {
     const d = pickFromPlan(plan, "deductions");
     if (!d || typeof d !== "object") return null;
@@ -469,7 +487,6 @@ const PlayroomDecisionCard = ({
     };
   }, [plan]);
 
-  // 5. Dnešní směr práce — render jen pokud DB má `direction`
   const direction = useMemo(() => {
     const d = pickFromPlan(plan, "direction");
     if (!d || typeof d !== "object") return null;
@@ -490,7 +507,6 @@ const PlayroomDecisionCard = ({
       || direction.goal_secondary || direction.not_today.length || direction.contraindications.length
       || direction.stop_rules.length || direction.fallback);
 
-  // 6/7. Doporučení per terapeutka — render jen pokud DB má `therapist_actions`
   const therapistActions = useMemo(() => {
     const ta = pickFromPlan(plan, "therapist_actions");
     if (!ta || typeof ta !== "object") return { hanka: [], kata: [] };
@@ -500,19 +516,18 @@ const PlayroomDecisionCard = ({
     };
   }, [plan]);
 
-  // Karlova promluva — výhradně z DB polí. Žádná syntéza na frontendu;
-  // pokud dedicated opening chybí, použije se první child-facing prompt z uloženého programu.
+  // FÁZE 1: Karlova promluva = výhradně runtime preview (canonical+WM+plan) nebo
+  // explicitní therapist-facing pole z DB. ŽÁDNÝ child-facing draft / first_question.
   const opening = useMemo(() => {
-    const firstBlock = Array.isArray(plan?.therapeutic_program) ? plan.therapeutic_program[0] : null;
+    const runtimeText = clinicalText(runtime?.card_opening_message);
+    if (runtimeText) return runtimeText;
     const raw = pickFromPlan(plan, "opening_monologue")
       ?? pickFromPlan(plan, "karel_opening")
-      ?? pickFromPlan(plan, "opening_message")
-      ?? pickFromPlan(plan, "first_question")
-      ?? firstBlock?.child_facing_prompt_draft;
+      ?? pickFromPlan(plan, "opening_message");
     if (typeof raw === "string") return clinicalText(raw);
     if (raw && typeof raw === "object") return firstText((raw as any).text, (raw as any).opening_monologue_text);
     return "";
-  }, [plan]);
+  }, [runtime?.card_opening_message, plan]);
 
   // Debug detaily jen pod debug guardem
   const debug = isKarelDebugMode();
