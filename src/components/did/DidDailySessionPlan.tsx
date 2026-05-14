@@ -256,14 +256,17 @@ const DidDailySessionPlan = ({
     timeZone: "Europe/Prague",
   }).format(new Date());
 
-  // First pending plan TODAY only (no stale plans from yesterday allowed as "today's reality")
-  const firstPendingPlan =
-    plans.find(
-      (p) =>
-        (p.status === "generated" || p.status === "in_progress") &&
-        p.plan_date === todayPragueKey &&
-        !isQuarantinedPlan(p),
-    ) || null;
+  // SCÉNÁŘ D FIX (2026-05-13): kanonický dnešní plán = nejvyšší kvalita
+  // obsahu, ne nejnovější created_at. Dříve novější "prázdný" manual řádek
+  // přebil grounded plán a Herna pak ukazovala šablonový text. Viz
+  // src/lib/dailyPlanSelection.ts a src/test/dailyPlanSelection.test.ts.
+  const eligibleTodayPlans = plans.filter(
+    (p) =>
+      (p.status === "generated" || p.status === "in_progress") &&
+      p.plan_date === todayPragueKey &&
+      !isQuarantinedPlan(p),
+  );
+  const firstPendingPlan = selectCanonicalPlan(eligibleTodayPlans);
 
   const loadTodayPlans = useCallback(async () => {
     setLoading(true);
