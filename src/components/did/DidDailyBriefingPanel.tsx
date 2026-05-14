@@ -43,6 +43,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  getGroundingTokenCount,
+  getPlanQualityScore,
+  getPlanSourceStatus,
+  getPlanSourceStatusLabel,
+} from "@/lib/dailyPlanSelection";
 import { toast } from "sonner";
 import { useDidThreads } from "@/hooks/useDidThreads";
 import type { DeliberationType } from "@/types/teamDeliberation";
