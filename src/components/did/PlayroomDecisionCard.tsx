@@ -551,8 +551,8 @@ const PlayroomDecisionCard = ({
         </span>
       </div>
 
-      {/* Runtime meta z karel-playroom-preview */}
-      {runtime?.status === "preview_ready" && (
+      {/* Runtime meta z karel-playroom-preview (preview_ready i preview_degraded) */}
+      {(runtime?.status === "preview_ready" || runtime?.status === "preview_degraded") && (
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
           {runtime.plannedpart && <span>Část: <span className="text-foreground/80">{runtime.plannedpart}</span></span>}
           {runtime.treatmentphase && <span>Fáze: <span className="text-foreground/80">{runtime.treatmentphase}</span></span>}
@@ -560,16 +560,27 @@ const PlayroomDecisionCard = ({
         </div>
       )}
 
-      {/* 1. Karlova promluva (runtime preview → DB therapist-facing pole; nikdy child-facing) */}
+      {/* 1. Karlova therapist-facing promluva — VŽDY primární obsah, pokud existuje */}
       {opening && <KarelOpeningSection opening={opening} />}
 
-      {/* Pipeline diagnóza místo prázdné karty */}
-      {!runtimeLoading && runtime && runtime.status !== "preview_ready" && (
-        <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-[12px] text-foreground/85 space-y-1">
-          <p><span className="font-medium">{runtime.status === "pipeline_broken" ? "Pipeline rozbitá" : "Pipeline vyžaduje opravu"}</span>{runtime.broken_step ? ` — krok: ${runtime.broken_step}` : ""}</p>
-          {runtime.reason && <p className="text-muted-foreground">{runtime.reason}</p>}
-          {runtime.repair_action?.function && (
-            <p className="text-muted-foreground">Doporučený rerun: <code className="text-[11px]">{runtime.repair_action.function}</code> pro {runtime.repair_action.for_date}.</p>
+      {/* 2. Proč právě dnes — render jen pokud máme reálný text */}
+      {clinicalRationale && (
+        <>
+          <SectionHead>Proč právě dnes</SectionHead>
+          <Prose>{clinicalRationale}</Prose>
+        </>
+      )}
+
+      {/* Pipeline notice — kompaktní podružná vrstva pod hlavním obsahem. */}
+      {!runtimeLoading && runtime?.pipeline_notice && (
+        <div className="mt-3 rounded-sm border border-border/40 bg-muted/20 px-2 py-1.5 text-[11px] text-muted-foreground space-y-0.5">
+          <p>
+            <span className="font-medium text-foreground/70">Pipeline – {runtime.pipeline_notice.level === "error" ? "chyba" : runtime.pipeline_notice.level === "warning" ? "varování" : "info"}</span>
+            {runtime.pipeline_notice.broken_step ? ` · krok: ${runtime.pipeline_notice.broken_step}` : ""}
+          </p>
+          {runtime.pipeline_notice.reason && <p>{runtime.pipeline_notice.reason}</p>}
+          {runtime.pipeline_notice.repair_action?.function && (
+            <p>Doporučený rerun: <code className="text-[10px]">{runtime.pipeline_notice.repair_action.function}</code> pro {runtime.pipeline_notice.repair_action.for_date}.</p>
           )}
         </div>
       )}
