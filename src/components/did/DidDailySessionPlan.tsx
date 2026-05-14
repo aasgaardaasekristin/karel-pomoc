@@ -2238,4 +2238,37 @@ const PlanSourceBadge = ({ plan }: { plan: SessionPlan }) => {
   );
 };
 
+const PlanSelectionDebugPanel = ({
+  plan,
+  candidates,
+  renderBranch,
+}: {
+  plan: SessionPlan;
+  candidates: SessionPlan[];
+  renderBranch: string;
+}) => {
+  const playroomPlan = plan.urgency_breakdown?.playroom_plan;
+  const hasPlayroom = !!playroomPlan && typeof playroomPlan === "object";
+  const hasProgram =
+    hasPlayroom &&
+    Array.isArray((playroomPlan as any).therapeutic_program) &&
+    (playroomPlan as any).therapeutic_program.length > 0;
+  return (
+    <div className="rounded-md border border-primary/25 bg-primary/5 p-2 text-[10px] leading-4 text-foreground/85">
+      <div className="font-semibold text-primary">DEBUG UI resolver — dočasně</div>
+      <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
+        <span>selected plan id: {plan.id}</span>
+        <span>created_at: {plan.created_at ?? "null"}</span>
+        <span>source_status: {getPlanSourceStatus(plan)}</span>
+        <span>quality_score: {getPlanQualityScore(plan)}</span>
+        <span>token_count: {getGroundingTokenCount(plan)}</span>
+        <span>has_playroom_plan: {hasPlayroom ? "true" : "false"}</span>
+        <span>has_therapeutic_program: {hasProgram ? "true" : "false"}</span>
+        <span>eligible candidates: {candidates.length}</span>
+      </div>
+      <div className="text-muted-foreground">JSX větev: {renderBranch}</div>
+    </div>
+  );
+};
+
 export default DidDailySessionPlan;
