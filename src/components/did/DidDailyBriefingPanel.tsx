@@ -1195,7 +1195,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     loadLatest();
     loadApprovedToday();
     loadYesterdayFallback();
-  }, [loadLatest, loadApprovedToday, loadYesterdayFallback, refreshTrigger]);
+    loadCanonicalPlayroomsFromDb();
+  }, [loadLatest, loadApprovedToday, loadYesterdayFallback, loadCanonicalPlayroomsFromDb, refreshTrigger]);
 
   // Auto-refresh při nově vygenerovaném briefingu i při doplnění včerejšího review,
   // aby sekce Včerejší herna naskočila bez ručního reloadu dashboardu.
