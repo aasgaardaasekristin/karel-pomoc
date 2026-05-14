@@ -658,14 +658,15 @@ const PlayroomDecisionCard = ({
       {/* Návrh programu herny, otázky před schválením, post-session zápis a writeback
           patří do podvrstvy „Otevřít poradu ke schválení Herny" — zde se nezobrazují. */}
 
-      {/* Akce: otevřít poradu ke schválení */}
+      {/* Akce: otevřít dnešní workspace (FÁZE 1 — žádné poradní napojení) */}
       <div className="pt-3 mt-2 border-t border-border/40">
         <button
           type="button"
-          onClick={() => onOpenDeliberation(playroom)}
+          onClick={() => onOpenWorkspace(playroom)}
           className="w-full flex items-center justify-center gap-1.5 text-[12px] text-primary hover:bg-primary/10 py-1.5 rounded-sm transition-colors"
+          data-testid="playroom-open-workspace"
         >
-          Otevřít poradu ke schválení Herny
+          {runtime?.action_label || "Otevřít dnešní workspace"}
           <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>
