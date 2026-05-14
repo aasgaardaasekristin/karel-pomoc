@@ -499,7 +499,7 @@ export async function buildPlayroomPlanGrounded(opts: {
           method: "POST",
           headers: { Authorization: `Bearer ${opts.apiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: "google/gemini-2.5-pro",
+            model: "google/gemini-3-flash-preview",
             messages: [
               { role: "system", content: system },
               { role: "user", content: userExtra },
