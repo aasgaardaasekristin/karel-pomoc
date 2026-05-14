@@ -29,11 +29,6 @@ import DidLiveSessionPanel from "./DidLiveSessionPanel";
 import { getAuthHeaders } from "@/lib/auth";
 import { liveStartStatusText, planApprovalSynced } from "@/lib/dailyPlanStartPolicy";
 import {
-  getGroundingTokenCount,
-  getPlanQualityScore,
-  getPlanSourceStatus,
-} from "@/lib/dailyPlanSelection";
-import {
   signoffProgress,
   type TeamDeliberation,
   type DeliberationQuestion,
