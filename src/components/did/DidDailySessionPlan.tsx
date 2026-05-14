@@ -1957,6 +1957,7 @@ const PlanCard = ({
                     Pro: <strong>{plan.selected_part}</strong> · Stav:{" "}
                     {hernaStatusLabel}
                   </p>
+                  <PlanSourceBadge plan={plan} />
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <p>
