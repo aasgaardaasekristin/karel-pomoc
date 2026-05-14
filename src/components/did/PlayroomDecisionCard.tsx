@@ -112,15 +112,15 @@ const firstText = (...values: unknown[]): string => {
   return "";
 };
 
-const statusToText = (status?: string): string => {
+const statusToText = (status?: string, runtime?: string): string => {
+  if (runtime === "preview_ready") return "stav: runtime náhled připraven";
+  if (runtime === "pipeline_repair_required") return "stav: pipeline vyžaduje opravu";
+  if (runtime === "pipeline_broken") return "stav: pipeline rozbitá";
   const s = (status || "").toLowerCase();
   if (s === "approved" || s === "ready_to_start") return "stav: schváleno";
   if (s === "in_progress") return "stav: v běhu";
   if (s === "completed" || s === "evaluated") return "stav: dokončeno";
-  if (s === "in_revision") return "stav: revidováno, čeká na vstupy";
-  if (s === "awaiting_therapist_review") return "stav: čeká na vstupy terapeutek";
-  if (s === "draft") return "stav: pracovní návrh";
-  return "stav: čeká na vstupy";
+  return "stav: vyžaduje runtime ověření workspace";
 };
 
 /* -------------------- subcomponents -------------------- */
