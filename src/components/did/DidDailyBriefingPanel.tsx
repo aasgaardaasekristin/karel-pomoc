@@ -642,6 +642,45 @@ export const toProposedPlayroomView = (playroom: ProposedPlayroom | null | undef
   };
 };
 
+const proposedPlayroomSelectionProbe = (playroom: ProposedPlayroom) => ({
+  id: playroom.id || `briefing-proposed-playroom:${playroom.part_name}`,
+  created_at: null,
+  plan_markdown: playroom.why_this_part_today || playroom.main_theme || "",
+  urgency_breakdown: { playroom_plan: playroom.playroom_plan },
+});
+
+const ProposedPlayroomSourceBadge = ({ playroom }: { playroom: ProposedPlayroom }) => {
+  const probe = proposedPlayroomSelectionProbe(playroom);
+  const status = getPlanSourceStatus(probe);
+  const tokens = getGroundingTokenCount(probe);
+  return (
+    <Badge variant="outline" className="text-[10px] h-5 px-2 border-primary/30 text-primary bg-primary/5">
+      {getPlanSourceStatusLabel(status)}{tokens > 0 ? ` · grounding tokens: ${tokens}` : ""}
+    </Badge>
+  );
+};
+
+const ProposedPlayroomDebugPanel = ({ playroom }: { playroom: ProposedPlayroom }) => {
+  const probe = proposedPlayroomSelectionProbe(playroom);
+  const pp = playroom.playroom_plan;
+  const hasProgram = Array.isArray(pp?.therapeutic_program) && pp.therapeutic_program.length > 0;
+  return (
+    <div className="rounded-md border border-primary/25 bg-primary/5 p-2 text-[10px] leading-4 text-foreground/85">
+      <div className="font-semibold text-primary">DEBUG briefing render path — dočasně</div>
+      <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
+        <span>selected plan id: {probe.id}</span>
+        <span>created_at: null / briefing payload</span>
+        <span>source_status: {getPlanSourceStatus(probe)}</span>
+        <span>quality_score: {getPlanQualityScore(probe)}</span>
+        <span>token_count: {getGroundingTokenCount(probe)}</span>
+        <span>has_playroom_plan: {pp ? "true" : "false"}</span>
+        <span>has_therapeutic_program: {hasProgram ? "true" : "false"}</span>
+      </div>
+      <div className="text-muted-foreground">JSX větev: DidDailyBriefingPanel → proposed_playroom → Návrh pro dnešní hernu</div>
+    </div>
+  );
+};
+
 interface BriefingRow {
   id: string;
   briefing_date: string;
