@@ -575,10 +575,12 @@ serve(async (req) => {
   try {
     let forcePart: string | null = null;
     let therapistContext: string | null = null;
+    let playroomOnly = false;
     try {
       const body = await req.json();
       forcePart = body?.forcePart || null;
       therapistContext = body?.therapistContext || null;
+      playroomOnly = body?.playroomOnly === true;
     } catch { /* empty body is fine */ }
 
     // ═══ CHECK EXISTING THERAPIST-LED AUTO PLAN (only blocks therapist-led insert, not Karel-direct candidate) ═══
@@ -851,6 +853,18 @@ serve(async (req) => {
       crisisEventId,
       partReg,
     });
+
+    if (playroomOnly) {
+      return new Response(JSON.stringify({
+        success: true,
+        selectedPart: selectedPart.partName,
+        generatedBy: "karel_direct_daily_candidate",
+        karel_direct_candidate: karelDirectCandidate,
+        playroomOnly: true,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     if (!forcePart && therapistLedAutoPlanExists) {
       return new Response(JSON.stringify({
