@@ -389,13 +389,7 @@ const PostSessionForm = ({
 const KarelOpeningSection = ({ opening }: { opening: string }) => (
   <>
     <SectionHead>Karlova promluva</SectionHead>
-    {opening ? (
-      <Prose>{opening}</Prose>
-    ) : (
-      <p className="text-[12px] text-muted-foreground italic">
-        Karlova promluva pro tuto hernu zatím nebyla vygenerována.
-      </p>
-    )}
+    <Prose>{opening}</Prose>
   </>
 );
 
@@ -445,8 +439,8 @@ const PlayroomDecisionCard = ({
 
   // 3. Co víme z minulé herny — DB-only, bez fallback vět
   const lastSession = useMemo(() => buildLastSession(plan), [plan]);
-  const hasLastSession = lastSession.happened.length || lastSession.not_happened.length
-    || lastSession.worked.length || lastSession.destabilized.length || lastSession.stop_signals.length;
+  const hasLastSession = Boolean(lastSession.happened.length || lastSession.not_happened.length
+    || lastSession.worked.length || lastSession.destabilized.length || lastSession.stop_signals.length);
 
   // 4. Pracovní dedukce — render jen pokud DB má `deductions`
   const deductions = useMemo(() => {
@@ -490,10 +484,15 @@ const PlayroomDecisionCard = ({
     };
   }, [plan]);
 
-  // Karlova promluva — výhradně z DB (`opening_monologue` nebo `karel_opening`).
-  // Žádná syntéza ze sekcí. Pokud chybí → honest empty state v `KarelOpeningSection`.
+  // Karlova promluva — výhradně z DB polí. Žádná syntéza na frontendu;
+  // pokud dedicated opening chybí, použije se první child-facing prompt z uloženého programu.
   const opening = useMemo(() => {
-    const raw = pickFromPlan(plan, "opening_monologue") ?? pickFromPlan(plan, "karel_opening");
+    const firstBlock = Array.isArray(plan?.therapeutic_program) ? plan.therapeutic_program[0] : null;
+    const raw = pickFromPlan(plan, "opening_monologue")
+      ?? pickFromPlan(plan, "karel_opening")
+      ?? pickFromPlan(plan, "opening_message")
+      ?? pickFromPlan(plan, "first_question")
+      ?? firstBlock?.child_facing_prompt_draft;
     if (typeof raw === "string") return clinicalText(raw);
     if (raw && typeof raw === "object") return firstText((raw as any).text, (raw as any).opening_monologue_text);
     return "";
