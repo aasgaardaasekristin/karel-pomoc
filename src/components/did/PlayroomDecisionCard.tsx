@@ -505,23 +505,39 @@ const PlayroomDecisionCard = ({
   const therapistActions = useMemo(() => {
     const ta = pickFromPlan(plan, "therapist_actions");
     if (!ta || typeof ta !== "object") {
-      // fallback: questions_for_hanka/kata už máme jako legacy pole
       return {
-        hanka: cleanList(playroom.questions_for_hanka),
-        kata: cleanList(playroom.questions_for_kata),
+        hanka: clinicalList(playroom.questions_for_hanka, ["Před schválením ověřit, zda je pro tuto část dnes bezpečnější krátká herna, nebo jen přítomná opora bez programu."]),
+        kata: clinicalList(playroom.questions_for_kata, ["Zkontrolovat riziko zahlcení a hranici, kdy má zůstat jen stabilizační kontakt."]),
       };
     }
     return {
-      hanka: cleanList(ta.hanka),
-      kata: cleanList(ta.kata),
+      hanka: clinicalList(ta.hanka, clinicalList(playroom.questions_for_hanka)),
+      kata: clinicalList(ta.kata, clinicalList(playroom.questions_for_kata)),
     };
   }, [plan, playroom]);
 
   // 9. Otázky před schválením
   const preApprovalQuestions = useMemo(() => {
-    const q = pickFromPlan(plan, "pre_approval_questions");
-    return cleanList(q);
+    const questions = preApprovalQuestionsFromPlan(plan);
+    return questions.length ? questions : [
+      "Je dnešní herna pro tuto část bezpečná jako krátký kontakt, nebo má zůstat jen stabilizační opora?",
+      "Který stop signál má dnes program okamžitě ukončit?",
+    ];
   }, [plan]);
+
+  const opening = useMemo(() => {
+    const raw = pickFromPlan(plan, "opening_monologue") ?? pickFromPlan(plan, "karel_opening");
+    const explicit = typeof raw === "string" ? clinicalText(raw) : raw && typeof raw === "object" ? firstText((raw as any).text, (raw as any).opening_monologue_text) : "";
+    return buildClinicalOpening({
+      explicit,
+      partName,
+      whyToday: clinicalText(view.rationale),
+      lastSession,
+      directionGoal: direction?.goal_primary || clinicalText(plan?.clinical_goal),
+      contraindications: direction?.contraindications || [],
+      questions: preApprovalQuestions,
+    });
+  }, [plan, partName, view.rationale, lastSession, direction, preApprovalQuestions]);
 
   // Debug detaily jen pod debug guardem
   const debug = isKarelDebugMode();
@@ -537,8 +553,8 @@ const PlayroomDecisionCard = ({
         <span className="text-[11px] text-muted-foreground italic">{statusToText(playroom.status)}</span>
       </div>
 
-      {/* 1. Karlova promluva — DB-first, lokální draft fallback */}
-      <KarelOpeningSection dbOpening={opening} />
+      {/* 1. Karlova promluva */}
+      <KarelOpeningSection opening={opening} />
 
 
       {/* 2. Proč právě dnes */}
