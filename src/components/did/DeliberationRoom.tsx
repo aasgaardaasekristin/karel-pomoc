@@ -1271,6 +1271,9 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                   {/* THERAPIST-LED TRUTH PASS — Živý program (program_draft).
                   Pro session_plan nahrazuje statickou agendu + Karlovu syntézu.
                   Karel sem dopisuje po každé odpovědi/podnětu terapeutek. */}
+                  {isPlayroomPlan && (
+                    <DeliberationPlanDebugPanel d={d} linkedPlan={linkedPlan} />
+                  )}
                   {d.deliberation_type === "session_plan" && (
                     <LiveProgramDraftPanel
                       d={d}
