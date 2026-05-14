@@ -512,8 +512,8 @@ const PlayroomDecisionCard = ({
         <span className="text-[11px] text-muted-foreground italic">{statusToText(playroom.status)}</span>
       </div>
 
-      {/* 1. Karlova promluva (read-only, DB-only, honest empty state) */}
-      <KarelOpeningSection opening={opening} />
+      {/* 1. Karlova promluva (read-only, DB-only; nikdy ne placeholder) */}
+      {opening && <KarelOpeningSection opening={opening} />}
 
       {/* 2. Proč právě dnes — render jen pokud máme reálný text */}
       {clinicalRationale && (
@@ -548,7 +548,7 @@ const PlayroomDecisionCard = ({
       )}
 
       {/* 4. Pracovní dedukce */}
-      {deductions && (deductions.confirmed.length || deductions.working.length || deductions.unknowns.length) && (
+      {deductions && Boolean(deductions.confirmed.length || deductions.working.length || deductions.unknowns.length) && (
         <>
           <SectionHead>Pracovní dedukce</SectionHead>
           {deductions.confirmed.length > 0 && (
