@@ -428,6 +428,12 @@ const buildClinicalOpening = (args: {
   ].map(clinicalText).filter(Boolean).join("\n\n");
 };
 
+const preApprovalQuestionsFromPlan = (plan: any): string[] => clinicalList(
+  pickFromPlan(plan, "pre_approval_questions")
+    ?? pickFromPlan(plan, "questions_before_approval")
+    ?? pickFromPlan(plan, "approval_questions"),
+);
+
 /* -------------------- main card -------------------- */
 
 const PlayroomDecisionCard = ({
