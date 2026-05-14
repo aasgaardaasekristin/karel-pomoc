@@ -53,6 +53,7 @@ import {
   getPlanSourceStatus,
   getPlanSourceStatusLabel,
   getGroundingTokenCount,
+  getPlanQualityScore,
   type PlanSourceStatus,
 } from "@/lib/dailyPlanSelection";
 
@@ -170,6 +171,25 @@ const isQuarantinedPlan = (plan: SessionPlan) =>
   LEGACY_PLAN_GENERATORS.has(plan.generated_by) ||
   (ANALYTIC_PLAN_GENERATORS.has(plan.generated_by) &&
     !hasExplicitRoleContract(plan));
+
+const canonicalPlanGroupKey = (plan: SessionPlan) =>
+  `${plan.plan_date}::${String(plan.selected_part ?? "").trim().toLocaleLowerCase("cs-CZ")}`;
+
+const selectCanonicalPlansByPart = (rows: SessionPlan[]) => {
+  const groups = new Map<string, SessionPlan[]>();
+  rows.forEach((plan) => {
+    const key = canonicalPlanGroupKey(plan);
+    groups.set(key, [...(groups.get(key) ?? []), plan]);
+  });
+  return Array.from(groups.values())
+    .map((group) => selectCanonicalPlan(group))
+    .filter((plan): plan is SessionPlan => !!plan)
+    .sort(
+      (a, b) =>
+        (Date.parse(b.created_at ?? "") || 0) -
+        (Date.parse(a.created_at ?? "") || 0),
+    );
+};
 
 interface PreviousSession {
   therapist: string;
@@ -735,11 +755,12 @@ const DidDailySessionPlan = ({
       "true";
 
   // Split plans into runtime, hidden legacy/analytic drafts, and archived.
-  const pendingPlans = plans.filter(
+  const pendingPlanCandidates = plans.filter(
     (p) =>
       (p.status === "generated" || p.status === "in_progress") &&
       !isQuarantinedPlan(p),
   );
+  const pendingPlans = selectCanonicalPlansByPart(pendingPlanCandidates);
   const playroomPlans = pendingPlans.filter(isKarelDirectPlan);
   const therapistSessionPlans = pendingPlans.filter(
     (p) => !isKarelDirectPlan(p),
@@ -920,24 +941,33 @@ const DidDailySessionPlan = ({
               Herna na dnes
             </p>
             {playroomPlans.map((plan) => (
-              <PlanCard
-                key={plan.id}
-                plan={plan}
-                isExpanded={expandedPlanId === plan.id}
-                onToggleExpand={() =>
-                  setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)
-                }
-                onStartSession={() => startSession(plan)}
-                onEndSession={() => endSession(plan)}
-                onRevert={() => revertStatus(plan)}
-                onMarkDone={() => markDone(plan.id)}
-                onDelete={() => deletePlan(plan.id)}
-                onRegenerate={() => handlePartSelected(plan.selected_part)}
-                onOpenLive={() => setActiveLivePlanId(plan.id)}
-                prevSession={null}
-                compact={compact}
-                onOpenPrepRoom={onOpenPrepRoom}
-              />
+              <div key={plan.id} className="space-y-1">
+                <PlanSelectionDebugPanel
+                  plan={plan}
+                  candidates={pendingPlanCandidates.filter(
+                    (candidate) =>
+                      canonicalPlanGroupKey(candidate) === canonicalPlanGroupKey(plan),
+                  )}
+                  renderBranch="DidDailySessionPlan → playroomPlans → PlanCard → karelDirect/playroomPlan"
+                />
+                <PlanCard
+                  plan={plan}
+                  isExpanded={expandedPlanId === plan.id}
+                  onToggleExpand={() =>
+                    setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)
+                  }
+                  onStartSession={() => startSession(plan)}
+                  onEndSession={() => endSession(plan)}
+                  onRevert={() => revertStatus(plan)}
+                  onMarkDone={() => markDone(plan.id)}
+                  onDelete={() => deletePlan(plan.id)}
+                  onRegenerate={() => handlePartSelected(plan.selected_part)}
+                  onOpenLive={() => setActiveLivePlanId(plan.id)}
+                  prevSession={null}
+                  compact={compact}
+                  onOpenPrepRoom={onOpenPrepRoom}
+                />
+              </div>
             ))}
           </div>
         )}
@@ -1521,6 +1551,7 @@ const PlanCard = ({
             <Dices className="mr-0.5 h-2.5 w-2.5" /> Karlova herna
           </Badge>
         )}
+        <PlanSourceBadge plan={plan} />
         {legacyDraft && (
           <Badge
             variant="outline"
@@ -2204,6 +2235,39 @@ const PlanSourceBadge = ({ plan }: { plan: SessionPlan }) => {
       {(status === "grounded" || status === "weakly_grounded") && (
         <span className="opacity-80">· grounding tokens: {tokens}</span>
       )}
+    </div>
+  );
+};
+
+const PlanSelectionDebugPanel = ({
+  plan,
+  candidates,
+  renderBranch,
+}: {
+  plan: SessionPlan;
+  candidates: SessionPlan[];
+  renderBranch: string;
+}) => {
+  const playroomPlan = plan.urgency_breakdown?.playroom_plan;
+  const hasPlayroom = !!playroomPlan && typeof playroomPlan === "object";
+  const hasProgram =
+    hasPlayroom &&
+    Array.isArray((playroomPlan as any).therapeutic_program) &&
+    (playroomPlan as any).therapeutic_program.length > 0;
+  return (
+    <div className="rounded-md border border-primary/25 bg-primary/5 p-2 text-[10px] leading-4 text-foreground/85">
+      <div className="font-semibold text-primary">DEBUG UI resolver — dočasně</div>
+      <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
+        <span>selected plan id: {plan.id}</span>
+        <span>created_at: {plan.created_at ?? "null"}</span>
+        <span>source_status: {getPlanSourceStatus(plan)}</span>
+        <span>quality_score: {getPlanQualityScore(plan)}</span>
+        <span>token_count: {getGroundingTokenCount(plan)}</span>
+        <span>has_playroom_plan: {hasPlayroom ? "true" : "false"}</span>
+        <span>has_therapeutic_program: {hasProgram ? "true" : "false"}</span>
+        <span>eligible candidates: {candidates.length}</span>
+      </div>
+      <div className="text-muted-foreground">JSX větev: {renderBranch}</div>
     </div>
   );
 };

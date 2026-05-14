@@ -43,6 +43,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  getGroundingTokenCount,
+  getPlanQualityScore,
+  getPlanSourceStatus,
+  getPlanSourceStatusLabel,
+} from "@/lib/dailyPlanSelection";
 import { toast } from "sonner";
 import { useDidThreads } from "@/hooks/useDidThreads";
 import type { DeliberationType } from "@/types/teamDeliberation";
@@ -109,6 +115,7 @@ interface ProposedPlayroom {
     risks_and_stop_signals?: string[];
     forbidden_directions?: string[];
     runtime_packet_seed?: Record<string, unknown>;
+    meta?: Record<string, unknown>;
   };
   questions_for_hanka?: string[];
   questions_for_kata?: string[];
@@ -633,6 +640,45 @@ export const toProposedPlayroomView = (playroom: ProposedPlayroom | null | undef
     child_safe_text: cleanLine(playroom.playroom_plan?.child_safe_version),
     stop_rules: asCleanArray(playroom.playroom_plan?.risks_and_stop_signals, ["zahlcení", "odmítnutí", "ztráta bezpečí"]),
   };
+};
+
+const proposedPlayroomSelectionProbe = (playroom: ProposedPlayroom) => ({
+  id: playroom.id || `briefing-proposed-playroom:${playroom.part_name}`,
+  created_at: null,
+  plan_markdown: playroom.why_this_part_today || playroom.main_theme || "",
+  urgency_breakdown: { playroom_plan: playroom.playroom_plan },
+});
+
+const ProposedPlayroomSourceBadge = ({ playroom }: { playroom: ProposedPlayroom }) => {
+  const probe = proposedPlayroomSelectionProbe(playroom);
+  const status = getPlanSourceStatus(probe);
+  const tokens = getGroundingTokenCount(probe);
+  return (
+    <Badge variant="outline" className="text-[10px] h-5 px-2 border-primary/30 text-primary bg-primary/5">
+      {getPlanSourceStatusLabel(status)}{tokens > 0 ? ` · grounding tokens: ${tokens}` : ""}
+    </Badge>
+  );
+};
+
+const ProposedPlayroomDebugPanel = ({ playroom }: { playroom: ProposedPlayroom }) => {
+  const probe = proposedPlayroomSelectionProbe(playroom);
+  const pp = playroom.playroom_plan;
+  const hasProgram = Array.isArray(pp?.therapeutic_program) && pp.therapeutic_program.length > 0;
+  return (
+    <div className="rounded-md border border-primary/25 bg-primary/5 p-2 text-[10px] leading-4 text-foreground/85">
+      <div className="font-semibold text-primary">DEBUG briefing render path — dočasně</div>
+      <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
+        <span>selected plan id: {probe.id}</span>
+        <span>created_at: null / briefing payload</span>
+        <span>source_status: {getPlanSourceStatus(probe)}</span>
+        <span>quality_score: {getPlanQualityScore(probe)}</span>
+        <span>token_count: {getGroundingTokenCount(probe)}</span>
+        <span>has_playroom_plan: {pp ? "true" : "false"}</span>
+        <span>has_therapeutic_program: {hasProgram ? "true" : "false"}</span>
+      </div>
+      <div className="text-muted-foreground">JSX větev: DidDailyBriefingPanel → proposed_playroom → Návrh pro dnešní hernu</div>
+    </div>
+  );
 };
 
 interface BriefingRow {
@@ -2124,8 +2170,10 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               <Badge className="text-[10px] h-5 px-2 bg-primary/15 text-primary border-primary/30">{playroomView.part_name}</Badge>
               <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{playroomView.approval_label}</Badge>
               <Badge className="text-[10px] h-5 px-2 bg-muted text-muted-foreground border-border">{playroomView.lead_label}</Badge>
+              <ProposedPlayroomSourceBadge playroom={playroomProposal} />
               <ArrowRight className="w-3.5 h-3.5 text-primary/60 ml-auto" />
             </div>
+            <ProposedPlayroomDebugPanel playroom={playroomProposal} />
             <div>
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Cíl</p>
               <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{playroomView.title}</p>
