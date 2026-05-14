@@ -252,7 +252,7 @@ const PostSessionForm = ({
 
   const submit = async () => {
     if (!requiredFilled) {
-      toast.error("Vyplň minimálně „Co proběhlo" a „Validita dat".");
+      toast.error('Vyplň minimálně „Co proběhlo" a „Validita dat".');
       return;
     }
     setSubmitting(true);
