@@ -2231,7 +2231,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               <div className="mt-2 w-full p-3 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 space-y-2">
                 <h3 className="text-[15px] font-semibold text-foreground/90 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-primary" />
-                  Plán dnešní herny — {playroomView.part_name}
+                  Herna – {playroomView.part_name}
                 </h3>
                 <p className="text-[13px] leading-relaxed text-foreground/85">
                   Dnes pro {playroomView.part_name || "tuto část"} nemám připravený aktuální podklad pro hernu.
