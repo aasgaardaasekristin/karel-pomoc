@@ -24,6 +24,7 @@ import { ArrowRight, Sparkles, ChevronDown, ChevronUp, Loader2 } from "lucide-re
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { isKarelDebugMode } from "@/lib/karelDebugMode";
+import { sanitizeKarelVisibleText } from "@/lib/karelBriefingVisibleSanitizer";
 
 type ProposedPlayroom = {
   id?: string;
@@ -58,8 +59,23 @@ interface Props {
   view: PlayroomView;
   contextSummary?: string | null;
   contextLabel?: string;
+  lastPlayroomReview?: LastPlayroomReview | null;
   onOpenDeliberation: (p: ProposedPlayroom) => void;
 }
+
+type LastPlayroomReview = {
+  held?: boolean;
+  completion?: "completed" | "partial" | "abandoned" | string;
+  karel_summary?: string | null;
+  key_finding_about_part?: string | null;
+  implications_for_plan?: string | null;
+  team_acknowledgement?: string | null;
+  practical_report?: string | null;
+  detailed_analysis?: string | null;
+  recommendations_for_therapists?: string | null;
+  recommendations_for_next_session?: string | null;
+  recommendations_for_next_playroom?: string | null;
+};
 
 /* -------------------- helpers (pure, no Karel voice) -------------------- */
 
@@ -73,6 +89,28 @@ const pickFromPlan = (plan: any, key: string): any => {
 const cleanStr = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 const cleanList = (v: unknown): string[] =>
   Array.isArray(v) ? v.map((x) => cleanStr(x)).filter(Boolean) : [];
+
+const FORBIDDEN_VISIBLE_PLAYROOM_RE = /\bgrounded\b|source_status|status\s*grounded|čerp[áa]\s+ze\s+skutečn[ýy]ch\s+dat|sestaven[ýy]\s+ze\s+skutečn[ýy]ch\s+dat|grounding\s*tokens?/giu;
+
+const clinicalText = (value: unknown): string => sanitizeKarelVisibleText(value)
+  .replace(FORBIDDEN_VISIBLE_PLAYROOM_RE, "")
+  .replace(/\s*\(\s*\)\s*/g, " ")
+  .replace(/[ \t]{2,}/g, " ")
+  .replace(/\s+([.,;:!?])/g, "$1")
+  .trim();
+
+const clinicalList = (value: unknown, fallback: string[] = []): string[] => {
+  const source = Array.isArray(value) ? value : fallback;
+  return source.map((item) => clinicalText(item)).filter(Boolean);
+};
+
+const firstText = (...values: unknown[]): string => {
+  for (const value of values) {
+    const text = clinicalText(value);
+    if (text) return text;
+  }
+  return "";
+};
 
 const statusToText = (status?: string): string => {
   const s = (status || "").toLowerCase();
