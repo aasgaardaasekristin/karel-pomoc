@@ -585,13 +585,6 @@ const PlayroomDecisionCard = ({
         </div>
       )}
 
-      {/* 2. Proč právě dnes — render jen pokud máme reálný text */}
-      {clinicalRationale && (
-        <>
-          <SectionHead>Proč právě dnes</SectionHead>
-          <Prose>{clinicalRationale}</Prose>
-        </>
-      )}
 
       {/* 3. Co víme z minulé herny — render jen pokud DB má strukturovaná data */}
       {hasLastSession && (
