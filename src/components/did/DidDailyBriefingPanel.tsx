@@ -1459,6 +1459,16 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const openProposedPlayroomDeliberation = useCallback(
     async (s: ProposedPlayroom) => {
       if (openingItemId || !briefing) return;
+      // BLOK 1 hotfix — guard: dnešní playroom_plan musí existovat a obsahovat
+      // ne-prázdný therapeutic_program. Pokud chybí, modal vůbec neotvíráme
+      // a uživatelku informujeme lidským toastem; žádný fallback na starý plán.
+      const _todayProgram = Array.isArray(s.playroom_plan?.therapeutic_program)
+        ? s.playroom_plan.therapeutic_program
+        : [];
+      if (_todayProgram.length === 0) {
+        toast.error("Plán dnešní herny ještě nebyl připraven.");
+        return;
+      }
       const itemId = s.id || legacyAskIdFor(briefing.id, "ask_kata", `playroom::${s.part_name}`);
       setOpeningItemId(itemId);
       try {
@@ -2270,21 +2280,20 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           return (
             <>
               <NarrativeDivider />
-              <div className="mt-2 w-full p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 space-y-2">
+              <div
+                className="mt-2 w-full p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 space-y-2"
+                data-testid="playroom-pipeline-repair-card"
+              >
                 <h3 className="text-[15px] font-semibold text-foreground/90 flex items-center gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                  Herna – {playroomView.part_name}
+                  Herna pro {playroomView.part_name || "tuto část"} dnes není připravená
                 </h3>
                 <p className="text-[13px] leading-relaxed text-foreground/85">
-                  Pipeline Herny je rozbitá: pro {playroomView.part_name || "tuto část"} chybí dnešní neprázdný playroom_plan.
-                </p>
-                <p className="text-[12px] leading-relaxed text-muted-foreground">
-                  UI nesmí otevřít prázdnou Hernu. Povinný další krok: znovu spustit denní přehled, aby backend ověřil canonical snapshot,
-                  working memory a vytvořil dnešní session plán / playroom_plan; pokud se to nepovede, musí vrátit pipeline_broken s důvodem.
+                  Karel ještě nezpracoval podklady pro dnešní hernu. Můžeš zkusit přípravu znovu spustit.
                 </p>
                 <Button size="sm" variant="outline" onClick={handleRegenerate} disabled={regenerating} className="text-[12px]">
                   {regenerating ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1.5" />}
-                  Opravit pipeline a přegenerovat
+                  Připravit znovu
                 </Button>
               </div>
             </>

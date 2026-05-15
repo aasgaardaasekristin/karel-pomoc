@@ -169,17 +169,38 @@ function listValue(value: unknown) {
 
 const FORBIDDEN_VISIBLE_DEBUG_RE = /pending_review|evidence_limited|needs_therapist_input|awaiting_therapist_review|backend_context_inputs|source_ref|therapist_factual_correction|external_fact|evidence discipline|child evidence|real-world context|operational context|faktick[áa]\s+korekce\s+reality|nepředstírat klinické závěry|průběh, který nemá transcript|První pracovní návrh:\s*Část|Stav:\s*awaiting/i;
 
+/**
+ * BLOK 1 hotfix — strip raw markdown leaks (``### Heading``) and raw
+ * internal report labels that occasionally end up copy-pasted into stored
+ * Karel briefs / proposed plans. Klient nesmí vidět syrový přepis interních
+ * reportů — musí dostat přepracovanou prózu.
+ */
+export function stripRawReportArtifacts(input: string): string {
+  if (!input) return "";
+  return String(input)
+    // markdown atx headers (line-anchored AND mid-text leaks like "..že ### Foo")
+    .replace(/(?:^|\n)\s{0,3}#{1,6}\s+/g, "\n")
+    .replace(/\s#{1,6}\s+/g, " ")
+    // raw internal report labels
+    .replace(/Praktick[ýy]\s+report\s+z\s+Herny\s*:\s*\S*/gi, "")
+    .replace(/Detailn[íi]\s+anal[ýy]za\s+z\s+Herny\s*:\s*\S*/gi, "")
+    .replace(/Playroom\s+log\s*:\s*\S*/gi, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
 function cleanVisiblePlanText(value: unknown, fallback = "") {
   const cleaned = sanitizeRecencyText(
-    String(value ?? "")
-      .replace(/\bpending_review\b/gi, "čeká na klinické dovyhodnocení")
-      .replace(/\bevidence_limited\b/gi, "zatím bez dostatečných podkladů")
-      .replace(/\bneeds_therapist_input\b/gi, "čeká na doplnění od terapeutek")
-      .replace(/\bawaiting_therapist_review\b/gi, "čeká na schválení terapeutkami")
-      .replace(/nepředstírat klinické závěry[^.\n]*/gi, "klinické závěry dělat až po přímé reakci kluků")
-      .replace(/průběh, který nemá transcript/gi, "situaci bez dostatečného přímého materiálu")
-      .replace(/briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log/gi, "podklad")
-      .trim(),
+    stripRawReportArtifacts(
+      String(value ?? "")
+        .replace(/\bpending_review\b/gi, "čeká na klinické dovyhodnocení")
+        .replace(/\bevidence_limited\b/gi, "zatím bez dostatečných podkladů")
+        .replace(/\bneeds_therapist_input\b/gi, "čeká na doplnění od terapeutek")
+        .replace(/\bawaiting_therapist_review\b/gi, "čeká na schválení terapeutkami")
+        .replace(/nepředstírat klinické závěry[^.\n]*/gi, "klinické závěry dělat až po přímé reakci kluků")
+        .replace(/průběh, který nemá transcript/gi, "situaci bez dostatečného přímého materiálu")
+        .replace(/briefing_input|source_ref|source_kind|backend_context_inputs|processed_at|ingestion|Pantry B|karel_pantry_b_entries|did_event_ingestion_log/gi, "podklad"),
+    ).trim(),
     {},
   );
   if (!cleaned || FORBIDDEN_VISIBLE_DEBUG_RE.test(cleaned)) return fallback;
@@ -1241,7 +1262,7 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                       Karel svolal poradu
                     </h4>
                     <RichMarkdown compact>
-                      {sanitizeHernaVisibleText(d.initial_karel_brief) || "(žádný brief)"}
+                      {stripRawReportArtifacts(sanitizeHernaVisibleText(d.initial_karel_brief)) || "(žádný brief)"}
                     </RichMarkdown>
                   </section>
 
