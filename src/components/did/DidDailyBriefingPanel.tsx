@@ -1248,6 +1248,17 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   /**
    * Lazy-otevře nebo založí kanonický did_threads workspace pro briefing ask.
    * Druhý klik na stejný ask resolvne tentýž thread (workspace lookup).
+   *
+   * HOTFIX 1.6 — TATO CESTA ZÁMĚRNĚ NEMÁ `isPlayroomPlanFreshForToday` GUARD.
+   * Důvod: workspace „Pro Hanička/Káťa — z dnešního přehledu" je terapeutická
+   * otázka napojená na konkrétní `ask_*` item z briefingu (pavoučí noha bez
+   * `requires_immediate_program_update`). Otázka má smysl i tehdy, když
+   * dnešní `playroom_plan` ještě neexistuje — odpověď terapeutky se započítá
+   * při příštím přegenerování přehledu (tlačítka „Započítat do programu" /
+   * „Uzavřít bez změny" v `DidContentRouter`). Pavoučí nohy s
+   * `requires_immediate_program_update=true` jdou jinou větví do
+   * `openProgramAskDeliberation` → `openProposedPlayroomDeliberation`,
+   * kde guard JE, takže se starým plánem neotevřou modal.
    */
   const openAskWorkspace = useCallback(
     async (
