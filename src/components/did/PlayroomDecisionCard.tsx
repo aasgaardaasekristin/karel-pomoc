@@ -1,32 +1,32 @@
 /**
- * PlayroomDecisionCard
+ * PlayroomDecisionCard — BLOK 1 (frontend-only)
  *
- * Klinický decision surface pro „Plán dnešní herny".
+ * Klinický decision surface pro „Hernu – [část]".
  *
- * Pravidla (viz docs/P33_6 + zadání 2026-05-14):
- *  - ŽÁDNÝ debug text/badge v produkčním view (source_status, grounding tokens,
- *    quality_score, render path, eligible candidates, has_playroom_plan, atd.).
- *    Debug detaily smí být jen za `isKarelDebugMode()`.
- *  - Sekce se zobrazují pouze, pokud pro ně existují data v `playroom_plan`
- *    (preferovaně top-level, fallback `playroom_plan.meta`). Žádné placeholder
- *    věty „Karel zatím nemá k tomu informace".
- *  - Jediná výjimka: „Co víme z minulé herny" — pokud chybí, jedna honest věta.
- *  - Inline otázky před schválením se ukládají do `did_pending_questions`.
- *  - Post-session formulář drží payload v localStorage draftu a po odeslání
- *    založí strukturovaný záznam v `did_pending_questions` (jako follow-up).
- *
- * Karta NEgeneruje žádný text Karlovým hlasem na frontendu — všechen lidský
- * text musí přijít z DB.
+ * BLOK 1 kontrakt:
+ *  - Žádné UI mutace (žádné insert/update/delete do DB z této karty).
+ *  - Žádný PreApprovalQuestions formulář — workflow přesunut do DeliberationRoom
+ *    (existující surface, did_team_deliberations.questions[]).
+ *  - Žádný PostSessionForm — odstraněn z BLOKu 1, bude reimplementován v BLOKu 3
+ *    jako pavoučí noha post_session_writeback (zápisy do did_observations /
+ *    diagnostic_node_entries přes nightly pipeline §4.3).
+ *  - Karlova promluva strukturována do 6 named sub-sekcí (Oslovení, Profesní
+ *    zjištění, Odborné souvislosti, Dnešní východiska, Diagnostické otázky,
+ *    Jednovětý rámec) — render jen tam, kde DB / runtime preview má data.
+ *  - Pipeline notice je jen malý podružný blok pod hlavním obsahem.
+ *  - CTA „Otevřít poradu" volá existující idempotentní
+ *    openProposedPlayroomDeliberation (přes karel-team-deliberation-create).
+ *  - Žádný debug text/badge v produkčním view; debug detaily jen za
+ *    isKarelDebugMode().
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Sparkles, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 import { isKarelDebugMode } from "@/lib/karelDebugMode";
 import { sanitizeKarelVisibleText } from "@/lib/karelBriefingVisibleSanitizer";
 
-/** FÁZE 1 (revize 2026-05-14): runtime preview kontrakt z karel-playroom-preview. */
+/** Runtime preview kontrakt z karel-playroom-preview. */
 type PipelineNotice = {
   level: "info" | "warning" | "error";
   broken_step?: string | null;
@@ -75,29 +75,22 @@ type PlayroomView = {
   stop_rules: string[];
 };
 
+type LastPlayroomReview = {
+  held?: boolean;
+  completion?: "completed" | "partial" | "abandoned" | string;
+  karel_summary?: string | null;
+  [k: string]: any;
+};
+
 interface Props {
   playroom: ProposedPlayroom;
   view: PlayroomView;
   contextSummary?: string | null;
   contextLabel?: string;
   lastPlayroomReview?: LastPlayroomReview | null;
-  /** FÁZE 1: CTA „Otevřít dnešní workspace" — žádné poradní napojení. */
-  onOpenWorkspace: (p: ProposedPlayroom) => void;
+  /** BLOK 1 CTA — existující idempotentní handler v DidDailyBriefingPanel. */
+  onOpenDeliberation: (p: ProposedPlayroom) => void;
 }
-
-type LastPlayroomReview = {
-  held?: boolean;
-  completion?: "completed" | "partial" | "abandoned" | string;
-  karel_summary?: string | null;
-  key_finding_about_part?: string | null;
-  implications_for_plan?: string | null;
-  team_acknowledgement?: string | null;
-  practical_report?: string | null;
-  detailed_analysis?: string | null;
-  recommendations_for_therapists?: string | null;
-  recommendations_for_next_session?: string | null;
-  recommendations_for_next_playroom?: string | null;
-};
 
 /* -------------------- helpers (pure, no Karel voice) -------------------- */
 
@@ -109,10 +102,8 @@ const pickFromPlan = (plan: any, key: string): any => {
 };
 
 const cleanStr = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
-const cleanList = (v: unknown): string[] =>
-  Array.isArray(v) ? v.map((x) => cleanStr(x)).filter(Boolean) : [];
 
-const FORBIDDEN_VISIBLE_PLAYROOM_RE = /\bgrounded\b|source_status|status\s*grounded|čerp[áa]\s+ze\s+skutečn[ýy]ch\s+dat|sestaven[ýy]\s+ze\s+skutečn[ýy]ch\s+dat|grounding\s*tokens?/giu;
+const FORBIDDEN_VISIBLE_PLAYROOM_RE = /\bgrounded\b|source_status|status\s*grounded|čerp[áa]\s+ze\s+skutečn[ýy]ch\s+dat|sestaven[ýy]\s+ze\s+skutečn[ýy]ch\s+dat|grounding\s*tokens?|pracovn[íi]\s+ov[ěe]řen[íi]|podklad\s+pro\s+pl[áa]nov[áa]n[íi]/giu;
 
 const clinicalText = (value: unknown): string => sanitizeKarelVisibleText(value)
   .replace(FORBIDDEN_VISIBLE_PLAYROOM_RE, "")
@@ -153,6 +144,10 @@ const SectionHead = ({ children }: { children: React.ReactNode }) => (
   </h4>
 );
 
+const SubLabel = ({ children }: { children: React.ReactNode }) => (
+  <p className="text-[11px] uppercase tracking-wide text-muted-foreground/85 mt-2 mb-0.5">{children}</p>
+);
+
 const Prose = ({ children }: { children: React.ReactNode }) => (
   <p className="text-[13px] leading-relaxed text-foreground/85 whitespace-pre-line">{children}</p>
 );
@@ -168,257 +163,108 @@ const BulletList = ({ items }: { items: string[] }) => (
   </ul>
 );
 
-/* -------------------- pre-approval inline questions -------------------- */
+/* -------------------- spider head (Karlova promluva) -------------------- */
 
-const PreApprovalQuestions = ({
-  partName,
-  questions,
-  planId,
-}: {
-  partName: string;
-  questions: string[];
-  planId?: string;
-}) => {
-  const [answers, setAnswers] = useState<Record<number, string>>({});
-  const [submitting, setSubmitting] = useState<Record<number, boolean>>({});
-  const [submitted, setSubmitted] = useState<Record<number, boolean>>({});
-
-  const submit = async (idx: number, question: string) => {
-    const answer = (answers[idx] || "").trim();
-    if (!answer) {
-      toast.error("Napiš krátkou odpověď.");
-      return;
-    }
-    setSubmitting((s) => ({ ...s, [idx]: true }));
-    try {
-      const { error } = await (supabase as any).from("did_pending_questions").insert({
-        question,
-        directed_to: "karel",
-        status: "answered",
-        answer,
-        answered_at: new Date().toISOString(),
-        answered_by: "therapist_inline",
-        source: "playroom_pre_approval",
-        part_name: partName || "system",
-        subject_type: "playroom_plan",
-        crisis_event_id: null,
-        ...(planId ? { related_plan_id: planId } : {}),
-      });
-      if (error) throw error;
-      setSubmitted((s) => ({ ...s, [idx]: true }));
-      toast.success("Odpověď uložena.");
-    } catch (e: any) {
-      console.error("[PreApprovalQuestions] insert failed", e);
-      toast.error("Uložení selhalo.");
-    } finally {
-      setSubmitting((s) => ({ ...s, [idx]: false }));
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      {questions.map((q, idx) => (
-        <div key={idx} className="rounded-md border border-border/50 bg-background/35 p-2.5 space-y-1.5">
-          <p className="text-[13px] leading-relaxed text-foreground/90">{q}</p>
-          {submitted[idx] ? (
-            <p className="text-[12px] text-muted-foreground italic">
-              Odpověď zaznamenána: „{answers[idx]}"
-            </p>
-          ) : (
-            <>
-              <textarea
-                value={answers[idx] || ""}
-                onChange={(e) => setAnswers((a) => ({ ...a, [idx]: e.target.value }))}
-                placeholder="Krátká odpověď, která může změnit plán…"
-                rows={2}
-                className="w-full text-[13px] rounded-sm border border-border/60 bg-background/70 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary/40"
-              />
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => submit(idx, q)}
-                  disabled={submitting[idx]}
-                  className="text-[11px] px-2 py-1 rounded-sm border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-50"
-                >
-                  {submitting[idx] ? <Loader2 className="w-3 h-3 animate-spin" /> : "Odeslat odpověď"}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      ))}
-    </div>
-  );
+type SpiderHead = {
+  greeting: string;
+  what_we_know_for_sure: string[];
+  context_one_liner: string;
+  for_hanka: string;
+  for_kata: string;
+  diagnostic_questions: string[];
+  one_line_frame: string;
+  /** Plain text fallback when DB returns string only. */
+  plain: string;
 };
 
-/* -------------------- post-session payload form -------------------- */
-
-const POST_FIELDS: { key: string; label: string; rows?: number }[] = [
-  { key: "whatHappened", label: "Co proběhlo", rows: 2 },
-  { key: "whatDidNotHappen", label: "Co neproběhlo (a mělo)", rows: 2 },
-  { key: "confirmedFacts", label: "Potvrzená fakta", rows: 2 },
-  { key: "workingDeductions", label: "Pracovní dedukce (hypotézy)", rows: 2 },
-  { key: "unknowns", label: "Co zůstává nejasné", rows: 2 },
-  { key: "dataValidity", label: "Validita dat (nízká / střední / vyšší + proč)", rows: 1 },
-  { key: "whatHelped", label: "Co pomohlo", rows: 1 },
-  { key: "whatFailedOrBackfired", label: "Co selhalo / co se obrátilo proti", rows: 1 },
-  { key: "implicationsForNextPlan", label: "Implikace pro další plán", rows: 2 },
-  { key: "requiredFollowupsForHanka", label: "Follow-up pro Haničku", rows: 1 },
-  { key: "requiredFollowupsForKata", label: "Follow-up pro Káťu", rows: 1 },
-];
-
-const draftKey = (partName: string, planId?: string) =>
-  `playroom_post_session_draft:${planId || "no-plan"}:${partName}`;
-
-const PostSessionForm = ({
-  partName,
-  planId,
-}: {
-  partName: string;
-  planId?: string;
-}) => {
-  const [open, setOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [done, setDone] = useState(false);
-
-  const key = draftKey(partName, planId);
-  const [values, setValues] = useState<Record<string, string>>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      const raw = window.localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : {};
-    } catch {
-      return {};
-    }
-  });
-
-  const setField = useCallback(
-    (k: string, v: string) => {
-      setValues((prev) => {
-        const next = { ...prev, [k]: v };
-        try {
-          window.localStorage.setItem(key, JSON.stringify(next));
-        } catch {
-          /* ignore */
-        }
-        return next;
-      });
-    },
-    [key],
-  );
-
-  const requiredFilled = (values.whatHappened || "").trim().length > 0
-    && (values.dataValidity || "").trim().length > 0;
-
-  const submit = async () => {
-    if (!requiredFilled) {
-      toast.error('Vyplň minimálně „Co proběhlo" a „Validita dat".');
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const payloadText = POST_FIELDS
-        .map((f) => {
-          const v = (values[f.key] || "").trim();
-          return v ? `${f.label}:\n${v}` : null;
-        })
-        .filter(Boolean)
-        .join("\n\n");
-
-      const { error } = await (supabase as any).from("did_pending_questions").insert({
-        question: `Post-session zápis pro Hernu s ${partName}`,
-        directed_to: "karel",
-        status: "answered",
-        answer: payloadText,
-        answered_at: new Date().toISOString(),
-        answered_by: "therapist_inline",
-        source: "playroom_post_session_payload",
-        part_name: partName || "system",
-        subject_type: "playroom_post_session",
-        crisis_event_id: null,
-        ...(planId ? { related_plan_id: planId } : {}),
-      });
-      if (error) throw error;
-      setDone(true);
-      try {
-        window.localStorage.removeItem(key);
-      } catch {
-        /* ignore */
-      }
-      toast.success("Post-session zápis odeslán.");
-    } catch (e: any) {
-      console.error("[PostSessionForm] insert failed", e);
-      toast.error("Uložení selhalo.");
-    } finally {
-      setSubmitting(false);
-    }
+const buildSpiderHead = (runtime: PlayroomRuntimePreview | null, plan: any): SpiderHead => {
+  const empty: SpiderHead = {
+    greeting: "",
+    what_we_know_for_sure: [],
+    context_one_liner: "",
+    for_hanka: "",
+    for_kata: "",
+    diagnostic_questions: [],
+    one_line_frame: "",
+    plain: "",
   };
 
-  if (done) {
-    return (
-      <p className="text-[12px] text-muted-foreground italic">
-        Zápis odeslán — Karel vytvoří analýzu s oddělením fakt / dedukcí / neznámého.
-      </p>
-    );
+  const raw = pickFromPlan(plan, "opening_monologue")
+    ?? pickFromPlan(plan, "karel_opening")
+    ?? pickFromPlan(plan, "opening_message");
+
+  const runtimeText = clinicalText(runtime?.card_opening_message);
+
+  if (raw && typeof raw === "object") {
+    const obj = raw as any;
+    return {
+      greeting: clinicalText(obj.greeting ?? obj.osloveni),
+      what_we_know_for_sure: clinicalList(obj.what_we_know_for_sure ?? obj.profesni_zjisteni),
+      context_one_liner: clinicalText(obj.context_one_liner ?? obj.odborne_souvislosti),
+      for_hanka: clinicalText(obj.for_hanka),
+      for_kata: clinicalText(obj.for_kata),
+      diagnostic_questions: clinicalList(obj.diagnostic_questions ?? obj.what_we_dont_know_yet),
+      one_line_frame: clinicalText(obj.one_line_frame ?? obj.jednovety_ramec),
+      plain: clinicalText(obj.text ?? obj.opening_monologue_text) || runtimeText,
+    };
   }
 
+  if (typeof raw === "string" && cleanStr(raw)) {
+    return { ...empty, plain: clinicalText(raw) || runtimeText };
+  }
+
+  return { ...empty, plain: runtimeText };
+};
+
+const spiderHasContent = (h: SpiderHead): boolean =>
+  Boolean(
+    h.greeting || h.what_we_know_for_sure.length || h.context_one_liner
+      || h.for_hanka || h.for_kata || h.diagnostic_questions.length
+      || h.one_line_frame || h.plain,
+  );
+
+const SpiderHeadView = ({ head }: { head: SpiderHead }) => {
+  const sections: { label: string; render: () => React.ReactNode; visible: boolean }[] = [
+    { label: "Oslovení", visible: !!head.greeting, render: () => <Prose>{head.greeting}</Prose> },
+    { label: "Profesní zjištění", visible: head.what_we_know_for_sure.length > 0, render: () => <BulletList items={head.what_we_know_for_sure} /> },
+    { label: "Odborné souvislosti", visible: !!head.context_one_liner, render: () => <Prose>{head.context_one_liner}</Prose> },
+    {
+      label: "Dnešní východiska",
+      visible: !!(head.for_hanka || head.for_kata),
+      render: () => (
+        <div className="space-y-1.5">
+          {head.for_hanka && <p className="text-[13px] leading-relaxed text-foreground/85"><span className="text-muted-foreground">Pro Haničku: </span>{head.for_hanka}</p>}
+          {head.for_kata && <p className="text-[13px] leading-relaxed text-foreground/85"><span className="text-muted-foreground">Pro Káťu: </span>{head.for_kata}</p>}
+        </div>
+      ),
+    },
+    { label: "Diagnostické otázky", visible: head.diagnostic_questions.length > 0, render: () => <BulletList items={head.diagnostic_questions.slice(0, 6)} /> },
+    { label: "Jednovětý rámec", visible: !!head.one_line_frame, render: () => <Prose>{head.one_line_frame}</Prose> },
+  ];
+
+  const anyStructured = sections.some((s) => s.visible);
+
   return (
-    <div className="rounded-md border border-border/50 bg-background/35 p-2.5">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 text-[13px] font-medium text-foreground/85 hover:text-primary transition-colors"
-      >
-        {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-        Otevřít post-session formulář
-      </button>
-      {open && (
-        <div className="mt-3 space-y-2.5">
-          {POST_FIELDS.map((f) => (
-            <div key={f.key} className="space-y-1">
-              <label className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                {f.label}
-              </label>
-              <textarea
-                value={values[f.key] || ""}
-                onChange={(e) => setField(f.key, e.target.value)}
-                rows={f.rows || 2}
-                className="w-full text-[13px] rounded-sm border border-border/60 bg-background/70 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary/40"
-              />
+    <>
+      <SectionHead>Karlova promluva</SectionHead>
+      {!anyStructured && head.plain && <Prose>{head.plain}</Prose>}
+      {anyStructured && (
+        <div className="space-y-1">
+          {head.plain && !head.greeting && !head.context_one_liner && <Prose>{head.plain}</Prose>}
+          {sections.filter((s) => s.visible).map((s) => (
+            <div key={s.label}>
+              <SubLabel>{s.label}</SubLabel>
+              {s.render()}
             </div>
           ))}
-          <div className="flex justify-end pt-1">
-            <button
-              type="button"
-              onClick={submit}
-              disabled={submitting}
-              className="text-[12px] px-3 py-1.5 rounded-sm border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-50"
-            >
-              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Odeslat zápis"}
-            </button>
-          </div>
-          <p className="text-[11px] text-muted-foreground/80">
-            Koncept se průběžně ukládá lokálně. Po odeslání se vytvoří strukturovaný záznam pro analýzu.
-          </p>
         </div>
       )}
-    </div>
+    </>
   );
 };
 
-/* -------------------- Karlova promluva -------------------- */
+/* -------------------- side-block builders (DB-only) -------------------- */
 
-const KarelOpeningSection = ({ opening }: { opening: string }) => (
-  <>
-    <SectionHead>Karlova promluva</SectionHead>
-    <Prose>{opening}</Prose>
-  </>
-);
-
-/**
- * BLOK 1 contract: čistě DB-driven. Žádné fallback věty, žádná syntéza textu.
- * Sekce, pro kterou DB neposkytne strukturovaná data, se nezobrazí vůbec.
- */
 const buildLastSession = (plan: any) => {
   const ls = pickFromPlan(plan, "last_session_summary")
     ?? pickFromPlan(plan, "last_playroom_summary")
@@ -436,12 +282,6 @@ const buildLastSession = (plan: any) => {
   };
 };
 
-const preApprovalQuestionsFromPlan = (plan: any): string[] => clinicalList(
-  pickFromPlan(plan, "pre_approval_questions")
-    ?? pickFromPlan(plan, "questions_before_approval")
-    ?? pickFromPlan(plan, "approval_questions"),
-);
-
 /* -------------------- main card -------------------- */
 
 const PlayroomDecisionCard = ({
@@ -450,12 +290,12 @@ const PlayroomDecisionCard = ({
   contextSummary,
   contextLabel,
   lastPlayroomReview: _lastPlayroomReview,
-  onOpenWorkspace,
+  onOpenDeliberation,
 }: Props) => {
   const plan = playroom.playroom_plan || {};
   const partName = view.part_name || playroom.part_name;
 
-  // FÁZE 1: runtime preview z karel-playroom-preview (canonical snapshot + WM + plan).
+  // Runtime preview z karel-playroom-preview (canonical snapshot + WM + plan).
   const [runtime, setRuntime] = useState<PlayroomRuntimePreview | null>(null);
   const [runtimeLoading, setRuntimeLoading] = useState<boolean>(true);
   useEffect(() => {
@@ -478,7 +318,10 @@ const PlayroomDecisionCard = ({
     [runtime?.reason, view.rationale, playroom.why_this_part_today, playroom.main_theme],
   );
 
-  // 3. Co víme z minulé herny — DB-only, bez fallback vět
+  const spider = useMemo(() => buildSpiderHead(runtime, plan), [runtime, plan]);
+  const hasSpider = spiderHasContent(spider);
+
+  // Co víme z minulé herny — render jen pokud DB má alespoň jednu neprázdnou sub-položku.
   const lastSession = useMemo(() => buildLastSession(plan), [plan]);
   const hasLastSession = Boolean(lastSession.happened.length || lastSession.not_happened.length
     || lastSession.worked.length || lastSession.destabilized.length || lastSession.stop_signals.length);
@@ -486,20 +329,24 @@ const PlayroomDecisionCard = ({
   const deductions = useMemo(() => {
     const d = pickFromPlan(plan, "deductions");
     if (!d || typeof d !== "object") return null;
-    return {
-      confirmed: clinicalList(d.confirmed),
-      working: clinicalList(d.working),
-      unknowns: clinicalList(d.unknowns),
-    };
+    const confirmed = clinicalList(d.confirmed);
+    const working = clinicalList(d.working);
+    const unknowns = clinicalList(d.unknowns);
+    if (!confirmed.length && !working.length && !unknowns.length) return null;
+    return { confirmed, working, unknowns };
   }, [plan]);
 
   const direction = useMemo(() => {
     const d = pickFromPlan(plan, "direction");
     if (!d || typeof d !== "object") return null;
+    const phase = clinicalText(d.phase);
+    const readiness = clinicalText(d.readiness);
+    const goal_primary = clinicalText(d.goal_primary);
+    if (!phase && !readiness && !goal_primary) return null;
     return {
-      phase: clinicalText(d.phase),
-      readiness: clinicalText(d.readiness),
-      goal_primary: clinicalText(d.goal_primary),
+      phase,
+      readiness,
+      goal_primary,
       goal_secondary: clinicalText(d.goal_secondary),
       not_today: clinicalList(d.not_today),
       contraindications: clinicalList(d.contraindications),
@@ -507,11 +354,6 @@ const PlayroomDecisionCard = ({
       fallback: clinicalText(d.fallback),
     };
   }, [plan]);
-
-  const hasDirection = direction
-    && (direction.phase || direction.readiness || direction.goal_primary
-      || direction.goal_secondary || direction.not_today.length || direction.contraindications.length
-      || direction.stop_rules.length || direction.fallback);
 
   const therapistActions = useMemo(() => {
     const ta = pickFromPlan(plan, "therapist_actions");
@@ -522,25 +364,14 @@ const PlayroomDecisionCard = ({
     };
   }, [plan]);
 
-  // FÁZE 1: Karlova promluva = výhradně runtime preview (canonical+WM+plan) nebo
-  // explicitní therapist-facing pole z DB. ŽÁDNÝ child-facing draft / first_question.
-  const opening = useMemo(() => {
-    const runtimeText = clinicalText(runtime?.card_opening_message);
-    if (runtimeText) return runtimeText;
-    const raw = pickFromPlan(plan, "opening_monologue")
-      ?? pickFromPlan(plan, "karel_opening")
-      ?? pickFromPlan(plan, "opening_message");
-    if (typeof raw === "string") return clinicalText(raw);
-    if (raw && typeof raw === "object") return firstText((raw as any).text, (raw as any).opening_monologue_text);
-    return "";
-  }, [runtime?.card_opening_message, plan]);
-
-  // Debug detaily jen pod debug guardem
   const debug = isKarelDebugMode();
+
+  // Honest empty state pouze pokud nemáme NIC — ani runtime preview, ani DB opening.
+  const showOpeningEmptyState = !runtimeLoading && !hasSpider;
 
   return (
     <div className="mt-2 w-full p-3 rounded-lg border border-primary/20 bg-primary/5 space-y-1">
-      {/* HEADER — „Herna – {část}" */}
+      {/* HEADER */}
       <div className="flex items-baseline justify-between gap-3 flex-wrap">
         <h3 className="text-[15px] font-semibold text-foreground/90 flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-primary" />
@@ -551,7 +382,6 @@ const PlayroomDecisionCard = ({
         </span>
       </div>
 
-      {/* Runtime meta z karel-playroom-preview (preview_ready i preview_degraded) */}
       {(runtime?.status === "preview_ready" || runtime?.status === "preview_degraded") && (
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
           {runtime.plannedpart && <span>Část: <span className="text-foreground/80">{runtime.plannedpart}</span></span>}
@@ -560,18 +390,106 @@ const PlayroomDecisionCard = ({
         </div>
       )}
 
-      {/* 1. Karlova therapist-facing promluva — VŽDY primární obsah, pokud existuje */}
-      {opening && <KarelOpeningSection opening={opening} />}
+      {/* Pavoučí HLAVA — 6 named sub-sekcí */}
+      <div className="lg:grid lg:grid-cols-[2fr_1fr] lg:gap-4">
+        <div>
+          {hasSpider && <SpiderHeadView head={spider} />}
+          {showOpeningEmptyState && (
+            <>
+              <SectionHead>Karlova promluva</SectionHead>
+              <p className="text-[13px] leading-relaxed text-muted-foreground italic">
+                Karlova promluva pro tuto Hernu zatím nebyla vygenerována.
+              </p>
+            </>
+          )}
 
-      {/* 2. Proč právě dnes — render jen pokud máme reálný text */}
-      {clinicalRationale && (
-        <>
-          <SectionHead>Proč právě dnes</SectionHead>
-          <Prose>{clinicalRationale}</Prose>
-        </>
-      )}
+          {clinicalRationale && (
+            <>
+              <SectionHead>Proč právě dnes</SectionHead>
+              <Prose>{clinicalRationale}</Prose>
+            </>
+          )}
+        </div>
 
-      {/* Pipeline notice — kompaktní podružná vrstva pod hlavním obsahem. */}
+        {/* Side panel — boční bloky se renderují jen pokud mají strukturovaná data */}
+        <div className="space-y-1">
+          {hasLastSession && (
+            <>
+              <SectionHead>Co víme z minulé herny</SectionHead>
+              <div className="space-y-2">
+                {lastSession.happened.length > 0 && (
+                  <div><SubLabel>Co proběhlo</SubLabel><BulletList items={lastSession.happened} /></div>
+                )}
+                {lastSession.not_happened.length > 0 && (
+                  <div><SubLabel>Co neproběhlo</SubLabel><BulletList items={lastSession.not_happened} /></div>
+                )}
+                {lastSession.worked.length > 0 && (
+                  <div><SubLabel>Co fungovalo</SubLabel><BulletList items={lastSession.worked} /></div>
+                )}
+                {lastSession.destabilized.length > 0 && (
+                  <div><SubLabel>Co destabilizovalo</SubLabel><BulletList items={lastSession.destabilized} /></div>
+                )}
+                {lastSession.stop_signals.length > 0 && (
+                  <div><SubLabel>Stop signály</SubLabel><BulletList items={lastSession.stop_signals} /></div>
+                )}
+              </div>
+            </>
+          )}
+
+          {deductions && (
+            <>
+              <SectionHead>Pracovní dedukce</SectionHead>
+              {deductions.confirmed.length > 0 && (
+                <div><SubLabel>Potvrzená fakta</SubLabel><BulletList items={deductions.confirmed} /></div>
+              )}
+              {deductions.working.length > 0 && (
+                <div><SubLabel>Pracovní hypotézy</SubLabel><BulletList items={deductions.working} /></div>
+              )}
+              {deductions.unknowns.length > 0 && (
+                <div><SubLabel>Co zůstává nejasné</SubLabel><BulletList items={deductions.unknowns} /></div>
+              )}
+            </>
+          )}
+
+          {direction && (
+            <>
+              <SectionHead>Dnešní směr práce</SectionHead>
+              <div className="space-y-1.5">
+                {direction.phase && <p className="text-[13px]"><span className="text-muted-foreground">Fáze: </span>{direction.phase}</p>}
+                {direction.readiness && <p className="text-[13px]"><span className="text-muted-foreground">Dnešní připravenost: </span>{direction.readiness}</p>}
+                {direction.goal_primary && <p className="text-[13px]"><span className="text-muted-foreground">Hlavní cíl: </span>{direction.goal_primary}</p>}
+                {direction.goal_secondary && <p className="text-[13px]"><span className="text-muted-foreground">Vedlejší cíl: </span>{direction.goal_secondary}</p>}
+                {direction.not_today.length > 0 && (
+                  <div><SubLabel>Co dnes nedělat</SubLabel><BulletList items={direction.not_today} /></div>
+                )}
+                {direction.contraindications.length > 0 && (
+                  <div><SubLabel>Kontraindikace</SubLabel><BulletList items={direction.contraindications} /></div>
+                )}
+                {direction.stop_rules.length > 0 && (
+                  <div><SubLabel>Stop pravidla</SubLabel><BulletList items={direction.stop_rules} /></div>
+                )}
+                {direction.fallback && <p className="text-[13px]"><span className="text-muted-foreground">Fallback při nedostupnosti: </span>{direction.fallback}</p>}
+              </div>
+            </>
+          )}
+
+          {therapistActions.hanka.length > 0 && (
+            <>
+              <SectionHead>Doporučení pro Haničku</SectionHead>
+              <BulletList items={therapistActions.hanka.slice(0, 3)} />
+            </>
+          )}
+
+          {therapistActions.kata.length > 0 && (
+            <>
+              <SectionHead>Doporučení pro Káťu</SectionHead>
+              <BulletList items={therapistActions.kata.slice(0, 3)} />
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Pipeline notice — malý podružný blok pod hlavním obsahem */}
       {!runtimeLoading && runtime?.pipeline_notice && (
         <div className="mt-3 rounded-sm border border-border/40 bg-muted/20 px-2 py-1.5 text-[11px] text-muted-foreground space-y-0.5">
           <p>
@@ -585,103 +503,19 @@ const PlayroomDecisionCard = ({
         </div>
       )}
 
-
-      {/* 3. Co víme z minulé herny — render jen pokud DB má strukturovaná data */}
-      {hasLastSession && (
-        <>
-          <SectionHead>Co víme z minulé herny</SectionHead>
-          <div className="space-y-2">
-            {lastSession.happened.length > 0 && (
-              <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co proběhlo</p><BulletList items={lastSession.happened} /></div>
-            )}
-            {lastSession.not_happened.length > 0 && (
-              <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co neproběhlo</p><BulletList items={lastSession.not_happened} /></div>
-            )}
-            {lastSession.worked.length > 0 && (
-              <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co fungovalo</p><BulletList items={lastSession.worked} /></div>
-            )}
-            {lastSession.destabilized.length > 0 && (
-              <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co destabilizovalo</p><BulletList items={lastSession.destabilized} /></div>
-            )}
-            {lastSession.stop_signals.length > 0 && (
-              <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Stop signály</p><BulletList items={lastSession.stop_signals} /></div>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* 4. Pracovní dedukce */}
-      {deductions && Boolean(deductions.confirmed.length || deductions.working.length || deductions.unknowns.length) && (
-        <>
-          <SectionHead>Pracovní dedukce</SectionHead>
-          {deductions.confirmed.length > 0 && (
-            <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Potvrzená fakta</p><BulletList items={deductions.confirmed} /></div>
-          )}
-          {deductions.working.length > 0 && (
-            <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Pracovní hypotézy</p><BulletList items={deductions.working} /></div>
-          )}
-          {deductions.unknowns.length > 0 && (
-            <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co zůstává nejasné</p><BulletList items={deductions.unknowns} /></div>
-          )}
-        </>
-      )}
-
-      {/* 5. Dnešní směr práce */}
-      {hasDirection && direction && (
-        <>
-          <SectionHead>Dnešní směr práce</SectionHead>
-          <div className="space-y-1.5">
-            {direction.phase && <p className="text-[13px]"><span className="text-muted-foreground">Fáze: </span>{direction.phase}</p>}
-            {direction.readiness && <p className="text-[13px]"><span className="text-muted-foreground">Dnešní připravenost: </span>{direction.readiness}</p>}
-            {direction.goal_primary && <p className="text-[13px]"><span className="text-muted-foreground">Hlavní cíl: </span>{direction.goal_primary}</p>}
-            {direction.goal_secondary && <p className="text-[13px]"><span className="text-muted-foreground">Vedlejší cíl: </span>{direction.goal_secondary}</p>}
-            {direction.not_today.length > 0 && (
-              <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Co dnes nedělat</p><BulletList items={direction.not_today} /></div>
-            )}
-            {direction.contraindications.length > 0 && (
-              <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Kontraindikace</p><BulletList items={direction.contraindications} /></div>
-            )}
-            {direction.stop_rules.length > 0 && (
-              <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Stop pravidla</p><BulletList items={direction.stop_rules} /></div>
-            )}
-            {direction.fallback && <p className="text-[13px]"><span className="text-muted-foreground">Fallback při nedostupnosti: </span>{direction.fallback}</p>}
-          </div>
-        </>
-      )}
-
-      {/* 6. Doporučení pro Haničku */}
-      {therapistActions.hanka.length > 0 && (
-        <>
-          <SectionHead>Doporučení pro Haničku</SectionHead>
-          <BulletList items={therapistActions.hanka.slice(0, 3)} />
-        </>
-      )}
-
-      {/* 7. Doporučení pro Káťu */}
-      {therapistActions.kata.length > 0 && (
-        <>
-          <SectionHead>Doporučení pro Káťu</SectionHead>
-          <BulletList items={therapistActions.kata.slice(0, 3)} />
-        </>
-      )}
-
-      {/* Návrh programu herny, otázky před schválením, post-session zápis a writeback
-          patří do podvrstvy „Otevřít poradu ke schválení Herny" — zde se nezobrazují. */}
-
-      {/* Akce: otevřít dnešní workspace (FÁZE 1 — žádné poradní napojení) */}
+      {/* CTA — „Otevřít poradu" (existující idempotentní handler přes karel-team-deliberation-create) */}
       <div className="pt-3 mt-2 border-t border-border/40">
         <button
           type="button"
-          onClick={() => onOpenWorkspace(playroom)}
+          onClick={() => onOpenDeliberation(playroom)}
           className="w-full flex items-center justify-center gap-1.5 text-[12px] text-primary hover:bg-primary/10 py-1.5 rounded-sm transition-colors"
-          data-testid="playroom-open-workspace"
+          data-testid="playroom-open-deliberation"
         >
-          {runtime?.action_label || "Otevřít dnešní workspace"}
+          Otevřít poradu ke schválení Herny
           <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      {/* Volitelný kontextový snippet pro debug */}
       {debug && contextSummary && (
         <div className="mt-3 rounded border border-dashed border-muted-foreground/30 bg-muted/20 p-2 text-[11px] text-muted-foreground">
           <div className="font-semibold mb-1">{contextLabel || "Použitý kontext"} (debug)</div>
