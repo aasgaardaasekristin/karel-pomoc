@@ -1466,7 +1466,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
       // takže pokrývá AC1 i AC3 jediným guardem (žádná druhá cesta neexistuje).
       const _today = pragueTodayISO();
       if (briefing.briefing_date && briefing.briefing_date !== _today) {
-        toast.warning("Plán z dřívějšího dne — Karel připraví nový. Klikni na „Připravit znovu" v kartě Herny.");
+        toast.warning('Plán z dřívějšího dne — Karel připraví nový. Klikni na „Připravit znovu" v kartě Herny.');
         return;
       }
       // BLOK 1 hotfix — guard: dnešní playroom_plan musí existovat a obsahovat
