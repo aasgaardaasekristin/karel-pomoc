@@ -59,7 +59,7 @@ describe("PlayroomDecisionCard BLOK 1 DOM proof", () => {
     expect(text).not.toContain("Tundrupku, jak ti dnes je");
   });
 
-  it("CTA je „Otevřít poradu ke schválení Herny" s testid playroom-open-deliberation", () => {
+  it('CTA je „Otevřít poradu ke schválení Herny" s testid playroom-open-deliberation', () => {
     const { getByTestId, queryByTestId } = render(<PlayroomDecisionCard {...(baseProps as any)} />);
     expect(queryByTestId("playroom-open-workspace")).toBeNull();
     const cta = getByTestId("playroom-open-deliberation");
