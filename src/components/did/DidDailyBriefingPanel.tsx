@@ -2316,12 +2316,15 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                   Herna pro {playroomView.part_name || "tuto část"} dnes není připravená
                 </h3>
                 <p className="text-[13px] leading-relaxed text-foreground/85">
-                  Karel ještě nezpracoval podklady pro dnešní hernu. Můžeš zkusit přípravu znovu spustit.
+                  Karel ještě neumí automaticky připravit plán Herny — to dovezou nadcházející bloky. Můžeš mu zatím přegenerovat jeho přehled.
                 </p>
                 <Button size="sm" variant="outline" onClick={handleRegenerate} disabled={regenerating} className="text-[12px]">
                   {regenerating ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1.5" />}
-                  Připravit znovu
+                  Přegenerovat Karlův přehled
                 </Button>
+                <p className="text-[11px] leading-relaxed text-muted-foreground italic">
+                  Karel přepíše svůj přehled. Plán Herny zatím neumí připravit automaticky.
+                </p>
               </div>
             </>
           );
