@@ -81,14 +81,13 @@ describe("PlayroomDecisionCard BLOK 1 DOM proof", () => {
     }
   });
 
-  it("honest empty state když chybí runtime i opening_monologue (nikoliv falešný fallback)", () => {
+  it("honest empty state když chybí runtime i opening_monologue (nikoliv falešný fallback)", async () => {
     const empty = {
       ...baseProps,
       playroom: { ...baseProps.playroom, playroom_plan: {} },
     };
-    const { container } = render(<PlayroomDecisionCard {...(empty as any)} />);
-    // honest empty state se ukáže až po runtime fetch dokončení; loader je v textu
-    const text = container.textContent ?? "";
-    expect(text).toContain("Karlova promluva");
+    const { findByText } = render(<PlayroomDecisionCard {...(empty as any)} />);
+    const node = await findByText(/Karlova promluva pro tuto Hernu zatím nebyla vygenerována/i);
+    expect(node).toBeTruthy();
   });
 });
