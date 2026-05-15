@@ -1470,24 +1470,19 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const openProposedPlayroomDeliberation = useCallback(
     async (s: ProposedPlayroom) => {
       if (openingItemId || !briefing) return;
-      // HOTFIX 1.5 — freshness guard. Briefing nesmí otevřít poradu se starým
-      // plánem (cache z předchozích dnů). Centralizovaný `pragueTodayISO()`
-      // kontroluje, zda briefing patří dnešnímu dni v Europe/Prague. Stejnou
-      // funkcí proteká i klik na pavoučí nohy přes `openProgramAskDeliberation`,
-      // takže pokrývá AC1 i AC3 jediným guardem (žádná druhá cesta neexistuje).
-      const _today = pragueTodayISO();
-      if (briefing.briefing_date && briefing.briefing_date !== _today) {
-        toast.warning('Plán z dřívějšího dne — Karel připraví nový. Klikni na „Připravit znovu" v kartě Herny.');
-        return;
-      }
-      // BLOK 1 hotfix — guard: dnešní playroom_plan musí existovat a obsahovat
-      // ne-prázdný therapeutic_program. Pokud chybí, modal vůbec neotvíráme
-      // a uživatelku informujeme lidským toastem; žádný fallback na starý plán.
-      const _todayProgram = Array.isArray(s.playroom_plan?.therapeutic_program)
-        ? s.playroom_plan.therapeutic_program
-        : [];
-      if (_todayProgram.length === 0) {
-        toast.error("Plán dnešní herny ještě nebyl připraven.");
+      // HOTFIX 1.6 — freshness guard se ptá samotného plánu (plan_date +
+      // ne-prázdný therapeutic_program), ne briefingu. Hotfix 1.5 kontroloval
+      // jen `briefing.briefing_date === today` a propadl, když dnešní DB řádek
+      // měl prázdný program a canonical loader spadl na včerejší řádek se
+      // 5 položkami. AC1+AC3+AC4: stejnou kontrolou prochází Hanička modal
+      // path i (skrz `openProgramAskDeliberation`) Káťa modal path s
+      // `requires_immediate_program_update=true`. Káťa „chat" path
+      // (`openAskWorkspace`) tento guard záměrně nemá — je to otázka, ne plán.
+      if (!isPlayroomPlanFreshForToday({
+        plan_date: s.plan_date,
+        therapeutic_program: s.playroom_plan?.therapeutic_program,
+      })) {
+        toast.warning('Plán dnešní Herny zatím není připravený. Karel ho zatím neumí automaticky vytvořit — klikni na „Přegenerovat Karlův přehled" v kartě Herny.');
         return;
       }
       const itemId = s.id || legacyAskIdFor(briefing.id, "ask_kata", `playroom::${s.part_name}`);
