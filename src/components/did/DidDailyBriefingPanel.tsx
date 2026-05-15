@@ -1459,6 +1459,16 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const openProposedPlayroomDeliberation = useCallback(
     async (s: ProposedPlayroom) => {
       if (openingItemId || !briefing) return;
+      // BLOK 1 hotfix — guard: dnešní playroom_plan musí existovat a obsahovat
+      // ne-prázdný therapeutic_program. Pokud chybí, modal vůbec neotvíráme
+      // a uživatelku informujeme lidským toastem; žádný fallback na starý plán.
+      const _todayProgram = Array.isArray(s.playroom_plan?.therapeutic_program)
+        ? s.playroom_plan.therapeutic_program
+        : [];
+      if (_todayProgram.length === 0) {
+        toast.error("Plán dnešní herny ještě nebyl připraven.");
+        return;
+      }
       const itemId = s.id || legacyAskIdFor(briefing.id, "ask_kata", `playroom::${s.part_name}`);
       setOpeningItemId(itemId);
       try {
