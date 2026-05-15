@@ -52,6 +52,7 @@ import { toast } from "sonner";
 import { useDidThreads } from "@/hooks/useDidThreads";
 import type { DeliberationType } from "@/types/teamDeliberation";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
+import { isPlayroomPlanFreshForToday } from "@/lib/playroomPlanFreshness";
 import ExternalLoadWarning from "@/components/did/ExternalLoadWarning";
 import { formatActionTitle } from "@/lib/didPartNaming";
 import { isKarelDebugMode } from "@/lib/karelDebugMode";
