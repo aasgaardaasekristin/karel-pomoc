@@ -11,7 +11,7 @@ vi.mock("@/integrations/supabase/client", () => ({
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-describe("PlayroomDecisionCard FÁZE 1 DOM proof", () => {
+describe("PlayroomDecisionCard BLOK 1 DOM proof", () => {
   const baseProps = {
     playroom: {
       part_name: "Tundrupek",
@@ -19,6 +19,15 @@ describe("PlayroomDecisionCard FÁZE 1 DOM proof", () => {
       why_this_part_today: "Dnešní herna má držet bezpečný kontakt.",
       main_theme: "Bezpečný kontakt",
       playroom_plan: {
+        opening_monologue: {
+          greeting: "Tundrupku, ahoj.",
+          what_we_know_for_sure: ["Drží kontakt v 1. bloku.", "Ráno ustojí oslovení."],
+          context_one_liner: "Nejdřív kontakt, pak hra, tempo bezpečné.",
+          for_hanka: "Drž tempo, nepřitlačuj.",
+          for_kata: "Sleduj signály únavy.",
+          diagnostic_questions: ["Co dnes ustojí?", "Kde mizí kontakt?"],
+          one_line_frame: "Bezpečný kontakt je dnešní rámec.",
+        },
         therapeutic_program: [
           { title: "Bezpečný práh", detail: "Ověřit kontakt.", child_facing_prompt_draft: "Tundrupku, ahoj…" },
         ],
@@ -33,23 +42,52 @@ describe("PlayroomDecisionCard FÁZE 1 DOM proof", () => {
       blocks: [],
       stop_rules: [],
     },
-    onOpenWorkspace: vi.fn(),
+    onOpenDeliberation: vi.fn(),
   };
 
-  it("nerenderuje zakázaný fallback, samotnou nulu, ani child-facing draft", () => {
+  it("nerenderuje žádný formulář (PreApproval/PostSession byly odstraněny)", () => {
     const { container } = render(<PlayroomDecisionCard {...(baseProps as any)} />);
-    const text = container.textContent ?? "";
-    expect(text).not.toContain("Karlova promluva pro tuto hernu zatím nebyla vygenerována");
-    expect(text).not.toMatch(/(^|\n)\s*0\s*(\n|$)/);
-    expect(text).not.toContain("Tundrupku, ahoj");
-    expect(text).not.toContain("Tundrupku, jak ti dnes je");
-    expect(text).not.toContain("čeká na vstupy terapeutek");
+    expect(container.querySelectorAll("input").length).toBe(0);
+    expect(container.querySelectorAll("textarea").length).toBe(0);
+    expect(container.querySelectorAll("form").length).toBe(0);
   });
 
-  it("nerenderuje CTA do porady a má CTA Otevřít dnešní workspace", () => {
-    const { container, getByTestId } = render(<PlayroomDecisionCard {...(baseProps as any)} />);
+  it("nerenderuje zakázané fráze ani child-facing draft", () => {
+    const { container } = render(<PlayroomDecisionCard {...(baseProps as any)} />);
     const text = container.textContent ?? "";
-    expect(text).not.toContain("Otevřít poradu ke schválení Herny");
-    expect(getByTestId("playroom-open-workspace").textContent).toContain("Otevřít dnešní workspace");
+    expect(text).not.toMatch(/grounded|čerpá ze skutečných|pracovní ověření|podklad pro plánování/i);
+    expect(text).not.toContain("Tundrupku, jak ti dnes je");
+  });
+
+  it('CTA je „Otevřít poradu ke schválení Herny" s testid playroom-open-deliberation', () => {
+    const { getByTestId, queryByTestId } = render(<PlayroomDecisionCard {...(baseProps as any)} />);
+    expect(queryByTestId("playroom-open-workspace")).toBeNull();
+    const cta = getByTestId("playroom-open-deliberation");
+    expect(cta.textContent).toContain("Otevřít poradu ke schválení Herny");
+  });
+
+  it("renderuje 6-section spider head když opening_monologue obsahuje strukturovaná data", () => {
+    const { container } = render(<PlayroomDecisionCard {...(baseProps as any)} />);
+    const text = container.textContent ?? "";
+    for (const label of [
+      "Oslovení",
+      "Profesní zjištění",
+      "Odborné souvislosti",
+      "Dnešní východiska",
+      "Diagnostické otázky",
+      "Jednovětý rámec",
+    ]) {
+      expect(text).toContain(label);
+    }
+  });
+
+  it("honest empty state když chybí runtime i opening_monologue (nikoliv falešný fallback)", async () => {
+    const empty = {
+      ...baseProps,
+      playroom: { ...baseProps.playroom, playroom_plan: {} },
+    };
+    const { findByText } = render(<PlayroomDecisionCard {...(empty as any)} />);
+    const node = await findByText(/Karlova promluva pro tuto Hernu zatím nebyla vygenerována/i);
+    expect(node).toBeTruthy();
   });
 });
