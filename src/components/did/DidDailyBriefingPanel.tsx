@@ -1459,6 +1459,16 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const openProposedPlayroomDeliberation = useCallback(
     async (s: ProposedPlayroom) => {
       if (openingItemId || !briefing) return;
+      // HOTFIX 1.5 — freshness guard. Briefing nesmí otevřít poradu se starým
+      // plánem (cache z předchozích dnů). Centralizovaný `pragueTodayISO()`
+      // kontroluje, zda briefing patří dnešnímu dni v Europe/Prague. Stejnou
+      // funkcí proteká i klik na pavoučí nohy přes `openProgramAskDeliberation`,
+      // takže pokrývá AC1 i AC3 jediným guardem (žádná druhá cesta neexistuje).
+      const _today = pragueTodayISO();
+      if (briefing.briefing_date && briefing.briefing_date !== _today) {
+        toast.warning("Plán z dřívějšího dne — Karel připraví nový. Klikni na „Připravit znovu" v kartě Herny.");
+        return;
+      }
       // BLOK 1 hotfix — guard: dnešní playroom_plan musí existovat a obsahovat
       // ne-prázdný therapeutic_program. Pokud chybí, modal vůbec neotvíráme
       // a uživatelku informujeme lidským toastem; žádný fallback na starý plán.
