@@ -969,6 +969,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         const partName = (canonical.selected_part || partKey).trim();
         const meta = pp.meta ?? {};
         out[partKey] = {
+          // HOTFIX 1.6 — stamp plan_date z TODAY (loader už filtruje .eq('plan_date', today)),
+          // aby `isPlayroomPlanFreshForToday` u guardu uznal jen čerstvé canonical řádky.
+          plan_date: today,
           part_name: partName,
           status: "awaiting_therapist_review",
           why_this_part_today: pp.why_this_part_today
