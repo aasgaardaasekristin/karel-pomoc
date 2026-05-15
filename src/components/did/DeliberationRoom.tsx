@@ -1262,7 +1262,7 @@ const DeliberationRoom = ({ deliberationId, onClose, onChanged }: Props) => {
                       Karel svolal poradu
                     </h4>
                     <RichMarkdown compact>
-                      {sanitizeHernaVisibleText(d.initial_karel_brief) || "(žádný brief)"}
+                      {stripRawReportArtifacts(sanitizeHernaVisibleText(d.initial_karel_brief)) || "(žádný brief)"}
                     </RichMarkdown>
                   </section>
 
