@@ -181,11 +181,25 @@ export function stripRawReportArtifacts(input: string): string {
     // markdown atx headers (line-anchored AND mid-text leaks like "..že ### Foo")
     .replace(/(?:^|\n)\s{0,3}#{1,6}\s+/g, "\n")
     .replace(/\s#{1,6}\s+/g, " ")
-    // raw internal report labels
+    // raw internal report labels (musí běžet PŘED markdown bold strip,
+    // aby labely typu `Praktický report z Herny: tundrupek` zmizely celé;
+    // a zároveň PO se znovu spustí pro `**Stav:** Herna…` → po strip bold → `Stav: Herna…`)
     .replace(/Praktick[ýy]\s+report\s+z\s+Herny\s*:\s*\S*/gi, "")
     .replace(/Detailn[íi]\s+anal[ýy]za\s+z\s+Herny\s*:\s*\S*/gi, "")
     .replace(/Playroom\s+log\s*:\s*\S*/gi, "")
+    // HOTFIX 1.5 — markdown bold/italic inline leaks.
+    // Bold MUSÍ být před italic (jinak by italic snědl jednu hvězdičku z `**`).
+    // Bullet `* položka` na začátku řádku NESMÍ být sežrán italic regexem —
+    // proto vyžadujeme, že znak hned po `*` není whitespace ani `*`.
+    .replace(/\*\*([^\s*](?:[^*]*?[^\s*])?)\*\*/g, "$1")
+    .replace(/\*([^\s*](?:[^*]*?[^\s*])?)\*/g, "$1")
+    // HOTFIX 1.5 — standalone interní labely (po bold strip se z `**Stav:**`
+    // stane `Stav:`). Word-boundary + povinný `:` minimalizuje kolize s běžným
+    // textem. Nechává VALUE za labelem nedotčený.
+    .replace(/\b(?:Stav|Praktický\s+report\s+z\s+Herny|Praktický\s+report|Doložený\s+zdroj|Závěr)\s*:\s*/gi, "")
     .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^[ \t]+|[ \t]+$/gm, "")
     .trim();
 }
 
