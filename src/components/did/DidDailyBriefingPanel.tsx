@@ -52,6 +52,7 @@ import { toast } from "sonner";
 import { useDidThreads } from "@/hooks/useDidThreads";
 import type { DeliberationType } from "@/types/teamDeliberation";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
+import { isPlayroomPlanFreshForToday } from "@/lib/playroomPlanFreshness";
 import ExternalLoadWarning from "@/components/did/ExternalLoadWarning";
 import { formatActionTitle } from "@/lib/didPartNaming";
 import { isKarelDebugMode } from "@/lib/karelDebugMode";
@@ -100,6 +101,13 @@ interface ProposedSession {
 
 interface ProposedPlayroom {
   id?: string;
+  /**
+   * HOTFIX 1.6 — `plan_date` (YYYY-MM-DD, Europe/Prague) zdrojového řádku
+   * `did_daily_session_plans`. Stampujeme jen pro DB-canonical proposals,
+   * payload-only fallbacky ho nemají → `isPlayroomPlanFreshForToday` je
+   * správně zamítne (nelze rozhodnout, jestli payload není stale).
+   */
+  plan_date?: string;
   part_name: string;
   status?: "draft" | "awaiting_therapist_review" | "in_revision" | "approved" | "ready_to_start" | "in_progress" | "completed" | "evaluated" | "archived";
   why_this_part_today: string;
@@ -961,6 +969,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         const partName = (canonical.selected_part || partKey).trim();
         const meta = pp.meta ?? {};
         out[partKey] = {
+          // HOTFIX 1.6 — stamp plan_date z TODAY (loader už filtruje .eq('plan_date', today)),
+          // aby `isPlayroomPlanFreshForToday` u guardu uznal jen čerstvé canonical řádky.
+          plan_date: today,
           part_name: partName,
           status: "awaiting_therapist_review",
           why_this_part_today: pp.why_this_part_today
@@ -1237,6 +1248,17 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   /**
    * Lazy-otevře nebo založí kanonický did_threads workspace pro briefing ask.
    * Druhý klik na stejný ask resolvne tentýž thread (workspace lookup).
+   *
+   * HOTFIX 1.6 — TATO CESTA ZÁMĚRNĚ NEMÁ `isPlayroomPlanFreshForToday` GUARD.
+   * Důvod: workspace „Pro Hanička/Káťa — z dnešního přehledu" je terapeutická
+   * otázka napojená na konkrétní `ask_*` item z briefingu (pavoučí noha bez
+   * `requires_immediate_program_update`). Otázka má smysl i tehdy, když
+   * dnešní `playroom_plan` ještě neexistuje — odpověď terapeutky se započítá
+   * při příštím přegenerování přehledu (tlačítka „Započítat do programu" /
+   * „Uzavřít bez změny" v `DidContentRouter`). Pavoučí nohy s
+   * `requires_immediate_program_update=true` jdou jinou větví do
+   * `openProgramAskDeliberation` → `openProposedPlayroomDeliberation`,
+   * kde guard JE, takže se starým plánem neotevřou modal.
    */
   const openAskWorkspace = useCallback(
     async (
@@ -1459,24 +1481,19 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const openProposedPlayroomDeliberation = useCallback(
     async (s: ProposedPlayroom) => {
       if (openingItemId || !briefing) return;
-      // HOTFIX 1.5 — freshness guard. Briefing nesmí otevřít poradu se starým
-      // plánem (cache z předchozích dnů). Centralizovaný `pragueTodayISO()`
-      // kontroluje, zda briefing patří dnešnímu dni v Europe/Prague. Stejnou
-      // funkcí proteká i klik na pavoučí nohy přes `openProgramAskDeliberation`,
-      // takže pokrývá AC1 i AC3 jediným guardem (žádná druhá cesta neexistuje).
-      const _today = pragueTodayISO();
-      if (briefing.briefing_date && briefing.briefing_date !== _today) {
-        toast.warning('Plán z dřívějšího dne — Karel připraví nový. Klikni na „Připravit znovu" v kartě Herny.');
-        return;
-      }
-      // BLOK 1 hotfix — guard: dnešní playroom_plan musí existovat a obsahovat
-      // ne-prázdný therapeutic_program. Pokud chybí, modal vůbec neotvíráme
-      // a uživatelku informujeme lidským toastem; žádný fallback na starý plán.
-      const _todayProgram = Array.isArray(s.playroom_plan?.therapeutic_program)
-        ? s.playroom_plan.therapeutic_program
-        : [];
-      if (_todayProgram.length === 0) {
-        toast.error("Plán dnešní herny ještě nebyl připraven.");
+      // HOTFIX 1.6 — freshness guard se ptá samotného plánu (plan_date +
+      // ne-prázdný therapeutic_program), ne briefingu. Hotfix 1.5 kontroloval
+      // jen `briefing.briefing_date === today` a propadl, když dnešní DB řádek
+      // měl prázdný program a canonical loader spadl na včerejší řádek se
+      // 5 položkami. AC1+AC3+AC4: stejnou kontrolou prochází Hanička modal
+      // path i (skrz `openProgramAskDeliberation`) Káťa modal path s
+      // `requires_immediate_program_update=true`. Káťa „chat" path
+      // (`openAskWorkspace`) tento guard záměrně nemá — je to otázka, ne plán.
+      if (!isPlayroomPlanFreshForToday({
+        plan_date: s.plan_date,
+        therapeutic_program: s.playroom_plan?.therapeutic_program,
+      })) {
+        toast.warning('Plán dnešní Herny zatím není připravený. Karel ho zatím neumí automaticky vytvořit — klikni na „Přegenerovat Karlův přehled" v kartě Herny.');
         return;
       }
       const itemId = s.id || legacyAskIdFor(briefing.id, "ask_kata", `playroom::${s.part_name}`);
@@ -2299,12 +2316,15 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
                   Herna pro {playroomView.part_name || "tuto část"} dnes není připravená
                 </h3>
                 <p className="text-[13px] leading-relaxed text-foreground/85">
-                  Karel ještě nezpracoval podklady pro dnešní hernu. Můžeš zkusit přípravu znovu spustit.
+                  Karel ještě neumí automaticky připravit plán Herny — to dovezou nadcházející bloky. Můžeš mu zatím přegenerovat jeho přehled.
                 </p>
                 <Button size="sm" variant="outline" onClick={handleRegenerate} disabled={regenerating} className="text-[12px]">
                   {regenerating ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1.5" />}
-                  Připravit znovu
+                  Přegenerovat Karlův přehled
                 </Button>
+                <p className="text-[11px] leading-relaxed text-muted-foreground italic">
+                  Karel přepíše svůj přehled. Plán Herny zatím neumí připravit automaticky.
+                </p>
               </div>
             </>
           );
