@@ -100,6 +100,13 @@ interface ProposedSession {
 
 interface ProposedPlayroom {
   id?: string;
+  /**
+   * HOTFIX 1.6 — `plan_date` (YYYY-MM-DD, Europe/Prague) zdrojového řádku
+   * `did_daily_session_plans`. Stampujeme jen pro DB-canonical proposals,
+   * payload-only fallbacky ho nemají → `isPlayroomPlanFreshForToday` je
+   * správně zamítne (nelze rozhodnout, jestli payload není stale).
+   */
+  plan_date?: string;
   part_name: string;
   status?: "draft" | "awaiting_therapist_review" | "in_revision" | "approved" | "ready_to_start" | "in_progress" | "completed" | "evaluated" | "archived";
   why_this_part_today: string;
