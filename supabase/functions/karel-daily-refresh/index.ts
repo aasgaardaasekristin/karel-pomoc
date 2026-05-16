@@ -223,6 +223,7 @@ serve(async (req) => {
       } catch (indexErr) {
         console.warn("[daily-refresh] Drive index sync failed (non-fatal):", indexErr);
       }
+      }
 
     } catch (e) {
       console.warn("[daily-refresh] Drive read failed (non-fatal):", e);
