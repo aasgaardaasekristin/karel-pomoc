@@ -7729,6 +7729,27 @@ export type Database = {
         }
         Relationships: []
       }
+      system_config: {
+        Row: {
+          key: string
+          note: string | null
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          key: string
+          note?: string | null
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          key?: string
+          note?: string | null
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
       system_health_log: {
         Row: {
           created_at: string | null
