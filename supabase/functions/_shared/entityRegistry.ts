@@ -329,7 +329,13 @@ export async function loadEntityRegistry(
 async function stampIndexConfirmation(
   supabase: ReturnType<typeof createClient>,
   indexEntries: DriveRegistryEntry[],
-): Promise<void> {
+): Promise<{ skipped: boolean; reason?: string } | void> {
+  // FIX 1.5 (2026-05-16): Drive 01_INDEX sync paused pending Google Sheets conversion.
+  // Kristin will re-enable via system_config.drive_index_sync_enabled when Drive is clean.
+  if (!(await isDriveIndexSyncEnabled(supabase))) {
+    console.log("[FIX 1.5] stampIndexConfirmation paused — Drive sync disabled");
+    return { skipped: true, reason: "drive_index_sync_paused_fix_1_5" };
+  }
   try {
     // FIX 1 (2026-05-16): column is `id` (uuid), not `part_id`.
     const { data: dbParts } = await supabase
