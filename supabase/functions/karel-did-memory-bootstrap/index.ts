@@ -309,6 +309,14 @@ serve(async (req) => {
 
       console.log(`[bootstrap] Processing: ${card.partName} (${card.status}, folder: ${folderLabel})`);
 
+      // FIX 1.5 (2026-05-16): Drive 01_INDEX → did_part_registry sync pozastaven.
+      if (!(await isDriveIndexSyncEnabled(sb))) {
+        console.log("[FIX 1.5] memory-bootstrap registry upsert paused — Drive sync disabled");
+        return new Response(JSON.stringify({ skipped: true, reason: "drive_index_sync_paused_fix_1_5" }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const __mbGuard = blockHanaAliasPartWrite({ target_kind: "did_part_registry", part_name: card.partName, source: "karel-did-memory-bootstrap" });
       if (__mbGuard.blocked) { console.warn(`[memory-bootstrap] registry blocked: ${__mbGuard.reason}`); continue; }
       // Upsert into did_part_registry
