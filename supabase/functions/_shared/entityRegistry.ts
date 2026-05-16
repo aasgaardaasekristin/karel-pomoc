@@ -25,6 +25,7 @@ import {
   loadDriveRegistryEntries,
   type DriveRegistryEntry,
 } from "./driveRegistry.ts";
+import { isDriveIndexSyncEnabled } from "./driveIndexSyncFlag.ts";
 
 // ── Types ──
 
