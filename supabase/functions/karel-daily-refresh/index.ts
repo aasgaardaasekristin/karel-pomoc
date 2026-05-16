@@ -11,6 +11,7 @@ import {
 } from "../_shared/canonicalSnapshot.ts";
 import { loadDriveRegistryEntries, type DriveRegistryEntry } from "../_shared/driveRegistry.ts";
 import { computeDailyDiff } from "../_shared/dailyDiff.ts";
+import { isDriveIndexSyncEnabled } from "../_shared/driveIndexSyncFlag.ts";
 
 // OAuth2 token helper
 async function getAccessToken(): Promise<string> {
