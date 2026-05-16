@@ -194,9 +194,10 @@ export async function loadEntityRegistry(
     // ── SAFE MODE: DB cache only ──
     console.warn("[entityRegistry] SAFE MODE: 01_INDEX unavailable, using DB cache with audit stamps");
     try {
+      // FIX 1 (2026-05-16): column is `id` (uuid), not `part_id`.
       const { data: dbParts } = await supabase
         .from("did_part_registry")
-        .select("part_id, part_name, aliases, status, index_confirmed_at")
+        .select("id, part_name, aliases, status, index_confirmed_at")
         .limit(200);
 
       if (dbParts && dbParts.length > 0) {
@@ -214,7 +215,7 @@ export async function loadEntityRegistry(
             : "unconfirmed_cache_only";
 
           const entry: RegistryEntry = {
-            id: String(row.part_id || ""),
+            id: String(row.id || ""),
             canonicalName: rawName,
             normalizedCanonical: normalize(rawName),
             aliases: rawAliases,
@@ -329,9 +330,10 @@ async function stampIndexConfirmation(
   indexEntries: DriveRegistryEntry[],
 ): Promise<void> {
   try {
+    // FIX 1 (2026-05-16): column is `id` (uuid), not `part_id`.
     const { data: dbParts } = await supabase
       .from("did_part_registry")
-      .select("part_id, part_name")
+      .select("id, part_name")
       .limit(200);
 
     if (!dbParts || dbParts.length === 0) return;
@@ -346,7 +348,7 @@ async function stampIndexConfirmation(
         await supabase
           .from("did_part_registry")
           .update({ index_confirmed_at: now })
-          .eq("part_id", String(row.part_id));
+          .eq("id", String(row.id));
       }
     }
 
