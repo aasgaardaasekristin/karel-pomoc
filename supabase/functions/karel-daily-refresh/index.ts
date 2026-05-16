@@ -180,6 +180,10 @@ serve(async (req) => {
       // ═══ 1b. DRIVE INDEX → did_part_registry SYNC ═══
       // 01_Index_Vsech_Casti je autoritativní zdroj pravdy pro stavy částí.
       // Čteme ho z Drive, parsujeme a upsertujeme do DB.
+      // FIX 1.5 (2026-05-16): pozastaveno feature flagem do dokončení Drive Sheets konverze.
+      if (!(await isDriveIndexSyncEnabled(sb))) {
+        console.log("[FIX 1.5] daily-refresh Drive index → did_part_registry sync paused — Drive sync disabled");
+      } else {
       try {
         const registryEntries = await loadDriveRegistryEntries(token);
         console.log(`[daily-refresh] Drive index: ${registryEntries.length} entries found`);
