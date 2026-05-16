@@ -3778,6 +3778,99 @@ export type Database = {
         }
         Relationships: []
       }
+      did_part_registry_fix_1_5b_rollback: {
+        Row: {
+          age_estimate: string | null
+          aliases: string[] | null
+          cluster: string | null
+          condition: string | null
+          created_at: string | null
+          created_by: string | null
+          display_name: string | null
+          drive_folder_label: string | null
+          health_score: number | null
+          id: string | null
+          index_confirmed_at: string | null
+          known_strengths: string[] | null
+          known_triggers: string[] | null
+          language: string | null
+          last_emotional_intensity: number | null
+          last_emotional_state: string | null
+          last_seen_at: string | null
+          manual_state_override: string | null
+          next_session_plan: string | null
+          notes: string | null
+          part_name: string | null
+          role_in_system: string | null
+          source: string | null
+          status: string | null
+          total_episodes: number | null
+          total_threads: number | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          age_estimate?: string | null
+          aliases?: string[] | null
+          cluster?: string | null
+          condition?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          display_name?: string | null
+          drive_folder_label?: string | null
+          health_score?: number | null
+          id?: string | null
+          index_confirmed_at?: string | null
+          known_strengths?: string[] | null
+          known_triggers?: string[] | null
+          language?: string | null
+          last_emotional_intensity?: number | null
+          last_emotional_state?: string | null
+          last_seen_at?: string | null
+          manual_state_override?: string | null
+          next_session_plan?: string | null
+          notes?: string | null
+          part_name?: string | null
+          role_in_system?: string | null
+          source?: string | null
+          status?: string | null
+          total_episodes?: number | null
+          total_threads?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          age_estimate?: string | null
+          aliases?: string[] | null
+          cluster?: string | null
+          condition?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          display_name?: string | null
+          drive_folder_label?: string | null
+          health_score?: number | null
+          id?: string | null
+          index_confirmed_at?: string | null
+          known_strengths?: string[] | null
+          known_triggers?: string[] | null
+          language?: string | null
+          last_emotional_intensity?: number | null
+          last_emotional_state?: string | null
+          last_seen_at?: string | null
+          manual_state_override?: string | null
+          next_session_plan?: string | null
+          notes?: string | null
+          part_name?: string | null
+          role_in_system?: string | null
+          source?: string | null
+          status?: string | null
+          total_episodes?: number | null
+          total_threads?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       did_part_sessions: {
         Row: {
           ai_analysis: string | null
