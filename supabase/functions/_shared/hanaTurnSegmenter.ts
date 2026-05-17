@@ -207,15 +207,15 @@ function classifyChunk(text: string): { label: HanaSegmentLabel; confidence: num
   const isVocativeKarel = VOCATIVE_KAREL_RE.test(text);
   const isVocativeKata = VOCATIVE_KATA_RE.test(text);
 
-  const strong1psg = countCueHits(text, STRONG_FIRST_PERSON_CUES);
-  const healthHits = countCueHits(text, HEALTH_TERMS);
-  const relationHits = countCueHits(text, RELATION_TERMS);
-  const emotionHits = countCueHits(text, EMOTION_TERMS);
-  const legacyHits = countCueHits(text, INTIMATE_LEGACY_CUES);
-  const didHits = countCueHits(text, DID_CLINICAL_CUES);
-  const kataHits = countCueHits(text, KATA_CUES);
-  const logisticsHits = countCueHits(text, LOGISTICS_CUES);
-  const metaHits = countCueHits(text, META_TO_KAREL_CUES);
+  const strong1psg = countCueHits(text, STRONG_FIRST_PERSON_CUES, "exact");
+  const healthHits = countCueHits(text, HEALTH_TERMS, "prefix");
+  const relationHits = countCueHits(text, RELATION_TERMS, "prefix");
+  const emotionHits = countCueHits(text, EMOTION_TERMS, "prefix");
+  const legacyHits = countCueHits(text, INTIMATE_LEGACY_CUES, "prefix");
+  const didHits = countCueHits(text, DID_CLINICAL_CUES, "prefix");
+  const kataHits = countCueHits(text, KATA_CUES, "exact");
+  const logisticsHits = countCueHits(text, LOGISTICS_CUES, "exact");
+  const metaHits = countCueHits(text, META_TO_KAREL_CUES, "exact");
 
   const partMatch = detectSegmentPart(text, null);
   const partCue = partMatch ? [`part_name_match:${partMatch}`] : [];
