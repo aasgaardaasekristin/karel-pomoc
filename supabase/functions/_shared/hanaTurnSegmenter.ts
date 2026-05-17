@@ -99,14 +99,14 @@ const HEALTH_TERMS = [
   "léky", "antidepresiv", "anxiolytik",
 ];
 
-/** Vztahové / rodinné termíny — PREFIX-mode. */
+/** Vztahové / rodinné termíny — PREFIX-mode. POZOR: "mám" zde NESMÍ být (kolize s 1psg). */
 const RELATION_TERMS = [
   "manžel", "dcer", "syna", "synov", "synem",
-  "máma", "mám", "mámě", "matka", "matku", "matce", "matk",
+  "máma", "mámě", "mámu", "matk",
   "táta", "tátu", "tátov", "otec", "otc",
   "sourozen", "sestra", "sestr", "bratr",
-  "rodič", "rodin", "babičk", "babiča",
-  "dědeč", "dědečk", "partner",
+  "rodič", "rodin", "babičk",
+  "dědeč", "partner",
   "doma", "domov",
 ];
 
