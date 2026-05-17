@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isCrisisEnabled } from "../_shared/crisisFeatureFlag.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -444,6 +445,23 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+  // FIX 1.8 — Crisis encapsulation guard
+  {
+    const __crisisOn = await isCrisisEnabled(sb);
+    if (!__crisisOn) {
+      console.log("[karel-therapist-crisis-review] FIX 1.8: crisis_enabled=false, function disabled. Returning no-op.");
+      return new Response(JSON.stringify({
+        success: false,
+        skipped: true,
+        reason: "crisis_disabled_fix_1_8",
+        message: "Crisis funkce jsou aktuálně vypnuty (FIX 1.8 encapsulation). Re-enable v system_config.crisis_enabled = 'true' až po FIX 7 reworku.",
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+
 
   try {
     const body = await req.json().catch(() => ({}));
