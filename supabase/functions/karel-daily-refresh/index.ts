@@ -210,10 +210,20 @@ serve(async (req) => {
             let upsErr: { message: string } | null = null;
             if (existing) {
               const mergedAliases = mergeAliasesCaseInsensitive(existing.aliases, entry.aliases ?? []);
+              // FIX 1.7 — DB veto pro chráněné statusy (active_partial, quarantined_*)
+              const existingStatus = String((existing as any).status ?? "").toLowerCase().trim();
+              const isProtectedQuarantined = existingStatus.startsWith("quarantined_");
+              const isProtectedActivePartial = existingStatus === "active_partial";
+              const veto = isProtectedQuarantined || isProtectedActivePartial;
+              const finalStatus = veto ? (existing as any).status : dbStatus;
+              if (veto && finalStatus !== dbStatus) {
+                console.log(`[FIX 1.7] DB veto: ${existing.part_name} status="${existingStatus}" zachován (Drive navrhoval "${dbStatus}")`);
+              }
               const { error } = await sb.from("did_part_registry").update({
                 aliases: mergedAliases,
-                status: dbStatus,
+                status: finalStatus,
                 drive_folder_label: entry.id ? `${entry.id}_${existing.part_name}` : existing.part_name,
+                source: veto && finalStatus !== dbStatus ? `db_veto_${existingStatus}` : "drive_index",
                 updated_at: new Date().toISOString(),
               }).eq("id", existing.id);
               upsErr = error;

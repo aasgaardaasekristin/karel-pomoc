@@ -341,6 +341,7 @@ interface UrgencyResult {
   score: number;
   breakdown: Record<string, any>;
   tier: "fading" | "active" | "sleeping" | "override";
+  registry_status: string;
 }
 
 function calculateUrgencyScores(
@@ -357,6 +358,11 @@ function calculateUrgencyScores(
   const crisisPartNames = new Set<string>();
   for (const brief of crisisBriefs24h) {
     for (const part of registry) {
+      // FIX 1.7 — žádné crisis body pro sleeping/quarantined/jiné
+      const statusOk = ["active", "active_partial"].includes(
+        String(part.status ?? "").toLowerCase().trim()
+      );
+      if (!statusOk) continue;
       if (brief.scenario?.toLowerCase().includes(part.part_name.toLowerCase()) ||
           brief.raw_brief?.toLowerCase().includes(part.part_name.toLowerCase())) {
         crisisPartNames.add(part.part_name);
@@ -387,6 +393,7 @@ function calculateUrgencyScores(
   return registry.map(part => {
     const breakdown: Record<string, number> = {};
     let score = 0;
+    const registryStatus = String(part.status ?? "").toLowerCase().trim();
 
     const wasActive3d = activeParts3d.has(part.part_name);
     const isActive24h = activeParts24h.has(part.part_name);
@@ -433,7 +440,7 @@ function calculateUrgencyScores(
       score += 2;
     }
 
-    return { partName: part.part_name, score, breakdown, tier };
+    return { partName: part.part_name, score, breakdown, tier, registry_status: registryStatus };
   }).sort((a, b) => {
     const tierOrder = { fading: 0, active: 1, sleeping: 2, override: -1 };
     const tierDiff = tierOrder[a.tier] - tierOrder[b.tier];
@@ -764,16 +771,52 @@ serve(async (req) => {
         canonicalText(p.part_name) === canonicalText(resolvedName)
       );
       selectedTier = partReg?.status === "active" || partReg?.status === "aktivní" ? "active" : "sleeping";
-      selectedPart = {
-        partName: resolvedName,
-        score: 99,
-        breakdown: { therapist_override: 99 },
-        tier: "override",
-      };
+      const overrideStatus = String(partReg?.status ?? "").toLowerCase().trim();
+      if (!["active", "active_partial"].includes(overrideStatus)) {
+        console.log(`[auto-session-plan] FIX 1.7: therapist override BYPASSES status gate. ${resolvedName} má status="${overrideStatus}". Logováno pro audit.`);
+        selectedPart = {
+          partName: resolvedName,
+          score: 99,
+          breakdown: { therapist_override: 99, status_bypass: overrideStatus },
+          tier: "override",
+          registry_status: overrideStatus,
+        };
+      } else {
+        selectedPart = {
+          partName: resolvedName,
+          score: 99,
+          breakdown: { therapist_override: 99 },
+          tier: "override",
+          registry_status: overrideStatus,
+        };
+      }
       console.log(`[auto-session-plan] Therapist override: ${resolvedName} (identity confirmed: ${forceResolved.entity_kind})`);
     } else {
+      // FIX 1.7 — TVRDÝ STATUS GATE
+      // Část musí být v did_part_registry.status v sadě {active, active_partial}.
+      // Sleeping/quarantined/jiné statusy NIKDY nesmí dostat auto-vybrané sezení.
+      const ALLOWED_AUTO_STATUSES = new Set(["active", "active_partial"]);
+      const statusEligible = scores.filter(s => ALLOWED_AUTO_STATUSES.has(s.registry_status));
+
+      if (statusEligible.length === 0) {
+        console.log("[auto-session-plan] FIX 1.7 status gate: žádná část nemá status active/active_partial. Plán se negeneruje.");
+        return new Response(JSON.stringify({
+          success: false,
+          reason: "no_status_eligible_parts",
+          message: "Žádná část nemá v registry status active nebo active_partial. Plán nelze auto-vygenerovat.",
+          diagnostic: {
+            status_distribution: scores.reduce((acc, s) => {
+              acc[s.registry_status || "(empty)"] = (acc[s.registry_status || "(empty)"] || 0) + 1;
+              return acc;
+            }, {} as Record<string, number>),
+          },
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       // ═══ STRICT TIER FILTERING — EXCLUDE sleeping/dormant from auto-selection ═══
-      const activeParts = scores.filter(s => s.tier !== "sleeping");
+      const activeParts = statusEligible.filter(s => s.tier !== "sleeping");
 
       if (activeParts.length === 0) {
         // NO active/communicating parts → do NOT generate plan
