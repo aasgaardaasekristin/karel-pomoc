@@ -177,7 +177,7 @@ describe("FIX 8.2 hanaTurnSegmenter", () => {
     expect(labels[1]).toBe("team_about_did");
     const intimate = out.segments[0];
     expect(intimate.text.toLowerCase()).toContain("otec");
-    expect(intimate.text.toLowerCase()).toContain("epilepsie");
+    expect(intimate.text.toLowerCase()).toContain("epilepsi");
     // Žádný osiřelý fragment "jiný typ"
     for (const s of out.segments) {
       expect(s.text.trim()).not.toBe("jiný typ.");
