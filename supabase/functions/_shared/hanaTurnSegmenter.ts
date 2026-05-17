@@ -76,10 +76,10 @@ const DID_CLINICAL_CUES = [
 const KATA_CUES = ["Káťa", "Kata", "Katka", "káťa", "katka"];
 
 const LOGISTICS_CUES = [
-  "termín", "sezení", "schůzka", "pondělí", "úterý", "středa",
+  "termín", "schůzka", "pondělí", "úterý", "středa",
   "čtvrtek", "pátek", "sobota", "neděle", "naplánovat",
   "přeložit", "zrušit", "přesunout", "přesuneme", "hodina",
-  "hodin", "v kolik", "kdy", "online", "osobně",
+  "hodin", "v kolik", "online", "osobně",
 ];
 
 const META_TO_KAREL_CUES = [
