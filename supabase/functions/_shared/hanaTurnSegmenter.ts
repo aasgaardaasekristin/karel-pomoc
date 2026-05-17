@@ -81,54 +81,58 @@ const STRONG_FIRST_PERSON_CUES = [
   "lásko",
 ];
 
-/** Zdravotní termíny — Hana o svém těle. */
+/**
+ * Zdravotní termíny — Hana o svém těle.
+ * STEMY: matchují se PREFIX-mode (leading word boundary, libovolná koncovka).
+ * "epilepsi" → epilepsie/epilepsii; "migrén" → migréna/migrénu/migrény.
+ */
 const HEALTH_TERMS = [
-  "kortikoidy", "hormony", "hormonální", "migréna", "migrény",
-  "bolest hlavy", "bolest", "bolesti", "bolest zad", "záda",
-  "krk", "kolena", "únava", "vyčerpání", "nespavost", "spánek",
-  "alergie", "ekzém", "kožní", "krevní tlak", "tlak", "srdce",
-  "žaludek", "nevolnost", "závrať", "závratě", "mdloba", "mdloby",
-  "epilepsie", "záchvat", "záchvaty", "deprese", "úzkost",
-  "panika", "panická", "vyhoření", "burnout", "menstruace",
-  "štítná žláza", "štítka", "cysta", "nádor", "operace",
-  "léky", "antidepresiva", "anxiolytika",
+  "kortikoid", "hormon", "hormonál", "migrén",
+  "bolest hlavy", "bolest zad", "bolest",
+  "záda", "krk", "kolena", "únav", "vyčerpán",
+  "nespavost", "spánek", "alergi", "ekzém", "kožní",
+  "krevní tlak", "tlak", "srdce", "žaludek",
+  "nevolnost", "závrať", "závrat", "mdloba", "mdlob",
+  "epilepsi", "záchvat", "deprese", "úzkost",
+  "panic", "vyhoření", "burnout", "menstruac",
+  "štítná žláza", "štítk", "cysta", "nádor", "operac",
+  "léky", "antidepresiv", "anxiolytik",
 ];
 
-/** Vztahové / rodinné termíny. */
+/** Vztahové / rodinné termíny — PREFIX-mode. */
 const RELATION_TERMS = [
-  "manžel", "manžela", "manželovi", "manželem",
-  "dcera", "dceru", "dceři", "dcerou",
-  "syn", "syna", "synovi", "synem",
-  "máma", "mámu", "mámě", "matka", "matku", "matce",
-  "táta", "tátu", "tátovi", "otec", "otce", "otcem",
-  "sourozenec", "sestra", "sestru", "bratr", "bratra",
-  "rodiče", "rodina", "rodinu", "babička", "babičku", "babičky",
-  "dědeček", "dědečka", "partner", "partnera",
-  "doma", "domov", "domova",
+  "manžel", "dcer", "syna", "synov", "synem",
+  "máma", "mám", "mámě", "matka", "matku", "matce", "matk",
+  "táta", "tátu", "tátov", "otec", "otc",
+  "sourozen", "sestra", "sestr", "bratr",
+  "rodič", "rodin", "babičk", "babiča",
+  "dědeč", "dědečk", "partner",
+  "doma", "domov",
 ];
 
-/** Emoční stavy v 1. osobě nebo obecně intimní. */
+/** Emoční stavy v 1. osobě nebo obecně intimní — PREFIX-mode. */
 const EMOTION_TERMS = [
-  "smutná", "smutný", "smutno", "unavená", "unavený",
-  "divně", "špatně", "sama", "sám", "osaměla",
-  "prázdno", "strach", "panika",
+  "smutná", "smutný", "smutno", "unaven", "vyčerp",
+  "divně", "špatně", "sama", "sám", "osaměl",
+  "prázdno", "strach", "panic",
 ];
 
-/** Legacy intimate content (zachováno z 1.0.0 — vztah / blízkost). */
+/** Legacy intimate content (zachováno z 1.0.0 — vztah / blízkost) — PREFIX-mode. */
 const INTIMATE_LEGACY_CUES = [
   "vztah", "blízkost", "samota", "lásk", "objetí",
   "polibek", "rande", "spolu", "my dva", "touh",
   "radost", "sex", "intim",
 ];
 
+/** DID klinické cues — PREFIX-mode (chytá inflexe: dítě/dítěte/dětem). */
 const DID_CLINICAL_CUES = [
-  "dítě", "děti", "dětí", "dětem", "dětech", "dítěte",
-  "část", "části", "kluci", "kluků", "klukům",
-  "alter", "alteři", "přepnul", "přepnula", "přepnutí",
-  "switch", "abreace", "abreagoval", "abreagovala",
-  "disociace", "disociova", "flashback", "trauma",
-  "v sezení", "playroom", "regulace", "grounding",
-  "stabilizace", "spouštěč", "trigger",
+  "dítě", "dít", "dět",
+  "část", "kluci", "kluk",
+  "alter", "přepnul", "přepnut",
+  "switch", "abreac", "abreag",
+  "disociac", "disociov", "flashback", "trauma",
+  "v sezení", "playroom", "regulac", "grounding",
+  "stabilizac", "spouštěč", "trigger",
   "v terapii",
 ];
 
