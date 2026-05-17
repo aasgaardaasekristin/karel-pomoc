@@ -93,8 +93,9 @@ const META_TO_KAREL_CUES = [
 function countCueHits(lower: string, original: string, cues: string[]): string[] {
   const hits: string[] = [];
   for (const cue of cues) {
-    // Case-sensitive cues (jména, "Karle") vs case-insensitive
-    const isProperNoun = /[A-ZÁ-Ž]/.test(cue);
+    // Proper noun = první znak je ASCII A-Z nebo explicitní velké diakritické písmeno
+    const firstChar = cue.charAt(0);
+    const isProperNoun = firstChar !== firstChar.toLowerCase() && firstChar === firstChar.toUpperCase();
     const found = isProperNoun
       ? original.includes(cue)
       : lower.includes(cue.toLowerCase());
