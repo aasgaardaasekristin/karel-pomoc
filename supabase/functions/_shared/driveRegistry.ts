@@ -116,8 +116,14 @@ async function listFilesInFolder(token: string, folderId: string): Promise<Array
 }
 
 /**
- * Load Drive registry entries with parsed aliases from Column B.
- * Column B format: "CANONICAL_NAME (ALIAS1, ALIAS2, ...)"
+ * Load Drive registry entries.
+ *
+ * FIX 1.6 (2026-05-17) — new canonical layout in Drive `01_INDEX`:
+ *   A=#, B=Jméno (kanonické), C=Aliasy (comma-separated),
+ *   D=Status (CZ), E=Status (DB), F=Klastr, G=Role, H=Poznámka
+ * Reads `part_name` from B, `aliases` from C (split on comma),
+ * `status` from E (Status DB). Sheet tab resolution: primary "Index",
+ * fallback first sheet. Old "PRIMARY (ALIAS1)" format is no longer expected.
  */
 export async function loadDriveRegistryEntries(token: string): Promise<DriveRegistryEntry[]> {
   const rootId = await findKartotekaRoot(token);
@@ -143,64 +149,102 @@ export async function loadDriveRegistryEntries(token: string): Promise<DriveRegi
   if (!registryFile) return [];
 
   try {
-    let workbook: XLSX.WorkBook;
+    let rows: any[][] = [];
+
     if (registryFile.mimeType === DRIVE_SHEET_MIME) {
-      const exportRes = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${registryFile.id}/export?mimeType=text/csv&supportsAllDrives=true`,
+      // FIX 1.6: Use Sheets API to pick the "Index" tab (or fall back to first).
+      const metaRes = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${registryFile.id}?fields=sheets.properties(title,sheetId)`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      if (!exportRes.ok) return [];
-      workbook = XLSX.read(await exportRes.text(), { type: "string" });
+      if (!metaRes.ok) {
+        console.warn(`[FIX 1.6] sheets metadata fetch failed (${metaRes.status}), falling back to CSV export of first sheet`);
+        const exportRes = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${registryFile.id}/export?mimeType=text/csv&supportsAllDrives=true`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!exportRes.ok) return [];
+        const wb = XLSX.read(await exportRes.text(), { type: "string" });
+        const first = wb.SheetNames[0];
+        rows = first ? (XLSX.utils.sheet_to_json(wb.Sheets[first], { header: 1, raw: false, defval: "" }) as any[][]) : [];
+      } else {
+        const meta = await metaRes.json();
+        const sheets: Array<{ properties?: { title?: string } }> = meta?.sheets ?? [];
+        let target = sheets.find(s => s.properties?.title === "Index");
+        if (!target && sheets.length > 0) {
+          target = sheets[0];
+          console.warn(`[FIX 1.6] Sheet 'Index' not found, falling back to first sheet '${target.properties?.title}'`);
+        }
+        if (!target?.properties?.title) {
+          console.error(`[FIX 1.6] No sheets found in spreadsheet ${registryFile.id}`);
+          return [];
+        }
+        const title = target.properties.title;
+        console.log(`[FIX 1.6] Using sheet '${title}' from spreadsheet ${registryFile.id}`);
+        const valuesRes = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${registryFile.id}/values/${encodeURIComponent(title)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!valuesRes.ok) {
+          console.error(`[FIX 1.6] sheets values fetch failed: ${valuesRes.status}`);
+          return [];
+        }
+        const valuesData = await valuesRes.json();
+        rows = (valuesData?.values ?? []) as any[][];
+      }
     } else {
       const mediaRes = await fetch(
         `https://www.googleapis.com/drive/v3/files/${registryFile.id}?alt=media&supportsAllDrives=true`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (!mediaRes.ok) return [];
-      workbook = XLSX.read(new Uint8Array(await mediaRes.arrayBuffer()), { type: "array" });
+      const wb = XLSX.read(new Uint8Array(await mediaRes.arrayBuffer()), { type: "array" });
+      const first = wb.SheetNames[0];
+      if (!first) return [];
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[first], { header: 1, raw: false, defval: "" }) as any[][];
     }
 
-    const firstSheet = workbook.SheetNames[0];
-    if (!firstSheet) return [];
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { header: 1, raw: false, defval: "" }) as any[][];
+    const nonEmpty = rows.filter(r => Array.isArray(r) && r.some(c => `${c ?? ""}`.trim().length > 0));
+    if (nonEmpty.length === 0) return [];
 
-    const nonEmpty = rows.filter(r => r.some(c => `${c ?? ""}`.trim().length > 0));
+    // FIX 1.6: New layout has fixed columns A..H. Detect header row by checking
+    // for 'jmeno'/'name' in column B (index 1). Default to row 0 as header.
     let headerIdx = nonEmpty.findIndex((row, idx) => {
-      if (idx > 10) return false;
-      const norm = row.map((c: any) => normalize(String(c)));
-      return norm.some(c => ["id", "cislo", "number"].some(v => c.includes(v)))
-        && norm.some(c => ["jmeno", "nazev", "cast", "part", "fragment"].some(v => c.includes(v)));
+      if (idx > 5) return false;
+      const b = normalize(String(row[1] ?? ""));
+      return ["jmeno", "name", "cast", "fragment"].some(h => b.includes(h));
     });
     if (headerIdx < 0) headerIdx = 0;
 
-    const header = nonEmpty[headerIdx].map((c: any) => normalize(String(c)));
-    const findCol = (hints: string[], fallback: number) => {
-      const idx = header.findIndex((h: string) => hints.some(hint => h.includes(hint)));
-      return idx >= 0 ? idx : fallback;
-    };
-
-    const idCol = findCol(["id", "cislo", "number"], 0);
-    const nameCol = findCol(["jmeno", "nazev", "cast", "part", "fragment"], 1);
-    const statusCol = findCol(["stav", "status"], 3);
+    // Fixed column indexes per FIX 1.6 brief.
+    const ID_COL = 0;
+    const NAME_COL = 1;     // B — Jméno (kanonické)
+    const ALIAS_COL = 2;    // C — Aliasy (comma-separated)
+    const STATUS_COL = 4;   // E — Status (DB)
 
     const entries: DriveRegistryEntry[] = [];
     for (const row of nonEmpty.slice(headerIdx + 1)) {
-      const rawName = String(row[nameCol] ?? "").trim();
+      const rawName = String(row[NAME_COL] ?? "").trim();
       if (!rawName) continue;
-      const rawId = String(row[idCol] ?? "").trim();
+
+      const rawId = String(row[ID_COL] ?? "").trim();
       const idMatch = rawId.match(/\d{1,4}/);
 
-      // Parse aliases from Column B
-      const { primary, aliases } = parseAliases(rawName);
+      const aliasCell = String(row[ALIAS_COL] ?? "").trim();
+      const aliases = aliasCell
+        ? aliasCell.split(/[,;]+/).map(a => a.trim()).filter(Boolean)
+        : [];
+
+      const status = String(row[STATUS_COL] ?? "").trim();
 
       entries.push({
         id: idMatch ? idMatch[0].padStart(3, "0") : "",
-        primaryName: primary,
+        primaryName: rawName,
         rawName,
-        normalizedName: normalize(primary),
+        normalizedName: normalize(rawName),
         aliases,
         normalizedAliases: aliases.map(normalize),
-        status: String(row[statusCol] ?? "").trim(),
+        status,
       });
     }
     // Filter out non-DID entities (therapists)

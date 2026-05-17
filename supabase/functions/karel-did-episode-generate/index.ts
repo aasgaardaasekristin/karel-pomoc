@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { corsHeaders } from "../_shared/auth.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 import { blockHanaAliasPartWrite } from "../_shared/hanaPersonalIdentityResolver.ts";
+import { lookupPartByName } from "../_shared/entityRegistry.ts";
 
 /**
  * Karel DID Episode Generator
@@ -254,19 +255,45 @@ INSTRUKCE:
           if (__regGuard.blocked) {
             console.warn(`[episode-generate] registry upsert blocked: ${__regGuard.reason}`);
           } else {
-          await sb.from("did_part_registry").upsert({
-            user_id: userId,
-            part_name: thread.part_name.toLowerCase(),
-            display_name: thread.part_name,
-            status: "active",
-            language: thread.part_language || "cs",
-            last_seen_at: thread.last_activity_at,
-            last_emotional_state: episode.hana_state || "STABILNI",
-            last_emotional_intensity: episode.emotional_intensity || 3,
-            total_threads: 1,
-            total_episodes: 1,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: "user_id,part_name" });
+            // FIX 1.6 (2026-05-17): Observer mode — block new part creation from chat sources
+            try {
+              const __existing = await lookupPartByName(sb, userId, thread.part_name);
+              if (__existing) {
+                await sb.from("did_part_registry_observer_log").insert({
+                  call_site: "episode-generate",
+                  attempted_name: thread.part_name,
+                  context_data: { user_id: userId, thread_id: thread.id, matched_part_name: __existing.part_name },
+                  lookup_result: "found_existing",
+                  matched_part_id: __existing.id,
+                  action_taken: "updated_existing",
+                });
+                await sb.from("did_part_registry").upsert({
+                  user_id: userId,
+                  part_name: thread.part_name.toLowerCase(),
+                  display_name: thread.part_name,
+                  status: "active",
+                  language: thread.part_language || "cs",
+                  last_seen_at: thread.last_activity_at,
+                  last_emotional_state: episode.hana_state || "STABILNI",
+                  last_emotional_intensity: episode.emotional_intensity || 3,
+                  total_threads: 1,
+                  total_episodes: 1,
+                  updated_at: new Date().toISOString(),
+                }, { onConflict: "user_id,part_name" });
+              } else {
+                await sb.from("did_part_registry_observer_log").insert({
+                  call_site: "episode-generate",
+                  attempted_name: thread.part_name,
+                  context_data: { user_id: userId, thread_id: thread.id, part_language: thread.part_language || null },
+                  lookup_result: "would_create_new",
+                  matched_part_id: null,
+                  action_taken: "blocked_new_creation",
+                });
+                console.log(`[FIX 1.6 OBSERVER] Blocked new part creation: ${thread.part_name} from episode-generate`);
+              }
+            } catch (obsErr) {
+              console.warn(`[FIX 1.6 OBSERVER] episode-generate lookup error for ${thread.part_name}, fail-closed:`, obsErr);
+            }
           } // end identity-guard else
           
           // Increment counters for existing parts

@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/auth.ts";
 import { blockHanaAliasPartWrite } from "../_shared/hanaPersonalIdentityResolver.ts";
+import { lookupPartByName } from "../_shared/entityRegistry.ts";
 
 /**
  * Karel Memory Mirror – Masivní analytický engine
@@ -803,16 +804,44 @@ Pozoruhodné chování: ${(profile.notable_behaviors || []).join(", ") || "–"}
             state.driveUpdates.push(`KARTOTEKA/NEW:${part.name} (01_AKTIVNI)`);
             const __mmGuard = blockHanaAliasPartWrite({ target_kind: "did_part_registry", part_name: part.name, source: "karel-memory-mirror" });
             if (__mmGuard.blocked) { console.warn(`[memory-mirror] registry blocked: ${__mmGuard.reason}`); continue; }
-            await sb.from("did_part_registry").upsert({
-              user_id: userId,
-              part_name: part.name,
-              display_name: part.name,
-              status: "active",
-              cluster: part.cluster || "nově detekovaný",
-              notes: `Auto-mirror ${new Date().toISOString().slice(0, 10)}. Čeká na ověření týmem. ${part.inferred_data || ""}`.slice(0, 500),
-              role_in_system: part.sections?.A?.slice(0, 200) || null,
-            }, { onConflict: "user_id,part_name", ignoreDuplicates: true });
-            state.dbUpdates.push(`registry_new:${part.name}`);
+            // FIX 1.6 (2026-05-17): Observer mode — block new part creation from chat sources
+            try {
+              const __existing = await lookupPartByName(sb, userId, part.name);
+              if (__existing) {
+                await sb.from("did_part_registry_observer_log").insert({
+                  call_site: "memory-mirror",
+                  attempted_name: part.name,
+                  context_data: { user_id: userId, cluster: part.cluster || null },
+                  lookup_result: "found_existing",
+                  matched_part_id: __existing.id,
+                  action_taken: "updated_existing",
+                });
+                await sb.from("did_part_registry").upsert({
+                  user_id: userId,
+                  part_name: part.name,
+                  display_name: part.name,
+                  status: "active",
+                  cluster: part.cluster || "nově detekovaný",
+                  notes: `Auto-mirror ${new Date().toISOString().slice(0, 10)}. Čeká na ověření týmem. ${part.inferred_data || ""}`.slice(0, 500),
+                  role_in_system: part.sections?.A?.slice(0, 200) || null,
+                }, { onConflict: "user_id,part_name", ignoreDuplicates: true });
+                state.dbUpdates.push(`registry_update:${part.name}`);
+              } else {
+                await sb.from("did_part_registry_observer_log").insert({
+                  call_site: "memory-mirror",
+                  attempted_name: part.name,
+                  context_data: { user_id: userId, cluster: part.cluster || null, inferred_data: (part.inferred_data || "").slice(0, 200) },
+                  lookup_result: "would_create_new",
+                  matched_part_id: null,
+                  action_taken: "blocked_new_creation",
+                });
+                console.log(`[FIX 1.6 OBSERVER] Blocked new part creation: ${part.name} from memory-mirror`);
+                state.dbUpdates.push(`registry_blocked:${part.name}`);
+              }
+            } catch (obsErr) {
+              console.warn(`[FIX 1.6 OBSERVER] memory-mirror lookup error for ${part.name}, fail-closed:`, obsErr);
+              state.dbUpdates.push(`registry_blocked_error:${part.name}`);
+            }
 
             // ═══ AUTO-TRIGGER VERIFICATION MEETING ═══
             const evidence = part.evidence?.join(", ") || part.sections?.A || "detekováno z konverzací";
