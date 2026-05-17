@@ -358,6 +358,11 @@ function calculateUrgencyScores(
   const crisisPartNames = new Set<string>();
   for (const brief of crisisBriefs24h) {
     for (const part of registry) {
+      // FIX 1.7 — žádné crisis body pro sleeping/quarantined/jiné
+      const statusOk = ["active", "active_partial"].includes(
+        String(part.status ?? "").toLowerCase().trim()
+      );
+      if (!statusOk) continue;
       if (brief.scenario?.toLowerCase().includes(part.part_name.toLowerCase()) ||
           brief.raw_brief?.toLowerCase().includes(part.part_name.toLowerCase())) {
         crisisPartNames.add(part.part_name);
