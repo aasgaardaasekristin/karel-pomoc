@@ -223,9 +223,9 @@ export function segmentHanaTurn(input: HanaTurnSegmenterInput): HanaTurnSegmente
       prev.confidence >= 0.6 &&
       c.confidence >= 0.6
     ) {
-      const mergedText = raw.slice(prev.start_offset, c.end_offset);
+      const mergedText = raw.slice(prev.start_offset, c.end);
       prev.text = mergedText;
-      prev.end_offset = c.end_offset;
+      prev.end_offset = c.end;
       prev.confidence = Math.max(prev.confidence, c.confidence);
       // Dedup cues
       const seen = new Set(prev.cues);
