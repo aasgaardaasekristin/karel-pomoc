@@ -12,6 +12,7 @@ import {
 import { loadDriveRegistryEntries, type DriveRegistryEntry } from "../_shared/driveRegistry.ts";
 import { computeDailyDiff } from "../_shared/dailyDiff.ts";
 import { isDriveIndexSyncEnabled } from "../_shared/driveIndexSyncFlag.ts";
+import { lookupPartByName, mergeAliasesCaseInsensitive } from "../_shared/entityRegistry.ts";
 
 // OAuth2 token helper
 async function getAccessToken(): Promise<string> {
@@ -201,17 +202,35 @@ serve(async (req) => {
 
             const __regGuard = blockHanaAliasPartWrite({ target_kind: "did_part_registry", part_name: entry.primaryName, source: "karel-daily-refresh" });
             if (__regGuard.blocked) { console.warn(`[daily-refresh] registry blocked: ${__regGuard.reason}`); continue; }
-            const { error: upsErr } = await sb.from("did_part_registry").upsert(
-              {
+
+            // FIX 1.5c — pre-upsert identity resolution to prevent UPPERCASE/ASCII duplicates.
+            // If a row already exists for this name (case/diacritics-insensitive, also via aliases),
+            // UPDATE that row WITHOUT overwriting its canonical part_name. Otherwise INSERT.
+            const existing = await lookupPartByName(sb, userId, entry.primaryName);
+            let upsErr: { message: string } | null = null;
+            if (existing) {
+              const mergedAliases = mergeAliasesCaseInsensitive(existing.aliases, entry.aliases ?? []);
+              const { error } = await sb.from("did_part_registry").update({
+                aliases: mergedAliases,
+                status: dbStatus,
+                drive_folder_label: entry.id ? `${entry.id}_${existing.part_name}` : existing.part_name,
+                updated_at: new Date().toISOString(),
+              }).eq("id", existing.id);
+              upsErr = error;
+            } else {
+              const { error } = await sb.from("did_part_registry").insert({
                 user_id: userId,
                 part_name: entry.primaryName,
                 display_name: entry.primaryName,
+                aliases: entry.aliases ?? [],
                 status: dbStatus,
                 drive_folder_label: entry.id ? `${entry.id}_${entry.primaryName}` : entry.primaryName,
+                source: "drive_index_sync",
+                created_by: "karel_daily_refresh",
                 updated_at: new Date().toISOString(),
-              },
-              { onConflict: "user_id,part_name" },
-            );
+              });
+              upsErr = error;
+            }
             if (upsErr) {
               console.warn(`[daily-refresh] Upsert error for ${entry.primaryName}:`, upsErr.message);
             } else {
