@@ -4030,10 +4030,12 @@ export type Database = {
           content: string
           created_at: string | null
           dedupe_key: string | null
+          hana_target_file: string | null
           id: string
           last_attempt_at: string | null
           last_error_message: string | null
           next_retry_at: string | null
+          payload_hash: string | null
           pipeline_state: string | null
           priority: string | null
           processed_at: string | null
@@ -4041,6 +4043,7 @@ export type Database = {
           retry_count: number
           status: string | null
           target_document: string
+          target_kind: string
           user_id: string | null
           write_type: string | null
         }
@@ -4048,10 +4051,12 @@ export type Database = {
           content: string
           created_at?: string | null
           dedupe_key?: string | null
+          hana_target_file?: string | null
           id?: string
           last_attempt_at?: string | null
           last_error_message?: string | null
           next_retry_at?: string | null
+          payload_hash?: string | null
           pipeline_state?: string | null
           priority?: string | null
           processed_at?: string | null
@@ -4059,6 +4064,7 @@ export type Database = {
           retry_count?: number
           status?: string | null
           target_document: string
+          target_kind?: string
           user_id?: string | null
           write_type?: string | null
         }
@@ -4066,10 +4072,12 @@ export type Database = {
           content?: string
           created_at?: string | null
           dedupe_key?: string | null
+          hana_target_file?: string | null
           id?: string
           last_attempt_at?: string | null
           last_error_message?: string | null
           next_retry_at?: string | null
+          payload_hash?: string | null
           pipeline_state?: string | null
           priority?: string | null
           processed_at?: string | null
@@ -4077,6 +4085,7 @@ export type Database = {
           retry_count?: number
           status?: string | null
           target_document?: string
+          target_kind?: string
           user_id?: string | null
           write_type?: string | null
         }
@@ -5636,6 +5645,51 @@ export type Database = {
           },
         ]
       }
+      hana_drive_snapshot: {
+        Row: {
+          content: string | null
+          content_hash: string | null
+          created_at: string
+          file_modified_at: string | null
+          file_name: string
+          id: string
+          last_error: string | null
+          last_read_at: string | null
+          last_successful_at: string | null
+          read_status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content?: string | null
+          content_hash?: string | null
+          created_at?: string
+          file_modified_at?: string | null
+          file_name: string
+          id?: string
+          last_error?: string | null
+          last_read_at?: string | null
+          last_successful_at?: string | null
+          read_status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string | null
+          content_hash?: string | null
+          created_at?: string
+          file_modified_at?: string | null
+          file_name?: string
+          id?: string
+          last_error?: string | null
+          last_read_at?: string | null
+          last_successful_at?: string | null
+          read_status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       hana_personal_centrum_review_queue: {
         Row: {
           created_at: string
@@ -5738,14 +5792,19 @@ export type Database = {
       hana_personal_identity_audit: {
         Row: {
           created_at: string
+          cross_contamination_blocked: boolean
           id: string
           input_hash: string
+          karel_role_per_segment: Json
           marker: string | null
           memory_targets: Json
           mentioned_groups: Json
           mentioned_parts: Json
           message_ref: string | null
+          patientizing_pattern_hit: boolean
           resolution_kind: string
+          response_guard_status: string | null
+          segments_classified: Json
           should_create_hana_memory: boolean | null
           should_create_part_card_update: boolean | null
           should_create_part_observation: boolean | null
@@ -5757,14 +5816,19 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          cross_contamination_blocked?: boolean
           id?: string
           input_hash: string
+          karel_role_per_segment?: Json
           marker?: string | null
           memory_targets?: Json
           mentioned_groups?: Json
           mentioned_parts?: Json
           message_ref?: string | null
+          patientizing_pattern_hit?: boolean
           resolution_kind: string
+          response_guard_status?: string | null
+          segments_classified?: Json
           should_create_hana_memory?: boolean | null
           should_create_part_card_update?: boolean | null
           should_create_part_observation?: boolean | null
@@ -5776,14 +5840,19 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          cross_contamination_blocked?: boolean
           id?: string
           input_hash?: string
+          karel_role_per_segment?: Json
           marker?: string | null
           memory_targets?: Json
           mentioned_groups?: Json
           mentioned_parts?: Json
           message_ref?: string | null
+          patientizing_pattern_hit?: boolean
           resolution_kind?: string
+          response_guard_status?: string | null
+          segments_classified?: Json
           should_create_hana_memory?: boolean | null
           should_create_part_card_update?: boolean | null
           should_create_part_observation?: boolean | null
@@ -5803,6 +5872,8 @@ export type Database = {
           dedupe_key: string | null
           did_relevant: boolean
           do_not_export_raw_text: boolean
+          drive_target_file: string | null
+          drive_write_status: string
           emotional_state: string | null
           expires_at: string | null
           id: string
@@ -5818,6 +5889,7 @@ export type Database = {
           source_thread_id: string
           superseded_at: string | null
           supersedes_id: string | null
+          topic_tags: string[]
           user_id: string
         }
         Insert: {
@@ -5827,6 +5899,8 @@ export type Database = {
           dedupe_key?: string | null
           did_relevant?: boolean
           do_not_export_raw_text?: boolean
+          drive_target_file?: string | null
+          drive_write_status?: string
           emotional_state?: string | null
           expires_at?: string | null
           id?: string
@@ -5842,6 +5916,7 @@ export type Database = {
           source_thread_id: string
           superseded_at?: string | null
           supersedes_id?: string | null
+          topic_tags?: string[]
           user_id: string
         }
         Update: {
@@ -5851,6 +5926,8 @@ export type Database = {
           dedupe_key?: string | null
           did_relevant?: boolean
           do_not_export_raw_text?: boolean
+          drive_target_file?: string | null
+          drive_write_status?: string
           emotional_state?: string | null
           expires_at?: string | null
           id?: string
@@ -5866,6 +5943,7 @@ export type Database = {
           source_thread_id?: string
           superseded_at?: string | null
           supersedes_id?: string | null
+          topic_tags?: string[]
           user_id?: string
         }
         Relationships: [
