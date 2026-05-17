@@ -160,21 +160,26 @@ function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Cue match s Unicode word-boundary (vyloučí "mám" uvnitř "máma"). */
-function hasCue(text: string, cue: string, caseSensitive: boolean): boolean {
+/**
+ * Cue match s Unicode word-boundary.
+ * mode "exact": (?<![\\p{L}])cue(?![\\p{L}])  — vyloučí "mám" uvnitř "máma".
+ * mode "prefix": (?<![\\p{L}])cue              — povolí Czech inflexe: "epilepsi" matchuje "epilepsii".
+ */
+function hasCue(text: string, cue: string, caseSensitive: boolean, mode: "exact" | "prefix"): boolean {
   const flags = caseSensitive ? "u" : "iu";
-  const re = new RegExp(`(?<![\\p{L}])${escapeRe(cue.trim())}(?![\\p{L}])`, flags);
+  const trailing = mode === "exact" ? "(?![\\p{L}])" : "";
+  const re = new RegExp(`(?<![\\p{L}])${escapeRe(cue.trim())}${trailing}`, flags);
   return re.test(text);
 }
 
-function countCueHits(text: string, cues: string[]): string[] {
+function countCueHits(text: string, cues: string[], mode: "exact" | "prefix" = "exact"): string[] {
   const hits: string[] = [];
   for (const cue of cues) {
     const firstChar = cue.charAt(0);
     const isProperNoun =
       firstChar !== firstChar.toLowerCase() &&
       firstChar === firstChar.toUpperCase();
-    if (hasCue(text, cue, isProperNoun)) hits.push(cue);
+    if (hasCue(text, cue, isProperNoun, mode)) hits.push(cue);
   }
   return hits;
 }
