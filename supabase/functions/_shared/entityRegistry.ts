@@ -26,6 +26,78 @@ import {
   type DriveRegistryEntry,
 } from "./driveRegistry.ts";
 import { isDriveIndexSyncEnabled } from "./driveIndexSyncFlag.ts";
+import {
+  normalizeCzechPartKey,
+  isForbiddenNonPartName,
+  isPlaceholderPartName,
+} from "./didPartCanonicalization.ts";
+
+// ── FIX 1.5c — lookupPartByName ──
+//
+// Pre-upsert identity resolution for Drive 01_INDEX → did_part_registry path.
+// Prevents UPPERCASE/ASCII duplicates by case-insensitive + diacritics-insensitive
+// match against existing canonical names AND aliases.
+//
+// REUSE NOTE: Brief FIX 1.5c requested reuse of `canonicalizeDidPartName`.
+// That helper only matches against `part_name` (not `aliases[]`), but the
+// acceptance tests require alias matching ("ARTUR" → "Arthur"). We therefore
+// reuse the shared normalization primitives (`normalizeCzechPartKey`,
+// `isForbiddenNonPartName`, `isPlaceholderPartName`) and add the alias scan
+// inline — no new normalization logic is introduced.
+export async function lookupPartByName(
+  sb: ReturnType<typeof createClient>,
+  userId: string,
+  name: string,
+): Promise<{ id: string; part_name: string; aliases: string[]; status: string } | null> {
+  if (!name || !name.trim()) return null;
+  if (isPlaceholderPartName(name) || isForbiddenNonPartName(name)) return null;
+
+  const key = normalizeCzechPartKey(name);
+  if (!key) return null;
+
+  const { data: rows, error } = await sb
+    .from("did_part_registry")
+    .select("id, part_name, aliases, status")
+    .eq("user_id", userId);
+
+  if (error || !rows || rows.length === 0) return null;
+
+  for (const row of rows as Array<{ id: string; part_name: string; aliases: unknown; status: string }>) {
+    const partName = String(row.part_name ?? "").trim();
+    if (!partName) continue;
+    if (normalizeCzechPartKey(partName) === key) {
+      const aliases = Array.isArray(row.aliases)
+        ? (row.aliases as unknown[]).map(a => String(a)).filter(Boolean)
+        : [];
+      return { id: String(row.id), part_name: partName, aliases, status: String(row.status ?? "") };
+    }
+    const aliases = Array.isArray(row.aliases)
+      ? (row.aliases as unknown[]).map(a => String(a)).filter(Boolean)
+      : [];
+    if (aliases.some(a => normalizeCzechPartKey(a) === key)) {
+      return { id: String(row.id), part_name: partName, aliases, status: String(row.status ?? "") };
+    }
+  }
+  return null;
+}
+
+export function mergeAliasesCaseInsensitive(
+  existing: string[] | null | undefined,
+  incoming: string[] | null | undefined,
+): string[] {
+  const all = [...(existing ?? []), ...(incoming ?? [])]
+    .map(a => String(a ?? "").trim())
+    .filter(Boolean);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const a of all) {
+    const k = a.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(a);
+  }
+  return out;
+}
 
 // ── Types ──
 
