@@ -3871,6 +3871,39 @@ export type Database = {
         }
         Relationships: []
       }
+      did_part_registry_observer_log: {
+        Row: {
+          action_taken: string
+          attempted_name: string
+          call_site: string
+          context_data: Json | null
+          id: string
+          lookup_result: string
+          matched_part_id: string | null
+          observed_at: string
+        }
+        Insert: {
+          action_taken: string
+          attempted_name: string
+          call_site: string
+          context_data?: Json | null
+          id?: string
+          lookup_result: string
+          matched_part_id?: string | null
+          observed_at?: string
+        }
+        Update: {
+          action_taken?: string
+          attempted_name?: string
+          call_site?: string
+          context_data?: Json | null
+          id?: string
+          lookup_result?: string
+          matched_part_id?: string | null
+          observed_at?: string
+        }
+        Relationships: []
+      }
       did_part_sessions: {
         Row: {
           ai_analysis: string | null
