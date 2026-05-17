@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/auth.ts";
 import { loadEntityRegistry } from "../_shared/entityRegistry.ts";
 import { resolveEntity } from "../_shared/entityResolution.ts";
+import { isCrisisEnabled } from "../_shared/crisisFeatureFlag.ts";
 import { snapshotProtectedMutation } from "../_shared/mutationSnapshotGuard.ts";
 import { buildPlayroomPlanGrounded } from "./playroomGroundedPlan.ts";
 
@@ -685,7 +686,12 @@ serve(async (req) => {
     const registry = registryRes.data || [];
     const threads3d = threads3dRes.data || [];
     const threads24h = threads24hRes.data || [];
-    const crisisBriefs = crisisRes.data || [];
+    // FIX 1.8 — Crisis encapsulation: ignore crisis briefs when flag is off
+    const __crisisFlagOn = await isCrisisEnabled(sb);
+    const crisisBriefs = __crisisFlagOn ? (crisisRes.data || []) : [];
+    if (!__crisisFlagOn && (crisisRes.data || []).length > 0) {
+      console.log(`[auto-session-plan] FIX 1.8: ${crisisRes.data?.length ?? 0} crisis briefs k dispozici, ale crisis_enabled=false. Ignoruji.`);
+    }
     const pendingTasks = tasksRes.data || [];
     const sessions = sessionsRes.data || [];
     const sysProfile = profileRes.data;
