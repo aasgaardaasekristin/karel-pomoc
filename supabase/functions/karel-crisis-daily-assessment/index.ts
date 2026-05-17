@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
+import { isCrisisEnabled } from "../_shared/crisisFeatureFlag.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -86,6 +87,23 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  // FIX 1.8 — Crisis encapsulation guard
+  {
+    const __crisisOn = await isCrisisEnabled(supabase);
+    if (!__crisisOn) {
+      console.log("[karel-crisis-daily-assessment] FIX 1.8: crisis_enabled=false, function disabled. Returning no-op.");
+      return new Response(JSON.stringify({
+        success: false,
+        skipped: true,
+        reason: "crisis_disabled_fix_1_8",
+        message: "Crisis funkce jsou aktuálně vypnuty (FIX 1.8 encapsulation). Re-enable v system_config.crisis_enabled = 'true' až po FIX 7 reworku.",
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+
 
     const body = await req.json().catch(() => ({}));
     const { crisis_alert_id } = body;
