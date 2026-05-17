@@ -341,6 +341,7 @@ interface UrgencyResult {
   score: number;
   breakdown: Record<string, any>;
   tier: "fading" | "active" | "sleeping" | "override";
+  registry_status: string;
 }
 
 function calculateUrgencyScores(
