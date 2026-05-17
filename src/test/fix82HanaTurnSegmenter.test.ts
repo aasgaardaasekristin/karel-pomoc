@@ -1,6 +1,6 @@
 /**
- * FIX 8.2 — hanaTurnSegmenter unit testy.
- * 10 testů dle briefu: pure deterministická segmentace Hančiných tahů.
+ * FIX 8.2 + 8.2.1 — hanaTurnSegmenter unit testy.
+ * Původních 10 testů (8.2) + 8 nových testů (8.2.1) pro O-13 architektonickou díru.
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -9,8 +9,8 @@ import {
 } from "../../supabase/functions/_shared/hanaTurnSegmenter.ts";
 
 describe("FIX 8.2 hanaTurnSegmenter", () => {
-  it("verze segmenteru je 1.0.0", () => {
-    expect(segmenterVersion).toBe("1.0.0");
+  it("verze segmenteru je 1.0.1", () => {
+    expect(segmenterVersion).toBe("1.0.1");
   });
 
   // 1) intimní
@@ -106,11 +106,116 @@ describe("FIX 8.2 hanaTurnSegmenter", () => {
     const labels = out.segments.map(s => s.label);
     expect(labels).toContain("intimate_self");
     expect(labels).toContain("team_about_did");
-    // intimate_self segment NESMÍ obsahovat "epilepsie"
     const intimate = out.segments.find(s => s.label === "intimate_self");
     expect(intimate?.text.toLowerCase()).not.toContain("epilepsie");
-    // team_about_did segment NESMÍ obsahovat "bolest hlavy"
     const didSeg = out.segments.find(s => s.label === "team_about_did");
     expect(didSeg?.text.toLowerCase()).not.toContain("bolest hlavy");
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // FIX 8.2.1 — nové testy pro architektonickou díru O-13
+  // ─────────────────────────────────────────────────────────────────
+
+  // 8.2.1 / 1
+  it("8.2.1-1 — kortikoidy + obava o manžela → intimate_self (1 segm., conf ≥ 0.7)", () => {
+    const out = segmentHanaTurn({
+      rawText: "Mám kortikoidy a bojím se, jestli to manžel zvládne.",
+    });
+    // 2 sub-věty, oba intimate_self s conf ≥ 0.7 → merge → 1 segm.
+    expect(out.segments.length).toBe(1);
+    expect(out.segments[0].label).toBe("intimate_self");
+    expect(out.segments[0].confidence).toBeGreaterThanOrEqual(0.7);
+    const cuesStr = out.segments[0].cues.join("|");
+    expect(cuesStr).toMatch(/intimate_health:kortikoidy|intimate_relation:manžel/);
+    expect(out.overallLabel).toBe("intimate_only");
+  });
+
+  // 8.2.1 / 2
+  it("8.2.1-2 — migréna 1psg + Arthur → mixed (intimate_self + team_about_did)", () => {
+    const out = segmentHanaTurn({
+      rawText: "Mám migrénu už třetí den a Arthur dneska bouchl dveřmi.",
+    });
+    expect(out.segments.length).toBeGreaterThanOrEqual(2);
+    const labels = out.segments.map(s => s.label);
+    expect(labels).toContain("intimate_self");
+    expect(labels).toContain("team_about_did");
+    expect(out.overallLabel).toBe("mixed");
+  });
+
+  // 8.2.1 / 3
+  it("8.2.1-3 — emoce + 2× rodina → 3 segm., všechny intimate_self", () => {
+    const out = segmentHanaTurn({
+      rawText: "Cítím se sama. Manžel pořád pracuje a dcera je u babičky.",
+    });
+    expect(out.segments.length).toBe(3);
+    for (const s of out.segments) expect(s.label).toBe("intimate_self");
+    expect(out.overallLabel).toBe("intimate_only");
+  });
+
+  // 8.2.1 / 4
+  it("8.2.1-4 — 3 části + intimní cue na konci → mixed (team_about_did + intimate_self)", () => {
+    const out = segmentHanaTurn({
+      rawText:
+        "Dnes byl Tundrupek aktivní, Gustík v partial, Anička nepřišla. Mimochodem mě bolí záda.",
+    });
+    expect(out.segments.length).toBeGreaterThanOrEqual(2);
+    const labels = new Set(out.segments.map(s => s.label));
+    expect(labels.has("team_about_did")).toBe(true);
+    expect(labels.has("intimate_self")).toBe(true);
+    expect(out.overallLabel).toBe("mixed");
+  });
+
+  // 8.2.1 / 5 — KRITICKÝ O-13 inverze: otec měl epilepsii (1psg+rel+health) vs dítě má záchvaty (DID)
+  it("8.2.1-5 — otec epilepsie (1psg) + dítě záchvaty (DID), fragment 'jiný typ' guard", () => {
+    const out = segmentHanaTurn({
+      rawText: "Můj otec měl epilepsii. Dítě má taky záchvaty, ale jiný typ.",
+    });
+    // Očekáváme 2 segmenty (fragment 'jiný typ' přilepen k 2. segmentu)
+    expect(out.segments.length).toBe(2);
+    const labels = out.segments.map(s => s.label);
+    expect(labels[0]).toBe("intimate_self");
+    expect(labels[1]).toBe("team_about_did");
+    const intimate = out.segments[0];
+    expect(intimate.text.toLowerCase()).toContain("otec");
+    expect(intimate.text.toLowerCase()).toContain("epilepsi");
+    // Žádný osiřelý fragment "jiný typ"
+    for (const s of out.segments) {
+      expect(s.text.trim()).not.toBe("jiný typ.");
+    }
+    expect(out.overallLabel).toBe("mixed");
+  });
+
+  // 8.2.1 / 6 — ABSOLUTNÍ MUST-PASS
+  it("8.2.1-6 — 'Mám epilepsii.' → intimate_self, conf ≥ 0.7 (O-13 root)", () => {
+    const out = segmentHanaTurn({ rawText: "Mám epilepsii." });
+    expect(out.segments.length).toBe(1);
+    expect(out.segments[0].label).toBe("intimate_self");
+    expect(out.segments[0].confidence).toBeGreaterThanOrEqual(0.7);
+    expect(out.overallLabel).toBe("intimate_only");
+  });
+
+  // 8.2.1 / 7
+  it("8.2.1-7 — kortikoidy (Hana) + dítě záchvat (DID) → 2 segm., mixed", () => {
+    const out = segmentHanaTurn({
+      rawText: "Mám kortikoidy a dítě má dnes záchvat.",
+    });
+    expect(out.segments.length).toBe(2);
+    const labels = out.segments.map(s => s.label);
+    expect(labels[0]).toBe("intimate_self");
+    expect(labels[1]).toBe("team_about_did");
+    expect(out.overallLabel).toBe("mixed");
+  });
+
+  // 8.2.1 / 8 — fragment guard
+  it("8.2.1-8 — fragment 'jiný typ' nezůstane osiřelý", () => {
+    const out = segmentHanaTurn({
+      rawText: "Dítě má záchvaty, ale jiný typ.",
+    });
+    expect(out.segments.length).toBeLessThanOrEqual(2);
+    // žádný segment nesmí být holý "jiný typ." s conf 0
+    for (const s of out.segments) {
+      const isOrphan = s.text.trim() === "jiný typ." && s.confidence === 0;
+      expect(isOrphan).toBe(false);
+    }
   });
 });
