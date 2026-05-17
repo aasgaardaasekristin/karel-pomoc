@@ -393,6 +393,7 @@ function calculateUrgencyScores(
   return registry.map(part => {
     const breakdown: Record<string, number> = {};
     let score = 0;
+    const registryStatus = String(part.status ?? "").toLowerCase().trim();
 
     const wasActive3d = activeParts3d.has(part.part_name);
     const isActive24h = activeParts24h.has(part.part_name);
@@ -439,7 +440,7 @@ function calculateUrgencyScores(
       score += 2;
     }
 
-    return { partName: part.part_name, score, breakdown, tier };
+    return { partName: part.part_name, score, breakdown, tier, registry_status: registryStatus };
   }).sort((a, b) => {
     const tierOrder = { fading: 0, active: 1, sleeping: 2, override: -1 };
     const tierDiff = tierOrder[a.tier] - tierOrder[b.tier];
