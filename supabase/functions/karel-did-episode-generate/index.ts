@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { corsHeaders } from "../_shared/auth.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 import { blockHanaAliasPartWrite } from "../_shared/hanaPersonalIdentityResolver.ts";
+import { lookupPartByName } from "../_shared/entityRegistry.ts";
 
 /**
  * Karel DID Episode Generator
