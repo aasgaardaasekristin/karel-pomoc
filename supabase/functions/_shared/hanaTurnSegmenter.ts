@@ -374,10 +374,11 @@ function classifyChunk(text: string): { label: HanaSegmentLabel; confidence: num
 
 /**
  * Rozdělí text na chunky se zachováním offsetů.
- * Dělící body: [.!?;] a sub-větné spojky (" a ", " ale ", " ovšem ", " zatímco ").
+ * Dělící body: [.!?;], sub-větné spojky (" a ", " ale ", " ovšem ", " zatímco "),
+ * em-dash / en-dash / dvojitá pomlčka (" — ", " – ", " -- ").
  */
 function splitWithOffsets(raw: string): Array<{ text: string; start: number; end: number }> {
-  const splitRe = /([.!?;])\s+|\s+(a|ale|ovšem|zatímco)\s+/g;
+  const splitRe = /([.!?;])\s+|\s+(a|ale|ovšem|zatímco)\s+|\s+[—–]\s+|\s+--\s+/g;
   const out: Array<{ text: string; start: number; end: number }> = [];
   let cursor = 0;
   let m: RegExpExecArray | null;
