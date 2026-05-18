@@ -101,16 +101,22 @@ export async function persistHanaSegmentation(
   const { sb, userId, conversationId, userTurnText } = args;
   const result: PersistHanaSegmentationResult = {
     audit_inserted: false,
+    audit_id: null,
     memory_rows_inserted: 0,
     memory_skipped_reason: null,
+    drive_rows_inserted: 0,
+    drive_rows_blocked: 0,
+    drive_skipped_reason: null,
     segments_total: 0,
     segments_non_ambiguous: 0,
     marker: MARKER,
+    drive_marker: DRIVE_MARKER,
   };
 
   try {
     if (!userTurnText || !userTurnText.trim()) {
       result.memory_skipped_reason = "empty_input";
+      result.drive_skipped_reason = "empty_input";
       return result;
     }
 
@@ -123,7 +129,6 @@ export async function persistHanaSegmentation(
 
     const inputHash = await sha256Hex(userTurnText);
 
-    // segments_classified jsonb pole — všechny segmenty (vč. ambiguous, idx zachován)
     const segmentsClassified = seg.segments.map((s, idx) => ({
       idx,
       label: s.label,
@@ -133,56 +138,65 @@ export async function persistHanaSegmentation(
       cues: s.cues,
     }));
 
-    // karel_role_per_segment mapa { segment_0: "...", segment_1: "..." }
     const karelRoles: Record<string, string> = {};
     seg.segments.forEach((s, idx) => {
       karelRoles[`segment_${idx}`] = karelRoleFor(s.label);
     });
 
-    // 1) AUDIT — vždy (per brief, nezávisle na flagu)
-    const { error: auditErr } = await sb.from("hana_personal_identity_audit").insert({
-      user_id: userId,
-      thread_id: conversationId ?? null,
-      message_ref: null,
-      surface: "hana_personal",
-      input_hash: inputHash,
-      resolution_kind: RESOLUTION_KIND,
-      speaker_identity: "hanka",
-      mentioned_parts: [],
-      mentioned_groups: [],
-      memory_targets: [],
-      warnings: [],
-      marker: MARKER,
-      response_guard_status: null,
-      cross_contamination_blocked: false,
-      segments_classified: segmentsClassified,
-      patientizing_pattern_hit: false,
-      karel_role_per_segment: karelRoles,
-    });
+    // 1) AUDIT — vždy (per brief, nezávisle na flagu); returning id pro 8.4 link.
+    const { data: auditData, error: auditErr } = await sb
+      .from("hana_personal_identity_audit")
+      .insert({
+        user_id: userId,
+        thread_id: conversationId ?? null,
+        message_ref: null,
+        surface: "hana_personal",
+        input_hash: inputHash,
+        resolution_kind: RESOLUTION_KIND,
+        speaker_identity: "hanka",
+        mentioned_parts: [],
+        mentioned_groups: [],
+        memory_targets: [],
+        warnings: [],
+        marker: MARKER,
+        response_guard_status: null,
+        cross_contamination_blocked: false,
+        segments_classified: segmentsClassified,
+        patientizing_pattern_hit: false,
+        karel_role_per_segment: karelRoles,
+      })
+      .select("id")
+      .single();
     if (auditErr) {
       console.warn("[FIX 8.3] audit insert failed:", auditErr.message);
     } else {
       result.audit_inserted = true;
+      result.audit_id = auditData?.id ?? null;
     }
 
-    // 2) MEMORY — pod flagem + validní UUID thread
+    // 2) MEMORY + 3) DRIVE SHADOW — pod stejným flagem.
     const writesEnabled = await isHanaSegmentWritesEnabled(sb);
     if (!writesEnabled) {
       result.memory_skipped_reason = "flag_disabled";
+      result.drive_skipped_reason = "flag_disabled";
       return result;
     }
     if (!isUuid(conversationId)) {
       console.warn("[FIX 8.3] skip memory write — invalid thread uuid");
       result.memory_skipped_reason = "invalid_thread_uuid";
+      result.drive_skipped_reason = "invalid_thread_uuid";
       return result;
     }
     if (nonAmbiguous.length === 0) {
       result.memory_skipped_reason = "no_non_ambiguous_segments";
+      result.drive_skipped_reason = "no_non_ambiguous_segments";
       return result;
     }
 
     const hashPrefix = inputHash.slice(0, 16);
     let inserted = 0;
+    let driveInserted = 0;
+    let driveBlocked = 0;
     for (const { s, idx } of nonAmbiguous) {
       const memType = memoryTypeFor(s.label);
       const { error: memErr } = await sb.from("hana_personal_memory").insert({
@@ -208,15 +222,61 @@ export async function persistHanaSegmentation(
         topic_tags: [s.label],
       });
       if (memErr) {
-        // dedupe constraint OK; warn jiné chyby
         if (!String(memErr.message || "").includes("uq_hana_memory_dedupe_active")) {
           console.warn(`[FIX 8.3] memory insert failed (segment ${idx}):`, memErr.message);
         }
       } else {
         inserted++;
       }
+
+      // FIX 8.4 — shadow Drive enqueue per non-ambiguous segment.
+      // Memory zápis idempotentní přes dedupe_key; Drive zápis dedupován přes
+      // payload_hash = sha256 segmentu (audit_id zachycuje origin per řádek).
+      try {
+        const target = mapSegmentToHanaFile(s);
+        if (!target) {
+          continue;
+        }
+        const segmentText = (s.text || "").trim();
+        if (!segmentText) {
+          continue;
+        }
+        const segHash = await sha256Hex(`${inputHash}|${idx}|${target}`);
+        const enq = await safeEnqueueDriveWrite(
+          sb,
+          {
+            user_id: userId,
+            target_document: target,
+            content: segmentText.slice(0, 4000),
+            write_type: "append",
+            priority: "normal",
+            status: "pending",
+            target_kind: "pamet_karel_hana",
+            hana_target_file: target.replace("PAMET_KAREL/DID/HANKA/", ""),
+            payload_hash: segHash,
+            source_thread_id: conversationId,
+            source_audit_id: result.audit_id,
+            resolution_kind: DRIVE_RESOLUTION_KIND,
+            resolution_marker: DRIVE_MARKER,
+            dedupe_key: `fix84_${hashPrefix}_${idx}`,
+          },
+          { source: "fix_8_4_persist_hana_segmentation" },
+        );
+        if (enq.inserted) {
+          driveInserted++;
+        } else if (enq.blocked) {
+          driveBlocked++;
+        }
+      } catch (driveErr) {
+        console.warn(
+          `[FIX 8.4] drive enqueue failed (segment ${idx}):`,
+          (driveErr as Error)?.message,
+        );
+      }
     }
     result.memory_rows_inserted = inserted;
+    result.drive_rows_inserted = driveInserted;
+    result.drive_rows_blocked = driveBlocked;
     return result;
   } catch (e) {
     console.warn("[FIX 8.3] persistHanaSegmentation threw:", (e as Error)?.message);
