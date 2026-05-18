@@ -1,6 +1,6 @@
 /**
- * FIX 8.2 / 8.2.1 — hanaTurnSegmenter unit testy.
- * 10 testů z 8.2 + 8 nových z 8.2.1 + 1 verze = 19 testů.
+ * FIX 8.2 / 8.2.1 / 8.2.2 — hanaTurnSegmenter unit testy.
+ * 10 (8.2) + 8 (8.2.1) + 8 (8.2.2) + 1 verze = 27 testů.
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -9,8 +9,8 @@ import {
 } from "../../supabase/functions/_shared/hanaTurnSegmenter.ts";
 
 describe("FIX 8.2 hanaTurnSegmenter", () => {
-  it("verze segmenteru je 1.0.1", () => {
-    expect(segmenterVersion).toBe("1.0.1");
+  it("verze segmenteru je 1.0.2", () => {
+    expect(segmenterVersion).toBe("1.0.2");
   });
 
   // ── 8.2 původních 10 testů ──
