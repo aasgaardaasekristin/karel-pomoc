@@ -257,7 +257,8 @@ const VOCATIVE_KATA_RE = /^\s*(Káťo|Káti|Katko)\s*[,:]/i;
 /**
  * Klasifikuje jeden chunk.
  * Priority:
- *   1) Vocative override (Karle, / Káťo,)
+ *   1) Vocative override (Karle, / Káťo,) — propadá pokud zbytek má 1psg+intimate
+ *   1.5) Self-identification ("Hanka tady" apod.) → intimate_self
  *   2) 1psg primacy: silná 1psg + intimní signál → intimate_self (přebíjí DID)
  *   3) Secondary intimate: relation/emotion/legacy bez DID a Káťi
  *   4) team_about_did (DID cues nebo part_name)
@@ -267,14 +268,7 @@ const VOCATIVE_KATA_RE = /^\s*(Káťo|Káti|Katko)\s*[,:]/i;
  *   8) ambiguous
  */
 function classifyChunk(text: string): { label: HanaSegmentLabel; confidence: number; cues: string[] } {
-  // 1) Vocative override
-  if (VOCATIVE_KAREL_RE.test(text)) {
-    return { label: "meta_to_karel", confidence: 0.9, cues: ["vocative:Karel"] };
-  }
-  if (VOCATIVE_KATA_RE.test(text)) {
-    return { label: "team_about_kata", confidence: 0.9, cues: ["vocative:Káťa"] };
-  }
-
+  // Pre-compute 1psg + intimate signals (potřebné i pro vocative propadání)
   const strong1psg = collectHits(text, STRONG_FIRST_PERSON_CUES, "exact");
   const multi1psg = MULTI_WORD_FIRST_PERSON.filter(p => text.toLowerCase().includes(p.toLowerCase()));
   const has1psg = strong1psg.length + multi1psg.length >= 1;
@@ -284,6 +278,34 @@ function classifyChunk(text: string): { label: HanaSegmentLabel; confidence: num
   const emotionHits = collectHits(text, EMOTION_TERMS, "prefix");
   const legacyHits = collectHits(text, LEGACY_INTIMATE_CUES, "prefix");
   const intimateSignals = healthHits.length + relationHits.length + emotionHits.length + legacyHits.length;
+
+  // 1) Vocative override — s propadáním pro vocative+1psg+intimate
+  if (VOCATIVE_KAREL_RE.test(text)) {
+    const rest = text.replace(VOCATIVE_KAREL_RE, "").trim();
+    const restStrong1psg = collectHits(rest, STRONG_FIRST_PERSON_CUES, "exact").length;
+    const restMulti1psg = MULTI_WORD_FIRST_PERSON.filter(p => rest.toLowerCase().includes(p.toLowerCase())).length;
+    const restIntimate = collectHits(rest, HEALTH_TERMS, "prefix").length
+      + collectHits(rest, RELATION_TERMS, "prefix").length
+      + collectHits(rest, EMOTION_TERMS, "prefix").length
+      + collectHits(rest, LEGACY_INTIMATE_CUES, "prefix").length;
+    if (!((restStrong1psg + restMulti1psg) >= 1 && restIntimate >= 1)) {
+      return { label: "meta_to_karel", confidence: 0.9, cues: ["vocative:Karel"] };
+    }
+    // jinak propadá do 1psg primacy níže
+  }
+  if (VOCATIVE_KATA_RE.test(text)) {
+    return { label: "team_about_kata", confidence: 0.9, cues: ["vocative:Káťa"] };
+  }
+
+  // 1.5) Self-identification (Hanka tady…) → intimate_self
+  const selfIdHits = SELF_IDENTIFICATION_CUES.filter(p => text.toLowerCase().includes(p));
+  if (selfIdHits.length >= 1) {
+    return {
+      label: "intimate_self",
+      confidence: 0.7,
+      cues: selfIdHits.map(c => `self_identification:${c}`),
+    };
+  }
 
   const didHits = collectHits(text, DID_CLINICAL_CUES, "prefix");
   const partMatch = detectSegmentPart(text, null);
