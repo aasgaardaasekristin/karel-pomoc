@@ -1,6 +1,6 @@
 /**
- * FIX 8.2 / 8.2.1 — hanaTurnSegmenter unit testy.
- * 10 testů z 8.2 + 8 nových z 8.2.1 + 1 verze = 19 testů.
+ * FIX 8.2 / 8.2.1 / 8.2.2 — hanaTurnSegmenter unit testy.
+ * 10 (8.2) + 8 (8.2.1) + 8 (8.2.2) + 1 verze = 27 testů.
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -9,8 +9,8 @@ import {
 } from "../../supabase/functions/_shared/hanaTurnSegmenter.ts";
 
 describe("FIX 8.2 hanaTurnSegmenter", () => {
-  it("verze segmenteru je 1.0.1", () => {
-    expect(segmenterVersion).toBe("1.0.1");
+  it("verze segmenteru je 1.0.2", () => {
+    expect(segmenterVersion).toBe("1.0.2");
   });
 
   // ── 8.2 původních 10 testů ──
@@ -194,5 +194,75 @@ describe("FIX 8.2 hanaTurnSegmenter", () => {
     expect(out.segments[0].label).toBe("team_about_did");
     const orphan = out.segments.find(s => s.text.trim() === "jiný typ.");
     expect(orphan).toBeUndefined();
+  });
+
+  // ── 8.2.2 nových 8 testů ──
+
+  it("8.2.2-1 — Self-identification 'Hanka tady.' → intimate_self conf 0.7", () => {
+    const out = segmentHanaTurn({ rawText: "Hanka tady." });
+    expect(out.segments.length).toBe(1);
+    expect(out.segments[0].label).toBe("intimate_self");
+    expect(out.segments[0].confidence).toBeGreaterThanOrEqual(0.7);
+    expect(out.segments[0].cues.join("|")).toMatch(/self_identification:hanka tady/);
+  });
+
+  it("8.2.2-2 — Em-dash splitter: 'Mám migrénu — Arthur dnes přepnul.' → 2 segm, mixed", () => {
+    const out = segmentHanaTurn({
+      rawText: "Mám migrénu — Arthur dnes přepnul.",
+    });
+    expect(out.segments.length).toBe(2);
+    expect(out.segments[0].label).toBe("intimate_self");
+    expect(out.segments[1].label).toBe("team_about_did");
+    expect(out.overallLabel).toBe("mixed");
+  });
+
+  it("8.2.2-3 — Vocative+1psg+intimate fix: 'Karle, mám migrénu' → intimate_self (ne meta)", () => {
+    const out = segmentHanaTurn({
+      rawText: "Karle, mám migrénu už třetí den.",
+    });
+    expect(out.segments[0].label).toBe("intimate_self");
+    expect(out.segments.map(s => s.label)).not.toContain("meta_to_karel");
+  });
+
+  it("8.2.2-4 — Recall: 'Nezvládám to genetické zatížení.' → intimate_self", () => {
+    const out = segmentHanaTurn({ rawText: "Nezvládám to genetické zatížení." });
+    expect(out.segments[0].label).toBe("intimate_self");
+    const cueStr = out.segments[0].cues.join("|");
+    expect(cueStr).toMatch(/emotion:nezvlád|health:genetic/);
+  });
+
+  it("8.2.2-5 — Recall: 'Já taky nestíhám.' → intimate_self", () => {
+    const out = segmentHanaTurn({ rawText: "Já taky nestíhám." });
+    expect(out.segments[0].label).toBe("intimate_self");
+    expect(out.segments[0].cues.join("|")).toMatch(/first_person:já/);
+    expect(out.segments[0].cues.join("|")).toMatch(/emotion:nestíh/);
+  });
+
+  it("8.2.2-6 — MUST-PASS vstup 4: 'Hanka tady. Dítě má dnes záchvat a já taky nestíhám.' → intimate → team_about_did → intimate", () => {
+    const out = segmentHanaTurn({
+      rawText: "Hanka tady. Dítě má dnes záchvat a já taky nestíhám.",
+    });
+    expect(out.segments.length).toBe(3);
+    expect(out.segments[0].label).toBe("intimate_self");
+    expect(out.segments[1].label).toBe("team_about_did");
+    expect(out.segments[2].label).toBe("intimate_self");
+    expect(out.overallLabel).toBe("mixed");
+  });
+
+  it("8.2.2-7 — Em-dash + Káťa: 'Mám rodinu — Káťa měla supervizi.' → 2 segm, mixed", () => {
+    const out = segmentHanaTurn({
+      rawText: "Mám rodinu — Káťa měla supervizi.",
+    });
+    expect(out.segments.length).toBe(2);
+    expect(out.segments[0].label).toBe("intimate_self");
+    expect(out.segments[1].label).toBe("team_about_kata");
+  });
+
+  it("8.2.2-8 — Vocative regression: 'Karle, shrň mi sezení.' → meta_to_karel zachován", () => {
+    const out = segmentHanaTurn({
+      rawText: "Karle, shrň mi sezení.",
+    });
+    expect(out.segments[0].label).toBe("meta_to_karel");
+    expect(out.segments[0].cues.join("|")).toMatch(/vocative:Karel/);
   });
 });

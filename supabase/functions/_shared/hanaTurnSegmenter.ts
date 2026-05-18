@@ -1,5 +1,5 @@
 /**
- * hanaTurnSegmenter.ts — FIX 8.2 / sub-FIX 8.2.1 (rebuild)
+ * hanaTurnSegmenter.ts — FIX 8.2 / sub-FIX 8.2.2 (recall hardening)
  *
  * Deterministická pure function pro segmentaci Hančiných tahů (turns)
  * v rámci Hana/Osobní režimu. Rozdělí jeden text na 1..N segmentů,
@@ -15,22 +15,23 @@
  * Reuse: `detectSegmentPart` z `./topicSegmentation.ts` jako single source
  * of truth pro kanonický seznam jmen částí (CANDIDATE SIGNAL ONLY).
  *
- * 8.2.1 změny oproti 1.0.0:
- * - Dvourežimový matcher: EXACT (Czech-aware word boundary) pro 1psg/kata/meta/logistics,
- *   PREFIX (libovolná koncovka) pro health/relation/emotion/legacy/DID — kvůli Czech inflexím.
- * - Nové cue slovníky: HEALTH_TERMS, RELATION_TERMS, EMOTION_TERMS.
- * - 1psg primacy: silná 1. osoba + intimní signál (health/relation/emotion/legacy) → intimate_self,
- *   přebíjí DID a part_name match. Conf 0.9 pokud zároveň health, jinak 0.7.
- * - Secondary intimate: relation/emotion/legacy bez DID a bez Káťi → intimate_self conf 0.5–0.7.
- * - Vocative override: ^\s*(Karle|Karli)[,:] → meta_to_karel 0.9; ^\s*(Káťo|Káti|Katko)[,:]
- *   → team_about_kata 0.9. Přebíjí intimate.
- * - Fragment guard: segmenty <15 znaků s confidence === 0 přilepeny k předchozímu segmentu.
- * - Nový output field `overallLabel`.
+ * 8.2.2 změny oproti 1.0.1:
+ * - Em/en-dash a "--" splitter — " — ", " – ", " -- " jsou nové dělící body.
+ * - Recall hardening:
+ *   * STRONG_FIRST_PERSON_CUES: + "já"
+ *   * HEALTH_TERMS: + "genetic"
+ *   * EMOTION_TERMS: + "nestíh", "nezvlád"
+ *   * MULTI_WORD_FIRST_PERSON: + "nevěděla jsem si rady" (alias)
+ * - SELF_IDENTIFICATION_CUES: "Hanka tady", "Hana tady", "tady Hanka",
+ *   "tady Hana" → intimate_self conf 0.7 (vlastní priority slot).
+ * - Vocative+1psg fix: pokud po "Karle," / "Karli," následuje silná 1psg
+ *   + intimní signál, vocative override propadá a chunk klasifikuje
+ *   normální 1psg primacy → intimate_self.
  */
 
 import { detectSegmentPart } from "./topicSegmentation.ts";
 
-export const segmenterVersion = "1.0.1" as const;
+export const segmenterVersion = "1.0.2" as const;
 
 export type HanaSegmentLabel =
   | "intimate_self"
@@ -76,6 +77,7 @@ export interface HanaTurnSegmenterOutput {
  * Záměrně NEOBSAHUJE "má" (3.os. sg.) ani "mi" samostatně mimo specifické formy.
  */
 const STRONG_FIRST_PERSON_CUES = [
+  "já",
   "mám", "cítím", "jsem", "bojím", "toužím", "miluju", "miluji",
   "potřebuju", "potřebuji", "trpím", "beru",
   "můj", "moje", "moji", "mou", "mého", "mojí", "mé",
@@ -89,7 +91,7 @@ const STRONG_FIRST_PERSON_CUES = [
 const MULTI_WORD_FIRST_PERSON = [
   "mě bolí", "bolí mě", "je mi", "u mě", "se mnou",
   "měla jsem", "měl jsem", "bojím se", "mám strach",
-  "nemůžu", "nemůžu se", "nevím kudy", "nevěděla rady",
+  "nemůžu", "nemůžu se", "nevím kudy", "nevěděla rady", "nevěděla jsem si rady",
 ];
 
 /**
@@ -106,6 +108,7 @@ const HEALTH_TERMS = [
   "menstruac", "hormonál", "štítk", "štítn",
   "cysta", "nádor", "operac",
   "antidepres", "anxiolyt", "léky", "prášk",
+  "genetic",
 ];
 
 /**
@@ -127,6 +130,7 @@ const EMOTION_TERMS = [
   "sama", "sám", "unaven", "smutn", "strach", "prázdn",
   "osamě", "zoufal", "beznad", "zlomen", "bezmoc",
   "vinn", "stud", "hněv", "vztek", "žal", "lítost",
+  "nestíh", "nezvlád",
 ];
 
 /**
@@ -135,6 +139,16 @@ const EMOTION_TERMS = [
 const LEGACY_INTIMATE_CUES = [
   "touh", "lásk", "objet", "polib", "rande",
   "úzkost", "radost", "smutno",
+];
+
+/**
+ * Self-identification cues — Hanka explicitně oznamuje vlastní přítomnost.
+ * Substring match (case-insensitive). Samostatný priority slot:
+ * → intimate_self conf 0.7 i bez dalších cues.
+ */
+const SELF_IDENTIFICATION_CUES = [
+  "hanka tady", "hana tady", "tady hanka", "tady hana",
+  "tady je hanka", "tady je hana",
 ];
 
 /**
@@ -243,7 +257,8 @@ const VOCATIVE_KATA_RE = /^\s*(Káťo|Káti|Katko)\s*[,:]/i;
 /**
  * Klasifikuje jeden chunk.
  * Priority:
- *   1) Vocative override (Karle, / Káťo,)
+ *   1) Vocative override (Karle, / Káťo,) — propadá pokud zbytek má 1psg+intimate
+ *   1.5) Self-identification ("Hanka tady" apod.) → intimate_self
  *   2) 1psg primacy: silná 1psg + intimní signál → intimate_self (přebíjí DID)
  *   3) Secondary intimate: relation/emotion/legacy bez DID a Káťi
  *   4) team_about_did (DID cues nebo part_name)
@@ -253,14 +268,7 @@ const VOCATIVE_KATA_RE = /^\s*(Káťo|Káti|Katko)\s*[,:]/i;
  *   8) ambiguous
  */
 function classifyChunk(text: string): { label: HanaSegmentLabel; confidence: number; cues: string[] } {
-  // 1) Vocative override
-  if (VOCATIVE_KAREL_RE.test(text)) {
-    return { label: "meta_to_karel", confidence: 0.9, cues: ["vocative:Karel"] };
-  }
-  if (VOCATIVE_KATA_RE.test(text)) {
-    return { label: "team_about_kata", confidence: 0.9, cues: ["vocative:Káťa"] };
-  }
-
+  // Pre-compute 1psg + intimate signals (potřebné i pro vocative propadání)
   const strong1psg = collectHits(text, STRONG_FIRST_PERSON_CUES, "exact");
   const multi1psg = MULTI_WORD_FIRST_PERSON.filter(p => text.toLowerCase().includes(p.toLowerCase()));
   const has1psg = strong1psg.length + multi1psg.length >= 1;
@@ -270,6 +278,34 @@ function classifyChunk(text: string): { label: HanaSegmentLabel; confidence: num
   const emotionHits = collectHits(text, EMOTION_TERMS, "prefix");
   const legacyHits = collectHits(text, LEGACY_INTIMATE_CUES, "prefix");
   const intimateSignals = healthHits.length + relationHits.length + emotionHits.length + legacyHits.length;
+
+  // 1) Vocative override — s propadáním pro vocative+1psg+intimate
+  if (VOCATIVE_KAREL_RE.test(text)) {
+    const rest = text.replace(VOCATIVE_KAREL_RE, "").trim();
+    const restStrong1psg = collectHits(rest, STRONG_FIRST_PERSON_CUES, "exact").length;
+    const restMulti1psg = MULTI_WORD_FIRST_PERSON.filter(p => rest.toLowerCase().includes(p.toLowerCase())).length;
+    const restIntimate = collectHits(rest, HEALTH_TERMS, "prefix").length
+      + collectHits(rest, RELATION_TERMS, "prefix").length
+      + collectHits(rest, EMOTION_TERMS, "prefix").length
+      + collectHits(rest, LEGACY_INTIMATE_CUES, "prefix").length;
+    if (!((restStrong1psg + restMulti1psg) >= 1 && restIntimate >= 1)) {
+      return { label: "meta_to_karel", confidence: 0.9, cues: ["vocative:Karel"] };
+    }
+    // jinak propadá do 1psg primacy níže
+  }
+  if (VOCATIVE_KATA_RE.test(text)) {
+    return { label: "team_about_kata", confidence: 0.9, cues: ["vocative:Káťa"] };
+  }
+
+  // 1.5) Self-identification (Hanka tady…) → intimate_self
+  const selfIdHits = SELF_IDENTIFICATION_CUES.filter(p => text.toLowerCase().includes(p));
+  if (selfIdHits.length >= 1) {
+    return {
+      label: "intimate_self",
+      confidence: 0.7,
+      cues: selfIdHits.map(c => `self_identification:${c}`),
+    };
+  }
 
   const didHits = collectHits(text, DID_CLINICAL_CUES, "prefix");
   const partMatch = detectSegmentPart(text, null);
@@ -338,10 +374,11 @@ function classifyChunk(text: string): { label: HanaSegmentLabel; confidence: num
 
 /**
  * Rozdělí text na chunky se zachováním offsetů.
- * Dělící body: [.!?;] a sub-větné spojky (" a ", " ale ", " ovšem ", " zatímco ").
+ * Dělící body: [.!?;], sub-větné spojky (" a ", " ale ", " ovšem ", " zatímco "),
+ * em-dash / en-dash / dvojitá pomlčka (" — ", " – ", " -- ").
  */
 function splitWithOffsets(raw: string): Array<{ text: string; start: number; end: number }> {
-  const splitRe = /([.!?;])\s+|\s+(a|ale|ovšem|zatímco)\s+/g;
+  const splitRe = /([.!?;])\s+|\s+(a|ale|ovšem|zatímco)\s+|\s+[—–]\s+|\s+--\s+/g;
   const out: Array<{ text: string; start: number; end: number }> = [];
   let cursor = 0;
   let m: RegExpExecArray | null;
