@@ -20,9 +20,14 @@
 
 import { segmentHanaTurn, segmenterVersion, type HanaTurnSegment } from "./hanaTurnSegmenter.ts";
 import { isHanaSegmentWritesEnabled } from "./hanaSegmentFlag.ts";
+import { mapSegmentToHanaFile } from "./hanaSegmentToFile.ts";
+import { safeEnqueueDriveWrite } from "./documentGovernance.ts";
 
 const FIX_VERSION = "v8.3.0";
+const FIX_84_VERSION = "v8.4.0";
 const MARKER = `fix_8_3_persist_${FIX_VERSION}_segmenter_v${segmenterVersion}`;
+const DRIVE_MARKER = `fix_8_4_hana_drive_shadow_${FIX_84_VERSION}_segmenter_v${segmenterVersion}`;
+const DRIVE_RESOLUTION_KIND = "fix_8_4_hana_drive_shadow";
 const RESOLUTION_KIND = "fix_8_3_per_segment";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
