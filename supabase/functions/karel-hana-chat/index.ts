@@ -45,6 +45,7 @@ import {
   validateHanaPersonalResponseIdentity,
   renderSafeHanaPersonalFallback,
 } from "../_shared/hanaPersonalResponseGuard.ts";
+import { persistHanaSegmentation } from "../_shared/persistHanaSegmentation.ts";
 
 function djb2Hash(s: string): string {
   let h = 5381;
@@ -953,6 +954,20 @@ async function runHanaBackgroundProcessing(args: {
   LOVABLE_API_KEY: string;
 }) {
   const { user, sb, messages, conversationId, analysis, fullResponse, safety, persistencePolicy, lastUserTextForSafety, LOVABLE_API_KEY } = args;
+  // FIX 8.3 — per-turn segmentace + audit (vždy) + memory (pod flagem).
+  // Fire-and-forget, žádný throw ven; vlastní logování v helperu.
+  if (!persistencePolicy.no_save && lastUserTextForSafety && lastUserTextForSafety.trim().length > 0) {
+    try {
+      await persistHanaSegmentation({
+        sb,
+        userId: user.id,
+        conversationId: conversationId || null,
+        userTurnText: lastUserTextForSafety,
+      });
+    } catch (e) {
+      console.warn("[FIX 8.3] persistHanaSegmentation outer catch:", (e as Error)?.message);
+    }
+  }
   if (safety.matched) {
     await sb.from("karel_runtime_audit_logs").insert({
       user_id: user.id,
