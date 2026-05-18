@@ -83,11 +83,16 @@ export interface PersistHanaSegmentationArgs {
 
 export interface PersistHanaSegmentationResult {
   audit_inserted: boolean;
+  audit_id: string | null;
   memory_rows_inserted: number;
   memory_skipped_reason: string | null;
+  drive_rows_inserted: number;
+  drive_rows_blocked: number;
+  drive_skipped_reason: string | null;
   segments_total: number;
   segments_non_ambiguous: number;
   marker: string;
+  drive_marker: string;
 }
 
 export async function persistHanaSegmentation(
