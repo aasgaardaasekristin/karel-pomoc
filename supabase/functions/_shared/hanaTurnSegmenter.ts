@@ -1,5 +1,5 @@
 /**
- * hanaTurnSegmenter.ts — FIX 8.2 / sub-FIX 8.2.1 (rebuild)
+ * hanaTurnSegmenter.ts — FIX 8.2 / sub-FIX 8.2.2 (recall hardening)
  *
  * Deterministická pure function pro segmentaci Hančiných tahů (turns)
  * v rámci Hana/Osobní režimu. Rozdělí jeden text na 1..N segmentů,
@@ -15,22 +15,23 @@
  * Reuse: `detectSegmentPart` z `./topicSegmentation.ts` jako single source
  * of truth pro kanonický seznam jmen částí (CANDIDATE SIGNAL ONLY).
  *
- * 8.2.1 změny oproti 1.0.0:
- * - Dvourežimový matcher: EXACT (Czech-aware word boundary) pro 1psg/kata/meta/logistics,
- *   PREFIX (libovolná koncovka) pro health/relation/emotion/legacy/DID — kvůli Czech inflexím.
- * - Nové cue slovníky: HEALTH_TERMS, RELATION_TERMS, EMOTION_TERMS.
- * - 1psg primacy: silná 1. osoba + intimní signál (health/relation/emotion/legacy) → intimate_self,
- *   přebíjí DID a part_name match. Conf 0.9 pokud zároveň health, jinak 0.7.
- * - Secondary intimate: relation/emotion/legacy bez DID a bez Káťi → intimate_self conf 0.5–0.7.
- * - Vocative override: ^\s*(Karle|Karli)[,:] → meta_to_karel 0.9; ^\s*(Káťo|Káti|Katko)[,:]
- *   → team_about_kata 0.9. Přebíjí intimate.
- * - Fragment guard: segmenty <15 znaků s confidence === 0 přilepeny k předchozímu segmentu.
- * - Nový output field `overallLabel`.
+ * 8.2.2 změny oproti 1.0.1:
+ * - Em/en-dash a "--" splitter — " — ", " – ", " -- " jsou nové dělící body.
+ * - Recall hardening:
+ *   * STRONG_FIRST_PERSON_CUES: + "já"
+ *   * HEALTH_TERMS: + "genetic"
+ *   * EMOTION_TERMS: + "nestíh", "nezvlád"
+ *   * MULTI_WORD_FIRST_PERSON: + "nevěděla jsem si rady" (alias)
+ * - SELF_IDENTIFICATION_CUES: "Hanka tady", "Hana tady", "tady Hanka",
+ *   "tady Hana" → intimate_self conf 0.7 (vlastní priority slot).
+ * - Vocative+1psg fix: pokud po "Karle," / "Karli," následuje silná 1psg
+ *   + intimní signál, vocative override propadá a chunk klasifikuje
+ *   normální 1psg primacy → intimate_self.
  */
 
 import { detectSegmentPart } from "./topicSegmentation.ts";
 
-export const segmenterVersion = "1.0.1" as const;
+export const segmenterVersion = "1.0.2" as const;
 
 export type HanaSegmentLabel =
   | "intimate_self"
