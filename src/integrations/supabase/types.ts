@@ -4040,7 +4040,11 @@ export type Database = {
           priority: string | null
           processed_at: string | null
           rerouted_from_write_id: string | null
+          resolution_kind: string | null
+          resolution_marker: string | null
           retry_count: number
+          source_audit_id: string | null
+          source_thread_id: string | null
           status: string | null
           target_document: string
           target_kind: string
@@ -4061,7 +4065,11 @@ export type Database = {
           priority?: string | null
           processed_at?: string | null
           rerouted_from_write_id?: string | null
+          resolution_kind?: string | null
+          resolution_marker?: string | null
           retry_count?: number
+          source_audit_id?: string | null
+          source_thread_id?: string | null
           status?: string | null
           target_document: string
           target_kind?: string
@@ -4082,7 +4090,11 @@ export type Database = {
           priority?: string | null
           processed_at?: string | null
           rerouted_from_write_id?: string | null
+          resolution_kind?: string | null
+          resolution_marker?: string | null
           retry_count?: number
+          source_audit_id?: string | null
+          source_thread_id?: string | null
           status?: string | null
           target_document?: string
           target_kind?: string

@@ -327,7 +327,12 @@ export const CANONICAL_DRIVE_REGISTRY: ReadonlySet<string> = new Set([
   "KARTOTEKA_DID/00_CENTRUM/09_KNIHOVNA/VZDELAVACI_MATERIALY",
 
   // PAMET_KAREL / DID / HANKA — text files use .txt; KAREL is bare Google Doc
+  // FIX 8.4: KAREL.txt + KDO_JE_KDO.txt přidány explicitně (per Karluv kodex,
+  // bod 1 — explicitní výčet, žádné prefix-startsWith pravidlo). Bare KAREL
+  // záměrně ponechán (otevřený issue O-17: rozhodnout mimo 8.4).
   "PAMET_KAREL/DID/HANKA/KAREL",
+  "PAMET_KAREL/DID/HANKA/KAREL.txt",
+  "PAMET_KAREL/DID/HANKA/KDO_JE_KDO.txt",
   "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY.txt",
   "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI.txt",
   "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA.txt",
