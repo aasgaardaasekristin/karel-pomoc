@@ -77,6 +77,7 @@ export interface HanaTurnSegmenterOutput {
  * Záměrně NEOBSAHUJE "má" (3.os. sg.) ani "mi" samostatně mimo specifické formy.
  */
 const STRONG_FIRST_PERSON_CUES = [
+  "já",
   "mám", "cítím", "jsem", "bojím", "toužím", "miluju", "miluji",
   "potřebuju", "potřebuji", "trpím", "beru",
   "můj", "moje", "moji", "mou", "mého", "mojí", "mé",
@@ -90,7 +91,7 @@ const STRONG_FIRST_PERSON_CUES = [
 const MULTI_WORD_FIRST_PERSON = [
   "mě bolí", "bolí mě", "je mi", "u mě", "se mnou",
   "měla jsem", "měl jsem", "bojím se", "mám strach",
-  "nemůžu", "nemůžu se", "nevím kudy", "nevěděla rady",
+  "nemůžu", "nemůžu se", "nevím kudy", "nevěděla rady", "nevěděla jsem si rady",
 ];
 
 /**
@@ -107,6 +108,7 @@ const HEALTH_TERMS = [
   "menstruac", "hormonál", "štítk", "štítn",
   "cysta", "nádor", "operac",
   "antidepres", "anxiolyt", "léky", "prášk",
+  "genetic",
 ];
 
 /**
@@ -128,6 +130,7 @@ const EMOTION_TERMS = [
   "sama", "sám", "unaven", "smutn", "strach", "prázdn",
   "osamě", "zoufal", "beznad", "zlomen", "bezmoc",
   "vinn", "stud", "hněv", "vztek", "žal", "lítost",
+  "nestíh", "nezvlád",
 ];
 
 /**
@@ -136,6 +139,16 @@ const EMOTION_TERMS = [
 const LEGACY_INTIMATE_CUES = [
   "touh", "lásk", "objet", "polib", "rande",
   "úzkost", "radost", "smutno",
+];
+
+/**
+ * Self-identification cues — Hanka explicitně oznamuje vlastní přítomnost.
+ * Substring match (case-insensitive). Samostatný priority slot:
+ * → intimate_self conf 0.7 i bez dalších cues.
+ */
+const SELF_IDENTIFICATION_CUES = [
+  "hanka tady", "hana tady", "tady hanka", "tady hana",
+  "tady je hanka", "tady je hana",
 ];
 
 /**
