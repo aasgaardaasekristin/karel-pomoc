@@ -21,6 +21,7 @@ import Zklidneni from "./pages/Zklidneni";
 import Pomoc from "./pages/Pomoc";
 import NotFound from "./pages/NotFound";
 import ProfessionalAcceptancePanel from "@/components/admin/ProfessionalAcceptancePanel";
+import AdminFix84 from "./pages/AdminFix84";
 import { useAuthReady } from "@/hooks/useAuthReady";
 import { isExplicitLogoutActive } from "@/lib/chatHelpers";
 
