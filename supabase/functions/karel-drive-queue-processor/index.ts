@@ -162,11 +162,17 @@ async function resolveTarget(
     }
     const docName = segments[segments.length - 1];
     const files = await listFiles(token, currentFolder);
-    const doc = files.find(
-      (f) => f.mimeType !== FOLDER_MIME && f.name.toUpperCase().includes(docName.toUpperCase()),
+    const matches = files.filter(
+      (f) => f.mimeType !== FOLDER_MIME && f.name.toUpperCase() === docName.toUpperCase(),
     );
+    if (matches.length > 1) {
+      console.error(`[resolveTarget] DUPLICATE FILES for "${docName}" in folder ${currentFolder}: ${matches.map(m => m.id).join(", ")}. Aborting write to prevent ambiguous target.`);
+      return null;
+    }
+    const doc = matches[0];
     return doc ? { id: doc.id, mimeType: doc.mimeType || "text/plain" } : null;
   }
+
 
   return null;
 }

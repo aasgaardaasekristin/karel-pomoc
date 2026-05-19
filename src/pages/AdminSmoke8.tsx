@@ -17,7 +17,7 @@ export default function AdminSmoke8() {
   const [results, setResults] = useState<CallResult[]>([]);
   const [loadingStep, setLoadingStep] = useState<string | null>(null);
 
-  const runAction = async (action: "append_marker" | "trigger_context_prime" | "verify_drive", stepLabel: string) => {
+  const runAction = async (action: "append_marker" | "trigger_context_prime" | "verify_drive" | "drive_global_search", stepLabel: string, extraBody: Record<string, unknown> = {}) => {
     setLoadingStep(stepLabel);
     const idx = results.length + 1;
     try {
@@ -36,7 +36,7 @@ export default function AdminSmoke8() {
           Authorization: `Bearer ${session.access_token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, ...extraBody }),
       });
       const text = await resp.text();
       let pretty = text;
@@ -99,6 +99,26 @@ export default function AdminSmoke8() {
         >
           {loadingStep === "Krok 5 — Drive verify" ? "Načítám…" : "Krok 5 — Drive revize verify"}
         </button>
+        <button
+          onClick={() => runAction(
+            "drive_global_search",
+            "Drive global search 7 HANKA files",
+            { names: [
+              "VLAKNA_POSLEDNI.txt",
+              "KAREL.txt",
+              "KDO_JE_KDO.txt",
+              "KARLOVY_POZNATKY.txt",
+              "PROFIL_OSOBNOSTI.txt",
+              "SITUACNI_ANALYZA.txt",
+              "STRATEGIE_KOMUNIKACE.txt",
+            ] },
+          )}
+          disabled={!!loadingStep}
+          style={btnStyle(!!loadingStep, "#0891b2")}
+        >
+          {loadingStep === "Drive global search 7 HANKA files" ? "Hledám…" : "Drive global search 7 HANKA files"}
+        </button>
+
       </div>
 
       <div>
