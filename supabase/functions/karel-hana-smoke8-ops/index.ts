@@ -61,8 +61,10 @@ serve(async (req) => {
   if (auth instanceof Response) return auth;
 
   try {
-    const { action } = await req.json();
+    const body = await req.json();
+    const action = body.action;
     const token = await getAccessToken();
+
 
     if (action === "append_marker") {
       const ts = new Date().toISOString();
