@@ -17,7 +17,7 @@ export default function AdminSmoke8() {
   const [results, setResults] = useState<CallResult[]>([]);
   const [loadingStep, setLoadingStep] = useState<string | null>(null);
 
-  const runAction = async (action: "append_marker" | "trigger_context_prime" | "verify_drive", stepLabel: string) => {
+  const runAction = async (action: "append_marker" | "trigger_context_prime" | "verify_drive" | "drive_global_search", stepLabel: string, extraBody: Record<string, unknown> = {}) => {
     setLoadingStep(stepLabel);
     const idx = results.length + 1;
     try {
