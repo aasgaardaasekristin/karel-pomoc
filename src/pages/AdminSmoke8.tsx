@@ -82,6 +82,9 @@ export default function AdminSmoke8() {
         >
           {loadingStep === "Krok 2 — append SORTER_TEST_MARKER" ? "Píšu…" : "Krok 2 — Zapsat SORTER_TEST_MARKER do VLAKNA"}
         </button>
+        <div style={{ fontSize: 12, color: "#666", marginBottom: 8, fontStyle: "italic" }}>
+          Krok 4 trigger posílá <code>forceRefresh: true</code> — regenerátor zapíše na Drive (test-only override).
+        </div>
         <button
           onClick={() => runAction("trigger_context_prime", "Krok 4 — trigger context-prime")}
           disabled={!!loadingStep}
