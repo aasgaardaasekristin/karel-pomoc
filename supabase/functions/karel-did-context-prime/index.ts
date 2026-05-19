@@ -396,8 +396,7 @@ async function generateAllProfilesForTherapist(
   };
 
   const existingDump = PROFILE_FILES.map(f => {
-    // Don't pass existing VLAKNA_POSLEDNI — it will be regenerated from fresh thread data
-    if (f === "VLAKNA_POSLEDNI.txt") return `[[[${f}]]]\n(bude regenerováno z nových konverzací)`;
+    // 8.5: VLAKNA dostává stejné zacházení jako ostatní 4 soubory — destilace, ne regenerace from scratch
     return `[[[${f}]]]\n${dedup(existingProfiles[f]) || "(soubor dosud neexistuje)"}`;
   }).join("\n\n");
 
