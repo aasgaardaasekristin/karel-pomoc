@@ -396,8 +396,7 @@ async function generateAllProfilesForTherapist(
   };
 
   const existingDump = PROFILE_FILES.map(f => {
-    // Don't pass existing VLAKNA_POSLEDNI — it will be regenerated from fresh thread data
-    if (f === "VLAKNA_POSLEDNI.txt") return `[[[${f}]]]\n(bude regenerováno z nových konverzací)`;
+    // 8.5: VLAKNA dostává stejné zacházení jako ostatní 4 soubory — destilace, ne regenerace from scratch
     return `[[[${f}]]]\n${dedup(existingProfiles[f]) || "(soubor dosud neexistuje)"}`;
   }).join("\n\n");
 
@@ -419,8 +418,8 @@ ${baseline}
 
 SOUBORY K VYGENEROVÁNÍ (odděl je značkou [[[NÁZEV_SOUBORU]]]):
 
-1. [[[PROFIL_OSOBNOSTI.txt]]] — Psychologický profil: mentalita, charakter, silné stránky, slabiny, vztahy k okolí. Základní profil VŽDY na začátku.
-2. [[[STRATEGIE_KOMUNIKACE.txt]]] — Jak Karel s ní nejlépe jedná: motivace, kritika, úkolování, myšlenkové vzorce, co funguje.
+1. [[[PROFIL_OSOBNOSTI.txt]]] — Psychologický profil: mentalita, charakter, silné stránky, slabiny, vztahy k okolí. Základní profil VŽDY na začátku. ⚠️ ŽÁDNÉ Hana entries (řádky začínající "## YYYY-MM-DDTHH:MM:SSZ · vedouci_tymu") neztrať ani neparafrázuj — zachovej je verbatim na konci souboru.
+2. [[[STRATEGIE_KOMUNIKACE.txt]]] — Jak Karel s ní nejlépe jedná: motivace, kritika, úkolování, myšlenkové vzorce, co funguje. ⚠️ ŽÁDNÉ Hana entries (řádky začínající "## YYYY-MM-DDTHH:MM:SSZ · vedouci_tymu") neztrať ani neparafrázuj — zachovej je verbatim na konci souboru.
 3. [[[SITUACNI_ANALYZA.txt]]] — Temporální gradient: dlouhodobý (měsíce), střednědobý (týdny), aktuální (dny). Co řeší, jak se cítí.
    ⚠️ POVINNÁ SEKCE "Citové vazby k DID částem (countertransference)": Pro KAŽDOU část, ke které terapeutka projevuje citový vztah, zapiš:
    - Jméno části | Typ vazby (mateřský/ochranitelský/nostalgický/partnerský/empatický) | Karlova dedukce (co to odhaluje o terapeutce)
@@ -434,7 +433,8 @@ SOUBORY K VYGENEROVÁNÍ (odděl je značkou [[[NÁZEV_SOUBORU]]]):
    B) JAK MÁ KAREL DNES MLUVIT: (1-2 body — tón, tempo, hloubka — např. "měkčí tón, dnes je unavená", "strukturovaně, potřebuje jistotu")
    C) CO DNES NEDĚLAT: (1-2 body — co by dnes bylo kontraproduktivní — např. "nepřidávat nové úkoly", "neotevírat téma školy")
    Tato sekce musí vycházet VÝHRADNĚ z aktuálních dat. Žádné obecné fráze. Žádné opakování z předchozích dnů.
-4. [[[VLAKNA_POSLEDNI.txt]]] — IGNORUJ stávající obsah tohoto souboru. Generuj ČISTĚ z nových konverzací (sekce KONVERZACE níže). Každé vlákno POUZE JEDNOU. Na konci JEDNA Karlova reflexe (max 500 znaků). Neopakuj reflexi pro každé vlákno zvlášť. Pokud nejsou nové konverzace, napiš "(Nedostatek nových dat pro aktualizaci)".
+   ⚠️ ŽÁDNÉ Hana entries (řádky začínající "## YYYY-MM-DDTHH:MM:SSZ · vedouci_tymu") neztrať ani neparafrázuj — zachovej je verbatim na konci souboru.
+4. [[[VLAKNA_POSLEDNI.txt]]] — Destiluj z AKTUÁLNÍHO OBSAHU souboru a z NOVÝCH KONVERZACÍ (sekce KONVERZACE). Můžeš mergovat duplikáty a zlepšovat strukturu, ale ŽÁDNÉ Hana entries (řádky začínající "## YYYY-MM-DDTHH:MM:SSZ · vedouci_tymu") neztrať ani neparafrázuj — zachovej je verbatim. Každé vlákno POUZE JEDNOU. Na konci JEDNA Karlova reflexe (max 500 znaků). Neopakuj reflexi pro každé vlákno zvlášť.
 5. [[[KARLOVY_POZNATKY.txt]]] — Deník duše z Karlovy perspektivy: postřehy, puzzle, vzpomínky${therapist === "hanka" ? " (sdílené Hanka-Karel)" : ""}. 90+ dní komprimuj.
    ⚠️ POVINNÁ SEKCE "Countertransference vzorce": Karlovy analytické poznatky o tom, jak terapeutka emocionálně reaguje na konkrétní části. Ne citáty, ale dedukce.
    ⚠️ POVINNÁ SEKCE "KARLOVY DEDUKCE PRO DNEŠEK":
@@ -444,6 +444,7 @@ SOUBORY K VYGENEROVÁNÍ (odděl je značkou [[[NÁZEV_SOUBORU]]]):
    - Co si Karel myslí, že se děje pod povrchem? (1-2 věty — dedukce, ne popis)
    - Na co by si měl dát pozor? (1 věta — konkrétní riziko nebo příležitost)
    Tato sekce musí být ANALYTICKÁ a DEDUKČNÍ — ne popisná. Karel tu přemýšlí, ne reportuje.
+   ⚠️ ŽÁDNÉ Hana entries (řádky začínající "## YYYY-MM-DDTHH:MM:SSZ · vedouci_tymu") neztrať ani neparafrázuj — zachovej je verbatim na konci souboru.
 
 ═══ STÁVAJÍCÍ PROFILY ═══
 ${existingDump}
