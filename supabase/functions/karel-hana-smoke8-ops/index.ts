@@ -6,7 +6,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 
-const VLAKNA_FILE_ID = "17fY79Eg43-OYi4-V2rnmndnkdGBiDcqp";
+// HANKA VLAKNA_POSLEDNI.txt - file id musí být HANKA, NIKOLI KATA verze.
+// Viz O-20 v OPEN_ISSUES.md (2026-05-19): původní hardcoded id 17fY79Eg43 byl KATA file,
+// což vedlo k falešně negativním Smoke 8 verify výsledkům. Při budoucích změnách
+// verifikuj `full_path` přes Drive global search action před uložením.
+const VLAKNA_FILE_ID = "1cVD1L7p3LZ32zOZf4w2QzShplozm7AJF";
 
 async function getAccessToken(): Promise<string> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
