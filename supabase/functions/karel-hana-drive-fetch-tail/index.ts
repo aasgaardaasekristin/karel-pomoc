@@ -29,20 +29,39 @@ serve(async (req) => {
   const auth = await requireAuth(req);
   if (auth instanceof Response) return auth;
   try {
-    const { file_ids, tail_lines } = await req.json();
+    const { file_ids, tail_lines, include_metadata, include_revisions } = await req.json();
     const ids: string[] = Array.isArray(file_ids) ? file_ids : [];
     const n = Math.max(1, Math.min(200, Number(tail_lines) || 15));
     const token = await getAccessToken();
+    const auth_h = { Authorization: `Bearer ${token}` };
     const out: Record<string, unknown> = {};
     for (const id of ids) {
+      const entry: Record<string, unknown> = {};
       const r = await fetch(
         `https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`,
-        { headers: { Authorization: `Bearer ${token}` } },
+        { headers: auth_h },
       );
       if (!r.ok) { out[id] = { error: `HTTP ${r.status}: ${await r.text()}` }; continue; }
       const text = await r.text();
       const lines = text.split(/\r?\n/);
-      out[id] = { total_lines: lines.length, total_chars: text.length, tail: lines.slice(-n) };
+      entry.total_lines = lines.length;
+      entry.total_chars = text.length;
+      entry.tail = lines.slice(-n);
+      if (include_metadata) {
+        const m = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${id}?fields=id,name,mimeType,size,version,createdTime,modifiedTime,modifiedByMe,lastModifyingUser&supportsAllDrives=true`,
+          { headers: auth_h },
+        );
+        entry.metadata = m.ok ? await m.json() : { error: `HTTP ${m.status}: ${await m.text()}` };
+      }
+      if (include_revisions) {
+        const rev = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${id}/revisions?fields=revisions(id,modifiedTime,size,lastModifyingUser,keepForever)`,
+          { headers: auth_h },
+        );
+        entry.revisions = rev.ok ? await rev.json() : { error: `HTTP ${rev.status}: ${await rev.text()}` };
+      }
+      out[id] = entry;
     }
     return new Response(JSON.stringify({ ok: true, files: out }, null, 2), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
