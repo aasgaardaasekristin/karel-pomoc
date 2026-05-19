@@ -1,6 +1,7 @@
 # OPEN ISSUES
 
 ## O-18 — VLAKNA_POSLEDNI conflict: 8.4 append vs. daily-cycle regenerator
+> **REKLASIFIKOVÁNO 2026-05-19** — `17fY79Eg43-OYi4-V2rnmndnkdGBiDcqp` je KATA file id, ne HANKA. Skutečná oprava: `VLAKNA_FILE_ID` v admin smoke8-ops přepnut na `1cVD1L7p3LZ32zOZf4w2QzShplozm7AJF`. Forenzní note níže ponechán jako historický záznam.
 - **Severity:** high
 - **Scope:** 8.5 (write-conflict resolution)
 - **Opened:** 2026-05-19
