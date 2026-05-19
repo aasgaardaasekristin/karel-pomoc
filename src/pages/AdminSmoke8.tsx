@@ -36,7 +36,7 @@ export default function AdminSmoke8() {
           Authorization: `Bearer ${session.access_token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, ...extraBody }),
       });
       const text = await resp.text();
       let pretty = text;
