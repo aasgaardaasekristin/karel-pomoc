@@ -89,7 +89,7 @@ serve(async (req) => {
           "Content-Type": "application/json",
           apikey: serviceKey,
         },
-        body: JSON.stringify({ therapist: "hanka" }),
+        body: JSON.stringify({ therapist: "hanka", forceRefresh: true }),
       });
       const duration_ms = Date.now() - t0;
       const text = await resp.text();
