@@ -119,7 +119,78 @@ serve(async (req) => {
       }, null, 2), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    if (action === "drive_global_search") {
+      const names: string[] = Array.isArray(body.names) ? body.names : [];
+      if (names.length === 0) {
+        return new Response(JSON.stringify({ ok: false, error: "names[] required" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      async function getFileMeta(id: string): Promise<{ id: string; name: string; parents?: string[] }> {
+        const r = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${id}?fields=id,name,parents&supportsAllDrives=true`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!r.ok) return { id, name: `<HTTP ${r.status}>` };
+        return r.json();
+      }
+
+      async function buildFullPath(parents: string[] | undefined): Promise<string> {
+        const segments: string[] = [];
+        let current = parents?.[0];
+        let safety = 20;
+        while (current && safety-- > 0) {
+          const meta = await getFileMeta(current);
+          segments.unshift(meta.name);
+          current = meta.parents?.[0];
+        }
+        return segments.join("/") + "/";
+      }
+
+      const results: Record<string, unknown[]> = {};
+      for (const name of names) {
+        const escaped = name.replace(/'/g, "\\'");
+        const q = `name='${escaped}' and trashed=false`;
+        const params = new URLSearchParams({
+          q,
+          fields: "files(id,name,parents,modifiedTime,size,lastModifyingUser(emailAddress),createdTime)",
+          pageSize: "50",
+          corpora: "user",
+          supportsAllDrives: "true",
+          includeItemsFromAllDrives: "true",
+        });
+        const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok) {
+          results[name] = [{ error: `HTTP ${r.status}: ${await r.text()}` }];
+          continue;
+        }
+        const data = await r.json();
+        const files = data.files || [];
+        const enriched = [];
+        for (const f of files) {
+          const full_path = await buildFullPath(f.parents);
+          enriched.push({
+            id: f.id,
+            full_path,
+            modifiedTime: f.modifiedTime,
+            size: f.size,
+            lastModifyingUser: f.lastModifyingUser?.emailAddress,
+            createdTime: f.createdTime,
+          });
+        }
+        results[name] = enriched;
+      }
+
+      return new Response(JSON.stringify({ ok: true, action, results }, null, 2), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     return new Response(JSON.stringify({ ok: false, error: `Unknown action: ${action}` }), {
+
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
