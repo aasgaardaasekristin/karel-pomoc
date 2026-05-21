@@ -164,6 +164,8 @@ serve(async (req) => {
     const dryRun: boolean = body.dry_run !== false;
     const partNamesFilter: string[] | null = Array.isArray(body.part_names) ? body.part_names : null;
     const maxDepth: number = typeof body.max_depth === "number" ? body.max_depth : 3;
+    const offset: number = typeof body.offset === "number" ? body.offset : 0;
+    const limit: number = typeof body.limit === "number" ? body.limit : 999;
     let rootFolderId: string | null = body.root_folder_id ?? body.folder_id ?? null;
 
     const supabase = createClient(
