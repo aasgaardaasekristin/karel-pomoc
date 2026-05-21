@@ -237,6 +237,13 @@ const PROFILE_FILES = [
   "KARLOVY_POZNATKY.txt",
 ] as const;
 
+// FIX 8.5 v2 — mapping memory_type → human label pro Hana memory řádky.
+const HANA_MEMORY_TYPE_LABELS: Record<string, string> = {
+  hana_segment_intimate: "intimní",
+  hana_segment_team_did: "tým o DID",
+  hana_to_did_safe_summary: "safe summary",
+};
+
 function gatherThreadsForTherapist(
   therapist: "hanka" | "kata",
   didThreads: any[],
@@ -244,6 +251,7 @@ function gatherThreadsForTherapist(
   hanaConversations: any[],
   researchThreads: any[],
   cutoff: Date,
+  hanaPersonalMemory: any[] = [],
 ): string {
   const cutoffMs = cutoff.getTime();
   const cutoffLabel = cutoff.toISOString().slice(0, 10);
@@ -302,6 +310,25 @@ function gatherThreadsForTherapist(
         lines.push(`\n--- Research [${r.topic}] ${r.last_activity_at} ---`);
         lines.push(...snippets);
       }
+    }
+
+    // FIX 8.5 v2 — Hana personal memory (hard-merge, BEZ cutoffu).
+    // Per Kristin 2026-05-21: jen pro therapist === "hanka", všech N řádků,
+    // chronologicky ASC, existující "--- ... ---" pattern. Filtr memory_type
+    // probíhá už v SQL (viz dbPromises.hanaPersonalMemory).
+    const hanaMem = Array.isArray(hanaPersonalMemory) ? hanaPersonalMemory : [];
+    const sortedMem = [...hanaMem].sort((a, b) => {
+      const ta = a?.created_at ? String(a.created_at) : "";
+      const tb = b?.created_at ? String(b.created_at) : "";
+      return ta.localeCompare(tb);
+    });
+    for (const m of sortedMem) {
+      const label = HANA_MEMORY_TYPE_LABELS[m?.memory_type] || m?.memory_type || "memory";
+      const iso = m?.created_at || "";
+      const summary = String(m?.safe_summary || "").trim();
+      if (!summary) continue;
+      lines.push(`\n--- Hana memory [${label}] ${iso} ---`);
+      lines.push(`  [vedouci_tymu] ${summary}`);
     }
   }
 
@@ -532,8 +559,9 @@ async function syncTherapistProfilingEngine(params: {
   therapistTasks: any[];
   motivationProfiles: any[];
   didEpisodes: any[];
+  hanaPersonalMemory?: any[];
 }): Promise<{ updated: boolean; filesUpdated: number; hankaThreadsDeleted: number }> {
-  const { token, apiKey, sb, now, cutoff, didThreads, didConversations, hanaConversations, researchThreads, therapistTasks, motivationProfiles, didEpisodes } = params;
+  const { token, apiKey, sb, now, cutoff, didThreads, didConversations, hanaConversations, researchThreads, therapistTasks, motivationProfiles, didEpisodes, hanaPersonalMemory = [] } = params;
 
   const pametId = await findFolder(token, "PAMET_KAREL");
   if (!pametId) throw new Error("PAMET_KAREL folder not found");
@@ -572,8 +600,8 @@ async function syncTherapistProfilingEngine(params: {
   ]);
 
   // Gather conversation dumps using dynamic cutoff
-  const hankaThreadsDump = gatherThreadsForTherapist("hanka", didThreads, didConversations, hanaConversations, researchThreads, cutoff);
-  const kataThreadsDump = gatherThreadsForTherapist("kata", didThreads, didConversations, hanaConversations, researchThreads, cutoff);
+  const hankaThreadsDump = gatherThreadsForTherapist("hanka", didThreads, didConversations, hanaConversations, researchThreads, cutoff, hanaPersonalMemory);
+  const kataThreadsDump = gatherThreadsForTherapist("kata", didThreads, didConversations, hanaConversations, researchThreads, cutoff, []);
 
   // Build digests
   const hankaTasksDigest = therapistTasks
@@ -775,6 +803,9 @@ serve(async (req) => {
       didConversations: sb.from("did_conversations").select("id, label, preview, sub_mode, saved_at, updated_at, did_initial_context, messages").eq("user_id", userId).order("saved_at", { ascending: false }).limit(20),
       hanaConversations: sb.from("karel_hana_conversations").select("id, messages, last_activity_at, current_domain").eq("user_id", userId).order("last_activity_at", { ascending: false }).limit(20),
       researchThreads: sb.from("research_threads").select("id, topic, messages, last_activity_at").eq("user_id", userId).eq("is_deleted", false).order("last_activity_at", { ascending: false }).limit(10),
+      // FIX 8.5 v2 — Hana personal memory pro hard-merge do HANKA/VLAKNA_POSLEDNI.txt.
+      // BEZ cutoffu (rozhodnutí Kristin 2026-05-21), filtrováno per memory_type.
+      hanaPersonalMemory: sb.from("hana_personal_memory").select("memory_type, safe_summary, created_at").eq("user_id", userId).in("memory_type", ["hana_segment_intimate", "hana_segment_team_did", "hana_to_did_safe_summary"]).order("created_at", { ascending: true }),
       didEpisodes: sb.from("karel_episodes").select("*").eq("user_id", userId).eq("is_archived", false).eq("domain", "DID").gte("timestamp_start", fourteenDaysAgo).order("timestamp_start", { ascending: false }).limit(30),
       olderEpisodes: sb.from("karel_episodes").select("domain, hana_state, summary_user, summary_karel, tags, timestamp_start").eq("user_id", userId).eq("is_archived", false).eq("domain", "DID").lt("timestamp_start", fourteenDaysAgo).gte("timestamp_start", thirtyDaysAgo).order("timestamp_start", { ascending: false }).limit(15),
       entities: sb.from("karel_semantic_entities").select("*").eq("user_id", userId),
@@ -1129,6 +1160,7 @@ Piš stručně, v češtině, max 300 slov. U každé události přidej jednu v�
     const didConversations = dbResults.didConversations || [];
     const hanaConversations = dbResults.hanaConversations || [];
     const researchThreads = dbResults.researchThreads || [];
+    const hanaPersonalMemory = dbResults.hanaPersonalMemory || []; // FIX 8.5 v2
     const didEpisodes = dbResults.didEpisodes || [];
     const olderEpisodes = dbResults.olderEpisodes || [];
     const entities = dbResults.entities || [];
@@ -1239,6 +1271,7 @@ Piš stručně, v češtině, max 300 slov. U každé události přidej jednu v�
           therapistTasks,
           motivationProfiles,
           didEpisodes,
+          hanaPersonalMemory, // FIX 8.5 v2
         });
         shadowSyncResult = { ...syncResult, error: null };
         console.log(`[did-context-prime] Profiling engine done: ${syncResult.filesUpdated} files updated, ${syncResult.hankaThreadsDeleted} threads deleted`);
