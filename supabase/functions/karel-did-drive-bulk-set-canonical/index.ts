@@ -146,7 +146,15 @@ function matchDocsForPart(
   if (arr.length === 0) return { docs: [], matched_by: "none" };
   const minRank = Math.min(...arr.map(x => x.rank));
   const labels = ["", "drive_folder_label_exact", "part_name_exact", "part_name_substring", "alias_substring"];
-  return { docs: arr.map(x => x.d), matched_by: labels[minRank] };
+  // Order: lower rank first, then newest modifiedTime, then cap at 5 to bound export cost
+  arr.sort((a, b) => {
+    if (a.rank !== b.rank) return a.rank - b.rank;
+    const am = a.d.modifiedTime || ""; const bm = b.d.modifiedTime || "";
+    return bm > am ? 1 : -1;
+  });
+  const capped = arr.slice(0, 5).map(x => x.d);
+  return { docs: capped, matched_by: labels[minRank] };
+}
 }
 
 serve(async (req) => {
