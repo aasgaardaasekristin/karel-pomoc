@@ -280,3 +280,6 @@ verify_jwt = false
 [functions.karel-did-drive-bulk-set-canonical]
 verify_jwt = false
 
+[functions.karel-did-drive-list-tree]
+verify_jwt = false
+
