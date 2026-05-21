@@ -185,7 +185,10 @@ serve(async (req) => {
     const { data: rawParts, error: partsErr } = await q;
     if (partsErr) throw new Error(`registry select: ${partsErr.message}`);
     const SYSTEM_LOWER = new Set(["karel", "káťa", "kata"]);
-    const parts = (rawParts || []).filter(p => !SYSTEM_LOWER.has((p.part_name || "").toLowerCase()));
+    const partsAll = (rawParts || []).filter(p => !SYSTEM_LOWER.has((p.part_name || "").toLowerCase()))
+      .sort((a, b) => (a.part_name || "").localeCompare(b.part_name || ""));
+    const totalParts = partsAll.length;
+    const parts = partsAll.slice(offset, offset + limit);
 
     if (parts.length === 0) {
       return new Response(JSON.stringify({ ok: true, summary: { total_parts: 0 }, results: [] }, null, 2), {
