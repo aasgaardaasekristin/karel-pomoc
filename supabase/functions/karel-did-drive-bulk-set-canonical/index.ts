@@ -207,6 +207,24 @@ serve(async (req) => {
     const freeformCards: string[] = [];
     let matchedSingle = 0, matchedWithDup = 0, errors = 0;
 
+    // export cache to dedupe across parts
+    const exportCache = new Map<string, { stats: any; error?: string }>();
+    async function getStats(fileId: string) {
+      const hit = exportCache.get(fileId);
+      if (hit) return hit;
+      try {
+        const content = await exportDoc(token, fileId);
+        const stats = analyzeContent(content);
+        const v = { stats };
+        exportCache.set(fileId, v);
+        return v;
+      } catch (e) {
+        const v = { stats: { char_count: 0, section_count: 0, last_append_log_date: null, sections_found: [], line_count: 0 }, error: (e as Error).message };
+        exportCache.set(fileId, v);
+        return v;
+      }
+    }
+
     for (const part of parts) {
       try {
         const { docs: matches, matched_by } = matchDocsForPart(docs, part);
@@ -220,16 +238,12 @@ serve(async (req) => {
           continue;
         }
 
-        const analyzed: any[] = [];
-        for (const m of matches) {
-          try {
-            const content = await exportDoc(token, m.id);
-            const stats = analyzeContent(content);
-            analyzed.push({ file_id: m.id, name: m.name, source_folder_name: m.folder_name, source_folder_id: m.folder_id, last_modified: m.modifiedTime, ...stats });
-          } catch (e) {
-            analyzed.push({ file_id: m.id, name: m.name, source_folder_name: m.folder_name, source_folder_id: m.folder_id, last_modified: m.modifiedTime, error: (e as Error).message, char_count: 0, section_count: 0, last_append_log_date: null });
-          }
-        }
+        // parallel export (cached)
+        const analyzedRaw = await Promise.all(matches.map(async (m) => {
+          const r = await getStats(m.id);
+          return { file_id: m.id, name: m.name, source_folder_name: m.folder_name, source_folder_id: m.folder_id, last_modified: m.modifiedTime, ...r.stats, error: r.error };
+        }));
+        const analyzed = analyzedRaw;
 
         analyzed.sort((a, b) => {
           if (b.char_count !== a.char_count) return b.char_count - a.char_count;
