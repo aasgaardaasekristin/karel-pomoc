@@ -3751,6 +3751,7 @@ export type Database = {
         Row: {
           age_estimate: string | null
           aliases: string[] | null
+          card_format: string | null
           cluster: string | null
           condition: string | null
           created_at: string
@@ -3782,6 +3783,7 @@ export type Database = {
         Insert: {
           age_estimate?: string | null
           aliases?: string[] | null
+          card_format?: string | null
           cluster?: string | null
           condition?: string | null
           created_at?: string
@@ -3813,6 +3815,7 @@ export type Database = {
         Update: {
           age_estimate?: string | null
           aliases?: string[] | null
+          card_format?: string | null
           cluster?: string | null
           condition?: string | null
           created_at?: string
