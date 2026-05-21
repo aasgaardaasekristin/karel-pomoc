@@ -23,6 +23,7 @@ import NotFound from "./pages/NotFound";
 import ProfessionalAcceptancePanel from "@/components/admin/ProfessionalAcceptancePanel";
 import AdminFix84 from "./pages/AdminFix84";
 import AdminSmoke8 from "./pages/AdminSmoke8";
+import DidKluci from "./pages/DidKluci";
 import { useAuthReady } from "@/hooks/useAuthReady";
 import { isExplicitLogoutActive } from "@/lib/chatHelpers";
 
