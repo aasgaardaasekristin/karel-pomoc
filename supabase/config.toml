@@ -283,3 +283,6 @@ verify_jwt = false
 [functions.karel-did-drive-list-tree]
 verify_jwt = false
 
+
+[functions.karel-did-drive-inspect]
+verify_jwt = false
