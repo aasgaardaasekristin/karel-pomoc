@@ -306,7 +306,10 @@ serve(async (req) => {
     }
 
     const summary = {
-      total_parts: parts.length,
+      total_parts_in_registry: totalParts,
+      parts_processed_in_this_batch: parts.length,
+      offset, limit,
+      next_offset: offset + parts.length < totalParts ? offset + parts.length : null,
       total_docs_scanned: docs.length,
       matched_single: matchedSingle,
       matched_with_duplicate_resolved: matchedWithDup,
