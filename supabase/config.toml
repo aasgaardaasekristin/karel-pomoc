@@ -273,3 +273,7 @@ verify_jwt = false
 
 [functions.karel-child-thread-list-open]
 verify_jwt = false
+
+[functions.karel-did-drive-audit-duplicates]
+verify_jwt = false
+
