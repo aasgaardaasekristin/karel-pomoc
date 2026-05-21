@@ -3756,6 +3756,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           display_name: string
+          drive_doc_id: string | null
           drive_folder_label: string | null
           health_score: number | null
           id: string
@@ -3786,6 +3787,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           display_name?: string
+          drive_doc_id?: string | null
           drive_folder_label?: string | null
           health_score?: number | null
           id?: string
@@ -3816,6 +3818,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           display_name?: string
+          drive_doc_id?: string | null
           drive_folder_label?: string | null
           health_score?: number | null
           id?: string
