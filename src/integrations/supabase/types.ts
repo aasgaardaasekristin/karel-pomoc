@@ -1770,6 +1770,36 @@ export type Database = {
         }
         Relationships: []
       }
+      decision_traces: {
+        Row: {
+          created_at: string
+          evidence_refs: Json | null
+          id: string
+          outcome: string | null
+          reasoning: string | null
+          snapshot_ref: Json | null
+          triggered_by: string
+        }
+        Insert: {
+          created_at?: string
+          evidence_refs?: Json | null
+          id?: string
+          outcome?: string | null
+          reasoning?: string | null
+          snapshot_ref?: Json | null
+          triggered_by: string
+        }
+        Update: {
+          created_at?: string
+          evidence_refs?: Json | null
+          id?: string
+          outcome?: string | null
+          reasoning?: string | null
+          snapshot_ref?: Json | null
+          triggered_by?: string
+        }
+        Relationships: []
+      }
       did_acceptance_runs: {
         Row: {
           app_version: string | null
@@ -1958,6 +1988,119 @@ export type Database = {
           updated_by?: string | null
         }
         Relationships: []
+      }
+      did_child_thread: {
+        Row: {
+          child_part_id: string
+          closed_at: string | null
+          context_loaded_at: string | null
+          created_at: string
+          decision_trace_id: string | null
+          id: string
+          identification_confidence: number
+          identification_method: string
+          last_active_at: string
+          opened_at: string
+          status: string
+          summary_short: string | null
+          thread_date: string
+          updated_at: string
+        }
+        Insert: {
+          child_part_id: string
+          closed_at?: string | null
+          context_loaded_at?: string | null
+          created_at?: string
+          decision_trace_id?: string | null
+          id?: string
+          identification_confidence: number
+          identification_method: string
+          last_active_at?: string
+          opened_at?: string
+          status?: string
+          summary_short?: string | null
+          thread_date: string
+          updated_at?: string
+        }
+        Update: {
+          child_part_id?: string
+          closed_at?: string | null
+          context_loaded_at?: string | null
+          created_at?: string
+          decision_trace_id?: string | null
+          id?: string
+          identification_confidence?: number
+          identification_method?: string
+          last_active_at?: string
+          opened_at?: string
+          status?: string
+          summary_short?: string | null
+          thread_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "did_child_thread_child_part_id_fkey"
+            columns: ["child_part_id"]
+            isOneToOne: false
+            referencedRelation: "did_part_registry"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "did_child_thread_decision_trace_id_fkey"
+            columns: ["decision_trace_id"]
+            isOneToOne: false
+            referencedRelation: "decision_traces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      did_child_thread_message: {
+        Row: {
+          confidence: number | null
+          content: string
+          content_tags: string[] | null
+          created_at: string
+          id: string
+          research_log_id: string | null
+          sender: string
+          sent_at: string
+          thread_id: string
+          triggered_research: boolean
+        }
+        Insert: {
+          confidence?: number | null
+          content: string
+          content_tags?: string[] | null
+          created_at?: string
+          id?: string
+          research_log_id?: string | null
+          sender: string
+          sent_at?: string
+          thread_id: string
+          triggered_research?: boolean
+        }
+        Update: {
+          confidence?: number | null
+          content?: string
+          content_tags?: string[] | null
+          created_at?: string
+          id?: string
+          research_log_id?: string | null
+          sender?: string
+          sent_at?: string
+          thread_id?: string
+          triggered_research?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "did_child_thread_message_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "did_child_thread"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       did_conversations: {
         Row: {
