@@ -155,7 +155,6 @@ function matchDocsForPart(
   const capped = arr.slice(0, 5).map(x => x.d);
   return { docs: capped, matched_by: labels[minRank] };
 }
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
