@@ -263,3 +263,13 @@ verify_jwt = false
 
 [functions.karel-child-thread-rollover]
 verify_jwt = false
+
+# FIX 9.K.1b — UI vlákno
+[functions.karel-child-thread-send]
+verify_jwt = false
+
+[functions.karel-child-thread-messages]
+verify_jwt = false
+
+[functions.karel-child-thread-list-open]
+verify_jwt = false
