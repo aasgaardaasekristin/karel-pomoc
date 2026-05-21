@@ -256,3 +256,10 @@ verify_jwt = false
 # crisis-retroactive-scan: 0 */4 * * * (every 4h)
 [functions.karel-task-drive-enqueue]
 verify_jwt = true
+
+# FIX 9.K.1 — DID/Kluci denní vlákna
+[functions.karel-child-thread-opener]
+verify_jwt = false
+
+[functions.karel-child-thread-rollover]
+verify_jwt = false
